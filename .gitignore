@@ -1,0 +1,6 @@
+/quarry
+*.test
+*.test.exe
+*.out
+*.prof
+.scratch/
