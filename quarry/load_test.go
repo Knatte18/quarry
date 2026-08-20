@@ -1,23 +1,21 @@
-// load_test.go table-drives LoadRegistry against t.TempDir fixtures, using configengine.ConfigFile
-// to build every servers.yaml path per the Hub Geometry Invariant (which applies to test code too),
-// mirroring modelspec/load_test.go's pattern.
+// load_test.go table-drives LoadRegistry against t.TempDir fixtures, each writing its overlay file
+// at a path of its own choosing and passing that path directly to LoadRegistry — the told-path
+// signature card 15 introduced.
 
 package quarry
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// writeServersYAML writes contents to the servers.yaml path under baseDir.
-func writeServersYAML(t *testing.T, baseDir, contents string) {
+// writeServersYAML writes contents to path, creating any missing parent directories.
+func writeServersYAML(t *testing.T, path, contents string) {
 	t.Helper()
-	path := configengine.ConfigFile(baseDir, "servers")
-	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s): %v", configengine.ConfigDir(baseDir), err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", filepath.Dir(path), err)
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", path, err)
@@ -25,9 +23,9 @@ func writeServersYAML(t *testing.T, baseDir, contents string) {
 }
 
 func TestLoadRegistry_AbsentFileYieldsBuiltins(t *testing.T) {
-	baseDir := t.TempDir()
+	path := filepath.Join(t.TempDir(), "servers.yaml")
 
-	got, err := LoadRegistry(baseDir)
+	got, err := LoadRegistry(path)
 	if err != nil {
 		t.Fatalf("LoadRegistry(absent) returned unexpected error: %v", err)
 	}
@@ -45,10 +43,10 @@ func TestLoadRegistry_AbsentFileYieldsBuiltins(t *testing.T) {
 }
 
 func TestLoadRegistry_EmptyFileYieldsBuiltins(t *testing.T) {
-	baseDir := t.TempDir()
-	writeServersYAML(t, baseDir, "# comments only, no entries\n")
+	path := filepath.Join(t.TempDir(), "servers.yaml")
+	writeServersYAML(t, path, "# comments only, no entries\n")
 
-	got, err := LoadRegistry(baseDir)
+	got, err := LoadRegistry(path)
 	if err != nil {
 		t.Fatalf("LoadRegistry(comments-only) returned unexpected error: %v", err)
 	}
@@ -58,8 +56,8 @@ func TestLoadRegistry_EmptyFileYieldsBuiltins(t *testing.T) {
 }
 
 func TestLoadRegistry_FileOverridesWholeEntry(t *testing.T) {
-	baseDir := t.TempDir()
-	writeServersYAML(t, baseDir, `
+	path := filepath.Join(t.TempDir(), "servers.yaml")
+	writeServersYAML(t, path, `
 go:
   markers: [go.mod, go.work]
   match: any
@@ -67,7 +65,7 @@ go:
   install_hint: "brew install gopls"
 `)
 
-	got, err := LoadRegistry(baseDir)
+	got, err := LoadRegistry(path)
 	if err != nil {
 		t.Fatalf("LoadRegistry(override) returned unexpected error: %v", err)
 	}
@@ -95,8 +93,8 @@ go:
 }
 
 func TestLoadRegistry_FileExtendsWithNewLanguage(t *testing.T) {
-	baseDir := t.TempDir()
-	writeServersYAML(t, baseDir, `
+	path := filepath.Join(t.TempDir(), "servers.yaml")
+	writeServersYAML(t, path, `
 zig:
   markers: [build.zig]
   match: any
@@ -104,7 +102,7 @@ zig:
   install_hint: "install zls"
 `)
 
-	got, err := LoadRegistry(baseDir)
+	got, err := LoadRegistry(path)
 	if err != nil {
 		t.Fatalf("LoadRegistry(extends) returned unexpected error: %v", err)
 	}
@@ -159,10 +157,10 @@ go:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			baseDir := t.TempDir()
-			writeServersYAML(t, baseDir, tt.contents)
+			path := filepath.Join(t.TempDir(), "servers.yaml")
+			writeServersYAML(t, path, tt.contents)
 
-			_, err := LoadRegistry(baseDir)
+			_, err := LoadRegistry(path)
 			if err == nil {
 				t.Fatalf("LoadRegistry(%s) returned nil error; want error containing %q", tt.name, tt.wantSubstr)
 			}
@@ -174,8 +172,8 @@ go:
 }
 
 func TestLoadRegistry_InvalidEntryErrorNamesAliasAndPath(t *testing.T) {
-	baseDir := t.TempDir()
-	writeServersYAML(t, baseDir, `
+	path := filepath.Join(t.TempDir(), "servers.yaml")
+	writeServersYAML(t, path, `
 go:
   markers: [go.mod]
   match: sometimes
@@ -183,15 +181,26 @@ go:
   install_hint: "go install gopls"
 `)
 
-	_, err := LoadRegistry(baseDir)
+	_, err := LoadRegistry(path)
 	if err == nil {
 		t.Fatal("LoadRegistry(invalid match) returned nil error; want error naming the alias and path")
 	}
-	path := configengine.ConfigFile(baseDir, "servers")
 	if !strings.Contains(err.Error(), `"go"`) {
 		t.Errorf("LoadRegistry error = %q; want it to name the alias %q", err.Error(), "go")
 	}
 	if !strings.Contains(err.Error(), path) {
 		t.Errorf("LoadRegistry error = %q; want it to name the file path %q", err.Error(), path)
+	}
+}
+
+// TestLoadRegistry_PathIsDirectoryReturnsError proves the told-path signature does not silently
+// fall back to built-ins when path exists but is a directory rather than a file: the absent-file
+// fallback keys specifically on os.ErrNotExist, which a directory read does not produce.
+func TestLoadRegistry_PathIsDirectoryReturnsError(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := LoadRegistry(dir)
+	if err == nil {
+		t.Fatalf("LoadRegistry(%q) (a directory) returned nil error; want an error", dir)
 	}
 }
