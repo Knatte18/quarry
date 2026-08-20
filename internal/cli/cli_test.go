@@ -1,10 +1,12 @@
 // cli_test.go drives RunCLI through its seam: the bare/--help subcommand listing, every command's
 // Short, and the ErrNoLanguage error-envelope path.
 // It is deliberately untagged, offline, and spawn-free: it never shells out to a subprocess, never
-// touches git, and never copies a fixture tree, so it never launches a language server or requires
-// a git repo.
-// A real "refs" query against a live language server belongs to the //go:build integration tier
-// (internal/scoutengine's own integration test) and batch 4's measurement, not here.
+// touches git, and never copies a fixture tree, so it never launches a language server.
+// Isolation from the operator's real machine-global config/cache directories goes through the
+// userConfigDir/userCacheDir seams (withIsolatedPathSeams below), never t.Chdir — both stdlib
+// functions os.UserConfigDir/os.UserCacheDir ignore the process working directory entirely.
+// A real "refs" query against a live language server belongs to the //go:build lsp tier
+// (quarry's own live tier) and batch 5's measurement, not here.
 
 package cli
 
@@ -13,18 +15,37 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// TestRunCLI_NoArgsListsRefsSubcommand verifies bare "lyx scout" lists subcommands and exits 0.
+// withIsolatedPathSeams redirects both userConfigDir and userCacheDir (paths.go's machine-global
+// seams) at the same fresh t.TempDir() for the duration of the test, restoring both originals in
+// a t.Cleanup, and returns the shared temp root.
+// This is the one isolation mechanism every test below shares, so that a --config/--state-dir-less
+// resolveContext call resolves against a throwaway directory instead of the operator's real
+// os.UserConfigDir()/os.UserCacheDir() answer.
+func withIsolatedPathSeams(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+
+	origConfigDir := userConfigDir
+	userConfigDir = func() (string, error) { return root, nil }
+	t.Cleanup(func() { userConfigDir = origConfigDir })
+
+	origCacheDir := userCacheDir
+	userCacheDir = func() (string, error) { return root, nil }
+	t.Cleanup(func() { userCacheDir = origCacheDir })
+
+	return root
+}
+
+// TestRunCLI_NoArgsListsRefsSubcommand verifies bare "quarry" lists subcommands and exits 0.
 func TestRunCLI_NoArgsListsRefsSubcommand(t *testing.T) {
 	t.Parallel()
 
@@ -39,7 +60,7 @@ func TestRunCLI_NoArgsListsRefsSubcommand(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Help verifies "lyx scout --help" lists subcommands and exits 0.
+// TestRunCLI_Help verifies "quarry --help" lists subcommands and exits 0.
 func TestRunCLI_Help(t *testing.T) {
 	t.Parallel()
 
@@ -78,10 +99,10 @@ func collectMissingShorts(cmd *cobra.Command) []string {
 
 // TestRunCLI_Refs_NoLanguageError verifies "refs" fails with ErrNoLanguage in an empty directory.
 func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
-	// scoutengine.BuiltinRegistry() deterministically, independent of
-	// whatever git repo or servers.yaml the test happens to run inside.
-	t.Chdir(t.TempDir())
+	// Redirect the userConfigDir/userCacheDir seams at a fresh temp root so
+	// resolveContext degrades to quarry.BuiltinRegistry() deterministically,
+	// independent of whatever real servers.yaml the operator's machine has.
+	withIsolatedPathSeams(t)
 
 	emptyTargetDir := t.TempDir()
 
@@ -161,10 +182,10 @@ func TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd(t *testing.T) {
 // TestRunCLI_Definition_NoLanguageError verifies "definition" fails with ErrNoLanguage in an empty
 // directory.
 func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
-	// scoutengine.BuiltinRegistry() deterministically, independent of
-	// whatever git repo or servers.yaml the test happens to run inside.
-	t.Chdir(t.TempDir())
+	// Redirect the userConfigDir/userCacheDir seams at a fresh temp root so
+	// resolveContext degrades to quarry.BuiltinRegistry() deterministically,
+	// independent of whatever real servers.yaml the operator's machine has.
+	withIsolatedPathSeams(t)
 
 	emptyTargetDir := t.TempDir()
 
@@ -201,10 +222,10 @@ func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
 // TestRunCLI_Symbol_NoLanguageError verifies "symbol" fails with ErrNoLanguage in an empty
 // directory.
 func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
-	// scoutengine.BuiltinRegistry() deterministically, independent of
-	// whatever git repo or servers.yaml the test happens to run inside.
-	t.Chdir(t.TempDir())
+	// Redirect the userConfigDir/userCacheDir seams at a fresh temp root so
+	// resolveContext degrades to quarry.BuiltinRegistry() deterministically,
+	// independent of whatever real servers.yaml the operator's machine has.
+	withIsolatedPathSeams(t)
 
 	emptyTargetDir := t.TempDir()
 
@@ -265,7 +286,7 @@ func TestRunCLI_Symbol_TreatsFileLineColArgumentAsLiteralSearchString(t *testing
 		t.Fatalf("parseQuery(%q).Pos = nil; want a parsed position, to prove symbolQuery's divergence from parseQuery is meaningful", arg)
 	}
 
-	t.Chdir(t.TempDir())
+	withIsolatedPathSeams(t)
 	emptyTargetDir := t.TempDir()
 
 	var out bytes.Buffer
@@ -300,7 +321,7 @@ func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
 		{
 			name:         "ambiguous",
 			resultsField: "references",
-			err: &scoutengine.ErrAmbiguousSymbol{
+			err: &quarry.ErrAmbiguousSymbol{
 				Symbol:     "Foo",
 				Candidates: []string{"a.go:1:1", "b.go:2:2"},
 			},
@@ -326,7 +347,7 @@ func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
 		{
 			name:         "not_found",
 			resultsField: "definitions",
-			err:          &scoutengine.ErrSymbolNotFound{Symbol: "Bar", TargetDir: "/tmp"},
+			err:          &quarry.ErrSymbolNotFound{Symbol: "Bar", TargetDir: "/tmp"},
 			wantCode:     1,
 			wantOk:       false,
 			checkBody: func(t *testing.T, env map[string]any) {
@@ -342,7 +363,7 @@ func TestEmitLookupResult_AmbiguousSymbolExitsTwo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			ctx, es := clihelp.NewExitContext(context.Background())
+			ctx, es := NewExitContext(context.Background())
 
 			emitLookupResult(ctx, &out, tt.resultsField, nil, tt.err)
 
@@ -397,7 +418,7 @@ func TestRunCLI_Refs_RequiresAtLeastOneArg(t *testing.T) {
 
 // TestRunCLI_Refs_TwoArgsIsBatchMode verifies two or more arguments enable batch mode.
 func TestRunCLI_Refs_TwoArgsIsBatchMode(t *testing.T) {
-	t.Chdir(t.TempDir())
+	withIsolatedPathSeams(t)
 
 	var out bytes.Buffer
 	exitCode := RunCLI(&out, []string{"refs", "one", "two", "--target-dir", t.TempDir()})
@@ -468,7 +489,7 @@ func TestBatchRunner_WorstOutcomeWinsExitCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			ctx, es := clihelp.NewExitContext(context.Background())
+			ctx, es := NewExitContext(context.Background())
 
 			runBatch(ctx, &out, tt.symbols, lookupOne)
 
@@ -507,9 +528,9 @@ func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
 	t.Parallel()
 
 	var out bytes.Buffer
-	ctx, es := clihelp.NewExitContext(context.Background())
+	ctx, es := NewExitContext(context.Background())
 
-	emitLookupResult(ctx, &out, "references", []scoutengine.Reference{{File: "a.go", Line: 1, Character: 2}}, nil)
+	emitLookupResult(ctx, &out, "references", []quarry.Reference{{File: "a.go", Line: 1, Character: 2}}, nil)
 
 	if es.Code() != 0 {
 		t.Errorf("es.Code() = %d; want 0", es.Code())
@@ -530,7 +551,7 @@ func TestEmitLookupResult_SuccessCarriesResolutionCompleteMarker(t *testing.T) {
 func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) {
 	t.Parallel()
 
-	status, fields := classifyLookupError(nil, "references", []scoutengine.Reference{{File: "a.go", Line: 1, Character: 2}})
+	status, fields := classifyLookupError(nil, "references", []quarry.Reference{{File: "a.go", Line: 1, Character: 2}})
 
 	if status != statusFound {
 		t.Errorf("classifyLookupError(nil, ...) status = %q; want %q", status, statusFound)
@@ -539,7 +560,7 @@ func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) 
 		t.Errorf("classifyLookupError(nil, ...) fields = %v; missing \"resolution\":\"complete\"", fields)
 	}
 
-	ambiguousStatus, ambiguousFields := classifyLookupError(&scoutengine.ErrAmbiguousSymbol{Symbol: "Foo", Candidates: []string{"a.go:1:1"}}, "references", nil)
+	ambiguousStatus, ambiguousFields := classifyLookupError(&quarry.ErrAmbiguousSymbol{Symbol: "Foo", Candidates: []string{"a.go:1:1"}}, "references", nil)
 	if ambiguousStatus != statusAmbiguous {
 		t.Fatalf("classifyLookupError(ambiguous, ...) status = %q; want %q", ambiguousStatus, statusAmbiguous)
 	}
@@ -548,77 +569,22 @@ func TestClassifyLookupError_FoundCarriesResolutionCompleteMarker(t *testing.T) 
 	}
 }
 
-// TestLookupContext_OutsideHubReturnsAbsoluteAnchorRootAndBuiltinRegistry verifies lookupContext's
-// out-of-hub path: an absolute-path anchor-root string, and the built-in registry (spot-checked on
-// one entry rather than reflect.DeepEqual over the whole map, so the test does not couple to every
-// future built-in entry). This is the test that observes the actual defect assert-no-callers had
-// before this refactor: the equivalent derivation on this exact path used to yield an empty string,
-// and because all four commands now share lookupContext, one test covers all four.
-//
-// It covers both an explicit dir (the anchor root is filepath.Abs(dir)) and a dir defaulted from
-// cwd (the anchor root is filepath.Abs(cwd), not filepath.Abs(""))
-func TestLookupContext_OutsideHubReturnsAbsoluteAnchorRootAndBuiltinRegistry(t *testing.T) {
-	t.Run("explicit dir", func(t *testing.T) {
-		cwd := t.TempDir()
-		dir := t.TempDir()
-
-		registry, anchorRoot, err := lookupContext(cwd, dir)
-		if err != nil {
-			t.Fatalf("lookupContext(%q, %q) error = %v; want nil", cwd, dir, err)
-		}
-
-		wantAbs, err := filepath.Abs(dir)
-		if err != nil {
-			t.Fatalf("filepath.Abs(%q) error = %v", dir, err)
-		}
-		if anchorRoot != wantAbs {
-			t.Errorf("lookupContext(%q, %q) anchorRoot = %q; want %q", cwd, dir, anchorRoot, wantAbs)
-		}
-
-		if got, want := registry["go"], scoutengine.BuiltinRegistry()["go"]; !reflect.DeepEqual(got, want) {
-			t.Errorf("lookupContext(%q, %q) registry[\"go\"] = %+v; want %+v", cwd, dir, got, want)
-		}
-	})
-
-	t.Run("dir defaulted from cwd", func(t *testing.T) {
-		cwd := t.TempDir()
-		dir := cwd
-
-		registry, anchorRoot, err := lookupContext(cwd, dir)
-		if err != nil {
-			t.Fatalf("lookupContext(%q, %q) error = %v; want nil", cwd, dir, err)
-		}
-
-		wantAbs, err := filepath.Abs(cwd)
-		if err != nil {
-			t.Fatalf("filepath.Abs(%q) error = %v", cwd, err)
-		}
-		if anchorRoot != wantAbs {
-			t.Errorf("lookupContext(%q, %q) anchorRoot = %q; want %q (filepath.Abs(cwd), not filepath.Abs(\"\"))", cwd, dir, anchorRoot, wantAbs)
-		}
-
-		if got, want := registry["go"], scoutengine.BuiltinRegistry()["go"]; !reflect.DeepEqual(got, want) {
-			t.Errorf("lookupContext(%q, %q) registry[\"go\"] = %+v; want %+v", cwd, dir, got, want)
-		}
-	})
-}
-
 // TestBuildOptions_ThreadsEveryFieldFromItsArguments verifies buildOptions threads all fields
 // correctly.
 func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	t.Parallel()
 
-	registry := scoutengine.BuiltinRegistry()
-	query := scoutengine.Query{Symbol: "Foo"}
-	anchorRoot := "/worktree/root"
+	registry := quarry.BuiltinRegistry()
+	query := quarry.Query{Symbol: "Foo"}
+	stateDir := "/state/dir"
 
-	got := buildOptions(registry, "/target", anchorRoot, "go", query, 5*time.Second)
+	got := buildOptions(registry, "/target", stateDir, "go", query, 5*time.Second)
 
 	if got.TargetDir != "/target" {
 		t.Errorf("buildOptions(...).TargetDir = %q; want %q", got.TargetDir, "/target")
 	}
-	if got.AnchorRoot != anchorRoot {
-		t.Errorf("buildOptions(...).AnchorRoot = %q; want %q", got.AnchorRoot, anchorRoot)
+	if got.StateDir != stateDir {
+		t.Errorf("buildOptions(...).StateDir = %q; want %q", got.StateDir, stateDir)
 	}
 	if got.Lang != "go" {
 		t.Errorf("buildOptions(...).Lang = %q; want %q", got.Lang, "go")
@@ -706,42 +672,42 @@ func TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol(t *testing.T) {
 func TestFilterWithin(t *testing.T) {
 	t.Parallel()
 
-	inScope1 := scoutengine.Reference{File: "/repo/internal/websterengine/poll.go", Line: 203}
-	inScope2 := scoutengine.Reference{File: "/repo/internal/websterengine/state.go", Line: 10}
-	crossPackage := scoutengine.Reference{File: "/repo/internal/perchengine/identity.go", Line: 44}
+	inScope1 := quarry.Reference{File: "/repo/internal/websterengine/poll.go", Line: 203}
+	inScope2 := quarry.Reference{File: "/repo/internal/websterengine/state.go", Line: 10}
+	crossPackage := quarry.Reference{File: "/repo/internal/perchengine/identity.go", Line: 44}
 	// A sibling directory whose name merely starts with the same prefix —
 	// proves filterWithin does not fall back to a naive string-prefix
 	// check, which would wrongly treat "internal/webster" as containing
 	// anything under "internal/websterengine" (they share no path
 	// component boundary in common beyond the literal substring).
-	prefixCollision := scoutengine.Reference{File: "/repo/internal/webstercli/cli.go", Line: 5}
+	prefixCollision := quarry.Reference{File: "/repo/internal/webstercli/cli.go", Line: 5}
 
 	tests := []struct {
 		name     string
 		within   string
 		baseDir  string
-		refs     []scoutengine.Reference
-		wantRefs []scoutengine.Reference
+		refs     []quarry.Reference
+		wantRefs []quarry.Reference
 	}{
 		{
 			name:     "absolute_within_keeps_only_in_scope",
 			within:   "/repo/internal/websterengine",
 			baseDir:  "/anything", // unused: within is already absolute
-			refs:     []scoutengine.Reference{inScope1, inScope2, crossPackage, prefixCollision},
-			wantRefs: []scoutengine.Reference{inScope1, inScope2},
+			refs:     []quarry.Reference{inScope1, inScope2, crossPackage, prefixCollision},
+			wantRefs: []quarry.Reference{inScope1, inScope2},
 		},
 		{
 			name:     "relative_within_resolves_against_baseDir",
 			within:   "internal/websterengine",
 			baseDir:  "/repo",
-			refs:     []scoutengine.Reference{inScope1, crossPackage},
-			wantRefs: []scoutengine.Reference{inScope1},
+			refs:     []quarry.Reference{inScope1, crossPackage},
+			wantRefs: []quarry.Reference{inScope1},
 		},
 		{
 			name:     "prefix_collision_directory_excluded",
 			within:   "/repo/internal/webster",
 			baseDir:  "/anything",
-			refs:     []scoutengine.Reference{prefixCollision},
+			refs:     []quarry.Reference{prefixCollision},
 			wantRefs: nil,
 		},
 	}
@@ -768,7 +734,7 @@ func TestFilterWithin(t *testing.T) {
 func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 	t.Parallel()
 
-	status, fields := classifySymbolError(nil, []scoutengine.SymbolMatch{{Name: "Foo"}, {Name: "FooBar"}})
+	status, fields := classifySymbolError(nil, []quarry.SymbolMatch{{Name: "Foo"}, {Name: "FooBar"}})
 
 	if status != statusFound {
 		t.Errorf("classifySymbolError(nil, <2 matches>) status = %q; want %q", status, statusFound)
@@ -792,10 +758,10 @@ func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {
 // TestRunCLI_AssertNoCallers_NoLanguageError verifies "assert-no-callers" fails with ErrNoLanguage
 // in an empty directory.
 func TestRunCLI_AssertNoCallers_NoLanguageError(t *testing.T) {
-	// Chdir into a fresh, non-git temp dir so lyxcwd.Resolve degrades to
-	// scoutengine.BuiltinRegistry() deterministically, independent of
-	// whatever git repo or servers.yaml the test happens to run inside.
-	t.Chdir(t.TempDir())
+	// Redirect the userConfigDir/userCacheDir seams at a fresh temp root so
+	// resolveContext degrades to quarry.BuiltinRegistry() deterministically,
+	// independent of whatever real servers.yaml the operator's machine has.
+	withIsolatedPathSeams(t)
 
 	emptyTargetDir := t.TempDir()
 
@@ -858,38 +824,38 @@ func TestRunCLI_AssertNoCallers_RequiresExactlyOneArg(t *testing.T) {
 func TestFilterUnexpectedCallers(t *testing.T) {
 	t.Parallel()
 
-	decl := scoutengine.Reference{File: "/repo/pkg/foo.go", Line: 10, Character: 6}
-	wrapper := scoutengine.Reference{File: "/repo/pkg/wrapper.go", Line: 20, Character: 3}
-	caller := scoutengine.Reference{File: "/repo/other/bar.go", Line: 5, Character: 12}
+	decl := quarry.Reference{File: "/repo/pkg/foo.go", Line: 10, Character: 6}
+	wrapper := quarry.Reference{File: "/repo/pkg/wrapper.go", Line: 20, Character: 3}
+	caller := quarry.Reference{File: "/repo/other/bar.go", Line: 5, Character: 12}
 
 	tests := []struct {
 		name      string
-		refs      []scoutengine.Reference
-		declRefs  []scoutengine.Reference
+		refs      []quarry.Reference
+		declRefs  []quarry.Reference
 		exceptAbs map[string]bool
-		want      []scoutengine.Reference
+		want      []quarry.Reference
 	}{
 		{
 			name:     "declaration_only_is_clean",
-			refs:     []scoutengine.Reference{decl},
-			declRefs: []scoutengine.Reference{decl},
+			refs:     []quarry.Reference{decl},
+			declRefs: []quarry.Reference{decl},
 			want:     nil,
 		},
 		{
 			name:      "except_path_is_excluded",
-			refs:      []scoutengine.Reference{decl, wrapper},
-			declRefs:  []scoutengine.Reference{decl},
+			refs:      []quarry.Reference{decl, wrapper},
+			declRefs:  []quarry.Reference{decl},
 			exceptAbs: map[string]bool{"/repo/pkg/wrapper.go": true},
 			want:      nil,
 		},
 		{
 			name:     "unexpected_caller_survives",
-			refs:     []scoutengine.Reference{decl, wrapper, caller},
-			declRefs: []scoutengine.Reference{decl},
+			refs:     []quarry.Reference{decl, wrapper, caller},
+			declRefs: []quarry.Reference{decl},
 			exceptAbs: map[string]bool{
 				"/repo/pkg/wrapper.go": true,
 			},
-			want: []scoutengine.Reference{caller},
+			want: []quarry.Reference{caller},
 		},
 	}
 
