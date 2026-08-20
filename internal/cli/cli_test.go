@@ -144,7 +144,10 @@ func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 // DetectLanguage's ErrNoLanguage message names the resolved targetDir verbatim ("searched markers
 // ... under %s"), so it doubles as the observation point without needing any marker file on disk.
 func TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd(t *testing.T) {
-	t.Parallel()
+	// Deliberately not t.Parallel(): withIsolatedPathSeams overrides the package-level
+	// userConfigDir/userCacheDir seams, which every other test in this package reads
+	// (directly or via resolveContext). Running it concurrently with another parallel
+	// test races on those shared vars.
 	withIsolatedPathSeams(t)
 
 	seamCwd := t.TempDir()

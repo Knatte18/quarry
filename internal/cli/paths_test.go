@@ -79,8 +79,9 @@ func TestResolveConfigPath_Precedence(t *testing.T) {
 }
 
 func TestResolveConfigPath_UserConfigDirError(t *testing.T) {
-	t.Parallel()
-
+	// Deliberately not t.Parallel(): this test overrides the package-level userConfigDir
+	// seam, which every other test in this package reads (directly or via resolveContext).
+	// Running it concurrently with another parallel test races on that shared var.
 	original := userConfigDir
 	wantErr := os.ErrPermission
 	userConfigDir = func() (string, error) { return "", wantErr }
@@ -140,8 +141,9 @@ func TestResolveStateDir_Precedence(t *testing.T) {
 }
 
 func TestResolveStateDir_UserCacheDirError(t *testing.T) {
-	t.Parallel()
-
+	// Deliberately not t.Parallel(): this test overrides the package-level userCacheDir
+	// seam, which every other test in this package reads (directly or via resolveContext).
+	// Running it concurrently with another parallel test races on that shared var.
 	original := userCacheDir
 	wantErr := os.ErrPermission
 	userCacheDir = func() (string, error) { return "", wantErr }
