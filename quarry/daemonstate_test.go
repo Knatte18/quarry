@@ -3,8 +3,6 @@
 // It is untagged and offline: every sub-test uses t.TempDir() and in-memory fakes, except sub-test
 // (3) below (TestDaemonStale_DeadPIDIsStale), which spawns a short-lived exec.Command child to
 // obtain a confirmed-dead PID fixture, mirroring internal/proc/isalive_test.go's own technique.
-// Its spawn trips the Test Tier Purity Invariant guard and is allowlisted at the file level in
-// cmd/lyx/tierpurity_test.go's allowedSpawners map.
 
 package quarry
 
