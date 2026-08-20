@@ -52,13 +52,17 @@ func findFuncPosition(t *testing.T, file, funcName string) Position {
 }
 
 // repoRoot returns this worktree's module root.
+// The port moved this package from Loomyard's internal/scoutengine (two
+// directories below that repo's root) to quarry's own quarry/ (one
+// directory below this repo's root, which is also this module's root) —
+// one fewer filepath.Dir() call than Loomyard's own repoRoot needed.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("repoRoot: could not determine scoutengine source directory location")
+		t.Fatal("repoRoot: could not determine quarry source directory location")
 	}
-	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
+	return filepath.Dir(filepath.Dir(file))
 }
 
 func TestReferences_Integration(t *testing.T) {

@@ -288,12 +288,31 @@ func resolvePosition(ctx context.Context, client *lspClient, opts Options, lang 
 func collectInFileMatches(syms []lspDocumentSymbol, name string) []lspDocumentSymbol {
 	var matches []lspDocumentSymbol
 	for _, sym := range syms {
-		if sym.Name == name {
+		if bareInFileName(sym.Name) == name {
 			matches = append(matches, sym)
 		}
 		matches = append(matches, collectInFileMatches(sym.Children, name)...)
 	}
 	return matches
+}
+
+// bareInFileName strips gopls's "(Receiver).Method" qualifier from a method
+// DocumentSymbol's Name. gopls does not nest a method as a bare-named Child
+// under its receiver type's DocumentSymbol the way it nests, e.g., an
+// interface's own methods or a struct's fields — every concrete method comes
+// back as its own entry (top-level, or nested only as deep as its enclosing
+// declaration requires) named "(Receiver).Method", not "Method". A name
+// without a leading "(...)"  qualifier is returned unchanged, so plain
+// functions and any symbol kind that genuinely does nest under bare names
+// are unaffected.
+func bareInFileName(name string) string {
+	if !strings.HasPrefix(name, "(") {
+		return name
+	}
+	if i := strings.Index(name, ")."); i != -1 {
+		return name[i+2:]
+	}
+	return name
 }
 
 // toSortedReferences maps raw LSP locations to the public Reference type

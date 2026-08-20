@@ -367,11 +367,23 @@ func (c *lspClient) notify(method string, params any) error {
 // server's reported capabilities (at least workspaceSymbolProvider
 // presence, via supportsWorkspaceSymbol), and then sends the "initialized"
 // notification per the LSP handshake.
+// It advertises textDocument.documentSymbol.hierarchicalDocumentSymbolSupport
+// so gopls answers textDocument/documentSymbol with the DocumentSymbol[]
+// (range/selectionRange) wire shape lspDocumentSymbol parses — without it,
+// gopls falls back to the flat SymbolInformation[] shape, which unmarshals
+// into a zero-valued SelectionRange for every result and silently breaks
+// every InFile query.
 func (c *lspClient) initialize(ctx context.Context, rootURI string) error {
 	raw, err := c.call(ctx, "initialize", "initialize", map[string]any{
-		"processId":    os.Getpid(),
-		"rootUri":      rootURI,
-		"capabilities": map[string]any{},
+		"processId": os.Getpid(),
+		"rootUri":   rootURI,
+		"capabilities": map[string]any{
+			"textDocument": map[string]any{
+				"documentSymbol": map[string]any{
+					"hierarchicalDocumentSymbolSupport": true,
+				},
+			},
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("initialize: %w", err)
