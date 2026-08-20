@@ -1,15 +1,14 @@
-// cli.go exposes the cobra command tree for the scout module.
-// It is the sole consumer of internal/output within the scout surface: internal/scoutengine returns
-// typed Go errors and results with no io.Writer/exit-code machinery (per the plan's engine/CLI
-// layering Shared Decision), so this file is where every engine result and typed error gets mapped
-// to the internal/output JSON envelope.
+// cli.go exposes quarry's own cobra command tree.
+// It is the sole consumer of internal/output: the quarry engine package returns typed Go errors
+// and results with no io.Writer/exit-code machinery (per the plan's engine/CLI layering Shared
+// Decision), so this file is where every engine result and typed error gets mapped to the
+// internal/output JSON envelope.
 
-// Package scoutcli wires internal/scoutengine into the lyx cobra tree as the
-// "scout" module, exposing four verbs — "refs" (every reference to a symbol or
-// position), "definition" (a symbol or position's definition), "symbol" (a
-// workspace/symbol name search), and "assert-no-callers" (a CI-shaped gate: fail if
-// a symbol has any caller outside its declaration and an allowed list) — across the
-// languages internal/scoutengine supports.
+// Package cli builds quarry's own command tree, exposing four verbs — "refs" (every reference to
+// a symbol or position), "definition" (a symbol or position's definition), "symbol" (a
+// workspace/symbol name search), and "assert-no-callers" (a CI-shaped gate: fail if a symbol has
+// any caller outside its declaration and an allowed list) — across the languages the quarry
+// engine package supports.
 //
 // # The exit-code contract
 //
@@ -45,10 +44,10 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// Command returns the scout module's cobra command tree.
+// Command returns quarry's own cobra command tree.
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "scout",
+		Use:   "quarry",
 		Short: "code intelligence lookups (references, definitions, symbol search) across supported languages",
 		RunE:  GroupRunE,
 	}
@@ -80,17 +79,17 @@ detected for --target-dir (or --lang, to override detection).
 
 The single positional argument is either:
   - a symbol name, resolved via the language server's workspace/symbol search:
-      lyx scout refs MyFunction
+      quarry refs MyFunction
   - an explicit "file:line:col" position (1-based line and column), bypassing
     name resolution entirely:
-      lyx scout refs internal/foo/bar.go:42:8
+      quarry refs internal/foo/bar.go:42:8
 
 --in-file <path> resolves each positional argument as a bare symbol name
 within exactly that one file, via an exhaustive textDocument/documentSymbol
 search rather than a project-wide workspace/symbol search — the positional
 is always treated as a bare name, never position-parsed, even if it happens
 to look like "file:line:col":
-    lyx scout refs --in-file internal/foo/bar.go MyFunc
+    quarry refs --in-file internal/foo/bar.go MyFunc
 
 Passing 2 or more positional arguments switches to batch mode: each argument
 is looked up independently and the results are reported as one array, rather
@@ -98,10 +97,10 @@ than the single-symbol envelope above:
     {"ok":true,"results":[{"symbol":...,"status":"found"|"not_found"|"ambiguous"|"error",...}, ...]}
 The process exit code is set to the worst status present across the batch
 (0 < 1 < 2 < 3). Example:
-    lyx scout refs Foo Bar Baz
+    quarry refs Foo Bar Baz
 --in-file composes with batch mode too, resolving every positional against
 the same file:
-    lyx scout refs --in-file internal/foo/bar.go Open Close
+    quarry refs --in-file internal/foo/bar.go Open Close
 
 The result set is complete and semantically resolved by the language server
 (including calls reached only through an interface, which no amount of
@@ -124,7 +123,7 @@ a caller must still filter by hand. --within <dir> restricts the result set
 to references whose file lies within <dir> (relative to --target-dir, or
 absolute), discarding everything else, so a query already known to be
 scoped to one package comes back both complete and precise:
-    lyx scout refs --within internal/websterengine SomeMethod`,
+    quarry refs --within internal/websterengine SomeMethod`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -229,17 +228,17 @@ detection).
 
 The single positional argument is either:
   - a symbol name, resolved via the language server's workspace/symbol search:
-      lyx scout definition MyFunction
+      quarry definition MyFunction
   - an explicit "file:line:col" position (1-based line and column), bypassing
     name resolution entirely:
-      lyx scout definition internal/foo/bar.go:42:8
+      quarry definition internal/foo/bar.go:42:8
 
 --in-file <path> resolves each positional argument as a bare symbol name
 within exactly that one file, via an exhaustive textDocument/documentSymbol
 search rather than a project-wide workspace/symbol search — the positional
 is always treated as a bare name, never position-parsed, even if it happens
 to look like "file:line:col":
-    lyx scout definition --in-file internal/foo/bar.go MyFunc
+    quarry definition --in-file internal/foo/bar.go MyFunc
 
 Passing 2 or more positional arguments switches to batch mode: each argument
 is looked up independently and the results are reported as one array, rather
@@ -248,10 +247,10 @@ than the single-symbol envelope above:
 The process exit code is set to the worst status present across the batch
 (0 < 1 < 2 < 3). definition has no other shape difference from refs in batch
 mode. Example:
-    lyx scout definition Foo Bar Baz
+    quarry definition Foo Bar Baz
 --in-file composes with batch mode too, resolving every positional against
 the same file:
-    lyx scout definition --in-file internal/foo/bar.go Open Close
+    quarry definition --in-file internal/foo/bar.go Open Close
 
 The result is semantically resolved by the language server, not text-matched
 — a caller does not need to cross-check it with grep. A successful single-arg
@@ -364,7 +363,7 @@ func symbolCommand() *cobra.Command {
 Unlike refs/definition, the positional argument is always treated as a
 literal search string — even one that happens to look like "file:line:col" —
 never position-parsed:
-    lyx scout symbol MyFunction
+    quarry symbol MyFunction
 
 Passing 2 or more positional arguments switches to batch mode: each argument
 is looked up independently and the results are reported as one array, rather
@@ -373,7 +372,7 @@ than the single-symbol envelope above:
 Unlike refs/definition, symbol's status set is only three-way — there is no
 "ambiguous" status and no exit code 2, since symbol never collapses multiple
 matches into an ambiguity failure. Example:
-    lyx scout symbol Foo Bar Baz`,
+    quarry symbol Foo Bar Baz`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -426,7 +425,7 @@ matches into an ambiguity failure. Example:
 			// Every batch entry is built directly from the raw arg string as
 			// Query.Symbol, exactly like the single-arg path above — symbol's
 			// batch mode never calls parseQuery/position-parsing either, so
-			// "lyx scout symbol foo.go:1:1 bar.go:2:2" treats both
+			// "quarry symbol foo.go:1:1 bar.go:2:2" treats both
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
@@ -929,7 +928,7 @@ func runBatch(ctx context.Context, out io.Writer, args []string, lookupOne func(
 	}
 }
 
-// RunCLI is the public seam for the scout module CLI.
+// RunCLI is the public seam for quarry's own CLI.
 func RunCLI(out io.Writer, args []string) int {
 	return RunCLIIn("", out, args)
 }
