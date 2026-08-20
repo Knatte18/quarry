@@ -435,47 +435,48 @@ matches into an ambiguity failure. Example:
 	return symbol
 }
 
-// lookupContext performs the two pre-flight derivations every lookup command
-// needs — the servers.yaml overlay load and the anchor-root derivation — each
-// independently from (cwd, dir).
+// resolveContext performs the three pre-flight derivations every lookup command needs — the
+// absolute target directory, the servers.yaml overlay load, and the state directory — each told
+// its resolved inputs rather than deriving them from a lyx hub: quarry has no hub, so there is no
+// in-hub/out-of-hub branch here, only the resolution this seam now owns outright.
 //
-// dir is the already-defaulted directory, never the raw --target-dir flag
-// value: passing the raw flag would make the out-of-hub branch resolve
-// filepath.Abs("") (the process working directory) rather than
+// dir is the already-defaulted directory, never the raw --target-dir flag value: passing the raw
+// flag would resolve filepath.Abs("") (the process working directory) rather than
 // filepath.Abs(cwd) whenever --target-dir is omitted.
 //
-// The returned error carries quarry.LoadRegistry failures only; a
-// lyxcwd.Resolve failure is never an error — it is the out-of-hub path and
-// degrades to quarry.BuiltinRegistry() plus filepath.Abs(dir), exactly
-// as today.
-func lookupContext(cwd, dir string) (quarry.Registry, string, error) {
-	// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
-	// load the registry rooted at loc.AnchorPath() (never loc.HubPath — ConfigFile
-	// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
-	// silently miss every overlay, exactly as internal/webstercli/cli.go
-	// anchors every config load at loc.AnchorPath()). Outside a lyx hub, degrade
-	// to the pinned built-in registry rather than failing the lookup.
-	registry := quarry.BuiltinRegistry()
-	loc, resolveErr := lyxcwd.Resolve(cwd)
-	if resolveErr == nil {
-		loaded, loadErr := quarry.LoadRegistry(loc.AnchorPath())
-		if loadErr != nil {
-			return nil, "", loadErr
-		}
-		registry = loaded
-		return registry, loc.AnchorPath(), nil
-	}
-
+// configFlag and stateDirFlag are the --config and --state-dir flag values, threaded straight
+// through to resolveConfigPath and resolveStateDir so their own $QUARRY_CONFIG/$QUARRY_STATE_DIR
+// and user-directory-default precedence tiers apply unchanged.
+//
+// The returned error carries a resolveConfigPath, quarry.LoadRegistry, or resolveStateDir failure
+// unchanged — a malformed servers.yaml, or a userConfigDir/userCacheDir failure, still fails the
+// lookup rather than degrading silently.
+func resolveContext(cwd, dir, configFlag, stateDirFlag string) (quarry.Registry, string, string, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		// Preserve the pre-refactor fallback exactly: when filepath.Abs itself
-		// fails, the deleted synthesis's AnchorPath() was
+		// fails, the previous derivation's AnchorPath() was
 		// filepath.Join(filepath.Dir(dir), filepath.Base(dir)), which
 		// filepath.Clean(dir) reproduces byte for byte, so the failure mode
 		// does not silently change.
-		return registry, filepath.Clean(dir), nil
+		abs = filepath.Clean(dir)
 	}
-	return registry, abs, nil
+
+	configPath, err := resolveConfigPath(configFlag)
+	if err != nil {
+		return nil, "", "", err
+	}
+	registry, err := quarry.LoadRegistry(configPath)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	stateDir, err := resolveStateDir(stateDirFlag, abs)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	return registry, abs, stateDir, nil
 }
 
 // buildOptions constructs a quarry.Options value, ensuring all construction
