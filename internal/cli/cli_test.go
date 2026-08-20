@@ -145,6 +145,7 @@ func TestRunCLI_Refs_NoLanguageError(t *testing.T) {
 // ... under %s"), so it doubles as the observation point without needing any marker file on disk.
 func TestRunCLIIn_TargetDirResolvesAgainstInjectedSeamCwd(t *testing.T) {
 	t.Parallel()
+	withIsolatedPathSeams(t)
 
 	seamCwd := t.TempDir()
 
