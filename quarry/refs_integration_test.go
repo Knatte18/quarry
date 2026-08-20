@@ -68,47 +68,47 @@ func TestReferences_Integration(t *testing.T) {
 		}
 
 		root := repoRoot(t)
-		lyxcwdFile := filepath.Join(root, "internal", "lyxcwd", "lyxcwd.go")
-		pos := findFuncPosition(t, lyxcwdFile, "Resolve")
+		detectFile := filepath.Join(root, "quarry", "detect.go")
+		pos := findFuncPosition(t, detectFile, "DetectLanguage")
 
 		// Since the engine-supervised-flip batch, Go's registry entry
 		// dispatches through ensureServer -> ensureSupervised, which spawns a
-		// lyx-owned daemon that teardownConnection's connKindSupervised
-		// branch deliberately never kills. Without an explicit
-		// anchorRoot this anchors at a relative .lyx/scout/go/ under the
-		// test binary's cwd and leaks the daemon; an isolated t.TempDir()
-		// plus a state-file-driven reap avoids both.
-		worktreeRoot := t.TempDir()
-		statePath := DaemonStateFile(worktreeRoot, "go")
+		// quarry-owned daemon that teardownConnection's connKindSupervised
+		// branch deliberately never kills. StateDir is required (Options no
+		// longer derives it), so an isolated t.TempDir() plus a
+		// state-file-driven reap is what keeps this test from leaking the
+		// daemon.
+		stateDir := t.TempDir()
+		statePath := DaemonStateFile(stateDir, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		refs, err := References(ctx, Options{
-			Registry:   builtins(),
-			TargetDir:  root,
-			AnchorRoot: worktreeRoot,
-			Lang:       "go",
-			Query:      Query{Pos: &pos},
-			Timeout:    30 * time.Second,
+			Registry:  builtins(),
+			TargetDir: root,
+			StateDir:  stateDir,
+			Lang:      "go",
+			Query:     Query{Pos: &pos},
+			Timeout:   30 * time.Second,
 		})
 		if err != nil {
-			t.Fatalf("References(lyxcwd.Resolve) returned unexpected error: %v", err)
+			t.Fatalf("References(DetectLanguage) returned unexpected error: %v", err)
 		}
 		if len(refs) == 0 {
-			t.Fatal("References(lyxcwd.Resolve) returned zero references; want the declaration site plus its call sites")
+			t.Fatal("References(DetectLanguage) returned zero references; want the declaration site plus its call sites")
 		}
 
 		foundDeclSite := false
 		for _, ref := range refs {
-			if filepath.Clean(ref.File) == filepath.Clean(lyxcwdFile) && ref.Line == pos.Line {
+			if filepath.Clean(ref.File) == filepath.Clean(detectFile) && ref.Line == pos.Line {
 				foundDeclSite = true
 				break
 			}
 		}
 		if !foundDeclSite {
-			t.Errorf("References(lyxcwd.Resolve) = %+v; want it to include the declaration site %s:%d", refs, lyxcwdFile, pos.Line)
+			t.Errorf("References(DetectLanguage) = %+v; want it to include the declaration site %s:%d", refs, detectFile, pos.Line)
 		}
 	})
 
@@ -118,7 +118,7 @@ func TestReferences_Integration(t *testing.T) {
 			"go": {
 				Markers:     []string{"go.mod"},
 				Match:       "any",
-				Command:     []string{"lyx-scout-nonexistent-binary-xyz"},
+				Command:     []string{"quarry-nonexistent-binary-xyz"},
 				InstallHint: "this binary is intentionally fake for the test",
 			},
 		}
@@ -174,9 +174,9 @@ func main() {}
 // position -> textDocument/references — end to end against a real gopls, the InFile analogue of
 // TestReferences_Integration's Query.Pos coverage above.
 // Both subcases route through ensureServer's now- live supervised dispatch (builtins()'s Go entry
-// has HasNativeDaemon: true), which spawns a lyx-owned daemon that teardownConnection's
-// connKindSupervised branch deliberately never kills — each subcase anchors its anchorRoot at its
-// own isolated t.TempDir() and reaps the spawned daemon in t.Cleanup, exactly like
+// has HasNativeDaemon: true), which spawns a quarry-owned daemon that teardownConnection's
+// connKindSupervised branch deliberately never kills — each subcase gives its own isolated
+// t.TempDir() as StateDir and reaps the spawned daemon in t.Cleanup, exactly like
 // TestEnsureServer_Integration_ SupervisedDispatch (ensureserver_integration_test.go) and
 // supervised_integration_test.go already do.
 func TestReferences_InFile_Integration(t *testing.T) {
@@ -186,44 +186,43 @@ func TestReferences_InFile_Integration(t *testing.T) {
 
 	t.Run("single-match resolve", func(t *testing.T) {
 		root := repoRoot(t)
-		lyxcwdFile := filepath.Join(root, "internal", "lyxcwd", "lyxcwd.go")
-		pos := findFuncPosition(t, lyxcwdFile, "Resolve")
+		detectFile := filepath.Join(root, "quarry", "detect.go")
+		pos := findFuncPosition(t, detectFile, "DetectLanguage")
 
-		// TargetDir stays the real repo root (correct indexing), but
-		// anchorRoot is an isolated temp dir so the supervised daemon this
-		// call spawns anchors there, never the real repo's own
-		// .lyx/scout/go/.
-		worktreeRoot := t.TempDir()
-		statePath := DaemonStateFile(worktreeRoot, "go")
+		// TargetDir stays the real repo root (correct indexing), but StateDir
+		// is an isolated temp dir so the supervised daemon this call spawns
+		// records its state there, never anywhere under the real repo.
+		stateDir := t.TempDir()
+		statePath := DaemonStateFile(stateDir, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		refs, err := References(ctx, Options{
-			Registry:   builtins(),
-			TargetDir:  root,
-			AnchorRoot: worktreeRoot,
-			Lang:       "go",
-			Query:      Query{InFile: &InFileQuery{File: lyxcwdFile, Name: "Resolve"}},
-			Timeout:    30 * time.Second,
+			Registry:  builtins(),
+			TargetDir: root,
+			StateDir:  stateDir,
+			Lang:      "go",
+			Query:     Query{InFile: &InFileQuery{File: detectFile, Name: "DetectLanguage"}},
+			Timeout:   30 * time.Second,
 		})
 		if err != nil {
-			t.Fatalf("References(InFile lyxcwd.Resolve) returned unexpected error: %v", err)
+			t.Fatalf("References(InFile DetectLanguage) returned unexpected error: %v", err)
 		}
 		if len(refs) == 0 {
-			t.Fatal("References(InFile lyxcwd.Resolve) returned zero references; want the declaration site plus its call sites")
+			t.Fatal("References(InFile DetectLanguage) returned zero references; want the declaration site plus its call sites")
 		}
 
 		foundDeclSite := false
 		for _, ref := range refs {
-			if filepath.Clean(ref.File) == filepath.Clean(lyxcwdFile) && ref.Line == pos.Line {
+			if filepath.Clean(ref.File) == filepath.Clean(detectFile) && ref.Line == pos.Line {
 				foundDeclSite = true
 				break
 			}
 		}
 		if !foundDeclSite {
-			t.Errorf("References(InFile lyxcwd.Resolve) = %+v; want it to include the declaration site %s:%d", refs, lyxcwdFile, pos.Line)
+			t.Errorf("References(InFile DetectLanguage) = %+v; want it to include the declaration site %s:%d", refs, detectFile, pos.Line)
 		}
 	})
 
@@ -231,20 +230,20 @@ func TestReferences_InFile_Integration(t *testing.T) {
 		modRoot := t.TempDir()
 		writeAmbiguousModule(t, modRoot)
 
-		worktreeRoot := t.TempDir()
-		statePath := DaemonStateFile(worktreeRoot, "go")
+		stateDir := t.TempDir()
+		statePath := DaemonStateFile(stateDir, "go")
 		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		_, err := References(ctx, Options{
-			Registry:   builtins(),
-			TargetDir:  modRoot,
-			AnchorRoot: worktreeRoot,
-			Lang:       "go",
-			Query:      Query{InFile: &InFileQuery{File: filepath.Join(modRoot, "main.go"), Name: "Open"}},
-			Timeout:    30 * time.Second,
+			Registry:  builtins(),
+			TargetDir: modRoot,
+			StateDir:  stateDir,
+			Lang:      "go",
+			Query:     Query{InFile: &InFileQuery{File: filepath.Join(modRoot, "main.go"), Name: "Open"}},
+			Timeout:   30 * time.Second,
 		})
 		if !errors.Is(err, ErrAmbiguousSymbolSentinel) {
 			t.Errorf("References(InFile Open, two types) err = %v; want errors.Is(err, ErrAmbiguousSymbolSentinel)", err)
