@@ -7,8 +7,9 @@
 // The cache root is os.UserCacheDir(), not a Cwd Resolution Invariant path: os.UserCacheDir() is
 // the idiomatic stdlib answer to "OS-appropriate cache root" with no platform-specific logic to get
 // wrong, and it is explicitly machine-global rather than worktree/hub geometry, which is why this
-// file hand-joins it directly instead of routing through internal/lyxcwd (see _mill/discussion.md's
-// toolchain-manager-authority decision).
+// file hand-joins it directly instead of routing through internal/lyxcwd: the toolchain cache is
+// engine-derived and machine-global, and no caller has a reason to override where quarry stashes a
+// gopls it installed itself.
 
 package quarry
 
@@ -36,10 +37,10 @@ func goToolchainCacheDir(version string) string {
 	// their per-OS equivalents) is set; the error is ignored here because the
 	// function signature returns a bare string, matching resolveGoToolchain's
 	// own no-inputs-to-validate contract for this helper — an empty root
-	// simply yields a path rooted at "lyx/tools/...", which os.MkdirAll then
-	// reports as a normal filesystem error.
+	// simply yields a path rooted at "quarry/tools/...", which os.MkdirAll
+	// then reports as a normal filesystem error.
 	dir, _ := userCacheDir()
-	return filepath.Join(dir, "lyx", "tools", "go", version)
+	return filepath.Join(dir, "quarry", "tools", "go", version)
 }
 
 // goToolchainInstallLock returns the path to the Go toolchain install lock file.
@@ -49,7 +50,7 @@ func goToolchainInstallLock() string {
 	// See goToolchainCacheDir's comment for why userCacheDir()'s error is
 	// ignored here.
 	dir, _ := userCacheDir()
-	return filepath.Join(dir, "lyx", "tools", "go", "install.lock")
+	return filepath.Join(dir, "quarry", "tools", "go", "install.lock")
 }
 
 // toolchainInstaller installs the Go toolchain binary for version into
