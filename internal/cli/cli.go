@@ -53,6 +53,9 @@ func Command() *cobra.Command {
 		RunE:  GroupRunE,
 	}
 
+	cmd.PersistentFlags().String("config", "", "explicit path to a servers.yaml overlay, overriding $QUARRY_CONFIG and the user config directory default")
+	cmd.PersistentFlags().String("state-dir", "", "explicit daemon state directory, overriding $QUARRY_STATE_DIR and the user cache directory default")
+
 	cmd.AddCommand(refsCommand())
 	cmd.AddCommand(definitionCommand())
 	cmd.AddCommand(symbolCommand())
@@ -146,7 +149,9 @@ scoped to one package comes back both complete and precise:
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, anchorRoot, err := lookupContext(cwd, dir)
+			configFlag, _ := cmd.Flags().GetString("config")
+			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
+			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -172,7 +177,7 @@ scoped to one package comes back both complete and precise:
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
+				opts := buildOptions(registry, dir, stateDir, lang, query, timeout)
 
 				results, err := quarry.References(ctx, opts)
 				if err == nil && within != "" {
@@ -187,7 +192,7 @@ scoped to one package comes back both complete and precise:
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := quarry.References(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
+				results, err := quarry.References(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -281,7 +286,9 @@ structurally-identical interfaces in different packages).`,
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, anchorRoot, err := lookupContext(cwd, dir)
+			configFlag, _ := cmd.Flags().GetString("config")
+			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
+			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -307,7 +314,7 @@ structurally-identical interfaces in different packages).`,
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
+				opts := buildOptions(registry, dir, stateDir, lang, query, timeout)
 
 				results, err := quarry.Definition(ctx, opts)
 				if err == nil && within != "" {
@@ -322,7 +329,7 @@ structurally-identical interfaces in different packages).`,
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := quarry.Definition(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
+				results, err := quarry.Definition(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -391,14 +398,16 @@ matches into an ambiguity failure. Example:
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, anchorRoot, err := lookupContext(cwd, dir)
+			configFlag, _ := cmd.Flags().GetString("config")
+			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
+			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
 			if len(args) == 1 {
-				opts := buildOptions(registry, dir, anchorRoot, lang, symbolQuery(args[0]), timeout)
+				opts := buildOptions(registry, dir, stateDir, lang, symbolQuery(args[0]), timeout)
 
 				results, err := quarry.Symbol(ctx, opts)
 				if err != nil {
@@ -421,7 +430,7 @@ matches into an ambiguity failure. Example:
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				results, err := quarry.Symbol(ctx, buildOptions(registry, dir, anchorRoot, lang, quarry.Query{Symbol: symbol}, timeout))
+				results, err := quarry.Symbol(ctx, buildOptions(registry, dir, stateDir, lang, quarry.Query{Symbol: symbol}, timeout))
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -480,15 +489,15 @@ func resolveContext(cwd, dir, configFlag, stateDirFlag string) (quarry.Registry,
 }
 
 // buildOptions constructs a quarry.Options value, ensuring all construction
-// sites thread AnchorRoot consistently.
-func buildOptions(registry quarry.Registry, targetDir string, anchorRoot string, lang string, query quarry.Query, timeout time.Duration) quarry.Options {
+// sites thread StateDir consistently.
+func buildOptions(registry quarry.Registry, targetDir string, stateDir string, lang string, query quarry.Query, timeout time.Duration) quarry.Options {
 	return quarry.Options{
-		Registry:   registry,
-		TargetDir:  targetDir,
-		AnchorRoot: anchorRoot,
-		Lang:       lang,
-		Query:      query,
-		Timeout:    timeout,
+		Registry:  registry,
+		TargetDir: targetDir,
+		StateDir:  stateDir,
+		Lang:      lang,
+		Query:     query,
+		Timeout:   timeout,
 	}
 }
 
@@ -570,7 +579,9 @@ involved — only interface methods are at risk of this conflation.`,
 				dir = filepath.Join(cwd, dir)
 			}
 
-			registry, anchorRoot, err := lookupContext(cwd, dir)
+			configFlag, _ := cmd.Flags().GetString("config")
+			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
+			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -582,7 +593,7 @@ involved — only interface methods are at risk of this conflation.`,
 				return nil
 			}
 
-			opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
+			opts := buildOptions(registry, dir, stateDir, lang, query, timeout)
 
 			// Resolve the declaration site(s) to exclude via Definition,
 			// regardless of whether query is a bare symbol name or an explicit
