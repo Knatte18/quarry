@@ -45,7 +45,7 @@ const (
 	// never the shared daemon behind it.
 	connKindNative connKind = iota
 	// connKindSupervised marks a connection from the supervised strategy: a
-	// dial into a daemon lyx spawned to outlive this call. Never
+	// dial into a daemon quarry spawned to outlive this call. Never
 	// close()/kill() it — the daemon is meant to keep serving other
 	// callers, and the graceful-shutdown handshake close() sends would be a
 	// needless (and potentially harmful) RPC round trip against it.
@@ -165,7 +165,7 @@ func nativeArgv(binPath string, extraArgs []string) []string {
 // toolchain-managed gopls binary for entry.PinnedVersion, spawn it as a
 // disposable -remote=auto proxy rooted at targetDir, and finalize the
 // connection (initialize + probe) before handing it back. On a
-// finalizeConnection failure lyx makes no second spawn attempt — it has no
+// finalizeConnection failure quarry makes no second spawn attempt — it has no
 // supervisory authority over the shared daemon under native, so a single
 // reported-and-torn-down failure is the correct behavior, not a retry
 // loop.
@@ -262,10 +262,10 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 }
 
 // ensureSupervised implements the supervised EnsureServer strategy: dial (or
-// spawn, race-fenced by a worktree-scoped advisory lock) a lyx-owned,
+// spawn, race-fenced by a worktree-scoped advisory lock) a quarry-owned,
 // detached daemon process running command with "serve
 // -listen=unix;<socketPath>" appended, recorded in a per-language state
-// file so every reconnecting caller — this worktree's own future lyx
+// file so every reconnecting caller — this worktree's own future quarry
 // invocations — finds and reuses the same daemon rather than spawning a new
 // one. Unlike ensureNative, this function takes a raw command []string, not
 // an Entry: it does no toolchain resolution of its own — that is
@@ -361,8 +361,8 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		// (escalating), or the state was absent/stale — either way, try to
 		// become the lock holder. gofrs/flock opens the lock file with
 		// O_CREATE but never creates missing parent directories, so a
-		// worktree's very first supervised call (before
-		// .lyx/scout/<lang>/ exists at all) must create it here first,
+		// worktree's very first supervised call (before the told
+		// stateDir/<lang>/ directory exists at all) must create it here first,
 		// matching this package's own MkdirAll-before-lock precedent
 		// (goToolchainInstallLock in toolchain.go).
 		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
@@ -501,7 +501,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 
 		argv := supervisedArgv(command, socketPath)
 		cmd := exec.Command(argv[0], argv[1:]...)
-		// Detach (and, on Windows, break away from any Job Object lyx itself
+		// Detach (and, on Windows, break away from any Job Object quarry itself
 		// runs in) so the daemon survives this process's exit — it is meant
 		// to outlive this one call by design.
 		proc.DetachBreakaway(cmd)

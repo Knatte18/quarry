@@ -427,7 +427,7 @@ func TestReferences_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T)
 		"go": {
 			Markers:     []string{"go.mod"},
 			Match:       "any",
-			Command:     []string{"lyx-scout-nonexistent-binary-xyz"},
+			Command:     []string{"quarry-nonexistent-binary-xyz"},
 			InstallHint: "this binary is intentionally fake for the test",
 		},
 	}

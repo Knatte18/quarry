@@ -6,9 +6,8 @@
 // newPipeTransportPair/fakeServer, the same fake-transport harness lspclient_test.go already
 // establishes for this package, reusable with no import since it's the same package, or drives a
 // pure decision helper with injected fakes.
-// This file is not file-allowlisted in cmd/lyx/tierpurity_test.go's allowedSpawners map, so it must
-// never spawn a real process — any test needing a real subprocess belongs in supervised_test.go or
-// a //go:build integration file instead.
+// This file must never spawn a real process — any test needing a real subprocess belongs in
+// supervised_test.go or a //go:build integration file instead.
 
 package quarry
 

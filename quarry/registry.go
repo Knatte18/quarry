@@ -3,8 +3,8 @@
 // validation.
 // It mirrors internal/modelspec's registry.go: builtins() is the offline default every consumer
 // gets with zero servers.yaml present,
-// and BuiltinRegistry() is the one-line exported accessor the CLI layer uses when no lyx-hub
-// overlay base is resolvable.
+// and BuiltinRegistry() is the one-line exported accessor the CLI layer uses when no servers.yaml
+// overlay is resolvable.
 
 package quarry
 
@@ -96,8 +96,8 @@ func builtins() Registry {
 }
 
 // BuiltinRegistry returns the pinned built-in registry (builtins()).
-// It is the registry the CLI layer uses when no lyx-hub overlay base is resolvable — e.g.
-// a command run outside any worktree — so scout lookup still works with zero configuration.
+// It is the registry the CLI layer uses when no servers.yaml overlay is resolvable — e.g.
+// no config file at any precedence tier — so lookup still works with zero configuration.
 func BuiltinRegistry() Registry {
 	return builtins()
 }

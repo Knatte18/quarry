@@ -8,8 +8,7 @@
 // scout-tagged supervised_scout_test.go in this same package.
 //
 // Each remaining subtest spawns one real short-lived child process via spawnAndHoldSubprocess only
-// as a PID-liveness fixture (allowlisted in cmd/lyx/tierpurity_test.go's allowedSpawners map),
-// never gopls itself.
+// as a PID-liveness fixture, never gopls itself.
 
 package quarry
 
@@ -93,7 +92,7 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 	// command is never reached: this call can neither dial (unreachable
 	// address) nor win the lock (held above), so it must exhaust its retry
 	// budget before ever attempting to spawn anything.
-	_, err = ensureSupervised(context.Background(), []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, timeout)
+	_, err = ensureSupervised(context.Background(), []string{"quarry-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, timeout)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -150,7 +149,7 @@ func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrSer
 	// command is never reached: this call always finds a healthy-reading
 	// but undialable state, so it must exhaust its retry budget without
 	// ever attempting to spawn anything.
-	_, err := ensureSupervised(context.Background(), []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, timeout)
+	_, err := ensureSupervised(context.Background(), []string{"quarry-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, timeout)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -315,7 +314,7 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 	defer cancel()
 	// command is never reached: the escalation reuses the second
 	// connection, so no respawn is ever attempted.
-	client, err := ensureSupervised(ctx, []string{"lyx-scout-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, 5*time.Second)
+	client, err := ensureSupervised(ctx, []string{"quarry-should-never-spawn"}, lang, worktreeRoot, worktreeRoot, 5*time.Second)
 	<-done
 	if err != nil {
 		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)

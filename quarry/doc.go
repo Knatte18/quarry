@@ -1,39 +1,39 @@
-// Package scoutengine finds every reference to a symbol name or an
-// explicit source position, shows a symbol's definition, and searches
-// workspace symbols by name (`lyx scout refs|definition|symbol
-// <symbol|file:line:col>`) in a target project, across whichever of five
-// languages (Go, Python, C#, TypeScript, Rust) the project is written in. It
-// generalizes the Go-only, in-process go/packages/go/types approach the
-// scout spike (wiki task codeintel-spike, #008) recommended for Go alone
-// into a uniform LSP ("Language Server Protocol") path that works for every
-// supported language, including Go, trading the spike's sub-millisecond
-// in-process query cost for one LSP round trip per query — a deliberate
-// scope trade the scout multilang research (wiki task
-// codeintel-multilang, #009) records in full. V1 (this package's current
-// shape) goes further for Go specifically: it wires a full `EnsureServer`
-// daemon lifecycle — toolchain-managed install, spawn-or-reuse, health
-// probing — so Go's language server is warm across calls rather than
-// cold-spawned every time. The other four languages (Python, C#,
-// TypeScript, Rust) keep the original cold-spawn-per-call design entirely
-// unchanged: each call still launches its server fresh, initializes it, and
-// tears it down at the end of that one call. This comment covers only the
-// resulting design, not the alternatives considered.
+// Package quarry finds every reference to a symbol name or an explicit
+// source position, shows a symbol's definition, and searches workspace
+// symbols by name (`quarry refs|definition|symbol <symbol|file:line:col>`)
+// in a target project, across whichever of five languages (Go, Python, C#,
+// TypeScript, Rust) the project is written in. It generalizes the Go-only,
+// in-process go/packages/go/types approach the scout spike
+// (docs/scout-spike.md) recommended for Go alone into a uniform LSP
+// ("Language Server Protocol") path that works for every supported
+// language, including Go, trading the spike's sub-millisecond in-process
+// query cost for one LSP round trip per query — a deliberate scope trade
+// the scout multilang research (docs/scout-multilang.md) records in full.
+// V1 (this package's current shape) goes further for Go specifically: it
+// wires a full `EnsureServer` daemon lifecycle — toolchain-managed install,
+// spawn-or-reuse, health probing — so Go's language server is warm across
+// calls rather than cold-spawned every time. The other four languages
+// (Python, C#, TypeScript, Rust) keep the original cold-spawn-per-call
+// design entirely unchanged: each call still launches its server fresh,
+// initializes it, and tears it down at the end of that one call. This
+// comment covers only the resulting design, not the alternatives
+// considered.
 //
 // # The engine/CLI split
 //
-// scoutengine is the engine half of an engine/CLI seam: it returns typed
-// Go results and typed errors and never imports internal/output, cobra, or
-// any internal/*cli package — no io.Writer, no exit codes, no output
-// envelope. internal/scoutcli is the sole consumer that maps engine
-// results/errors onto the internal/output JSON envelope (output.Ok/output.Err),
-// exactly the CLI/Cobra Invariant's "engine returns (T, error), cli emits
-// the envelope" split every other lyx module follows. Beyond that negative
-// rule there is no import allowlist: scoutengine draws on the shared
-// infrastructure layer as freely as any other engine module, which keeps it
-// cycle-free and importable by any future consumer (e.g. webster)
-// without charging rent on each new dependency. CONSTRAINTS.md's "Scout
-// Engine-Seam Invariant" records the rule; the package's seam enforcement
-// test enforces it.
+// quarry (this package) is the engine half of an engine/CLI seam: it
+// returns typed Go results and typed errors and never imports
+// internal/output, cobra, or internal/cli — no io.Writer, no exit codes, no
+// output envelope. internal/cli is the sole consumer that maps engine
+// results/errors onto the internal/output JSON envelope (output.Ok/
+// output.Err). Beyond that negative rule there is no import allowlist:
+// this package draws on the shared infrastructure layer as freely as any
+// other engine module, which keeps it cycle-free and importable by any
+// future consumer without charging rent on each new dependency. The
+// package's own seam enforcement test (seam_enforcement_test.go) enforces
+// the rule: the public quarry package never imports the CLI package,
+// cobra, or the output-envelope package, and internal/cli is the sole
+// place engine results become JSON.
 //
 // # The generalized LSP client
 //
@@ -99,8 +99,8 @@
 //
 // # The language-server registry
 //
-// The registry (registry.go, load.go, template.go/template.yaml) mirrors
-// internal/modelspec's registry shape end to end:
+// The registry (registry.go, load.go) is a pinned built-in set with an
+// optional file overlay:
 //
 //   - Built-ins (builtins()): a pinned, default-free Registry (a
 //     map[string]Entry) for the five supported languages, each entry naming
@@ -109,22 +109,19 @@
 //     entry only in V1 — PinnedVersion and HasNativeDaemon (see "The
 //     EnsureServer seam" and "Go toolchain manager" below).
 //     BuiltinRegistry() exposes this to any caller (the CLI uses it when no
-//     lyx-hub overlay base is resolvable).
-//   - Optional servers.yaml overlay (LoadRegistry(baseDir)): loaded via
-//     configengine.ConfigFile(baseDir, "servers") — never hand-joined, per the
-//     Cwd Resolution Invariant. An absent file is not an error (built-ins
-//     suffice); a present file decodes with yaml.Decoder.KnownFields(true)
-//     (an unknown field anywhere is a loud error naming the offending entry
-//     and file path) and every present entry whole-replaces its built-in
-//     counterpart — no field-level merge, so an override can never silently
-//     mix a stale built-in default with a new one.
-//   - Embedded seed (ConfigTemplate()): template.yaml, embedded at build
-//     time, documents every built-in at its default values plus how to add a
-//     new language or override one, ready for lyx config's
-//     materialize/reconcile flow the way models.yaml's template already
-//     works — scout does not wire that flow itself (the accessor exists
-//     so a future lyx config integration is a template lookup away, not a
-//     new design).
+//     servers.yaml overlay is resolvable).
+//   - Optional servers.yaml overlay (LoadRegistry(path)): loaded from a
+//     resolved absolute path the caller supplies — internal/cli resolves
+//     that path via the --config/$QUARRY_CONFIG/os.UserConfigDir()
+//     precedence documented in README.md; this package joins nothing of its
+//     own. An absent file is not an error (built-ins suffice); a present
+//     file decodes with yaml.Decoder.KnownFields(true) (an unknown field
+//     anywhere is a loud error naming the offending entry and file path)
+//     and every present entry whole-replaces its built-in counterpart — no
+//     field-level merge, so an override can never silently mix a stale
+//     built-in default with a new one. See docs/servers.yaml.example for
+//     every built-in entry at its default values and for how to add a
+//     language.
 //   - Detection precedence (detect.go): a fixed order (go, rust, csharp,
 //     typescript, python, pinned as a slice — map iteration is unordered) so
 //     a project matching more than one language's markers (e.g. a Go module
@@ -136,7 +133,7 @@
 // # The EnsureServer seam
 //
 // ensureserver.go implements ensureServer(ctx, lang, entry, targetDir,
-// anchorRoot, timeout) (*lspClient, connKind, error): given a registry
+// stateDir, timeout) (*lspClient, connKind, error): given a registry
 // entry whose HasNativeDaemon field is true, it resolves, spawns or dials,
 // and hands back an already-initialized, already-probed connection ready
 // for immediate use. entry.HasNativeDaemon is the gate that decides whether
@@ -153,7 +150,7 @@
 // via an explicit -remote.listen.timeout override — see daemonIdleTimeout
 // in ensureserver.go — sized for an agent's own reasoning gaps between
 // calls, not gopls's 1-minute human-editing-rhythm default) and
-// ensureSupervised (supervised — lyx owns a state file, an advisory
+// ensureSupervised (supervised — quarry owns a state file, an advisory
 // spawn-race lock, a deterministic socket path, and detached-spawn/restart
 // logic for a language server with no shared-daemon mode of its own).
 // ensureServer dispatches Go to ensureSupervised as its live V1 strategy: it
@@ -169,18 +166,18 @@
 // protocol-correctness bug, not a style choice:
 //
 //   - connKindNative: safe to close()/kill(), exactly like the legacy path.
-//     What ensureNative hands back is lyx's own disposable -remote=auto
+//     What ensureNative hands back is quarry's own disposable -remote=auto
 //     proxy subprocess for this one call, not the shared daemon behind it —
 //     closing it ends only this session, never gopls's real shared
 //     instance.
 //   - connKindSupervised: never close() or kill() it. The connection is a
-//     dial into a daemon lyx spawned to outlive this call — the entire
+//     dial into a daemon quarry spawned to outlive this call — the entire
 //     point of the supervised strategy — so the LSP graceful-shutdown
 //     handshake close() would send (shutdown+exit) is meaningless network
 //     chatter at best (the daemon is meant to keep serving other callers)
-//     and a needless RPC round trip lyx has no reason to spend. The dialed
-//     socket's file descriptor is reclaimed by the OS when this one-shot
-//     process exits a moment later.
+//     and a needless RPC round trip quarry has no reason to spend. The
+//     dialed socket's file descriptor is reclaimed by the OS when this
+//     one-shot process exits a moment later.
 //   - connKindLegacy: unchanged from before this task — the caller closes
 //     the real server subprocess it directly owns, since it never went
 //     through ensureServer at all.
@@ -197,43 +194,46 @@
 // toolchain.go resolves (and, on a cold cache, installs) the Go language
 // server. $PATH is never consulted for Go: resolveGoToolchain installs a
 // pinned gopls version — registry.go's builtins()["go"].PinnedVersion, an
-// exact version, not "latest" — into os.UserCacheDir()/lyx/tools/go/<version>,
-// and ensureNative always launches that resolved binary, never whatever
-// "gopls" happens to resolve to on the operator's PATH. The install itself
-// is fenced by its own advisory lock (goToolchainInstallLock), a lock
-// distinct from the daemon spawn-race lock ensureSupervised uses — an
-// install-in-progress and a daemon-spawn-in-progress are unrelated races
-// that must not serialize on each other.
+// exact version, not "latest" — into
+// os.UserCacheDir()/quarry/tools/go/<version>, and ensureNative always
+// launches that resolved binary, never whatever "gopls" happens to resolve
+// to on the operator's PATH. The install itself is fenced by its own
+// advisory lock (goToolchainInstallLock), a lock distinct from the daemon
+// spawn-race lock ensureSupervised uses — an install-in-progress and a
+// daemon-spawn-in-progress are unrelated races that must not serialize on
+// each other.
 //
-// This cache root is deliberately outside the Cwd Resolution Invariant's
-// scope: it is machine-global, not worktree/hub geometry, so this file
-// hand-joins os.UserCacheDir() directly rather than routing through
-// internal/lyxcwd. That is deliberate, not an oversight — a pinned
-// gopls binary is shared across every worktree on the machine, which is the
-// entire point of pinning-and-caching it once rather than per worktree.
+// This cache root is a third path axis, distinct from the config and state
+// axes internal/cli resolves (see "Daemon state and concurrency" below): it
+// is machine-global, not workspace-scoped, so this file hand-joins
+// os.UserCacheDir() directly rather than accepting a told directory. That
+// is deliberate, not an oversight — a pinned gopls binary is shared across
+// every workspace on the machine, which is the entire point of
+// pinning-and-caching it once rather than per workspace.
 //
 // # Daemon state and concurrency
 //
 // daemonstate.go implements the supervised strategy's runtime state: a JSON
-// state file plus a paired advisory lock per (anchorRoot, lang), resolved
-// via this package's own DaemonStateFile/DaemonLock at
-// .lyx/scout/<lang>/ — never _lyx/. That distinction matters: .lyx/ is
-// ephemeral, machine-bound runtime state (per the Cwd Resolution Invariant's
-// durable-vs-ephemeral split), and a live daemon's PID, socket path, and
-// spawn time mean nothing on another machine or after this one is
-// rebooted, so this state must never be git-committed the way _lyx/'s
-// config lives.
+// state file plus a paired advisory lock per (stateDir, lang), resolved via
+// this package's own DaemonStateFile/DaemonLock, which join only the
+// language segment and the filename onto a told leaf stateDir —
+// internal/cli resolves that directory via the
+// --state-dir/$QUARRY_STATE_DIR/os.UserCacheDir() precedence documented in
+// README.md. This state is ephemeral and machine-bound: a live daemon's
+// PID, socket path, and spawn time mean nothing on another machine or after
+// this one is rebooted, so it must never be treated as durable,
+// version-controlled configuration.
 //
 // A recorded daemon is stale, forcing a fresh spawn rather than a reuse,
 // under a two-part check (daemonStale): its PID is no longer alive
 // (proc.IsAlive), or its recorded ProtocolVersion does not match this
-// binary's supervisedProtocolVersion. That protocol version is lyx's own
+// binary's supervisedProtocolVersion. That protocol version is quarry's own
 // wire-compatibility marker for the supervised daemon protocol itself —
-// bumped when a future lyx change to that protocol needs it — and must not
-// be confused with gopls's own version, which registry.Entry.PinnedVersion
+// bumped when a future quarry change to that protocol needs it — and must
+// not be confused with gopls's own version, which registry.Entry.PinnedVersion
 // pins separately.
 //
-// The daemon's socket path is a deterministic function of (anchorRoot,
+// The daemon's socket path is a deterministic function of (stateDir,
 // lang), never randomly chosen at spawn time. This is what makes
 // stale-socket cleanup across restarts simple: a fresh spawn can always
 // remove-if-exists the one predictable path before binding, with no
@@ -264,26 +264,22 @@
 // ErrServerSpawnTimeout (the supervised strategy's bounded spawn-race retry
 // gave up without ever observing a healthy daemon). ErrSymbolNotFound and
 // ErrAmbiguousSymbol exist as their own distinct types specifically so
-// internal/scoutcli can tell "confirmed absent" apart from "found, but
+// internal/cli can tell "confirmed absent" apart from "found, but
 // ambiguous" without parsing error strings — exit codes and the rest of
-// that CLI-level contract are internal/scoutcli's concern, not this
-// package's; see its own package documentation for the full shape.
+// that CLI-level contract are internal/cli's concern, not this package's.
 //
 // # Scope boundaries — what this package deliberately does not do
 //
 //   - No in-process go/packages arm. The spike's recommended
 //     sub-millisecond, zero-false-positive Go-only path is not wired here;
-//     scout always goes through LSP, including for Go (gopls), trading
-//     peak Go-only precision/speed for uniform multi-language coverage.
+//     this package always goes through LSP, including for Go (gopls),
+//     trading peak Go-only precision/speed for uniform multi-language
+//     coverage.
 //   - No call hierarchy, no implementation. Only textDocument/references,
 //     textDocument/definition, and the workspace/symbol resolver are wired.
 //     The spike's call-hierarchy fix (TypesInfo.Uses/Defs-based, not
 //     AST-pattern-based) does not generalize to a language-agnostic LSP
 //     client, and implementation was never in this package's rubric.
-//   - No lyx config reconcile wiring for servers.yaml yet. ConfigTemplate()
-//     exists and mirrors models.yaml's shape, but scout is not yet added
-//     to lyx config reconcile's seed-only module list; an operator who wants
-//     an overlay writes _lyx/config/servers.yaml by hand today.
 //   - Symbol does not share resolvePosition's ambiguity-collapsing
 //     behavior. Unlike References/Definition, Symbol (symbol.go) never
 //     collapses multiple workspace/symbol candidates into an

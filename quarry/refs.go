@@ -110,7 +110,7 @@ func acquireConnection(ctx context.Context, lang string, entry Entry, opts Optio
 func teardownConnection(client *lspClient, kind connKind, timedOut bool) {
 	switch kind {
 	case connKindSupervised:
-		// A supervised connection is a dial into a daemon lyx spawned to
+		// A supervised connection is a dial into a daemon quarry spawned to
 		// outlive this call. Never run the LSP shutdown handshake or kill
 		// it — the daemon is meant to keep serving other callers, and this
 		// process's exit reclaims the dialed socket's fd on its own.
