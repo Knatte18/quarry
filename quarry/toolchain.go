@@ -1,5 +1,5 @@
 // toolchain.go implements the Go-only toolchain manager: resolving (and, on a cold cache,
-// installing) a pinned gopls binary into a scout-owned, machine-global cache directory.
+// installing) a pinned gopls binary into a quarry-owned, machine-global cache directory.
 // It ignores $PATH entirely for Go — unlike the other four languages' legacy cold-spawn-per-call
 // path, which resolves entry.Command[0] on $PATH via newLSPClient, the native Go strategy (batch
 // 5's ensureNative) always launches the exact pinned version this file resolved, never whatever

@@ -55,8 +55,8 @@ var precedence = []string{"go", "rust", "csharp", "typescript", "python"}
 // builtins returns the pinned, default-free fallback registry for the five
 // supported languages. This is what every consumer gets with zero
 // servers.yaml present — operator overrides live only in the seeded
-// servers.yaml (see ConfigTemplate), never baked into Go, so changing a
-// default never needs a recompile.
+// servers.yaml (see docs/servers.yaml.example), never baked into Go, so
+// changing a default never needs a recompile.
 func builtins() Registry {
 	return Registry{
 		"go": {

@@ -21,7 +21,6 @@ import (
 // $QUARRY_CONFIG and over the user config directory default.
 func TestResolveContext_ConfigPrecedence(t *testing.T) {
 	tempConfigDir := withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
 	// Seed a servers.yaml at every one of the three tiers with a distinct "go" entry so the
@@ -33,7 +32,7 @@ func TestResolveContext_ConfigPrecedence(t *testing.T) {
 	t.Setenv("QUARRY_CONFIG", envConfig)
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	registry, _, _, err := resolveContext(cwd, dir, flagConfig, "")
+	registry, _, _, err := resolveContext(dir, flagConfig, "")
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -46,7 +45,6 @@ func TestResolveContext_ConfigPrecedence(t *testing.T) {
 // directory default when no --config flag is given.
 func TestResolveContext_ConfigEnvBeatsDefault(t *testing.T) {
 	tempConfigDir := withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
 	envConfig := writeServersYAML(t, filepath.Join(t.TempDir(), "env-servers.yaml"), "env-cmd")
@@ -55,7 +53,7 @@ func TestResolveContext_ConfigEnvBeatsDefault(t *testing.T) {
 	t.Setenv("QUARRY_CONFIG", envConfig)
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	registry, _, _, err := resolveContext(cwd, dir, "", "")
+	registry, _, _, err := resolveContext(dir, "", "")
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -68,12 +66,11 @@ func TestResolveContext_ConfigEnvBeatsDefault(t *testing.T) {
 // resolved path whole-replaces the built-in entry for that language in the returned registry.
 func TestResolveContext_ConfigFileWholeReplacesBuiltinEntry(t *testing.T) {
 	withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
 	configPath := writeServersYAML(t, filepath.Join(t.TempDir(), "servers.yaml"), "overridden-gopls")
 
-	registry, _, _, err := resolveContext(cwd, dir, configPath, "")
+	registry, _, _, err := resolveContext(dir, configPath, "")
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -98,10 +95,9 @@ func TestResolveContext_ConfigFileWholeReplacesBuiltinEntry(t *testing.T) {
 // precedence tier returns the built-in registry with no error.
 func TestResolveContext_AbsentFileAtEveryTierReturnsBuiltinRegistry(t *testing.T) {
 	withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
-	registry, _, _, err := resolveContext(cwd, dir, "", "")
+	registry, _, _, err := resolveContext(dir, "", "")
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -116,7 +112,6 @@ func TestResolveContext_AbsentFileAtEveryTierReturnsBuiltinRegistry(t *testing.T
 // swallow the failure.
 func TestResolveContext_MalformedFileReturnsError(t *testing.T) {
 	withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
 	malformed := filepath.Join(t.TempDir(), "servers.yaml")
@@ -124,7 +119,7 @@ func TestResolveContext_MalformedFileReturnsError(t *testing.T) {
 		t.Fatalf("WriteFile(%q) error = %v", malformed, err)
 	}
 
-	_, _, _, err := resolveContext(cwd, dir, malformed, "")
+	_, _, _, err := resolveContext(dir, malformed, "")
 	if err == nil {
 		t.Fatal("resolveContext(...) error = nil; want non-nil for a malformed servers.yaml")
 	}
@@ -134,13 +129,12 @@ func TestResolveContext_MalformedFileReturnsError(t *testing.T) {
 // $QUARRY_STATE_DIR and over the user cache directory default.
 func TestResolveContext_StateDirPrecedence(t *testing.T) {
 	withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
 	flagStateDir := t.TempDir()
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	_, _, stateDir, err := resolveContext(cwd, dir, "", flagStateDir)
+	_, _, stateDir, err := resolveContext(dir, "", flagStateDir)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -153,13 +147,12 @@ func TestResolveContext_StateDirPrecedence(t *testing.T) {
 // directory default when no --state-dir flag is given.
 func TestResolveContext_StateDirEnvBeatsDefault(t *testing.T) {
 	tempCacheDir := withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
 	envStateDir := t.TempDir()
 	t.Setenv("QUARRY_STATE_DIR", envStateDir)
 
-	_, _, stateDir, err := resolveContext(cwd, dir, "", "")
+	_, _, stateDir, err := resolveContext(dir, "", "")
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -172,12 +165,11 @@ func TestResolveContext_StateDirEnvBeatsDefault(t *testing.T) {
 // is the absolute form of the dir argument.
 func TestResolveContext_TargetDirIsAbsoluteFormOfDirArgument(t *testing.T) {
 	withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	_, targetDir, _, err := resolveContext(cwd, dir, "", "")
+	_, targetDir, _, err := resolveContext(dir, "", "")
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -196,10 +188,9 @@ func TestResolveContext_TargetDirIsAbsoluteFormOfDirArgument(t *testing.T) {
 // once the tool is called quarry.
 func TestResolveContext_StateDirCarriesNoLyxOrScoutSegment(t *testing.T) {
 	withIsolatedPathSeams(t)
-	cwd := t.TempDir()
 	dir := t.TempDir()
 
-	_, _, stateDir, err := resolveContext(cwd, dir, "", "")
+	_, _, stateDir, err := resolveContext(dir, "", "")
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}

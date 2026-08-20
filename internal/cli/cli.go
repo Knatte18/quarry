@@ -150,7 +150,7 @@ scoped to one package comes back both complete and precise:
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -287,7 +287,7 @@ structurally-identical interfaces in different packages).`,
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -399,7 +399,7 @@ matches into an ambiguity failure. Example:
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -448,9 +448,9 @@ matches into an ambiguity failure. Example:
 // its resolved inputs rather than deriving them from a lyx hub: quarry has no hub, so there is no
 // in-hub/out-of-hub branch here, only the resolution this seam now owns outright.
 //
-// dir is the already-defaulted directory, never the raw --target-dir flag value: passing the raw
-// flag would resolve filepath.Abs("") (the process working directory) rather than
-// filepath.Abs(cwd) whenever --target-dir is omitted.
+// dir is the already-defaulted directory (the caller has already resolved the seam cwd into it
+// when --target-dir was omitted), never the raw --target-dir flag value: passing the raw flag
+// would resolve filepath.Abs("") (the process working directory) rather than the seam cwd.
 //
 // configFlag and stateDirFlag are the --config and --state-dir flag values, threaded straight
 // through to resolveConfigPath and resolveStateDir so their own $QUARRY_CONFIG/$QUARRY_STATE_DIR
@@ -459,7 +459,7 @@ matches into an ambiguity failure. Example:
 // The returned error carries a resolveConfigPath, quarry.LoadRegistry, or resolveStateDir failure
 // unchanged — a malformed servers.yaml, or a userConfigDir/userCacheDir failure, still fails the
 // lookup rather than degrading silently.
-func resolveContext(cwd, dir, configFlag, stateDirFlag string) (quarry.Registry, string, string, error) {
+func resolveContext(dir, configFlag, stateDirFlag string) (quarry.Registry, string, string, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		// Preserve the pre-refactor fallback exactly: when filepath.Abs itself
@@ -580,7 +580,7 @@ involved — only interface methods are at risk of this conflation.`,
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(cwd, dir, configFlag, stateDirFlag)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
