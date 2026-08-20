@@ -1,18 +1,18 @@
-//go:build scout
+//go:build lsp
 
 // ensureserver_integration_test.go exercises ensureNative against a real,
 // network-installed gopls, mirroring refs_integration_test.go's and
-// toolchain_integration_test.go's //go:build scout-tagged,
-// t.Skip(builtins()["go"].InstallHint)-gated style: it is excluded from the
-// plain `go test` verify (the Test Tier Purity Invariant) and run
-// separately with `-tags scout`. Even though ensureNative itself
-// ignores $PATH and resolves its own toolchain-managed binary, the skip
-// gate here is about whether this machine can plausibly run a real gopls at
-// all (network + `go install` capability), which exec.LookPath("gopls") is
-// a reasonable, cheap proxy for reusing rather than inventing a second
-// capability probe. This test only spawns gopls, never git, so no
-// TestMain/gitkit.HermeticGitEnv is required per the Hermetic Git Test
-// Environment Invariant.
+// toolchain_integration_test.go's //go:build lsp-tagged,
+// t.Skip(builtins()["go"].InstallHint)-gated style: the tag names its real
+// precondition, a real language-server binary on $PATH, so this file is
+// excluded from the plain `go test` verify and run separately with
+// `-tags lsp`. Even though ensureNative itself ignores $PATH and resolves
+// its own toolchain-managed binary, the skip gate here is about whether
+// this machine can plausibly run a real gopls at all (network + `go
+// install` capability), which exec.LookPath("gopls") is a reasonable,
+// cheap proxy for reusing rather than inventing a second capability probe.
+// This test spawns no git and needs no git-environment isolation — it
+// spawns only gopls.
 //
 // It also now covers ensureServer's supervised dispatch: since the
 // engine-supervised-flip batch, ensureServer routes Go through

@@ -1,17 +1,16 @@
-//go:build scout
+//go:build lsp
 
 // toolchain_integration_test.go exercises resolveGoToolchain against a real
 // `go install`, mirroring refs_integration_test.go's header-comment style:
-// it is //go:build scout-tagged and therefore excluded from the plain
-// `go test` verify (the Test Tier Purity Invariant); it is run separately
-// with `-tags scout`. Unlike refs_integration_test.go's gopls-presence
-// skip gate, this test has no natural skip condition — it needs only the go
-// toolchain itself, which is guaranteed present in any environment where
-// `go test -tags scout` can even run — so it runs unconditionally
-// under the tag; there is deliberately no t.Skip here. This test spawns
-// `go install` and the freshly installed gopls binary, never git, so no
-// TestMain/gitkit.HermeticGitEnv is required per the Hermetic Git Test
-// Environment Invariant.
+// the tag names its real precondition, a real language-server binary on
+// $PATH, so this file is excluded from the plain `go test` verify and run
+// separately with `-tags lsp`. Unlike refs_integration_test.go's
+// gopls-presence skip gate, this test has no natural skip condition — it
+// needs only the go toolchain itself, which is guaranteed present in any
+// environment where `go test -tags lsp` can even run — so it runs
+// unconditionally under the tag; there is deliberately no t.Skip here.
+// This test spawns `go install` and the freshly installed gopls binary but
+// no git, so it needs no git-environment isolation.
 
 package quarry
 

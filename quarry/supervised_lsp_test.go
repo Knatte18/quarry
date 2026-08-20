@@ -1,10 +1,11 @@
-//go:build scout
+//go:build lsp
 
-// supervised_scout_test.go holds this package's two subtests that need a
+// supervised_lsp_test.go holds this package's two subtests that need a
 // real, already-installed gopls on $PATH to prove a real bind/log-file
 // behavior — split out of supervised_test.go because, unlike that file's
 // other three subtests, these two cannot run offline. Manual invocation
-// only via `go test -tags scout ./...`, no runtime skip-gate (the build tag
+// only via `go test -tags lsp ./...`, no runtime skip-gate (the build tag
+// names its real precondition, a real language-server binary on $PATH, and
 // is the only gate).
 
 package quarry
