@@ -41,8 +41,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/quarry/internal/output"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -52,7 +50,7 @@ func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scout",
 		Short: "code intelligence lookups (references, definitions, symbol search) across supported languages",
-		RunE:  clihelp.GroupRunE,
+		RunE:  GroupRunE,
 	}
 
 	cmd.AddCommand(refsCommand())
@@ -129,13 +127,13 @@ scoped to one package comes back both complete and precise:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
 			// injected into ctx, or the process cwd when none was — anchoring
 			// both the default target directory and the overlay-base
 			// resolution below.
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := CwdFrom(ctx)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -150,7 +148,7 @@ scoped to one package comes back both complete and precise:
 
 			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -160,7 +158,7 @@ scoped to one package comes back both complete and precise:
 			// parseQuery, so a positional is always a bare name against that
 			// one file, never position-parsed — even when --in-file is
 			// combined with batch mode.
-			buildQuery := func(arg string) (scoutengine.Query, error) {
+			buildQuery := func(arg string) (quarry.Query, error) {
 				if inFile != "" {
 					return inFileQuery(cwd, inFile, arg)
 				}
@@ -170,13 +168,13 @@ scoped to one package comes back both complete and precise:
 			if len(args) == 1 {
 				query, err := buildQuery(args[0])
 				if err != nil {
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
 
 				opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
 
-				results, err := scoutengine.References(ctx, opts)
+				results, err := quarry.References(ctx, opts)
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -189,7 +187,7 @@ scoped to one package comes back both complete and precise:
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := scoutengine.References(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
+				results, err := quarry.References(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -264,13 +262,13 @@ structurally-identical interfaces in different packages).`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
 			// injected into ctx, or the process cwd when none was — anchoring
 			// both the default target directory and the overlay-base
 			// resolution below.
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := CwdFrom(ctx)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -285,7 +283,7 @@ structurally-identical interfaces in different packages).`,
 
 			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -295,7 +293,7 @@ structurally-identical interfaces in different packages).`,
 			// parseQuery, so a positional is always a bare name against that
 			// one file, never position-parsed — even when --in-file is
 			// combined with batch mode.
-			buildQuery := func(arg string) (scoutengine.Query, error) {
+			buildQuery := func(arg string) (quarry.Query, error) {
 				if inFile != "" {
 					return inFileQuery(cwd, inFile, arg)
 				}
@@ -305,13 +303,13 @@ structurally-identical interfaces in different packages).`,
 			if len(args) == 1 {
 				query, err := buildQuery(args[0])
 				if err != nil {
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
 
 				opts := buildOptions(registry, dir, anchorRoot, lang, query, timeout)
 
-				results, err := scoutengine.Definition(ctx, opts)
+				results, err := quarry.Definition(ctx, opts)
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -324,7 +322,7 @@ structurally-identical interfaces in different packages).`,
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := scoutengine.Definition(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
+				results, err := quarry.Definition(ctx, buildOptions(registry, dir, anchorRoot, lang, query, timeout))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -374,13 +372,13 @@ matches into an ambiguity failure. Example:
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
 			// injected into ctx, or the process cwd when none was — anchoring
 			// both the default target directory and the overlay-base
 			// resolution below.
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := CwdFrom(ctx)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -395,24 +393,24 @@ matches into an ambiguity failure. Example:
 
 			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
 			if len(args) == 1 {
 				opts := buildOptions(registry, dir, anchorRoot, lang, symbolQuery(args[0]), timeout)
 
-				results, err := scoutengine.Symbol(ctx, opts)
+				results, err := quarry.Symbol(ctx, opts)
 				if err != nil {
 					// Symbol never returns *ErrAmbiguousSymbol (per symbol-semantics,
 					// it has no ambiguous state), so emitLookupResult's ambiguity
 					// branch does not apply here — this is the simple, uniform
 					// error-mapping shape refsCommand used before card 33's retrofit.
-					clihelp.SetExit(ctx, output.Err(out, err.Error()))
+					SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
 
-				clihelp.SetExit(ctx, output.Ok(out, map[string]any{"symbols": symbolMatchFields(results)}))
+				SetExit(ctx, output.Ok(out, map[string]any{"symbols": symbolMatchFields(results)}))
 				return nil
 			}
 
@@ -423,7 +421,7 @@ matches into an ambiguity failure. Example:
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				results, err := scoutengine.Symbol(ctx, buildOptions(registry, dir, anchorRoot, lang, scoutengine.Query{Symbol: symbol}, timeout))
+				results, err := quarry.Symbol(ctx, buildOptions(registry, dir, anchorRoot, lang, quarry.Query{Symbol: symbol}, timeout))
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -446,21 +444,21 @@ matches into an ambiguity failure. Example:
 // filepath.Abs("") (the process working directory) rather than
 // filepath.Abs(cwd) whenever --target-dir is omitted.
 //
-// The returned error carries scoutengine.LoadRegistry failures only; a
+// The returned error carries quarry.LoadRegistry failures only; a
 // lyxcwd.Resolve failure is never an error — it is the out-of-hub path and
-// degrades to scoutengine.BuiltinRegistry() plus filepath.Abs(dir), exactly
+// degrades to quarry.BuiltinRegistry() plus filepath.Abs(dir), exactly
 // as today.
-func lookupContext(cwd, dir string) (scoutengine.Registry, string, error) {
+func lookupContext(cwd, dir string) (quarry.Registry, string, error) {
 	// Resolve the servers.yaml overlay base: when cwd is inside a lyx hub,
 	// load the registry rooted at loc.AnchorPath() (never loc.HubPath — ConfigFile
 	// resolves <baseDir>/_lyx/config/servers.yaml, so passing Hub would
 	// silently miss every overlay, exactly as internal/webstercli/cli.go
 	// anchors every config load at loc.AnchorPath()). Outside a lyx hub, degrade
 	// to the pinned built-in registry rather than failing the lookup.
-	registry := scoutengine.BuiltinRegistry()
+	registry := quarry.BuiltinRegistry()
 	loc, resolveErr := lyxcwd.Resolve(cwd)
 	if resolveErr == nil {
-		loaded, loadErr := scoutengine.LoadRegistry(loc.AnchorPath())
+		loaded, loadErr := quarry.LoadRegistry(loc.AnchorPath())
 		if loadErr != nil {
 			return nil, "", loadErr
 		}
@@ -480,10 +478,10 @@ func lookupContext(cwd, dir string) (scoutengine.Registry, string, error) {
 	return registry, abs, nil
 }
 
-// buildOptions constructs a scoutengine.Options value, ensuring all construction
+// buildOptions constructs a quarry.Options value, ensuring all construction
 // sites thread AnchorRoot consistently.
-func buildOptions(registry scoutengine.Registry, targetDir string, anchorRoot string, lang string, query scoutengine.Query, timeout time.Duration) scoutengine.Options {
-	return scoutengine.Options{
+func buildOptions(registry quarry.Registry, targetDir string, anchorRoot string, lang string, query quarry.Query, timeout time.Duration) quarry.Options {
+	return quarry.Options{
 		Registry:   registry,
 		TargetDir:  targetDir,
 		AnchorRoot: anchorRoot,
@@ -493,9 +491,9 @@ func buildOptions(registry scoutengine.Registry, targetDir string, anchorRoot st
 	}
 }
 
-// symbolQuery builds a scoutengine.Query for a bare symbol name, never position-parsed.
-func symbolQuery(arg string) scoutengine.Query {
-	return scoutengine.Query{Symbol: arg}
+// symbolQuery builds a quarry.Query for a bare symbol name, never position-parsed.
+func symbolQuery(arg string) quarry.Query {
+	return quarry.Query{Symbol: arg}
 }
 
 // assertNoCallersCommand builds the "assert-no-callers" subcommand, a CI gate that fails if
@@ -552,13 +550,13 @@ involved — only interface methods are at risk of this conflation.`,
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
 
-			// lyxcwd.CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
+			// CwdFrom(ctx) resolves the seam cwd — the cwd RunCLIIn
 			// injected into ctx, or the process cwd when none was — anchoring
 			// both the default target directory and the overlay-base
 			// resolution below.
-			cwd, err := lyxcwd.CwdFrom(ctx)
+			cwd, err := CwdFrom(ctx)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -573,13 +571,13 @@ involved — only interface methods are at risk of this conflation.`,
 
 			registry, anchorRoot, err := lookupContext(cwd, dir)
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
 			query, err := parseQuery(cwd, args[0])
 			if err != nil {
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
 
@@ -596,13 +594,13 @@ involved — only interface methods are at risk of this conflation.`,
 			// Reference's 1-based UTF-16 column on a pure-ASCII line; on any
 			// other line the declaration would silently fail to match and be
 			// misreported as an unexpected caller.
-			declRefs, defErr := scoutengine.Definition(ctx, opts)
+			declRefs, defErr := quarry.Definition(ctx, opts)
 			if defErr != nil {
 				emitAmbiguousOrError(ctx, out, defErr)
 				return nil
 			}
 
-			refs, refErr := scoutengine.References(ctx, opts)
+			refs, refErr := quarry.References(ctx, opts)
 			if refErr != nil {
 				emitAmbiguousOrError(ctx, out, refErr)
 				return nil
@@ -627,12 +625,12 @@ involved — only interface methods are at risk of this conflation.`,
 
 			violations := filterUnexpectedCallers(refs, declRefs, exceptAbs)
 			if len(violations) == 0 {
-				clihelp.SetExit(ctx, output.Ok(out, map[string]any{"callers": []map[string]any{}}))
+				SetExit(ctx, output.Ok(out, map[string]any{"callers": []map[string]any{}}))
 				return nil
 			}
 
 			output.Ok(out, map[string]any{"violation": true, "callers": referenceFields(violations)})
-			clihelp.SetExit(ctx, 1)
+			SetExit(ctx, 1)
 			return nil
 		},
 	}
@@ -648,24 +646,24 @@ involved — only interface methods are at risk of this conflation.`,
 
 // emitAmbiguousOrError maps References/Definition errors to the output envelope.
 func emitAmbiguousOrError(ctx context.Context, out io.Writer, err error) bool {
-	var ambiguous *scoutengine.ErrAmbiguousSymbol
+	var ambiguous *quarry.ErrAmbiguousSymbol
 	if errors.As(err, &ambiguous) {
 		output.Ok(out, map[string]any{"candidates": ambiguous.Candidates})
-		clihelp.SetExit(ctx, 2)
+		SetExit(ctx, 2)
 		return false
 	}
-	clihelp.SetExit(ctx, output.Err(out, err.Error()))
+	SetExit(ctx, output.Err(out, err.Error()))
 	return false
 }
 
 // filterUnexpectedCallers returns entries in refs that are neither in declRefs nor in exceptAbs.
-func filterUnexpectedCallers(refs []scoutengine.Reference, declRefs []scoutengine.Reference, exceptAbs map[string]bool) []scoutengine.Reference {
-	declSet := make(map[scoutengine.Reference]bool, len(declRefs))
+func filterUnexpectedCallers(refs []quarry.Reference, declRefs []quarry.Reference, exceptAbs map[string]bool) []quarry.Reference {
+	declSet := make(map[quarry.Reference]bool, len(declRefs))
 	for _, d := range declRefs {
 		declSet[d] = true
 	}
 
-	var violations []scoutengine.Reference
+	var violations []quarry.Reference
 	for _, r := range refs {
 		if declSet[r] {
 			continue
@@ -680,7 +678,7 @@ func filterUnexpectedCallers(refs []scoutengine.Reference, declRefs []scoutengin
 
 // filterWithin returns entries in refs whose file lies within the specified directory,
 // mitigating gopls' interface-method reference conflation across packages.
-func filterWithin(refs []scoutengine.Reference, within, baseDir string) []scoutengine.Reference {
+func filterWithin(refs []quarry.Reference, within, baseDir string) []quarry.Reference {
 	w := within
 	if !filepath.IsAbs(w) {
 		w = filepath.Join(baseDir, w)
@@ -697,7 +695,7 @@ func filterWithin(refs []scoutengine.Reference, within, baseDir string) []scoute
 	}
 	w = filepath.Clean(w)
 
-	var filtered []scoutengine.Reference
+	var filtered []quarry.Reference
 	for _, r := range refs {
 		if isWithinDir(w, filepath.Clean(r.File)) {
 			filtered = append(filtered, r)
@@ -716,7 +714,7 @@ func isWithinDir(dir, target string) bool {
 }
 
 // symbolMatchFields converts SymbolMatch results to JSON-encodable maps.
-func symbolMatchFields(matches []scoutengine.SymbolMatch) []map[string]any {
+func symbolMatchFields(matches []quarry.SymbolMatch) []map[string]any {
 	fields := make([]map[string]any, len(matches))
 	for i, m := range matches {
 		fields[i] = map[string]any{
@@ -731,34 +729,34 @@ func symbolMatchFields(matches []scoutengine.SymbolMatch) []map[string]any {
 }
 
 // emitLookupResult maps References/Definition results to the output envelope.
-func emitLookupResult(ctx context.Context, out io.Writer, resultsField string, results []scoutengine.Reference, err error) {
+func emitLookupResult(ctx context.Context, out io.Writer, resultsField string, results []quarry.Reference, err error) {
 	if err != nil {
-		var ambiguous *scoutengine.ErrAmbiguousSymbol
+		var ambiguous *quarry.ErrAmbiguousSymbol
 		if errors.As(err, &ambiguous) {
 			// output.Ok always returns 0, which SetExit would treat as a no-op
 			// anyway; the exit code must be forced to 2 via a separate
-			// clihelp.SetExit call, exactly as the plan's exit-code-contract
+			// SetExit call, exactly as the plan's exit-code-contract
 			// decision specifies.
 			output.Ok(out, map[string]any{"candidates": ambiguous.Candidates})
-			clihelp.SetExit(ctx, 2)
+			SetExit(ctx, 2)
 			return
 		}
 
 		// No other engine error type gets special-cased: ErrSymbolNotFound and
 		// everything else fall through to output.Err's hardcoded exit 1, which
 		// is already the design's "not found" contract value.
-		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		SetExit(ctx, output.Err(out, err.Error()))
 		return
 	}
 
 	// "resolution":"complete" is the machine-readable trust marker a caller
 	// can key on to skip a redundant grep/re-verify pass: the language server
 	// already resolved the query exhaustively, unlike a text-matched result.
-	clihelp.SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}))
+	SetExit(ctx, output.Ok(out, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}))
 }
 
 // referenceFields converts Reference results to JSON-encodable maps.
-func referenceFields(refs []scoutengine.Reference) []map[string]any {
+func referenceFields(refs []quarry.Reference) []map[string]any {
 	fields := make([]map[string]any, len(refs))
 	for i, r := range refs {
 		fields[i] = map[string]any{
@@ -773,27 +771,27 @@ func referenceFields(refs []scoutengine.Reference) []map[string]any {
 // parseQuery converts a string argument to a Query, parsing "file:line:col" positions or treating it as a symbol name.
 // base must be an absolute path — the seam cwd, never the process cwd — against which a relative
 // "file:line:col" path is resolved.
-func parseQuery(base, arg string) (scoutengine.Query, error) {
+func parseQuery(base, arg string) (quarry.Query, error) {
 	pos, ok := parsePosition(arg)
 	if !ok {
-		return scoutengine.Query{Symbol: arg}, nil
+		return quarry.Query{Symbol: arg}, nil
 	}
 
-	// scoutengine.Query.Pos.File must be an absolute path — References turns
+	// quarry.Query.Pos.File must be an absolute path — References turns
 	// it into a file:// URI directly, with no further resolution — so a relative
 	// "file:line:col" argument is resolved against base here, the one point
 	// where the CLI, not the engine, owns path interpretation. base is never
 	// the process cwd, so this never falls back to filepath.Abs.
 	pos.File = absOrJoin(base, pos.File)
 
-	return scoutengine.Query{Pos: &pos}, nil
+	return quarry.Query{Pos: &pos}, nil
 }
 
 // inFileQuery converts a bare symbol name to an InFile Query, never position-parsed.
 // base must be an absolute path — the seam cwd, never the process cwd — against which a relative
 // --in-file path is resolved.
-func inFileQuery(base, inFilePath, name string) (scoutengine.Query, error) {
-	// scoutengine.InFileQuery.File must be an absolute path — References
+func inFileQuery(base, inFilePath, name string) (quarry.Query, error) {
+	// quarry.InFileQuery.File must be an absolute path — References
 	// turns it into a file:// URI directly, with no further resolution — so a
 	// relative --in-file path is resolved against base here, exactly like
 	// parseQuery resolves Pos.File: the CLI layer, not the engine, owns path
@@ -801,7 +799,7 @@ func inFileQuery(base, inFilePath, name string) (scoutengine.Query, error) {
 	// to filepath.Abs.
 	absFile := absOrJoin(base, inFilePath)
 
-	return scoutengine.Query{InFile: &scoutengine.InFileQuery{File: absFile, Name: name}}, nil
+	return quarry.Query{InFile: &quarry.InFileQuery{File: absFile, Name: name}}, nil
 }
 
 // absOrJoin returns path unchanged if it is already absolute (cleaned), or joined onto base
@@ -816,32 +814,32 @@ func absOrJoin(base, path string) string {
 }
 
 // parsePosition reports whether arg has the "file:line:col" shape and parses it.
-func parsePosition(arg string) (scoutengine.Position, bool) {
+func parsePosition(arg string) (quarry.Position, bool) {
 	lastColon := strings.LastIndex(arg, ":")
 	if lastColon < 0 {
-		return scoutengine.Position{}, false
+		return quarry.Position{}, false
 	}
 	col, err := strconv.Atoi(arg[lastColon+1:])
 	if err != nil {
-		return scoutengine.Position{}, false
+		return quarry.Position{}, false
 	}
 
 	rest := arg[:lastColon]
 	secondColon := strings.LastIndex(rest, ":")
 	if secondColon < 0 {
-		return scoutengine.Position{}, false
+		return quarry.Position{}, false
 	}
 	line, err := strconv.Atoi(rest[secondColon+1:])
 	if err != nil {
-		return scoutengine.Position{}, false
+		return quarry.Position{}, false
 	}
 
 	file := rest[:secondColon]
 	if file == "" {
-		return scoutengine.Position{}, false
+		return quarry.Position{}, false
 	}
 
-	return scoutengine.Position{File: file, Line: line, Character: col}, true
+	return quarry.Position{File: file, Line: line, Character: col}, true
 }
 
 // batchStatus is the per-symbol outcome in batch mode.
@@ -863,7 +861,7 @@ var statusRank = map[batchStatus]int{
 }
 
 // classifyLookupError maps a References/Definition outcome to a batchStatus and JSON fields.
-func classifyLookupError(err error, resultsField string, results []scoutengine.Reference) (batchStatus, map[string]any) {
+func classifyLookupError(err error, resultsField string, results []quarry.Reference) (batchStatus, map[string]any) {
 	if err == nil {
 		// Mirror emitLookupResult's single-arg "resolution":"complete" marker
 		// per batch entry, so a batch-mode caller gets the same trust signal
@@ -871,12 +869,12 @@ func classifyLookupError(err error, resultsField string, results []scoutengine.R
 		return statusFound, map[string]any{resultsField: referenceFields(results), "resolution": "complete"}
 	}
 
-	var ambiguous *scoutengine.ErrAmbiguousSymbol
+	var ambiguous *quarry.ErrAmbiguousSymbol
 	if errors.As(err, &ambiguous) {
 		return statusAmbiguous, map[string]any{"candidates": ambiguous.Candidates}
 	}
 
-	if errors.Is(err, scoutengine.ErrSymbolNotFoundSentinel) {
+	if errors.Is(err, quarry.ErrSymbolNotFoundSentinel) {
 		return statusNotFound, nil
 	}
 
@@ -884,12 +882,12 @@ func classifyLookupError(err error, resultsField string, results []scoutengine.R
 }
 
 // classifySymbolError maps a Symbol outcome to a batchStatus and JSON fields.
-func classifySymbolError(err error, results []scoutengine.SymbolMatch) (batchStatus, map[string]any) {
+func classifySymbolError(err error, results []quarry.SymbolMatch) (batchStatus, map[string]any) {
 	if err == nil {
 		return statusFound, map[string]any{"symbols": symbolMatchFields(results)}
 	}
 
-	if errors.Is(err, scoutengine.ErrSymbolNotFoundSentinel) {
+	if errors.Is(err, quarry.ErrSymbolNotFoundSentinel) {
 		return statusNotFound, nil
 	}
 
@@ -915,7 +913,7 @@ func runBatch(ctx context.Context, out io.Writer, args []string, lookupOne func(
 
 	output.Ok(out, map[string]any{"results": entries})
 	if statusRank[worst] != 0 {
-		clihelp.SetExit(ctx, statusRank[worst])
+		SetExit(ctx, statusRank[worst])
 	}
 }
 
@@ -925,13 +923,13 @@ func RunCLI(out io.Writer, args []string) int {
 }
 
 // RunCLIIn is RunCLI's seam-cwd-carrying sibling: an empty cwd means "read the process cwd" and
-// delegates to clihelp.Execute exactly as RunCLI always has, while any other value seeds cwd into
-// the execution context via clihelp.ExecuteIn.
+// delegates to Execute exactly as RunCLI always has, while any other value seeds cwd into
+// the execution context via ExecuteIn.
 // The branch exists because lyxcwd.WithCwd panics on an empty directory, so a uniform delegation to
 // ExecuteIn would panic on every existing RunCLI call.
 func RunCLIIn(cwd string, out io.Writer, args []string) int {
 	if cwd == "" {
-		return clihelp.Execute(Command(), out, args)
+		return Execute(Command(), out, args)
 	}
-	return clihelp.ExecuteIn(Command(), cwd, out, args)
+	return ExecuteIn(Command(), cwd, out, args)
 }
