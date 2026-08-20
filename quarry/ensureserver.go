@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,9 +21,16 @@ import (
 	"time"
 
 	"github.com/Knatte18/quarry/internal/lock"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/quarry/internal/proc"
 )
+
+// defaultLogHandler is quarry's own package-level slog handler: it writes to
+// stderr at slog.LevelWarn unless the process has configured otherwise. Since
+// the threshold defaults to Warn, an slog.Info call anywhere in this package
+// is suppressed by default and only becomes visible once a caller lowers the
+// handler's level — this matches Loomyard's own internal/logger, which also
+// defaults to warn-level stderr output.
+var defaultLogHandler = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 // connKind reports which EnsureServer strategy produced a given *lspClient,
 // so the caller knows the correct teardown rule for the connection it got
@@ -437,7 +445,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// call's own failure.
 			if escalationFound {
 				if err := proc.KillPID(escalationState.PID); err != nil {
-					logger.Warn("scoutengine: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
+					defaultLogHandler.Warn("scoutengine: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
 				}
 			}
 			// Fall through to step 4 below to respawn — the lock acquired
@@ -533,7 +541,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		// is guaranteed non-nil here since cmd.Start() has already succeeded
 		// (the line 548 error path above returns before ever reaching this
 		// point).
-		logger.Info("scoutengine: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
+		defaultLogHandler.Info("scoutengine: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
 
 		// Step 5: write the state file *before* releasing the lock, so a
 		// losing caller that acquires the lock immediately after release
