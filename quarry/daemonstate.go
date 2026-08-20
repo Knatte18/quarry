@@ -1,8 +1,8 @@
 // daemonstate.go implements the supervised-strategy daemon's runtime state file: the JSON record a
-// spawning EnsureServer call writes so a later, independent lyx invocation can discover an
+// spawning EnsureServer call writes so a later, independent quarry invocation can discover an
 // already-running daemon rather than spawning its own, plus the two-part staleness check that
 // decides whether a recorded daemon is still safe to reuse.
-// It also declares DaemonStateFile/DaemonLock, the module's own told, anchorRoot-joined accessors —
+// It also declares DaemonStateFile/DaemonLock, the module's own told-stateDir accessors —
 // ensureSupervised, the sole production caller, resolves its state-file and lock paths through these
 // rather than any other package's helper.
 
@@ -14,38 +14,31 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/quarry/internal/proc"
 )
 
-// supervisedProtocolVersion is lyx's wire-compatibility version for the
+// supervisedProtocolVersion is quarry's wire-compatibility version for the
 // supervised daemon protocol, distinct from gopls's version.
-// It detects when a still-running daemon was spawned by an incompatible lyx binary.
+// It detects when a still-running daemon was spawned by an incompatible quarry binary.
 const supervisedProtocolVersion = "1"
 
-// scoutDirName is the relative-path segment scoutengine joins onto
-// lyxdirs.DotLyxDirName to form the supervised daemon's runtime-state directory.
-// scoutengine is this segment's sole declarer.
-const scoutDirName = "scout"
-
-// DaemonStateFile returns the path to the scout daemon's runtime state file for the given language,
-// joined onto the told anchorRoot.
-// It is anchor-joined so the state tree is a directory sibling of the durable _lyx tree, and the
-// daemon remains a per-worktree, per-language singleton — an anchored repo has exactly one anchor.
-// It lives under .lyx (ephemeral) not _lyx (durable) so PIDs/sockets don't get committed.
-// Relocating this path to the anchor deliberately re-keys the supervised daemon in subpath-anchored
-// repos, since the daemon's identity is its state-file path — the intended consequence of having
-// exactly one .lyx root per worktree.
-func DaemonStateFile(anchorRoot string, lang string) string {
-	return filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.json")
+// DaemonStateFile returns the path to the supervised daemon's runtime state file for the given
+// language, joined onto the told leaf stateDir.
+// DaemonStateFile is told a leaf state directory and joins only the language segment and the
+// filename — it derives no path structure of its own, and it is the caller's job to have already
+// resolved stateDir to something specific to the workspace being served.
+// The daemon remains a per-state-directory, per-language singleton: two different lang values
+// under the same stateDir never collide, and two different stateDir values are never conflated.
+func DaemonStateFile(stateDir string, lang string) string {
+	return filepath.Join(stateDir, lang, "daemon.json")
 }
 
 // DaemonLock returns the path to the advisory lock file guarding concurrent access to
-// DaemonStateFile(anchorRoot, lang).
-// It shares that function's anchoring, per-lang scoping, and daemon-re-keying consequence in
-// subpath-anchored repos.
-func DaemonLock(anchorRoot string, lang string) string {
-	return filepath.Join(anchorRoot, lyxdirs.DotLyxDirName, scoutDirName, lang, "daemon.lock")
+// DaemonStateFile(stateDir, lang).
+// It shares that function's told-stateDir joining and per-state-directory, per-language singleton
+// property.
+func DaemonLock(stateDir string, lang string) string {
+	return filepath.Join(stateDir, lang, "daemon.lock")
 }
 
 // daemonState is the JSON shape written to the supervised daemon's state file.
