@@ -68,7 +68,7 @@ avoid.
 
 Every row below is `ok:true` with a non-empty result on the `lyx scout`
 side (verified first, per this batch's rule) before being compared to
-`quarry`'s envelope. All 26 comparisons matched **byte for byte**,
+`quarry`'s envelope. All 27 comparisons matched **byte for byte**,
 including the exit code.
 
 | Query | Verb | `lyx scout` exit | `quarry` exit | Envelope | Exit code |
@@ -120,7 +120,7 @@ to enumerate for this run.
 ## Verdict
 
 **The port is proven behaviourally equivalent to `lyx scout` for this
-query set.** All 26 query/verb comparisons — spanning a high-fan-in plain
+query set.** All 27 query/verb comparisons — spanning a high-fan-in plain
 function, a method with many call sites, two generic functions, an
 interface method whose references span every implementing producer, a
 single-match control case, both `assert-no-callers` outcomes (violation
