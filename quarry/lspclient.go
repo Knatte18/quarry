@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -113,7 +112,7 @@ type lspClient struct {
 	// sites where a language identifier is already in scope — every
 	// test-constructed client via newLSPClientFromRW leaves this at its
 	// zero value "". It exists solely so close()/kill()'s diagnostic
-	// slog.Warn calls can name which language server misbehaved.
+	// defaultLogHandler.Warn calls can name which language server misbehaved.
 	lang string
 }
 
@@ -572,15 +571,15 @@ func (c *lspClient) close() {
 	defer cancel()
 
 	if _, err := c.call(ctx, "shutdown", "shutdown", nil); err != nil {
-		slog.Warn("scoutengine: lsp shutdown request", "lang", c.lang, "err", err)
+		defaultLogHandler.Warn("scoutengine: lsp shutdown request", "lang", c.lang, "err", err)
 	}
 	if err := c.notify("exit", nil); err != nil {
-		slog.Warn("scoutengine: lsp exit notification", "lang", c.lang, "err", err)
+		defaultLogHandler.Warn("scoutengine: lsp exit notification", "lang", c.lang, "err", err)
 	}
 	c.closer.Close()
 	if c.cmd != nil {
 		if err := c.cmd.Wait(); err != nil {
-			slog.Warn("scoutengine: lsp process exit", "lang", c.lang, "err", err)
+			defaultLogHandler.Warn("scoutengine: lsp process exit", "lang", c.lang, "err", err)
 		}
 	}
 }
@@ -603,9 +602,9 @@ func (c *lspClient) kill() {
 		return
 	}
 	if err := c.cmd.Process.Kill(); err != nil {
-		slog.Warn("scoutengine: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		defaultLogHandler.Warn("scoutengine: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 	if err := c.cmd.Wait(); err != nil {
-		slog.Warn("scoutengine: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		defaultLogHandler.Warn("scoutengine: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 }
