@@ -4,9 +4,9 @@
 // file:line:col position), it launches the right language server, resolves the query to a position
 // if needed, and returns the reference list.
 // It also defines the shared lookup pipeline (acquireConnection, teardownConnection, lookup) that
-// References wraps and that a later batch's Definition wraps too — both differ only in which single
+// References wraps and that Definition wraps too — both differ only in which single
 // LSP call they make once a position is resolved.
-// This is the external interface the CLI layer (internal/scoutcli, batch 3) calls.
+// This is the external interface the CLI layer (internal/cli) calls.
 
 package quarry
 
@@ -130,7 +130,7 @@ func teardownConnection(client *lspClient, kind connKind, timedOut bool) {
 }
 
 // lookup is the shared pipeline every public lookup entry point (References
-// here; Definition, batch 8) runs: detect the language, acquire a
+// here; Definition) runs: detect the language, acquire a
 // connection, resolve the query to a position, issue exactly one LSP call
 // at that position, and convert the results. lspCall is the one step that
 // varies between callers — everything else is identical regardless of which

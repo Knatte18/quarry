@@ -386,7 +386,7 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 // literal, unresolved "gopls" lookup on $PATH — a categorically different error this assertion
 // distinguishes from.
 // This is not a proof that a real gopls connection works end to end — that is
-// ensureserver_integration_test.go (batch 5).
+// ensureserver_integration_test.go.
 func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 	withTempUserCacheDir(t)
 

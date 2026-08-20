@@ -1,7 +1,6 @@
-// ensureserver.go implements the EnsureServer(lang, stateDir) -> LSPConn seam from
-// manifest/designs/scout-redesign.md: given a registry entry whose HasNativeDaemon field is true,
-// it resolves, spawns or dials, and hands back an already-initialized, already-probed *lspClient
-// ready for immediate use.
+// ensureserver.go implements the EnsureServer(lang, stateDir) -> LSPConn seam: given a
+// registry entry whose HasNativeDaemon field is true, it resolves, spawns or dials, and hands
+// back an already-initialized, already-probed *lspClient ready for immediate use.
 // ensureServer is called only for a registry entry with HasNativeDaemon == true — in V1 this means
 // Go only.
 // Every other language's caller keeps using newLSPClient/client.initialize directly, unchanged, and
@@ -121,7 +120,7 @@ func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, 
 
 // rootURIFor converts targetDir into the file:// rootURI the LSP
 // "initialize" request expects, exactly as References builds it today.
-// Factored out here so ensureNative and References (batch 7) share exactly
+// Factored out here so ensureNative and References share exactly
 // one implementation of "path to rootURI" rather than duplicating it.
 func rootURIFor(targetDir string) (string, error) {
 	absTargetDir, err := filepath.Abs(targetDir)

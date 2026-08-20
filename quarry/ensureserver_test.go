@@ -323,7 +323,7 @@ func TestReconnectUnderLock_ReuseOrRestart(t *testing.T) {
 // native's own result is returned" — the one branch no other untagged test reaches: the
 // toolchain-failure test (TestReferences_HasNativeDaemonRoutesThroughEnsureServer, refs_test.go)
 // short-circuits at step 1 before ensureSupervised is ever attempted, and the integration test
-// (batch 5) only proves the fallback's success path, not this one.
+// only proves the fallback's success path, not this one.
 // resolveGoToolchain succeeds here — a fake installer writes a non-executable stub binary,
 // and resolveGoToolchain's own fast-path/post-install check is a bare os.Stat that never inspects
 // the executable bit — but ensureSupervised cannot acquire its spawn lock (pre-held by this test)

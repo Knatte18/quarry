@@ -1,5 +1,5 @@
 // detect.go implements DetectLanguage, marker-based language detection over a target directory.
-// It never resolves the process's own cwd — targetDir is a plain argument the caller (batch 3's CLI
+// It never resolves the process's own cwd — targetDir is a plain argument the caller (the CLI
 // layer) resolves — and it never spawns a subprocess;
 // every check is a stat call.
 

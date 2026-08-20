@@ -6,7 +6,7 @@
 // userConfigDir/userCacheDir seams (withIsolatedPathSeams below), never t.Chdir — both stdlib
 // functions os.UserConfigDir/os.UserCacheDir ignore the process working directory entirely.
 // A real "refs" query against a live language server belongs to the //go:build lsp tier
-// (quarry's own live tier) and batch 5's measurement, not here.
+// (quarry's own live tier), not here.
 
 package cli
 

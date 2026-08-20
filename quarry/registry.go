@@ -1,8 +1,7 @@
 // registry.go defines the language-server registry shape (Entry, Registry), the pinned built-in
 // fallback set for the five supported languages, the fixed detection precedence order, and entry
 // validation.
-// It mirrors internal/modelspec's registry.go: builtins() is the offline default every consumer
-// gets with zero servers.yaml present,
+// builtins() is the offline default every consumer gets with zero servers.yaml present,
 // and BuiltinRegistry() is the one-line exported accessor the CLI layer uses when no servers.yaml
 // overlay is resolvable.
 

@@ -1,8 +1,7 @@
-// errors.go defines the typed error vocabulary the scoutengine package returns to its sole caller,
-// internal/scoutcli.
+// errors.go defines the typed error vocabulary this package returns to its sole caller,
+// internal/cli.
 // Each failure mode gets its own sentinel or data-carrying type so the CLI layer can map it to a
-// specific output.Err response instead of a generic message;
-// see the plan's "typed error vocabulary" Shared Decision.
+// specific output.Err response instead of a generic message.
 
 package quarry
 
