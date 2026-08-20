@@ -1,6 +1,5 @@
-// lspclient_guard_test.go is a narrow file-scoped guard on internal/scoutengine/lspclient.go: the
-// ported stdio LSP client carries no lyx dependency except logging, keeping it liftable back out of
-// lyx behind a single logging dependency.
+// lspclient_guard_test.go is a narrow file-scoped guard on quarry/lspclient.go: the stdio LSP
+// client carries no dependency outside the standard library, per card 12's log/slog rewrite.
 // It guards this one file only — it must never be generalized into a per-file allowed-set table,
 // which would be an allowlist through the back door.
 
@@ -16,13 +15,12 @@ import (
 	"testing"
 )
 
-// TestLSPClientGuard_StdlibAndLoggerOnly verifies that
-// internal/scoutengine/lspclient.go imports only the standard library plus
-// internal/logger — no lyx dependency except logging.
-func TestLSPClientGuard_StdlibAndLoggerOnly(t *testing.T) {
+// TestLSPClientGuard_StdlibOnly verifies that quarry/lspclient.go imports only the standard
+// library.
+func TestLSPClientGuard_StdlibOnly(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("could not determine scoutengine source directory location")
+		t.Fatal("could not determine quarry source directory location")
 	}
 	pkgDir := filepath.Dir(file)
 	target := filepath.Join(pkgDir, "lspclient.go")
@@ -36,8 +34,6 @@ func TestLSPClientGuard_StdlibAndLoggerOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse lspclient.go: %v", err)
 	}
-
-	const allowedLyxImport = "github.com/Knatte18/loomyard/internal/logger"
 
 	var failures []string
 
@@ -53,7 +49,7 @@ func TestLSPClientGuard_StdlibAndLoggerOnly(t *testing.T) {
 		}
 		isStdlib := !strings.Contains(firstSegment, ".")
 
-		if isStdlib || importPath == allowedLyxImport {
+		if isStdlib {
 			continue
 		}
 
@@ -61,6 +57,6 @@ func TestLSPClientGuard_StdlibAndLoggerOnly(t *testing.T) {
 	}
 
 	if len(failures) > 0 {
-		t.Errorf("lspclient.go must carry no lyx dependency except logging; found: %v", failures)
+		t.Errorf("lspclient.go must import only the standard library; found: %v", failures)
 	}
 }
