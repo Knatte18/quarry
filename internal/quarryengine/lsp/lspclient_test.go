@@ -1,4 +1,4 @@
-// lspclient_test.go exercises lspClient's framing/protocol logic without launching a real
+// lspclient_test.go exercises Client's framing/protocol logic without launching a real
 // subprocess: it builds the client over the NewClientFromRW(rwc) seam with an io.Pipe-backed
 // transport, driven by a scripted fake-server goroutine that reads Content-Length-framed requests
 // and writes back Content-Length-framed responses.

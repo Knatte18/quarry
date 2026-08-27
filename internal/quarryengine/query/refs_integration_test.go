@@ -87,8 +87,9 @@ func TestReferences_Integration(t *testing.T) {
 
 		// Since the engine-supervised-flip batch, Go's registry entry
 		// dispatches through ensureServer -> ensureSupervised, which spawns a
-		// quarry-owned daemon that teardownConnection's connKindSupervised
-		// branch deliberately never kills. StateDir is required (Options no
+		// quarry-owned daemon that teardownConnection's
+		// daemon.ConnKindSupervised branch deliberately never kills. StateDir
+		// is required (Options no
 		// longer derives it), so an isolated t.TempDir() plus a
 		// state-file-driven reap is what keeps this test from leaking the
 		// daemon.
@@ -189,7 +190,7 @@ func main() {}
 // TestReferences_Integration's Query.Pos coverage above.
 // Both subcases route through ensureServer's now- live supervised dispatch (registry.BuiltinRegistry()'s
 // Go entry has HasNativeDaemon: true), which spawns a quarry-owned daemon that teardownConnection's
-// connKindSupervised branch deliberately never kills — each subcase gives its own isolated
+// daemon.ConnKindSupervised branch deliberately never kills — each subcase gives its own isolated
 // t.TempDir() as StateDir and reaps the spawned daemon in t.Cleanup, exactly like
 // TestEnsureServer_Integration_ SupervisedDispatch (ensureserver_integration_test.go) and
 // supervised_integration_test.go already do.

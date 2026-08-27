@@ -581,6 +581,11 @@ func (c *Client) DocumentSymbols(ctx context.Context, fileURI string) ([]Documen
 	return symbols, nil
 }
 
+// Closed reports whether Close or Kill has already torn this client down.
+func (c *Client) Closed() bool {
+	return c.closed
+}
+
 // Close runs the graceful LSP shutdown handshake (shutdown request, exit
 // notification) and waits for the subprocess to exit. It is best-effort and
 // idempotent, for the normal end of a run: a failed shutdown RPC is logged
@@ -589,11 +594,6 @@ func (c *Client) DocumentSymbols(ctx context.Context, fileURI string) ([]Documen
 // nice-to-have, not a correctness requirement. When the client was built
 // with no subprocess (NewClientFromRW), close only closes the
 // transport.
-// Closed reports whether Close or Kill has already torn this client down.
-func (c *Client) Closed() bool {
-	return c.closed
-}
-
 func (c *Client) Close() {
 	if c.closed {
 		return
