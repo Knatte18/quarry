@@ -86,7 +86,7 @@ func TestReferences_Integration(t *testing.T) {
 		pos := findFuncPosition(t, detectFile, "DetectLanguage")
 
 		// Since the engine-supervised-flip batch, Go's registry entry
-		// dispatches through ensureServer -> ensureSupervised, which spawns a
+		// dispatches through daemon.EnsureServer -> ensureSupervised, which spawns a
 		// quarry-owned daemon that teardownConnection's
 		// daemon.ConnKindSupervised branch deliberately never kills. StateDir
 		// is required (Options no
@@ -188,7 +188,7 @@ func main() {}
 // TestReferences_InFile_Integration proves the Query.InFile resolve path — documentSymbol ->
 // position -> textDocument/references — end to end against a real gopls, the InFile analogue of
 // TestReferences_Integration's Query.Pos coverage above.
-// Both subcases route through ensureServer's now- live supervised dispatch (registry.BuiltinRegistry()'s
+// Both subcases route through daemon.EnsureServer's now- live supervised dispatch (registry.BuiltinRegistry()'s
 // Go entry has HasNativeDaemon: true), which spawns a quarry-owned daemon that teardownConnection's
 // daemon.ConnKindSupervised branch deliberately never kills — each subcase gives its own isolated
 // t.TempDir() as StateDir and reaps the spawned daemon in t.Cleanup, exactly like

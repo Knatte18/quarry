@@ -512,13 +512,13 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 }
 
 // TestReferences_HasNativeDaemonRoutesThroughEnsureServer proves that a registry entry with
-// HasNativeDaemon: true takes the ensureServer path, not the legacy newLSPClient(entry.Command)
+// HasNativeDaemon: true takes the daemon.EnsureServer path, not the legacy newLSPClient(entry.Command)
 // path — without spawning a real gopls.
 // It swaps installGoToolchain for a fake that always fails with a distinct, recognizable error,
 // then asserts References's returned error wraps that exact sentinel: only reachable if the call
-// chain was References -> lookup -> acquireConnection -> ensureServer -> resolveGoToolchain -> the
+// chain was References -> lookup -> acquireConnection -> daemon.EnsureServer -> resolveGoToolchain -> the
 // fake installer.
-// ensureServer resolves the toolchain directly and returns on failure before ever attempting
+// daemon.EnsureServer resolves the toolchain directly and returns on failure before ever attempting
 // ensureSupervised or ensureNative, so this fake-install failure never reaches either strategy.
 // Had References instead taken the legacy path, it would fail with quarryengine.ErrServerNotFoundSentinel from a
 // literal, unresolved "gopls" lookup on $PATH — a categorically different error this assertion
@@ -550,7 +550,7 @@ func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 		Timeout:   5 * time.Second,
 	})
 	if !errors.Is(err, errFakeInstallRefused) {
-		t.Errorf("References() with HasNativeDaemon: true err = %v; want errors.Is(err, errFakeInstallRefused) (proving the ensureServer -> resolveGoToolchain path was taken, not the legacy newLSPClient path)", err)
+		t.Errorf("References() with HasNativeDaemon: true err = %v; want errors.Is(err, errFakeInstallRefused) (proving the daemon.EnsureServer -> resolveGoToolchain path was taken, not the legacy newLSPClient path)", err)
 	}
 }
 

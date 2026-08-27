@@ -84,7 +84,7 @@ func TestBuiltins_NonGoLanguagesHaveNoDaemonStrategy(t *testing.T) {
 	// Go zero values -- this is the "third, implicit no-daemon-strategy
 	// mode" the registry-scope decision requires, so a caller checking
 	// entry.HasNativeDaemon for these languages always gets false and never
-	// invokes ensureServer.
+	// invokes daemon.EnsureServer.
 	tests := []string{"python", "csharp", "typescript", "rust"}
 	b := builtins()
 	for _, lang := range tests {

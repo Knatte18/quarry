@@ -369,7 +369,7 @@ func toSortedReferences(locations []lsp.Location) []Reference {
 }
 
 // trimFileURI strips the "file://" scheme from an LSP document URI, the
-// same conversion lsp.FormatLocation (position.go) applies.
+// same conversion lsp.FormatLocation (wire.go) applies.
 func trimFileURI(uri string) string {
 	return strings.TrimPrefix(uri, "file://")
 }
