@@ -31,6 +31,7 @@ Two batch-local notes. First, cards run in the listed order and the order matter
 ### Card 3: Create the `quarryengine` root package
 
 - **Context:**
+  - `quarry/ensureserver.go`
   - `quarry/lspclient.go`
   - `quarry/refs.go`
 - **Edits:** none
@@ -112,12 +113,13 @@ Two batch-local notes. First, cards run in the listed order and the order matter
   - `internal/quarryengine/daemon/toolchain.go`
 - **Edits:**
   - `internal/quarryengine/daemon/toolchain_test.go`
+  - `internal/quarryengine/daemon/toolchain_integration_test.go`
   - `internal/quarryengine/daemon/ensureserver_test.go`
 - **Creates:**
   - `internal/quarryengine/daemon/daemontest/daemontest.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `internal/quarryengine/daemon/daemontest/daemontest.go` declaring `package daemontest`, holding the two helpers lifted from `toolchain_test.go` and exported: `WithFakeInstaller(t *testing.T, fake daemon.ToolchainInstaller)` replacing `daemon.InstallGoToolchain` and restoring the previous value via `t.Cleanup`, and `WithTempUserCacheDir(t *testing.T) string` replacing `daemon.UserCacheDir` with a closure returning a fresh `t.TempDir()`, restoring via `t.Cleanup`, and returning that directory. Preserve each helper's existing doc comment, adjusted for the new name. Give the package its own doc comment stating that it contains no production code, exists solely so tests outside `package daemon` can drive `daemon`'s two injection points, and is imported only from `_test.go` files. Delete `withFakeInstaller` and `withTempUserCacheDir` from `toolchain_test.go` and rewrite its three call sites (lines 43, 50, 88, 93, 133, 140) plus `toolchain_integration_test.go`'s direct `userCacheDir` assignment at line 28 to use the `daemontest` helpers. Rewrite `ensureserver_test.go`'s two call sites (lines 336, 342) the same way.
+- **Requirements:** Create `internal/quarryengine/daemon/daemontest/daemontest.go` declaring `package daemontest`, holding the two helpers lifted from `toolchain_test.go` and exported: `WithFakeInstaller(t *testing.T, fake daemon.ToolchainInstaller)` replacing `daemon.InstallGoToolchain` and restoring the previous value via `t.Cleanup`, and `WithTempUserCacheDir(t *testing.T) string` replacing `daemon.UserCacheDir` with a closure returning a fresh `t.TempDir()`, restoring via `t.Cleanup`, and returning that directory. Preserve each helper's existing doc comment, adjusted for the new name. Give the package its own doc comment stating that it contains no production code, exists solely so tests outside `package daemon` can drive `daemon`'s two injection points, and is imported only from `_test.go` files. Delete `withFakeInstaller` and `withTempUserCacheDir` from `toolchain_test.go` and rewrite its six call sites across three tests (lines 43, 50, 88, 93, 133, 140 — one `withTempUserCacheDir` and one `withFakeInstaller` per test) plus `toolchain_integration_test.go`'s direct `userCacheDir` assignment at line 28 to use the `daemontest` helpers. Rewrite `ensureserver_test.go`'s two call sites (lines 336, 342) the same way.
 - **Commit:** `test(quarry): add the daemontest package for the cross-package toolchain seam`
 
 ### Card 8: Create the `query` package
@@ -128,6 +130,8 @@ Two batch-local notes. First, cards run in the listed order and the order matter
   - `internal/quarryengine/lsp/lspclient.go`
   - `internal/quarryengine/lsp/wire.go`
   - `internal/quarryengine/registry/registry.go`
+  - `internal/quarryengine/registry/load.go`
+  - `internal/quarryengine/registry/detect.go`
   - `internal/quarryengine/daemon/ensureserver.go`
   - `internal/quarryengine/daemon/daemontest/daemontest.go`
 - **Edits:** none
@@ -151,6 +155,8 @@ Two batch-local notes. First, cards run in the listed order and the order matter
   - `internal/quarryengine/errors.go`
   - `internal/quarryengine/position.go`
   - `internal/quarryengine/registry/registry.go`
+  - `internal/quarryengine/registry/load.go`
+  - `internal/quarryengine/registry/detect.go`
   - `internal/quarryengine/daemon/daemonstate.go`
   - `internal/quarryengine/query/refs.go`
   - `internal/quarryengine/query/symbol.go`
