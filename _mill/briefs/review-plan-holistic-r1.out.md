@@ -1,0 +1,63 @@
+MILL_REVIEW_BEGIN
+# Review: Improve gopls query precision (build tags + scoping) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: Claude Opus (Anthropic), reasoning-heavy configuration; exact build self-reported as "Opus 5"
+reviewed_file: plan/
+date: 2026-08-27
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 9 leaves batch 1's spike test uncompilable
+**Location:** batch 3 / card 9 (vs batch 1 / card 3)
+**Issue:** Card 3 creates `internal/quarryengine/query/implementation_spike_lsp_test.go`, which calls `client.Initialize(ctx, rootURI)`; card 9 changes that signature to three parameters and lists only `lsp/lspclient_test.go` as a call-site to update, so batch 3's own leading `go vet -tags lsp ./...` (and the overview's module-wide vet) fails.
+**Fix:** Add the spike file to card 9's (or card 11's) `Edits:` with an explicit requirement to pass a nil map.
+
+### [BLOCKING:design] Supervised tag partitioning has no disposition at the engine layer
+**Location:** batch 3 / cards 10–11, batch 4 / card 17
+**Issue:** `Options.BuildTags` becomes public via `quarry.Options`, but the only thing that stops two tag sets sharing one supervised daemon is the `tags-<hex>` segment `internal/cli/paths.go` appends (card 19); card 10 makes the *native* path private on non-nil `initOptions` and says nothing about supervised, so a facade/SDK caller that sets `BuildTags` with a fixed `StateDir` silently gets another tag set's daemon and wrong results.
+**Fix:** State the disposition on one side — either document the per-tag-set `StateDir` obligation on `Options.StateDir`/`BuildTags` in card 11, or key the segment inside `acquireConnection`/`EnsureServer` instead of in the CLI.
+
+### [BLOCKING:consistency] Card 25 asserts a count card 4 does not record
+**Location:** batch 6 / card 25 (vs batch 1 / card 4)
+**Issue:** Card 4 records the post-filter count of `textDocument/references` results, which include the declaration site; card 25 asserts "the exact reported count" of `assert-no-callers`'s `callers` list, which is that set minus `declRefs` (and minus `--except`). The two numbers cannot match, and card 25 forbids adjusting the assertion.
+**Fix:** Have card 4 record the declaration-excluded caller count as a separately named figure, and have card 25 name that figure specifically.
+
+### [BLOCKING:consistency] Card 24 offers a tag-keying option the query layer does not have
+**Location:** batch 6 / card 24
+**Issue:** "Use two different state directories … or let the tag-keying produce them" — the `tags-<hex>` keying lives in `internal/cli/paths.go:resolveStateDir`, not in `query`, so a `query.References`-level test can only take the first branch.
+**Fix:** Drop the second alternative and require two explicit `t.TempDir()` state directories.
+
+### [BLOCKING:consistency] lsp package doc contradicts card 1
+**Location:** batch 1 / card 1
+**Issue:** `internal/quarryengine/lsp/lspclient.go`'s package comment enumerates the exact request surface and states "No callHierarchy, no implementation"; card 1 adds `textDocument/implementation` but requires no update to that comment, leaving a false statement in the file it edits.
+**Fix:** Add a requirement to update the package doc's method enumeration and delete the "no implementation" clause.
+
+### [BLOCKING:consistency] Stale assert-no-callers comments survive cards 20–21
+**Location:** batch 5 / cards 20–21
+**Issue:** `internal/cli/cli.go`'s `filterWithin` call-site comment (above line 625) tells the reader `--within` exists because an unscoped interface-method check reports false violations — the exact claim card 21 declares no longer true — and `emitAmbiguousOrError`'s doc comment names "References/Definition errors" after card 20 routes `Callers` errors through it. Neither card updates either.
+**Fix:** Name both comments in card 20's requirements alongside the `quarry.Definition` comment it already deletes.
+
+### [NIT:scope] buildOptions call-site count is wrong
+**Location:** batch 5 / card 18
+**Issue:** The card says "all six existing `buildOptions` call sites"; `internal/cli/cli.go` has seven (lines 179, 194, 316, 331, 409, 432, 595).
+**Fix:** Say seven, or drop the count and say "every call site".
+
+### [NIT:scope] Two cards name identifiers from files absent from Context
+**Location:** batch 3 / card 12, batch 4 / card 16
+**Issue:** Card 12's requirements name `Definition` (declared in `query/definition.go`, only `definition_test.go` is listed); card 16 requires calling `teardownConnection` and `daemon.ConnKindNative/Supervised/Legacy` with neither `query/refs.go` nor `daemon/ensureserver.go` in `Context:`.
+**Fix:** Add `internal/quarryengine/query/definition.go` to card 12 and `internal/quarryengine/query/refs.go` + `internal/quarryengine/daemon/ensureserver.go` to card 16.
+
+### [NIT:design] Card 29 is not re-runnable
+**Location:** batch 7 / card 29
+**Issue:** The card runs `gh issue create` twice, produces no commit and no file, and has no check for issues it already filed, so a batch re-run duplicates both issues with nothing to detect it.
+**Fix:** Require a `gh issue list` title check before each create.
+
+## Verdict
+
+REQUEST_CHANGES
+One card breaks a prior batch's build; several cross-batch claims disagree.
+MILL_REVIEW_END

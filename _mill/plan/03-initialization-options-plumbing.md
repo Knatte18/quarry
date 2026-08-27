@@ -71,15 +71,17 @@ It is one batch because the `Initialize` signature change, the two `EnsureServer
   - `internal/quarryengine/query/symbol.go`
   - `internal/quarryengine/query/refs_test.go`
   - `internal/quarryengine/query/symbol_test.go`
+  - `internal/quarryengine/query/implementation_spike_lsp_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
   - Add a `BuildTags []string` field to `Options` in `internal/quarryengine/query/refs.go`, documented as the normalized build-tag set, with the explicit note that the engine re-normalizes it defensively on entry because `Options` is public through the facade and an unnormalized value would otherwise fail silently — unlike `StateDir`, whose misuse fails loudly and which stays entirely the caller's obligation.
+  - Document, on both the new `BuildTags` field and the existing `StateDir` field, the obligation a non-CLI caller inherits: the supervised daemon is partitioned by `StateDir` alone, so a caller that varies `BuildTags` while holding `StateDir` fixed will have two tag sets served by one daemon and will get the other tag set's answers. `internal/cli` discharges this by appending a `tags-<hex>` segment to the resolved leaf; a facade or SDK caller must supply a distinct `StateDir` per distinct tag set itself. State that this is the same "populating it is entirely the caller's obligation" contract `StateDir` already carries, now with a second reason, and that the engine deliberately does not re-key the directory on the caller's behalf.
   - Add an unexported helper in `internal/quarryengine/query/refs.go`, `func detectAndRender(opts Options) (string, registry.Entry, map[string]any, error)`, that calls `registry.DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)`, then `registry.NormalizeBuildTags(opts.BuildTags...)`, then `registry.RenderInitializationOptions(lang, entry, tags)`, returning the language, the entry, the rendered map, and any error. Both a detection failure and `ErrBuildTagsUnsupported` come back through its error return unchanged.
   - Replace the `registry.DetectLanguage` call at the top of `lookup` and the identical one at the top of `Symbol` in `internal/quarryengine/query/symbol.go` with `detectAndRender`, so the hard error is raised after detection (it must name the language) and before `acquireConnection` is ever called. A query that cannot honour its own build-tag scoping must not pay for a server launch.
   - Add a trailing `initOptions map[string]any` parameter to `acquireConnection` and pass it to `daemon.EnsureServer` and to the legacy path's own `client.Initialize` call inside that function.
-  - Update the `client.Initialize` call sites in `internal/quarryengine/query/refs_test.go` and `internal/quarryengine/query/symbol_test.go` to pass a nil map, leaving those tests' behaviour unchanged.
+  - Update the `client.Initialize` call sites in `internal/quarryengine/query/refs_test.go`, `internal/quarryengine/query/symbol_test.go`, and the `//go:build lsp`-tagged `internal/quarryengine/query/implementation_spike_lsp_test.go` that batch 1 created, to pass a nil map, leaving those tests' behaviour unchanged. The spike file is invisible to the hermetic tier, so a missed call site there surfaces only in this batch's leading `go vet -tags lsp ./...` — update it deliberately rather than discovering it from a vet failure.
 - **Commit:** `feat(query): carry BuildTags on Options and hard-error before spawn for entries without a template`
 
 ### Card 12: build-tag behaviour tests in query
@@ -87,6 +89,7 @@ It is one batch because the `Initialize` signature change, the two `EnsureServer
 - **Context:**
   - `internal/quarryengine/query/refs.go`
   - `internal/quarryengine/query/symbol.go`
+  - `internal/quarryengine/query/definition.go`
   - `internal/quarryengine/query/definition_test.go`
   - `internal/quarryengine/registry/initoptions.go`
   - `internal/quarryengine/errors.go`

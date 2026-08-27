@@ -94,8 +94,10 @@ Batch-local decision, restating the overview's `verification-is-fail-closed-ever
 - **Context:**
   - `internal/quarryengine/query/callers.go`
   - `internal/quarryengine/query/verify.go`
+  - `internal/quarryengine/query/refs.go`
   - `internal/quarryengine/query/symbol_test.go`
   - `internal/quarryengine/query/refs_test.go`
+  - `internal/quarryengine/daemon/ensureserver.go`
   - `internal/quarryengine/lsp/lspclient.go`
 - **Edits:** none
 - **Creates:**
