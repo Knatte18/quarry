@@ -47,7 +47,9 @@ batches:
     commit_sha: 14f91c65b18262eda4207d993db6f8c4d3454fb4
     verify_baseline_failures: []
   - name: engine-repackage
-    state: pending
+    state: running
+    implementer_session: bcdf2ffd-245d-4fb9-a69b-d01a9333ed00
+    start_sha: a0cabcee053ac38e97e99c1f32a3a035cd219d33
     verify_baseline_failures: []
   - name: architecture-guards
     state: pending
