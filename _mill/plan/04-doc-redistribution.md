@@ -38,6 +38,7 @@ It has no interface for a later batch to consume, and it does not overlap with b
 
 - **Context:**
   - `internal/quarryengine/doc.go`
+  - `internal/quarryengine/daemon/ensureserver.go`
   - `internal/quarryengine/lsp/wire.go`
   - `internal/quarryengine/registry/load.go`
   - `internal/quarryengine/registry/detect.go`
@@ -48,12 +49,12 @@ It has no interface for a later batch to consume, and it does not overlap with b
 - **Edits:**
   - `internal/quarryengine/lsp/lspclient.go`
   - `internal/quarryengine/registry/registry.go`
-  - `internal/quarryengine/daemon/ensureserver.go`
   - `internal/quarryengine/query/refs.go`
-- **Creates:** none
+- **Creates:**
+  - `internal/quarryengine/daemon/doc.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Give each of the four subpackages a package doc comment, hosted at the head of the named file, carrying the prose relocated from the old `quarry/doc.go`. `lsp` (in `lspclient.go`): "The generalized LSP client" minus its resolver paragraphs — the eight-method wire description, the JSON-RPC framing, and the per-phase timeout/teardown rules — plus the position-conversion paragraph that explains why the byte column is re-read against the file to reach LSP's UTF-16 offset. `registry` (in `registry.go`): "The language-server registry" whole, including the built-ins, the `servers.yaml` overlay semantics, and the detection precedence order. `daemon` (in `ensureserver.go`): "The EnsureServer seam", "Go toolchain manager", and "Daemon state and concurrency" — three sections, so if the resulting comment dwarfs `ensureserver.go` itself, host it in a new `internal/quarryengine/daemon/doc.go` instead and say so in the commit message. `query` (in `refs.go`): the `workspace/symbol` resolver paragraphs, the `--in-file`/`documentSymbol` resolver paragraphs, and the zero/one/many candidate mapping to `ErrSymbolNotFound`/success/`ErrAmbiguousSymbol` — these sit inside the old doc's "The generalized LSP client" section at lines 65–87 but describe `resolvePosition` in `refs.go`, so this one section splits mid-body rather than moving whole. In every relocated paragraph, retarget renamed identifiers the same way card 13 does, and retarget file references to their new paths. Preserve the existing per-file doc comments already at the head of each edited file — the package comment goes above them, or merges with them where they overlap; do not delete file-level prose that describes that specific file.
+- **Requirements:** Give each of the four subpackages a package doc comment, hosted at the head of the named file, carrying the prose relocated from the old `quarry/doc.go`. `lsp` (in `lspclient.go`): "The generalized LSP client" minus its resolver paragraphs — the eight-method wire description, the JSON-RPC framing, and the per-phase timeout/teardown rules — plus the position-conversion paragraph that explains why the byte column is re-read against the file to reach LSP's UTF-16 offset. `registry` (in `registry.go`): "The language-server registry" whole, including the built-ins, the `servers.yaml` overlay semantics, and the detection precedence order. `daemon` (in a new `internal/quarryengine/daemon/doc.go`, NOT in `ensureserver.go`): "The EnsureServer seam", "Go toolchain manager", and "Daemon state and concurrency". This one gets its own file unconditionally rather than as a judgement call — three relocated sections would dwarf `ensureserver.go`'s own head, and a contingent create is not something a plan can leave to the implementer without also leaving `All Files Touched` indeterminate. `daemon/doc.go` contains the package clause and the package doc comment only, no declarations. `query` (in `refs.go`): the `workspace/symbol` resolver paragraphs, the `--in-file`/`documentSymbol` resolver paragraphs, and the zero/one/many candidate mapping to `ErrSymbolNotFound`/success/`ErrAmbiguousSymbol` — these sit inside the old doc's "The generalized LSP client" section at lines 65–87 but describe `resolvePosition` in `refs.go`, so this one section splits mid-body rather than moving whole. In every relocated paragraph, retarget renamed identifiers the same way card 13 does, and retarget file references to their new paths. Preserve the existing per-file doc comments already at the head of each edited file — the package comment goes above them, or merges with them where they overlap; do not delete file-level prose that describes that specific file.
 - **Commit:** `docs(quarry): relocate package-specific doc sections into their subpackages`
 
 ## Batch Tests

@@ -107,6 +107,7 @@ batches:
 - `internal/quarryengine/daemon/daemonstate.go`
 - `internal/quarryengine/daemon/daemonstate_test.go`
 - `internal/quarryengine/daemon/daemontest/daemontest.go`
+- `internal/quarryengine/daemon/doc.go`
 - `internal/quarryengine/daemon/ensureserver.go`
 - `internal/quarryengine/daemon/ensureserver_integration_test.go`
 - `internal/quarryengine/daemon/ensureserver_test.go`
