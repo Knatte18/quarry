@@ -54,7 +54,9 @@ batches:
     commit_sha: 84682a68dfd5637d3c65d9c0f5a9295e4d4449dd
     verify_baseline_failures: []
   - name: architecture-guards
-    state: pending
+    state: running
+    implementer_session: 85f90eed-b778-41e0-b8be-569eedd90fd0
+    start_sha: ead276396f06444308c78fa5795b763e1cb554bb
     verify_baseline_failures: []
   - name: doc-redistribution
     state: pending
