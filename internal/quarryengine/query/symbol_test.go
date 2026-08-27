@@ -6,23 +6,27 @@
 // so these tests call symbolFromClient directly against a hand-built client rather than driving
 // Symbol's full DetectLanguage/acquireConnection machinery, which would require a real spawn.
 
-package quarry
+package query
 
 import (
 	"context"
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
 // TestSymbol_NonExistentServerBinaryYieldsErrServerNotFound points a synthetic registry entry's
 // Command at a binary that cannot exist on $PATH and asserts Symbol maps the resulting
-// exec.LookPath failure to ErrServerNotFoundSentinel — the same legacy-path regression proof
+// exec.LookPath failure to quarryengine.ErrServerNotFoundSentinel — the same legacy-path regression proof
 // definition_test.go's equivalent runs for Definition.
 // This one does exercise the full Symbol function, since it never reaches a connection at all.
 func TestSymbol_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 	dir := t.TempDir()
-	reg := Registry{
+	reg := registry.Registry{
 		"go": {
 			Markers:     []string{"go.mod"},
 			Match:       "any",
@@ -41,8 +45,8 @@ func TestSymbol_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 		Query:     Query{Symbol: "Resolve"},
 		Timeout:   5 * time.Second,
 	})
-	if !errors.Is(err, ErrServerNotFoundSentinel) {
-		t.Errorf("Symbol() with a non-existent server binary err = %v; want errors.Is(err, ErrServerNotFoundSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrServerNotFoundSentinel) {
+		t.Errorf("Symbol() with a non-existent server binary err = %v; want errors.Is(err, quarryengine.ErrServerNotFoundSentinel)", err)
 	}
 }
 
@@ -55,7 +59,7 @@ func TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous(t *testing
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -115,17 +119,17 @@ func TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous(t *testing
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
-	matches, err := symbolFromClient(ctx, client, "go", Entry{Command: []string{"gopls"}}, "Foo", 5*time.Second)
+	matches, err := symbolFromClient(ctx, client, "go", registry.Entry{Command: []string{"gopls"}}, "Foo", 5*time.Second)
 	<-done
 	if err != nil {
 		t.Fatalf("symbolFromClient() returned unexpected error: %v", err)
 	}
-	if errors.Is(err, ErrAmbiguousSymbolSentinel) {
-		t.Error("symbolFromClient() err unexpectedly matches ErrAmbiguousSymbolSentinel; Symbol must never collapse multiple candidates to ambiguous")
+	if errors.Is(err, quarryengine.ErrAmbiguousSymbolSentinel) {
+		t.Error("symbolFromClient() err unexpectedly matches quarryengine.ErrAmbiguousSymbolSentinel; Symbol must never collapse multiple candidates to ambiguous")
 	}
 
 	if len(matches) != 2 {
@@ -143,13 +147,13 @@ func TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous(t *testing
 }
 
 // TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound asserts that a workspace/symbol
-// response with zero candidates maps to ErrSymbolNotFoundSentinel.
+// response with zero candidates maps to quarryengine.ErrSymbolNotFoundSentinel.
 func TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -179,14 +183,14 @@ func TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
-	_, err := symbolFromClient(ctx, client, "go", Entry{Command: []string{"gopls"}}, "NoSuchSymbol", 5*time.Second)
+	_, err := symbolFromClient(ctx, client, "go", registry.Entry{Command: []string{"gopls"}}, "NoSuchSymbol", 5*time.Second)
 	<-done
-	if !errors.Is(err, ErrSymbolNotFoundSentinel) {
-		t.Errorf("symbolFromClient() err = %v; want errors.Is(err, ErrSymbolNotFoundSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrSymbolNotFoundSentinel) {
+		t.Errorf("symbolFromClient() err = %v; want errors.Is(err, quarryengine.ErrSymbolNotFoundSentinel)", err)
 	}
 }
 
@@ -200,7 +204,7 @@ func TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound(t *testing.T) {
 func TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	initDone := make(chan struct{})
@@ -215,7 +219,7 @@ func TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest(t *testing
 			return
 		}
 		// Deliberately omit workspaceSymbolProvider so
-		// client.supportsWorkspaceSymbol() reports false.
+		// client.SupportsWorkspaceSymbol() reports false.
 		if !server.respond(t, req.ID, map[string]any{"capabilities": map[string]any{}}) {
 			return
 		}
@@ -224,12 +228,12 @@ func TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest(t *testing
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-initDone
 
-	if client.supportsWorkspaceSymbol() {
+	if client.SupportsWorkspaceSymbol() {
 		t.Fatal("supportsWorkspaceSymbol() = true; want false (server omitted workspaceSymbolProvider)")
 	}
 
@@ -247,9 +251,9 @@ func TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest(t *testing
 		}
 	}()
 
-	_, err := symbolFromClient(ctx, client, "go", Entry{Command: []string{"gopls"}}, "Resolve", 5*time.Second)
-	if !errors.Is(err, ErrResolverUnsupportedSentinel) {
-		t.Errorf("symbolFromClient() err = %v; want errors.Is(err, ErrResolverUnsupportedSentinel)", err)
+	_, err := symbolFromClient(ctx, client, "go", registry.Entry{Command: []string{"gopls"}}, "Resolve", 5*time.Second)
+	if !errors.Is(err, quarryengine.ErrResolverUnsupportedSentinel) {
+		t.Errorf("symbolFromClient() err = %v; want errors.Is(err, quarryengine.ErrResolverUnsupportedSentinel)", err)
 	}
 
 	clientTransport.Close()

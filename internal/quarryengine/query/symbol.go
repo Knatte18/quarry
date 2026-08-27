@@ -2,15 +2,19 @@
 // Unlike References/Definition (refs.go, definition.go), Symbol does not share the lookup pipeline
 // and never calls resolvePosition at all — per the plan's symbol-semantics decision, it calls
 // workspace/symbol directly and returns every candidate as a success, never collapsing multiple
-// matches down to an ErrAmbiguousSymbol failure, since returning every match is the entire point of
+// matches down to an quarryengine.ErrAmbiguousSymbol failure, since returning every match is the entire point of
 // a symbol search.
 
-package quarry
+package query
 
 import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
 // SymbolMatch is one workspace/symbol search result: the symbol's display name, its LSP SymbolKind
@@ -28,22 +32,22 @@ type SymbolMatch struct {
 
 // symbolFromClient runs workspace/symbol against client for query and maps
 // every candidate to a SymbolMatch, deliberately returning all results rather than
-// collapsing multiple candidates to ErrAmbiguousSymbol. It takes only the bare values
+// collapsing multiple candidates to quarryengine.ErrAmbiguousSymbol. It takes only the bare values
 // its logic needs (not full Options), making it testable against a hand-built client.
-func symbolFromClient(ctx context.Context, client *lspClient, lang string, entry Entry, query string, timeout time.Duration) ([]SymbolMatch, error) {
-	if !client.supportsWorkspaceSymbol() {
-		return nil, &ErrResolverUnsupported{Language: lang, Server: entry.Command[0]}
+func symbolFromClient(ctx context.Context, client *lsp.Client, lang string, entry registry.Entry, query string, timeout time.Duration) ([]SymbolMatch, error) {
+	if !client.SupportsWorkspaceSymbol() {
+		return nil, &quarryengine.ErrResolverUnsupported{Language: lang, Server: entry.Command[0]}
 	}
 
 	symbolCtx, symbolCancel := context.WithTimeout(ctx, timeout)
 	defer symbolCancel()
-	candidates, err := client.workspaceSymbol(symbolCtx, query)
+	candidates, err := client.WorkspaceSymbol(symbolCtx, query)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(candidates) == 0 {
-		return nil, &ErrSymbolNotFound{Symbol: query}
+		return nil, &quarryengine.ErrSymbolNotFound{Symbol: query}
 	}
 
 	// Every candidate becomes a result, unlike resolvePosition's
@@ -65,7 +69,7 @@ func symbolFromClient(ctx context.Context, client *lspClient, lang string, entry
 // Symbol resolves opts.Query.Symbol via workspace/symbol against the language server for
 // opts.TargetDir and returns every candidate match.
 func Symbol(ctx context.Context, opts Options) ([]SymbolMatch, error) {
-	lang, entry, err := DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
+	lang, entry, err := registry.DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
 	if err != nil {
 		return nil, err
 	}
@@ -85,15 +89,15 @@ func Symbol(ctx context.Context, opts Options) ([]SymbolMatch, error) {
 
 	matches, err := symbolFromClient(ctx, client, lang, entry, opts.Query.Symbol, opts.Timeout)
 	if err != nil {
-		if errors.Is(err, ErrServerTimeoutSentinel) {
+		if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
 			timedOut = true
 		}
 		// opts.TargetDir is only available here, not inside
-		// symbolFromClient, so ErrSymbolNotFound's TargetDir field is filled
+		// symbolFromClient, so quarryengine.ErrSymbolNotFound's TargetDir field is filled
 		// in at this one call site rather than threaded through as an extra
 		// parameter symbolFromClient's test callers would otherwise have to
 		// supply.
-		var notFound *ErrSymbolNotFound
+		var notFound *quarryengine.ErrSymbolNotFound
 		if errors.As(err, &notFound) {
 			notFound.TargetDir = opts.TargetDir
 		}

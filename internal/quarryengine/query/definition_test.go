@@ -4,20 +4,23 @@
 // exec.LookPath failing for a nonexistent binary happens before any subprocess is spawned, so this
 // test needs no //go:build integration tag and no installed language server.
 
-package quarry
+package query
 
 import (
 	"context"
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
 // TestDefinition_NonExistentServerBinaryYieldsErrServerNotFound verifies Definition maps missing
 // servers to ErrServerNotFoundSentinel.
 func TestDefinition_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 	dir := t.TempDir()
-	reg := Registry{
+	reg := registry.Registry{
 		"go": {
 			Markers:     []string{"go.mod"},
 			Match:       "any",
@@ -36,7 +39,7 @@ func TestDefinition_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T)
 		Query:     Query{Symbol: "Resolve"},
 		Timeout:   5 * time.Second,
 	})
-	if !errors.Is(err, ErrServerNotFoundSentinel) {
+	if !errors.Is(err, quarryengine.ErrServerNotFoundSentinel) {
 		t.Errorf("Definition() with a non-existent server binary err = %v; want errors.Is(err, ErrServerNotFoundSentinel)", err)
 	}
 }

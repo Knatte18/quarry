@@ -3,15 +3,19 @@
 // calls once that pipeline has a position in hand — textDocument/definition instead of
 // textDocument/references, per the plan's definition-semantics decision.
 
-package quarry
+package query
 
-import "context"
+import (
+	"context"
+
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
+)
 
 // Definition resolves opts.Query against the language server for opts.TargetDir and returns the
 // location(s) of its definition.
 // It uses the same resolution pipeline as References, differing only in the LSP method called.
 func Definition(ctx context.Context, opts Options) ([]Reference, error) {
-	return lookup(ctx, opts, func(ctx context.Context, client *lspClient, fileURI string, pos lspPosition) ([]lspLocation, error) {
-		return client.definition(ctx, fileURI, pos)
+	return lookup(ctx, opts, func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position) ([]lsp.Location, error) {
+		return client.Definition(ctx, fileURI, pos)
 	})
 }

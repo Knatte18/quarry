@@ -2,33 +2,171 @@
 // References's error-mapping paths that do not require a real language server.
 // exec.LookPath failing for a nonexistent binary happens before any subprocess is spawned, so this
 // test needs no //go:build integration tag and no installed language server.
+// It builds clients over newPipeTransportPair/fakeServer, a fake-transport harness duplicated
+// from internal/quarryengine/lsp/lspclient_test.go, since package lsp's own copy is a
+// _test.go-only helper and therefore not importable from here, per the test-support-helpers
+// Shared Decision.
 
-package quarry
+package query
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/daemon/daemontest"
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
+
+// pipeTransport wires client and server sides over two io.Pipes.
+type pipeTransport struct {
+	io.Reader
+	io.Writer
+	closers []io.Closer
+}
+
+func (p pipeTransport) Close() error {
+	var err error
+	for _, c := range p.closers {
+		if cerr := c.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}
+	return err
+}
+
+// newPipeTransportPair returns two linked transports for client and server.
+func newPipeTransportPair() (client, server pipeTransport) {
+	clientReadServerWrite, serverWriteClientRead := io.Pipe()
+	serverReadClientWrite, clientWriteServerRead := io.Pipe()
+
+	client = pipeTransport{
+		Reader:  clientReadServerWrite,
+		Writer:  clientWriteServerRead,
+		closers: []io.Closer{clientReadServerWrite, clientWriteServerRead},
+	}
+	server = pipeTransport{
+		Reader:  serverReadClientWrite,
+		Writer:  serverWriteClientRead,
+		closers: []io.Closer{serverReadClientWrite, serverWriteClientRead},
+	}
+	return client, server
+}
+
+// fakeServer reads and writes Content-Length-framed JSON-RPC messages.
+type fakeServer struct {
+	r *bufio.Reader
+	w io.Writer
+}
+
+func newFakeServer(rw io.ReadWriter) *fakeServer {
+	return &fakeServer{r: bufio.NewReader(rw), w: rw}
+}
+
+// fakeServerMessage mirrors lsp's wire message shape for testing.
+type fakeServerMessage struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+}
+
+// readMessage reads one Content-Length-framed message, reporting errors via t.Errorf.
+func (s *fakeServer) readMessage(t *testing.T) (msg fakeServerMessage, ok bool) {
+	t.Helper()
+	contentLength := -1
+	for {
+		line, err := s.r.ReadString('\n')
+		if err != nil {
+			t.Errorf("fakeServer: read header: %v", err)
+			return fakeServerMessage{}, false
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+		if name, value, cut := strings.Cut(line, ":"); cut && strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+			n, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				t.Errorf("fakeServer: parse Content-Length: %v", err)
+				return fakeServerMessage{}, false
+			}
+			contentLength = n
+		}
+	}
+	if contentLength < 0 {
+		t.Errorf("fakeServer: message missing Content-Length header")
+		return fakeServerMessage{}, false
+	}
+	body := make([]byte, contentLength)
+	if _, err := io.ReadFull(s.r, body); err != nil {
+		t.Errorf("fakeServer: read body: %v", err)
+		return fakeServerMessage{}, false
+	}
+	if err := json.Unmarshal(body, &msg); err != nil {
+		t.Errorf("fakeServer: unmarshal body: %v", err)
+		return fakeServerMessage{}, false
+	}
+	return msg, true
+}
+
+// writeMessage frames and writes a value, reporting errors via t.Errorf.
+func (s *fakeServer) writeMessage(t *testing.T, v any) bool {
+	t.Helper()
+	body, err := json.Marshal(v)
+	if err != nil {
+		t.Errorf("fakeServer: marshal: %v", err)
+		return false
+	}
+	if _, err := fmt.Fprintf(s.w, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
+		t.Errorf("fakeServer: write header: %v", err)
+		return false
+	}
+	if _, err := s.w.Write(body); err != nil {
+		t.Errorf("fakeServer: write body: %v", err)
+		return false
+	}
+	return true
+}
+
+// respond writes a success response for a request ID.
+func (s *fakeServer) respond(t *testing.T, id json.RawMessage, result any) bool {
+	t.Helper()
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Errorf("fakeServer: marshal result: %v", err)
+		return false
+	}
+	return s.writeMessage(t, fakeServerMessage{JSONRPC: "2.0", ID: id, Result: raw})
+}
 
 // TestCollectInFileMatches tests the collectInFileMatches helper on a hierarchical symbol tree.
 func TestCollectInFileMatches(t *testing.T) {
-	tree := []lspDocumentSymbol{
+	tree := []lsp.DocumentSymbol{
 		{
 			Name: "Reader",
-			Children: []lspDocumentSymbol{
-				{Name: "Open", SelectionRange: lspRange{Start: lspPosition{Line: 1, Character: 1}}},
-				{Name: "Close", SelectionRange: lspRange{Start: lspPosition{Line: 2, Character: 1}}},
+			Children: []lsp.DocumentSymbol{
+				{Name: "Open", SelectionRange: lsp.Range{Start: lsp.Position{Line: 1, Character: 1}}},
+				{Name: "Close", SelectionRange: lsp.Range{Start: lsp.Position{Line: 2, Character: 1}}},
 			},
 		},
 		{
 			Name: "Writer",
-			Children: []lspDocumentSymbol{
-				{Name: "Open", SelectionRange: lspRange{Start: lspPosition{Line: 10, Character: 1}}},
+			Children: []lsp.DocumentSymbol{
+				{Name: "Open", SelectionRange: lsp.Range{Start: lsp.Position{Line: 10, Character: 1}}},
 			},
 		},
-		{Name: "TopLevelFunc", SelectionRange: lspRange{Start: lspPosition{Line: 20, Character: 1}}},
+		{Name: "TopLevelFunc", SelectionRange: lsp.Range{Start: lsp.Position{Line: 20, Character: 1}}},
 	}
 
 	tests := []struct {
@@ -63,7 +201,7 @@ func TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart(t *testing.
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -106,7 +244,7 @@ func TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart(t *testing.
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -115,7 +253,7 @@ func TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart(t *testing.
 		Query:     Query{InFile: &InFileQuery{File: "/tmp/example/foo.go", Name: "Open"}},
 		Timeout:   5 * time.Second,
 	}
-	fileURI, pos, err := resolvePosition(ctx, client, opts, "go", Entry{Command: []string{"gopls"}})
+	fileURI, pos, err := resolvePosition(ctx, client, opts, "go", registry.Entry{Command: []string{"gopls"}})
 	<-done
 	if err != nil {
 		t.Fatalf("resolvePosition() returned unexpected error: %v", err)
@@ -123,20 +261,20 @@ func TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart(t *testing.
 	if fileURI != "file:///tmp/example/foo.go" {
 		t.Errorf("resolvePosition() fileURI = %q; want %q", fileURI, "file:///tmp/example/foo.go")
 	}
-	wantPos := lspPosition{Line: 6, Character: 15}
+	wantPos := lsp.Position{Line: 6, Character: 15}
 	if pos != wantPos {
 		t.Errorf("resolvePosition() pos = %+v; want %+v (the match's SelectionRange.Start)", pos, wantPos)
 	}
 }
 
 // TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound asserts a documentSymbol result with
-// no exact-name match maps to ErrSymbolNotFoundSentinel.
+// no exact-name match maps to quarryengine.ErrSymbolNotFoundSentinel.
 func TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -166,7 +304,7 @@ func TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound(t *testing.T) 
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -175,23 +313,23 @@ func TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound(t *testing.T) 
 		Query:     Query{InFile: &InFileQuery{File: "/tmp/example/foo.go", Name: "NoSuchSymbol"}},
 		Timeout:   5 * time.Second,
 	}
-	_, _, err := resolvePosition(ctx, client, opts, "go", Entry{Command: []string{"gopls"}})
+	_, _, err := resolvePosition(ctx, client, opts, "go", registry.Entry{Command: []string{"gopls"}})
 	<-done
-	if !errors.Is(err, ErrSymbolNotFoundSentinel) {
-		t.Errorf("resolvePosition() err = %v; want errors.Is(err, ErrSymbolNotFoundSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrSymbolNotFoundSentinel) {
+		t.Errorf("resolvePosition() err = %v; want errors.Is(err, quarryengine.ErrSymbolNotFoundSentinel)", err)
 	}
 }
 
 // TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol asserts a documentSymbol result
 // with two exact-name matches (e.g.
-// a same-named method on two distinct types in the same file) maps to ErrAmbiguousSymbolSentinel,
+// a same-named method on two distinct types in the same file) maps to quarryengine.ErrAmbiguousSymbolSentinel,
 // with Candidates formatted as file:line:col strings.
 func TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -274,7 +412,7 @@ func TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol(t *testin
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -283,14 +421,14 @@ func TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol(t *testin
 		Query:     Query{InFile: &InFileQuery{File: "/tmp/example/foo.go", Name: "Open"}},
 		Timeout:   5 * time.Second,
 	}
-	_, _, err := resolvePosition(ctx, client, opts, "go", Entry{Command: []string{"gopls"}})
+	_, _, err := resolvePosition(ctx, client, opts, "go", registry.Entry{Command: []string{"gopls"}})
 	<-done
-	var ambiguous *ErrAmbiguousSymbol
+	var ambiguous *quarryengine.ErrAmbiguousSymbol
 	if !errors.As(err, &ambiguous) {
-		t.Fatalf("resolvePosition() err = %v; want *ErrAmbiguousSymbol", err)
+		t.Fatalf("resolvePosition() err = %v; want *quarryengine.ErrAmbiguousSymbol", err)
 	}
-	if !errors.Is(err, ErrAmbiguousSymbolSentinel) {
-		t.Errorf("resolvePosition() err = %v; want errors.Is(err, ErrAmbiguousSymbolSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrAmbiguousSymbolSentinel) {
+		t.Errorf("resolvePosition() err = %v; want errors.Is(err, quarryengine.ErrAmbiguousSymbolSentinel)", err)
 	}
 	want := []string{"/tmp/example/foo.go:3:16", "/tmp/example/foo.go:15:16"}
 	if len(ambiguous.Candidates) != len(want) {
@@ -311,7 +449,7 @@ func TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol(t *testin
 func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	initDone := make(chan struct{})
@@ -326,7 +464,7 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 			return
 		}
 		// Deliberately omit documentSymbolProvider so
-		// client.supportsDocumentSymbol() reports false.
+		// client.SupportsDocumentSymbol() reports false.
 		if !server.respond(t, req.ID, map[string]any{"capabilities": map[string]any{}}) {
 			return
 		}
@@ -335,18 +473,18 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-initDone
 
-	if client.supportsDocumentSymbol() {
+	if client.SupportsDocumentSymbol() {
 		t.Fatal("supportsDocumentSymbol() = true; want false (server omitted documentSymbolProvider)")
 	}
 
 	// Guard the documentSymbol phase: this goroutine blocks on the first
 	// byte of any further message. If resolvePosition's InFile branch
-	// wrongly calls client.documentSymbol anyway, that byte arrives and
+	// wrongly calls client.DocumentSymbols anyway, that byte arrives and
 	// fails the test; otherwise the transport close below unblocks the read
 	// with a transport-closed error, the quiet path this goroutine takes
 	// when nothing was ever sent.
@@ -363,9 +501,9 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 		Query:     Query{InFile: &InFileQuery{File: "/tmp/example/foo.go", Name: "Open"}},
 		Timeout:   5 * time.Second,
 	}
-	_, _, err := resolvePosition(ctx, client, opts, "go", Entry{Command: []string{"gopls"}})
-	if !errors.Is(err, ErrResolverUnsupportedSentinel) {
-		t.Errorf("resolvePosition() err = %v; want errors.Is(err, ErrResolverUnsupportedSentinel)", err)
+	_, _, err := resolvePosition(ctx, client, opts, "go", registry.Entry{Command: []string{"gopls"}})
+	if !errors.Is(err, quarryengine.ErrResolverUnsupportedSentinel) {
+		t.Errorf("resolvePosition() err = %v; want errors.Is(err, quarryengine.ErrResolverUnsupportedSentinel)", err)
 	}
 
 	clientTransport.Close()
@@ -382,16 +520,16 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 // fake installer.
 // ensureServer resolves the toolchain directly and returns on failure before ever attempting
 // ensureSupervised or ensureNative, so this fake-install failure never reaches either strategy.
-// Had References instead taken the legacy path, it would fail with ErrServerNotFoundSentinel from a
+// Had References instead taken the legacy path, it would fail with quarryengine.ErrServerNotFoundSentinel from a
 // literal, unresolved "gopls" lookup on $PATH — a categorically different error this assertion
 // distinguishes from.
 // This is not a proof that a real gopls connection works end to end — that is
 // ensureserver_integration_test.go.
 func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
-	withTempUserCacheDir(t)
+	daemontest.WithTempUserCacheDir(t)
 
 	errFakeInstallRefused := errors.New("fake install refused")
-	withFakeInstaller(t, func(ctx context.Context, version, destDir string) error {
+	daemontest.WithFakeInstaller(t, func(ctx context.Context, version, destDir string) error {
 		return errFakeInstallRefused
 	})
 
@@ -399,7 +537,7 @@ func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 	defer cancel()
 
 	_, err := References(ctx, Options{
-		Registry: Registry{
+		Registry: registry.Registry{
 			"go": {
 				Command:         []string{"gopls"},
 				PinnedVersion:   "v0.0.0-test",
@@ -418,12 +556,12 @@ func TestReferences_HasNativeDaemonRoutesThroughEnsureServer(t *testing.T) {
 
 // TestReferences_NonExistentServerBinaryYieldsErrServerNotFound points a synthetic registry entry's
 // Command at a binary that cannot exist on $PATH and asserts References maps the resulting
-// exec.LookPath failure to ErrServerNotFoundSentinel, mirroring the equivalent //go:build
+// exec.LookPath failure to quarryengine.ErrServerNotFoundSentinel, mirroring the equivalent //go:build
 // integration subtest in refs_integration_test.go but without any dependency on gopls being
 // installed.
 func TestReferences_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T) {
 	dir := t.TempDir()
-	reg := Registry{
+	reg := registry.Registry{
 		"go": {
 			Markers:     []string{"go.mod"},
 			Match:       "any",
@@ -442,7 +580,7 @@ func TestReferences_NonExistentServerBinaryYieldsErrServerNotFound(t *testing.T)
 		Query:     Query{Symbol: "Resolve"},
 		Timeout:   5 * time.Second,
 	})
-	if !errors.Is(err, ErrServerNotFoundSentinel) {
-		t.Errorf("References() with a non-existent server binary err = %v; want errors.Is(err, ErrServerNotFoundSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrServerNotFoundSentinel) {
+		t.Errorf("References() with a non-existent server binary err = %v; want errors.Is(err, quarryengine.ErrServerNotFoundSentinel)", err)
 	}
 }

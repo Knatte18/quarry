@@ -11,7 +11,7 @@
 // spawns no git and needs no git-environment isolation — it spawns only
 // gopls.
 
-package quarry
+package query
 
 import (
 	"context"
@@ -24,13 +24,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/daemon/daemontest"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
 // funcDeclPattern matches top-level function declarations and captures the function name offset.
 var funcDeclPattern = regexp.MustCompile(`^func (?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\(`)
 
-// findFuncPosition returns the Position of a top-level function in a file.
-func findFuncPosition(t *testing.T, file, funcName string) Position {
+// findFuncPosition returns the quarryengine.Position of a top-level function in a file.
+func findFuncPosition(t *testing.T, file, funcName string) quarryengine.Position {
 	t.Helper()
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -45,34 +49,40 @@ func findFuncPosition(t *testing.T, file, funcName string) Position {
 		if name != funcName {
 			continue
 		}
-		return Position{File: file, Line: i + 1, Character: m[2] + 1}
+		return quarryengine.Position{File: file, Line: i + 1, Character: m[2] + 1}
 	}
 	t.Fatalf("findFuncPosition: no top-level declaration of %q found in %s", funcName, file)
-	return Position{}
+	return quarryengine.Position{}
 }
 
 // repoRoot returns this worktree's module root.
 // The port moved this package from Loomyard's internal/scoutengine (two
 // directories below that repo's root) to quarry's own quarry/ (one
 // directory below this repo's root, which is also this module's root) —
-// one fewer filepath.Dir() call than Loomyard's own repoRoot needed.
+// one fewer filepath.Dir() call than Loomyard's own repoRoot needed. The
+// engine-repackage move relocated this file again, to
+// internal/quarryengine/query/ — three directories below the repo root —
+// so this now walks FOUR filepath.Dir levels rather than the two it used
+// right after the port: one to strip the filename, three more to climb
+// back up to the module root. daemon keeps its own independent copy in
+// ensureserver_integration_test.go, since daemon cannot import query.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("repoRoot: could not determine quarry source directory location")
 	}
-	return filepath.Dir(filepath.Dir(file))
+	return filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(file))))
 }
 
 func TestReferences_Integration(t *testing.T) {
 	t.Run("live gopls references for a known high-fan-in symbol", func(t *testing.T) {
 		if _, err := exec.LookPath("gopls"); err != nil {
-			t.Skip(builtins()["go"].InstallHint)
+			t.Skip(registry.BuiltinRegistry()["go"].InstallHint)
 		}
 
 		root := repoRoot(t)
-		detectFile := filepath.Join(root, "quarry", "detect.go")
+		detectFile := filepath.Join(root, "internal", "quarryengine", "registry", "detect.go")
 		pos := findFuncPosition(t, detectFile, "DetectLanguage")
 
 		// Since the engine-supervised-flip batch, Go's registry entry
@@ -83,14 +93,14 @@ func TestReferences_Integration(t *testing.T) {
 		// state-file-driven reap is what keeps this test from leaking the
 		// daemon.
 		stateDir := t.TempDir()
-		statePath := DaemonStateFile(stateDir, "go")
-		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
+		statePath := daemontest.StateFile(stateDir, "go")
+		t.Cleanup(func() { daemontest.KillRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		refs, err := References(ctx, Options{
-			Registry:  builtins(),
+			Registry:  registry.BuiltinRegistry(),
 			TargetDir: root,
 			StateDir:  stateDir,
 			Lang:      "go",
@@ -118,7 +128,7 @@ func TestReferences_Integration(t *testing.T) {
 
 	t.Run("non-existent server binary yields ErrServerNotFound", func(t *testing.T) {
 		root := repoRoot(t)
-		reg := Registry{
+		reg := registry.Registry{
 			"go": {
 				Markers:     []string{"go.mod"},
 				Match:       "any",
@@ -137,8 +147,8 @@ func TestReferences_Integration(t *testing.T) {
 			Query:     Query{Symbol: "Resolve"},
 			Timeout:   5 * time.Second,
 		})
-		if !errors.Is(err, ErrServerNotFoundSentinel) {
-			t.Errorf("References() with a non-existent server binary err = %v; want errors.Is(err, ErrServerNotFoundSentinel)", err)
+		if !errors.Is(err, quarryengine.ErrServerNotFoundSentinel) {
+			t.Errorf("References() with a non-existent server binary err = %v; want errors.Is(err, quarryengine.ErrServerNotFoundSentinel)", err)
 		}
 	})
 }
@@ -177,34 +187,34 @@ func main() {}
 // TestReferences_InFile_Integration proves the Query.InFile resolve path — documentSymbol ->
 // position -> textDocument/references — end to end against a real gopls, the InFile analogue of
 // TestReferences_Integration's Query.Pos coverage above.
-// Both subcases route through ensureServer's now- live supervised dispatch (builtins()'s Go entry
-// has HasNativeDaemon: true), which spawns a quarry-owned daemon that teardownConnection's
+// Both subcases route through ensureServer's now- live supervised dispatch (registry.BuiltinRegistry()'s
+// Go entry has HasNativeDaemon: true), which spawns a quarry-owned daemon that teardownConnection's
 // connKindSupervised branch deliberately never kills — each subcase gives its own isolated
 // t.TempDir() as StateDir and reaps the spawned daemon in t.Cleanup, exactly like
 // TestEnsureServer_Integration_ SupervisedDispatch (ensureserver_integration_test.go) and
 // supervised_integration_test.go already do.
 func TestReferences_InFile_Integration(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
+		t.Skip(registry.BuiltinRegistry()["go"].InstallHint)
 	}
 
 	t.Run("single-match resolve", func(t *testing.T) {
 		root := repoRoot(t)
-		detectFile := filepath.Join(root, "quarry", "detect.go")
+		detectFile := filepath.Join(root, "internal", "quarryengine", "registry", "detect.go")
 		pos := findFuncPosition(t, detectFile, "DetectLanguage")
 
 		// TargetDir stays the real repo root (correct indexing), but StateDir
 		// is an isolated temp dir so the supervised daemon this call spawns
 		// records its state there, never anywhere under the real repo.
 		stateDir := t.TempDir()
-		statePath := DaemonStateFile(stateDir, "go")
-		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
+		statePath := daemontest.StateFile(stateDir, "go")
+		t.Cleanup(func() { daemontest.KillRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		refs, err := References(ctx, Options{
-			Registry:  builtins(),
+			Registry:  registry.BuiltinRegistry(),
 			TargetDir: root,
 			StateDir:  stateDir,
 			Lang:      "go",
@@ -235,22 +245,22 @@ func TestReferences_InFile_Integration(t *testing.T) {
 		writeAmbiguousModule(t, modRoot)
 
 		stateDir := t.TempDir()
-		statePath := DaemonStateFile(stateDir, "go")
-		t.Cleanup(func() { killRecordedDaemon(t, statePath) })
+		statePath := daemontest.StateFile(stateDir, "go")
+		t.Cleanup(func() { daemontest.KillRecordedDaemon(t, statePath) })
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		_, err := References(ctx, Options{
-			Registry:  builtins(),
+			Registry:  registry.BuiltinRegistry(),
 			TargetDir: modRoot,
 			StateDir:  stateDir,
 			Lang:      "go",
 			Query:     Query{InFile: &InFileQuery{File: filepath.Join(modRoot, "main.go"), Name: "Open"}},
 			Timeout:   30 * time.Second,
 		})
-		if !errors.Is(err, ErrAmbiguousSymbolSentinel) {
-			t.Errorf("References(InFile Open, two types) err = %v; want errors.Is(err, ErrAmbiguousSymbolSentinel)", err)
+		if !errors.Is(err, quarryengine.ErrAmbiguousSymbolSentinel) {
+			t.Errorf("References(InFile Open, two types) err = %v; want errors.Is(err, quarryengine.ErrAmbiguousSymbolSentinel)", err)
 		}
 	})
 }
