@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: quarry-thin-facade
 branch: quarry-thin-facade
-plan: null
+plan: _mill/plan
 parent: main
 task: Thin quarry/ facade over internal/quarryengine
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-08-27T10:47:08Z'
 discussion-fix-r3  '2026-08-27T11:08:21Z'
 discussion-fix-r4  '2026-08-27T11:17:57Z'
 discussed  '2026-08-27T11:17:57Z'
+planning  '2026-08-27T11:24:43Z'
 ```
