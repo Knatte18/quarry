@@ -26,6 +26,7 @@ It is one batch because every card edits `internal/cli/cli.go` and they share on
   - `internal/cli/paths.go`
   - `internal/cli/cli.go`
   - `internal/cli/paths_test.go`
+  - `internal/cli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -34,6 +35,7 @@ It is one batch because every card edits `internal/cli/cli.go` and they share on
   - Add a `--build-tags` string flag to each of the four subcommands built in `internal/cli/cli.go`: `refsCommand`, `definitionCommand`, `symbolCommand`, and `assertNoCallersCommand`. Declare it per-verb alongside each command's existing `--target-dir` / `--lang` / `--timeout` locals, not as a root persistent flag: build tags are a query-scoping concern, not process infrastructure.
   - Flag help, identical on all four: name the comma-separated shape, name `$QUARRY_BUILD_TAGS` as the fallback, and state that passing tags for a language whose registry entry carries no build-tag template is an error rather than a silent no-op.
   - Add a `buildTags []string` parameter to `buildOptions` in `internal/cli/cli.go` and set `Options.BuildTags` from it. Update every existing `buildOptions` call site to pass the resolved value; there are seven, spread across the single-argument and batch-mode paths of all four verbs.
+  - Repair the one existing `buildOptions` call site in `internal/cli/cli_test.go` for the new parameter in this card, not a later one. The package's test build must compile at every card boundary, or card 19's explicitly written-first back-compat assertion in `internal/cli/paths_test.go` is unrunnable when it is written. Card 19 already repairs its own `resolveStateDir` and `resolveContext` test call sites in-card for the same reason; this card matches that discipline.
   - Extend `internal/cli/paths_test.go` with a table over `resolveBuildTags`: the flag value wins over the environment variable; the environment variable is used when the flag is empty; neither set yields nil; and each of `""`, `","` and `" , "` yields nil from either source. Set and unset the environment variable with `t.Setenv` so the tests stay isolated.
 - **Commit:** `feat(cli): add --build-tags and $QUARRY_BUILD_TAGS to all four verbs`
 
@@ -112,7 +114,7 @@ It is one batch because every card edits `internal/cli/cli.go` and they share on
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  - Update the existing `buildOptions` test in `internal/cli/cli_test.go` for the new parameter, and add an assertion that the resolved tag set lands on `Options.BuildTags`.
+  - Add an assertion to the existing `buildOptions` test in `internal/cli/cli_test.go` that the resolved tag set lands on `Options.BuildTags`. Card 18 already repaired that test's call site for the new parameter, so this card only widens what it asserts.
   - Add a table test over `filterUnexpectedCallers` and `filterWithin` composed in the order `assertNoCallersCommand` applies them — `--within`, then `--except`, then the declaration exclusion — over a hand-built reference slice. This is the only part of the ordering `internal/cli` can observe: `quarry.Callers` is a direct package-level call with no injection seam, so no test here can see the verification step. State that limitation in the test's comment and name the engine test that covers the rest.
   - Assert that a reference in the declaration set is excluded, that a reference under an `--except` path is excluded, that a reference outside `--within` is excluded, and that a reference surviving all three is reported as a violation.
   - Add an assertion that the four verbs each accept a `--build-tags` flag and `assert-no-callers` additionally accepts `--no-verify`, by looking the flags up on the built command tree rather than by executing a query. The existing tests in this file already build the command tree this way.

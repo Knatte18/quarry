@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r3
+phase: plan-fix-r3
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -22,4 +22,5 @@ plan-fix-r1  '2026-08-27T18:07:13Z'
 plan-review-r2  '2026-08-27T18:12:17Z'
 plan-fix-r2  '2026-08-27T18:14:18Z'
 plan-review-r3  '2026-08-27T18:21:14Z'
+plan-fix-r3  '2026-08-27T18:22:30Z'
 ```
