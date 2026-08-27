@@ -286,4 +286,4 @@
 //     ErrAmbiguousSymbol failure — returning every match is the whole point
 //     of a symbol search, not an error state needing disambiguation. See
 //     symbol.go's own doc comment for the full rationale.
-package quarry
+package quarryengine
