@@ -43,8 +43,10 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - A new `toc` cobra command group with two subcommands, `toc file <path>` and `toc dir <path>`,
   wired into `internal/cli`'s existing command tree via the already-present `GroupRunE`
   (`internal/cli/exec.go:227`).
-- A new Tree-sitter parsing backend package, `internal/quarryengine/treesitter`, using the pure-Go
-  runtime `github.com/odvcencio/gotreesitter`.
+- A new Tree-sitter parsing backend package, `internal/quarryengine/treesitter`, using the official
+  cgo bindings `github.com/tree-sitter/go-tree-sitter` plus one grammar module per language.
+- README updates for the new build dependency: `CGO_ENABLED=1` and a C toolchain, plus the
+  windows-native cross-compile recipe (see the parsing-backend Decision).
 - A new orchestration package, `internal/quarryengine/toc`, holding the per-language extraction
   strategies and the two entry points.
 - An extension-to-language map in `internal/quarryengine/registry`, since both new verbs are
@@ -56,8 +58,15 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - **Exact-count and exact-claim invariants that go stale the moment this task lands, and must be
   updated in the same batch as the code that invalidates them.**
   **The invariant being defended, stated first, because the greps below serve it rather than
-  define it:** *no prose anywhere in the tree may enumerate the engine's packages, count them,
-  count quarry's verbs, or count the facade's re-exports, and still be true after this task lands.*
+  define it:** *no prose anywhere in the tree may, after this task lands, still assert any of —*
+  (a) *a count or enumeration of the engine's packages;* (b) *a count of quarry's verbs or of the
+  facade's re-exports;* (c) *that quarry is LSP-only, or that it does not parse source itself;*
+  (d) *that a batch entry is keyed on `symbol`;* (e) *that quarry builds without a C toolchain.*
+  Clauses (c), (d), and (e) are not count claims and no grep phrase reliably finds them — verified
+  examples the count-greps miss: `README.md:4` ("by speaking the Language Server Protocol to each
+  language's own server rather than reimplementing a parser per language"), and
+  `internal/cli/cli.go:23-29` (the package-level batch contract, "one JSON entry per symbol under a
+  top-level \"results\" array", which toc's `path`-keyed driver contradicts).
   Anything matching that description is in scope whether or not the commands below happen to find
   it — a phrase grep is a search aid, not the specification.
 
@@ -116,8 +125,17 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
     comment at `:102-103` states the floor is deliberately set one below the real count. Raising it
     to 8 preserves that intentional slack rather than making it an exact-count claim.
     Raise both to 8; write the comments to say what each 8 actually is.
-  - `quarry/facade_test.go:117` — "each of the seven re-exported sentinel error values". Only
-    stale if the toc work adds a sentinel; check rather than assume.
+  - `quarry/facade_test.go:117` — "each of the seven re-exported sentinel error values". Becomes
+    eight: toc adds `ErrLanguageUnsupported` (see the Emitted-schema Decision).
+  - **Non-count claims, found by reading rather than by grep** (invariant clauses (c)–(e)):
+    `README.md:4` — "by speaking the Language Server Protocol to each language's own server rather
+    than reimplementing a parser per language". After this task quarry parses source itself.
+    `internal/cli/cli.go:23-29` — the package doc's batch contract says "one JSON entry per symbol
+    under a top-level \"results\" array"; toc's driver keys entries on `path`, so the contract must
+    be restated to cover both.
+    README's "Building and running" section — must gain the `CGO_ENABLED=1` / C-toolchain
+    dependency and the windows cross-compile recipe.
+    README's "Testing" section (`README.md:66-71`, two tiers today) — must reflect the cgo build.
 - README "Building and running" update for the grammar-subset build tags (see the grammar-set
   Decision).
 - README verb-list update.
@@ -141,68 +159,149 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - Function bodies, and any symbol declared inside a function body (local closures, nested helpers).
 - The `impact` verb. This task only records the shared "declaration + docstring is one range" rule
   that the `impact-verb` task must also honour; it does not implement `impact`.
-- Caching or a daemon for the parser. Parses are cheap enough to do per call (see "Technical
-  context" for the measurement).
+- Caching or a daemon for the parser. See the "No parser daemon" Decision — this was measured at
+  both file and directory level, not assumed.
 
 ## Decisions
 
-### Parsing backend: pure-Go Tree-sitter runtime
+### Parsing backend: official cgo Tree-sitter bindings
 
-- Decision: use `github.com/odvcencio/gotreesitter`, a pure-Go reimplementation of the Tree-sitter
-  runtime that reads the same parse-table format as upstream and ships the grammars as embedded
-  blobs.
-  No cgo, no C toolchain, no external grammar build step.
-- Rationale: README pins quarry to linux **and** windows, and `go.mod` is 100% pure Go today
-  (cobra, yaml.v3, flock). The official cgo bindings would force `CGO_ENABLED=1`, require MinGW on
-  windows, break cross-compilation, and break `go build -o quarry ./cmd/quarry` for any user
-  without a C toolchain. The performance argument that would justify that cost does not exist here:
-  the C runtime is ~3.9x faster on a full parse, but a full parse of a 38.8 KB file measured at
-  113 ms *including process startup* in the spike, against the tens-to-hundreds of milliseconds
-  quarry already pays for one LSP round trip. The parse cost is noise.
-- Verified, not assumed: a spike was run during discussion (see "Technical context — spike
-  results") that resolved the module in a clean `go mod init` tree, built with no C toolchain, and
-  extracted correct symbols, signatures, docstrings, and ranges from real quarry source files.
-  Version at time of writing: `v0.51.0`.
-- Rejected: official cgo bindings `github.com/tree-sitter/go-tree-sitter` (mature and canonical,
-  but destroys the pure-Go build story on the windows target quarry supports);
+- Decision: use `github.com/tree-sitter/go-tree-sitter` (v0.25.0), the canonical cgo bindings for
+  the upstream C runtime, with one grammar module per language —
+  `tree-sitter-go`, `tree-sitter-python`, `tree-sitter-c-sharp`, `tree-sitter-typescript`,
+  `tree-sitter-rust`. Each grammar is an ordinary Go module vendoring its generated C parser, so
+  there is no external grammar build step and no build tags: you import the five you want.
+  `CGO_ENABLED=1` and a C toolchain become build dependencies.
+- **This reverses an earlier decision in this same discussion, on measured evidence.**
+  The original choice was the pure-Go runtime `github.com/odvcencio/gotreesitter`, argued on the
+  grounds that "the C runtime is ~3.9x faster on a full parse, but the parse cost is noise".
+  That argument was wrong twice over, and the correction is recorded here rather than quietly
+  dropped:
+  1. The 3.9x figure came from the pure-Go project's own README — a vendor self-benchmark, never
+     independently checked. Measured here, parsing is near-parity: **7.9 ms (cgo) vs ~10 ms
+     (pure Go)** for `internal/cli/cli.go`, i.e. 1.3x, not 3.9x.
+  2. Far more importantly, the comparison measured the wrong thing. The dominant cost is not
+     parsing, it is **grammar load** — and there the gap is roughly 2500x. The original "113 ms
+     including process startup" datum was itself almost entirely pure-Go grammar-load time, i.e. an
+     artifact of the option being recommended, used to argue that the alternative's advantage did
+     not matter.
+- Measured during discussion, both libraries built and run against the same files on this tree:
+
+  | | cgo (chosen) | pure Go (rejected) |
+  | --- | --- | --- |
+  | Grammar load, first call in process | **0.03 ms** | **70–86 ms** |
+  | Each additional grammar, same process | ~0.03 ms | 7–9 ms (C#: 33.5 ms) |
+  | Parse `internal/cli/cli.go` (38 KB) | 7.9 ms | ~10 ms |
+  | **End to end, per `quarry toc` invocation** | **~0.5 ms** | **~80 ms** |
+  | Binary, all five languages | 12.6 MB | 13.1 MB |
+  | Build time | 6.8 s | ~2 s |
+
+  All five cgo grammars were verified to load and parse a representative snippet with
+  `hasError=false`: go, python, csharp, typescript, rust.
+- **Binary size is a wash, and an earlier claim that cgo was "4x smaller" was wrong.** That 3.3 MB
+  figure was a build with the Go grammar alone; with all five languages linked it is 12.6 MB against
+  pure Go's 12.7–13.1 MB. Size does not favour either option.
+- Rationale, now that the numbers are right: the choice came down to ~80 ms of unavoidable
+  per-invocation startup against a C toolchain as a build dependency. quarry is built by its author
+  for their own machines, so a build dependency is a one-time setup per machine rather than a
+  distribution problem — and a documented C toolchain requirement is ordinary for Go projects (any
+  project using `sqlite3` carries the same one). Against that, 80 ms is paid on every single call
+  forever.
+  Maturity reinforces it: the pure-Go library produced **two runtime panics** during this
+  discussion — a mistyped `grammar_subset_*` build tag, and a missing external blob — where both
+  should have been build-time failures. The cgo bindings have no build-tag surface to mistype.
+- **Windows builds.** A C toolchain is needed to *build*, never to *run*. Two supported routes,
+  both to be documented in README:
+  - build natively on windows with mingw-w64 (MSYS2) or TDM-GCC;
+  - cross-compile from linux or WSL2:
+    `CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc go build -ldflags '-extldflags "-static"' -o quarry.exe ./cmd/quarry`
+    (requires `gcc-mingw-w64-x86-64`; `-static` is deliberate, so the `.exe` does not depend on
+    `libwinpthread-1.dll` and friends sitting beside it).
+
+  **Unverified:** the cross-compile command above was *not* run during discussion — no mingw-w64
+  cross-compiler was installed on the discussion machine. It is the standard incantation, but the
+  implementation batch must actually run it and adjust if needed, rather than copy it on trust.
+  Note also that building inside WSL2 without `GOOS=windows` produces a *Linux* binary that runs in
+  WSL2, not a windows-native `.exe`; both are legitimate targets but they are not the same artifact.
+- Rejected: the pure-Go runtime `github.com/odvcencio/gotreesitter` (measured above — no size
+  advantage, ~160x slower per invocation end to end, and two runtime panics in one afternoon where
+  build-time failures were expected; its only real advantage is needing no C toolchain);
   a wazero/WASM wrapper such as `github.com/malivvan/tree-sitter` (cgo-free, but adds a WASM runtime
-  dependency and per-grammar `.wasm` loading for no gain over a native Go runtime).
-- Risk and its containment: the library is young and effectively single-maintainer.
-  The containment is the package split below — the backend lives behind an interface in
-  `internal/quarryengine/treesitter`, so swapping runtimes is one package, not a rewrite.
+  and per-grammar `.wasm` loading — slower than native C for the same dependency burden);
+  **shipping both backends behind `//go:build cgo` / `//go:build !cgo`** — see the next Decision,
+  which rejects it on correctness grounds, not effort.
+- Risk and its containment: cgo is a real constraint on how quarry is built, and it is now a
+  documented one. The containment for changing course again is the package split below — the
+  backend lives behind an interface in `internal/quarryengine/treesitter`, so swapping runtimes is
+  one package, not a rewrite. That containment is what made this reversal cheap, and it is why it
+  stays.
 
-### Grammar set: subset build tags in the documented build, untagged build still supported
+### One backend, not two: no cgo/pure-Go dual build
 
-- Decision: `cmd/quarry` is built with the runtime's per-language subset tags —
-  `-tags "grammar_subset,grammar_subset_go,grammar_subset_python,grammar_subset_csharp,grammar_subset_typescript,grammar_subset_rust"` —
-  and README's "Building and running" section is updated to show that command.
-  The **untagged** `go build ./cmd/quarry` and `go install` paths stay fully supported and correct;
-  they simply produce a larger binary with all 206 grammars embedded.
-  No grammar-set choice is deferred to implementation time.
+- Decision: exactly one parsing backend ships. quarry does **not** select between the cgo runtime
+  and a pure-Go fallback via `//go:build cgo` / `//go:build !cgo`.
+- Rationale: two independent implementations of Tree-sitter do not produce identical trees on all
+  input. The pure-Go runtime self-reports three "degraded" grammars and has its own error-recovery
+  behaviour, so `partial: true` and the set of symbols surviving a syntax error could differ between
+  builds. `quarry toc` would then return different answers for the same file depending on how the
+  binary was compiled — unacceptable for a tool whose entire value is that an agent can trust the
+  result without verifying it. A slow outline is usable; an outline that is correct only for some
+  build configurations is worse than none.
+  Two further costs make it worse than it looks: the two libraries' node APIs are not
+  interchangeable (pure Go takes the language as an argument — `node.Type(lang)`,
+  `ChildByFieldName(name, lang)` — while cgo does not: `node.Kind()`, `ChildByFieldName(name)`), so
+  a normalising adapter per library would be required around the single code path all extraction
+  flows through; and every extraction test would have to run under both backends or one silently
+  rots — the same failure mode round 4's review caught with build tags, except the untested artifact
+  is an entire parser.
+  Finally, `CGO_ENABLED` defaults to 0 when cross-compiling, so the fallback would be selected
+  silently rather than deliberately.
+- Rejected: dual backend selected by the `cgo` build constraint (silent divergence, doubled test
+  matrix, adapter layer);
+  dual backend with the active backend named in the JSON envelope (the only honest form of a dual
+  build, since it makes divergence visible — but it is complexity for a tool with one user, and it
+  pushes the divergence problem onto the consumer instead of solving it).
+
+### No parser daemon, and why the LSP daemon is not a precedent
+
+- Decision: `toc` spawns no daemon, shares no state between calls, and caches nothing.
+  Every invocation loads its grammar, parses, and exits.
 - Measured during discussion, on this tree:
 
-  | Build | Size |
+  | Scope | Cost |
   | --- | --- |
-  | current quarry, no Tree-sitter | 5.9 MB |
-  | untagged (all 206 grammars embedded) | 30.2 MB |
-  | `-tags grammar_set_core` (curated Core100) | 23.8 MB |
-  | `-tags grammar_blobs_external` (blobs as separate files) | 14.9 MB |
-  | **per-language `grammar_subset` (the five quarry supports)** | **12.7 MB** |
+  | First grammar loaded in a process | 70–86 ms (one-time process init) |
+  | Each additional grammar in the same process | 7–9 ms (C#: 33.5 ms) |
+  | Re-requesting an already-loaded grammar | 0.0 ms |
+  | `toc file` on 1.7 KB | 0.08 s wall, end to end |
+  | `toc file` on 38 KB (`internal/cli/cli.go`) | 0.10 s wall, end to end |
+  | `toc dir internal/quarryengine/daemon` (14 files, 115 KB) | 0.16 s wall; 72 ms of parsing |
+  | `toc dir internal/cli` (9 files, 111 KB) | 94 ms of parsing, 10.4 ms/file |
 
-  The subset build was verified to still parse correctly, not merely to link.
-- Rationale: +6.8 MB over the current binary for a second parsing backend is a fair price; +24.3 MB
-  is not, and finding that out after implementation would call the whole pure-Go premise into
-  question. `grammar_blobs_external` is rejected despite being smaller than `grammar_set_core`
-  because it moves the grammars out of the binary into separate files, destroying quarry's
-  single-binary distribution — worth far more than the 2.2 MB it would save over the subset build.
-  The untagged path must keep working because `go install` users cannot pass build tags.
-- Rejected: untagged default (+24.3 MB for 201 grammars quarry can never use);
-  `grammar_set_core` (still +17.9 MB, and a fixed set quarry does not control);
-  `grammar_blobs_external` (breaks single-binary distribution);
-  the runtime `GOTREESITTER_GRAMMAR_SET` env var (restricts *loading*, not binary size — it does not
-  solve this problem at all);
-  deferring the choice to implementation with a size budget (that is a deferral wearing a decision's
-  clothes; the numbers were obtainable in minutes and are now recorded above).
+  Per-file parse cost is 5–10 ms and grammar load is paid **once per process**, so a directory's
+  cost is `~75 ms + N × ~7 ms`. A 23x larger file costs 20 ms more: the fixed startup dominates,
+  not the file size.
+- **The LSP daemon is not a precedent for a toc daemon**, despite the infrastructure existing.
+  `EnsureServer` exists because gopls indexes an entire module, holds type-checked packages in
+  memory, and has a cold start measured in seconds to tens of seconds — persistent state is the
+  entire point. Tree-sitter has none of that: no project indexing, no cross-file state, and a
+  stateless per-file parse.
+  Nor is the machinery reusable. `EnsureServer` spawns a *language server speaking LSP*, wrapped in
+  `daemonstate`, `probe`, a spawn-race lock, and toolchain management. A toc daemon would be quarry
+  talking to itself over a new protocol, with a new state file, a new lifecycle, and a new lock —
+  a second daemon inheriting the first one's problems, including the platform split README already
+  documents (the supervised strategy hard-codes a Unix domain socket, so windows falls back).
+- What a daemon would actually buy is the ~75 ms fixed init. That is 1–3% of one LLM agent turn,
+  bought with shared state, mtime-based cache invalidation, and a platform split — for a verb whose
+  entire value is being trustworthy.
+- **Batch mode is the cheap version of the same win.** `toc file a.go b.go c.go` pays the 75 ms once
+  and ~7 ms per additional file in one process, with no shared state and no invalidation problem.
+  The batch-mode Decision was taken for CLI consistency; these numbers are its second, independent
+  justification.
+- Rejected: a toc daemon reusing `EnsureServer` (wrong shape — that seam launches LSP servers);
+  a new toc-specific daemon (new protocol, state file, lock, and platform split to save 75 ms);
+  an in-process parse-tree cache keyed on mtime (no second call exists to hit it — each CLI
+  invocation is a fresh process).
 
 ### Verb shape: a `toc` command group, not two flat verbs
 
@@ -433,10 +532,22 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   - C# block-bodied member: the `declaration_list` (for a type) or the method's `block`.
   - C# expression-bodied member (`=>`): the `arrow_expression_clause`, so `public void Resize(double
     factor)` is the signature and the expression is excluded.
-- A Go grouped `type ( … )` block produces **one symbol per `type_spec`**, not one symbol for the
-  whole `type_declaration`. Each `type_spec` carries its own name, its own range, and — where the
-  spec has its own preceding comment inside the group — its own docstring; a docstring attached to
-  the `type (` line itself attaches to no individual spec and is dropped.
+- **The Go type symbol is always the `type_spec`, in both the grouped and ungrouped forms** — one
+  rule, no branch on which shape the source used. But the *emitted* signature and range are
+  computed from the enclosing `type_declaration` when that declaration holds exactly one spec:
+  - Ungrouped `// Doc.` + `type FileLock struct { … }`: one symbol. Its docstring is the
+    `type_declaration`'s contiguous `comment` prev-siblings (the ordinary rule — the comment
+    precedes the declaration, not the spec). Its `start` is the docstring's first line and its
+    signature is `type FileLock struct`, **including the `type` keyword**, because the signature is
+    cut from the declaration's first byte, not the spec's. Emitting `FileLock struct` would be
+    invalid Go and useless to paste anywhere.
+  - Grouped `type ( … )`: one symbol per spec. Each spec's signature is rendered with the `type`
+    keyword prepended so the two forms produce identical output for identical types, and each
+    spec's docstring is its own preceding comment block inside the group. A comment attached to the
+    `type (` line documents the group, not any one spec, and is dropped.
+  This resolves what would otherwise be a contradiction between this Decision and the Go notes in
+  Technical context: the walked node is the `type_declaration`, the emitted symbol unit is the
+  `type_spec`, and the signature always carries the keyword.
 - Rationale: it is what the parser already gives, it is guaranteed correct because no transformation
   can introduce drift, and an LLM reads native source syntax at least as well as an invented normal
   form. A normalizer would be five per-language formatters to write, test, and keep correct.
@@ -638,7 +749,12 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   | file unreadable, or invalid UTF-8 | `error` | 3 |
 
   `ambiguous` (rank 2) is never produced by either toc subcommand — there is no ambiguity state in a
-  path-addressed lookup — so toc's exit codes are 0, 1, and 3 only.
+  path-addressed lookup.
+  **The rank column is batch-only.** In the single-argument shape, *every* toc failure — missing
+  path, wrong path type, unsupported language, unreadable file — is `output.Err` and **exit 1**,
+  with no exit 2 and no exit 3. This keeps toc inside the 0/1/2 single-arg contract
+  `internal/cli/cli.go:13-21` already documents for every verb, while rank 3 exists only to make
+  "one entry genuinely failed" outrank "one entry was absent" when computing a batch's worst status.
   `partial: true` is a field on the entry and deliberately does **not** degrade the status: a partial
   outline is a usable answer, and ranking it as a failure would poison the exit code of any batch
   containing one mid-edit file.
@@ -708,37 +824,45 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 
 ### Spike results (run during discussion, against real quarry source)
 
-A working spike was built and run — this design is verified, not assumed.
+Both candidate backends were built and run — this design is verified, not assumed.
+The extraction spike (docstring walk, signature cut, ranges) was written against the pure-Go
+runtime before the backend reversal; its **findings about source structure remain valid**, since
+they are facts about Go/Python/C# syntax trees rather than about either library. Only the API names
+differ, and the cgo equivalents are listed below.
 
 | Test | Result |
 | --- | --- |
-| `go get` in a clean empty module | `v0.51.0`, no cgo, no C toolchain, builds clean |
 | `internal/output/output.go` | 3 symbols, correct signature, docstring, and range spanning docstring + declaration |
-| `internal/cli/cli.go` (38.8 KB) | 25 symbols, 10.9 KB of JSON, **113 ms** including process startup |
+| `internal/cli/cli.go` (38.8 KB) | 25 symbols, 10.9 KB of JSON — a 3.5x reduction against reading the file |
 | `internal/lock/lock.go` | correctly distinguishes `function`, `method` (receiver), and `type` |
 | Deliberately broken Go file | `partial: true` set; symbols before the error preserved; a symbol *after* the error was lost |
-| Python and C# grammars | load and parse cleanly |
+| All five cgo grammars | go, python, csharp, typescript, rust each load and parse with `hasError=false` |
+| cgo binary, all five languages | 12.6 MB |
 
-Relevant `gotreesitter` API surface, confirmed present:
-`grammars.GoLanguage()` / `PythonLanguage()` / `CSharpLanguage()` / `TypescriptLanguage()` /
-`RustLanguage()` (note: `Typescript`, not `TypeScript`);
-`ts.NewParser(lang)`, `(*Parser).Parse(src) (*Tree, error)`, `(*Tree).RootNode()`;
-`(*Node).Type(lang)`, `.ChildCount()`, `.Child(i)`, `.NamedChild(i)`, `.ChildByFieldName(name, lang)`,
-`.PrevSibling()`, `.StartByte()`, `.EndByte()`, `.StartPoint()`, `.EndPoint()`, `.HasError()`;
-`Point{Row, Column}` is 0-based, so line numbers are `Row + 1`.
-The library also ships an `Outliner` (`outline.go`) with an `Owner` field.
-**Decision: do not use it.** Owner resolution is done in our own walk.
-Rationale: the `Outliner` does not do docstring association, so the sibling/in-body walk is ours
-regardless — and by the time that walk has the declaration node in hand, the receiver or enclosing
-class is one `ChildByFieldName` away. Using `Outliner` for `Owner` alone would mean maintaining a
-declarative `OutlineOwnerRule` table per language (`WithOutlineOwnerRules`, `outline.go:104`) to
-obtain a value the walk already holds, and would couple us to a second, larger piece of the
-library's API surface for no gain.
+Timing measurements live in the "No parser daemon" and "Parsing backend" Decisions, which are where
+they drive a choice.
 
-Grammar-set build tags, all confirmed present in the module's `//go:build` lines:
-`grammar_set_core` (a fixed curated set), `grammar_blobs_external` (blobs shipped as separate
-files), and the `grammar_subset` family — `grammar_subset` plus one `grammar_subset_<lang>` tag per
-language, which is the mechanism the grammar-set Decision adopts.
+**cgo API surface** (`github.com/tree-sitter/go-tree-sitter` v0.25.0), confirmed by compiling
+against it:
+`ts.NewLanguage(tsgo.Language())` where the grammar comes from that language's module under
+`<module>/bindings/go` — e.g. `tree-sitter-go/bindings/go`, and note
+`tstypescript.LanguageTypescript()` rather than a bare `Language()` for TypeScript, since that
+module ships both TypeScript and TSX;
+`ts.NewParser()`, `(*Parser).SetLanguage(lang) error`, `(*Parser).Parse(src, nil) *Tree`,
+`(*Tree).RootNode()`;
+`(*Node).Kind()`, `.NamedChildCount()`, `.ChildByFieldName(name)`, `.HasError()`, and the byte/point
+accessors the extraction rules need.
+Both `*Parser` and `*Tree` own C memory and expose `Close()` — **every parse must release both**,
+which the pure-Go library did not require. This is a real difference the implementation must honour;
+a leaked tree is a C allocation the Go GC will not reclaim.
+`Point{Row, Column}` is 0-based in both libraries, so line numbers are `Row + 1`.
+
+The library also ships helpers for outline/tagging.
+**Decision: do not use them.** Owner resolution is done in our own walk, for the same reason it was
+under the previous backend: an outline helper does not do docstring association, so the
+sibling/in-body walk is ours regardless — and by the time that walk holds the declaration node, the
+receiver or enclosing class is one `ChildByFieldName` away.
+
 There is also a runtime `GOTREESITTER_GRAMMAR_SET` environment variable, which restricts *loading*
 and has no effect on binary size.
 Binary sizes for every option were measured during discussion — see the "Grammar set" Decision for
@@ -793,8 +917,13 @@ described above. It is worth reading once for the working docstring-walk and the
 
 There is no `CONSTRAINTS.md` at the hub root. Constraints discovered during discussion:
 
-- **No cgo.** `go.mod` is pure Go today and the README supports linux and windows. Adding a C
-  toolchain requirement to the build is out.
+- **cgo is now a build dependency, and this is a deliberate, documented change.** `go.mod` is pure
+  Go today (cobra, yaml.v3, flock); after this task, building quarry requires `CGO_ENABLED=1` and a
+  C toolchain. README must say so. Running the built binary requires nothing extra.
+  This constraint was *reversed* during discussion on measured evidence — see the parsing-backend
+  Decision. Do not "restore" pure-Go-ness as a cleanup; it is a decision, not an oversight.
+- **Windows remains a supported target and must not regress.** The build route changes (mingw-w64
+  natively, or a cross-compile with `-extldflags "-static"`), not the support status.
 - **darwin is already unbuildable** (`internal/proc` has no darwin implementation) and this task must
   not change that either way.
 - **The two guard tests are non-negotiable.** New packages must be added to `layeringTable`, and no
@@ -867,26 +996,24 @@ Use the exact spike scenario as a fixture: a file whose broken declaration swall
 one. Assert `partial: true` is set and that the surviving symbols are returned. This test documents
 that recovery is lossy.
 
-**`internal/quarryengine/treesitter` — backend, and it must be run twice.**
-Thin in content: assert each supported grammar loads non-nil and parses a trivial valid file
-without error.
-**But the test is worthless in the configuration that ships unless it is also run under the subset
-tags.** `go test ./...` runs untagged, where all 206 grammars are embedded, so the load test passes
-no matter what the subset tag names are. A renamed or mistyped `grammar_subset_csharp` would ship a
-binary where every C# `toc` call fails while the test suite stays green — the exact failure the
-"canary" claim is supposed to prevent.
+**`internal/quarryengine/treesitter` — backend.**
+Thin: assert each of the five grammars loads non-nil and parses a trivial valid file with
+`HasError()` false. This is the canary for a grammar-module version bump breaking an API.
 
-The test file therefore carries no build tag of its own (so it runs in both configurations), and
-the task's verification step is **two** commands, both of which must pass:
+Under the cgo bindings there is no build-tag surface, so the round-4 concern about a shipped
+configuration going untested does not arise: `go test ./...` exercises exactly the code that ships.
+The build-tag double-run this section previously prescribed is obsolete and must not be carried
+into the plan.
 
-```
-go test ./...
-go test -tags "grammar_subset,grammar_subset_go,grammar_subset_python,grammar_subset_csharp,grammar_subset_typescript,grammar_subset_rust" ./internal/quarryengine/treesitter/
-```
-
-Both belong in README's testing section alongside the tagged build command, so the tagged
-configuration is verified by a command rather than by hand.
-
+Two backend-specific things the tests must cover, both new with cgo and neither present under the
+previous runtime:
+- **Resource release.** `*Parser` and `*Tree` own C memory and expose `Close()`. Assert the
+  extraction path releases both on every route, including the error and `partial` routes — a leaked
+  tree is a C allocation the Go GC never reclaims, and `toc dir` over a large directory is exactly
+  where that compounds.
+- **A build that actually links C.** The suite must fail loudly, not skip, if `CGO_ENABLED=0`;
+  otherwise a cross-compile misconfiguration produces a green run against a binary that cannot be
+  built at all.
 **`internal/quarryengine/registry` — extension map.**
 Table test over all five extensions plus an unknown one, plus the `--lang` override path.
 
@@ -927,7 +1054,10 @@ This is the end-to-end proof the spike demonstrated by hand.
 
 ## Q&A log
 
-- **Q:** Is C faster, and does that matter? **A:** ~3.9x on full parse, but 6.77 ms vs 1.7 ms against the tens-to-hundreds of ms quarry already pays per LSP round trip. Speed is not the deciding factor; the pure-Go build story on windows is.
+- **Q:** Is C faster, and does that matter? **A:** *This answer was wrong and was later reversed — kept here because the reversal is the point.* The 3.9x-on-parse figure was the pure-Go project's self-reported benchmark, never checked; measured, parsing is 1.3x. And parsing was the wrong thing to measure: grammar load is the dominant cost, and there cgo is ~2500x faster (0.03 ms vs 70–86 ms), making it ~160x faster end to end per invocation. See the parsing-backend Decision.
+- **Q:** Is a C toolchain acceptable as a build dependency? **A:** Yes — quarry is built by its author for their own machines, and a documented C toolchain is ordinary for Go projects. Running the binary needs nothing extra.
+- **Q:** Can we ship two backends, cgo on POSIX and pure Go for windows? **A:** No. **Why:** two independent Tree-sitter implementations do not produce identical trees, so `quarry toc` would give different answers depending on how the binary was built — fatal for a tool whose value is that the agent need not verify the result. See the "One backend, not two" Decision.
+- **Q:** Once the binary is built, does it run on windows? **A:** Not a linux-built one — Go binaries are per-OS. A windows `.exe` needs `GOOS=windows` plus a mingw-w64 cross-compiler, or a native windows build. Building in WSL2 without `GOOS=windows` yields a linux binary that runs in WSL2, which is a legitimate but different target.
 - **Q:** Does Tree-sitter support all languages regardless of binding? **A:** Yes — grammars are per-language parse tables, and both the cgo bindings and the pure-Go runtime cover all five of quarry's languages. Language coverage does not separate the options.
 - **Q:** One `toc <path>` verb dispatching on stat, or two? **A:** Two, because the output shapes differ — but as `toc file` / `toc dir` subcommands rather than the asymmetric `toc` / `toc-dir`.
 - **Q:** What if the caller passes the wrong path type? **A:** Stat first, validate against the subcommand's expected type, hard-fail on mismatch with a message naming the correct subcommand.
@@ -939,7 +1069,7 @@ This is the end-to-end proof the spike demonstrated by hand.
 - **Q:** [auto] Should the signature rule handle type declarations, which have no `body` field? **A:** Yes — the rule is per-kind "body-bearing child", never a first-line cut, and a grouped `type ( … )` block yields one symbol per `type_spec`. **Why:** a naive `ChildByFieldName("body")` returns nil for Go's `type_declaration` and the signature silently becomes the whole struct — the token blowup the verb exists to prevent.
 - **Q:** [auto] Can toc reuse `runBatch`? **A:** No — its own driver, keyed on `"path"`, reusing `batchStatus`/`statusRank`. **Why:** `runBatch` hard-codes `entry["symbol"]`, and generalizing it would change the output shape of all four shipped verbs.
 - **Q:** [auto] What does `--lang` mean for toc? **A:** Validated against toc's own five-name vocabulary, not the servers.yaml registry; it overrides the extension outright and a mismatch is not an error. **Why:** toc loads no language server, so it must not be coupled to the registry; erroring on mismatch would defeat the override's only real use.
-- **Q:** [auto] Which grammar set ships? **A:** Per-language `grammar_subset` tags in the documented build (12.7 MB), with the untagged build still supported (30.2 MB). **Why:** measured during discussion — the untagged default costs +24.3 MB for 201 grammars quarry can never use, and `grammar_blobs_external` would break single-binary distribution.
+- **Q:** [auto] Which grammar set ships? **A:** Superseded by the backend reversal. Under cgo each grammar is its own Go module, so quarry imports exactly the five it supports and there is no grammar-set choice, no build tags, and no unused grammars in the binary.
 - **Q:** [auto] What does `toc dir` do with a `.ts`/`.rs` file? **A:** Lists it with `error: "language not yet supported by toc"` and no header; it counts as a code file, so such a directory is not "empty". **Why:** silently skipping would tell the agent the directory contains no code, which is false — the same principle as never dropping a header-less file.
 - **Q:** [auto] How are paths resolved and emitted? **A:** Relative arguments join against `CwdFrom(ctx)`; `toc dir` entries emit the directory argument as written joined with the filename; the batch key echoes the argument verbatim. **Why:** these paths exist to be pasted back into `quarry toc file`, so they must round-trip in the caller's own frame of reference.
 - **Q:** [auto] What is the full emitted key set, and the `kind` vocabulary? **A:** Fixed explicitly in the "Emitted schema" Decision; `kind` is the closed three-member set `function` / `method` / `type` across all five languages. **Why:** a richer vocabulary would be per-language noise the verbatim signature already conveys on the next field.
@@ -947,8 +1077,10 @@ This is the end-to-end proof the spike demonstrated by hand.
 - **Q:** [auto] What happens when the first comment block is a `//go:build` directive? **A:** Directive-only leading blocks are skipped and the next block is taken; a block mixing directives and prose is a header. **Why:** verified in this tree — `internal/proc/proc_windows.go` and three integration tests have exactly that shape, and the naive rule would emit `header: "go:build windows"`.
 - **Q:** [auto] Does a `toc dir` entry carry `partial`? **A:** Yes; it is in the closed key set, mutually exclusive with `error`. **Why:** `toc dir` parses each file to get its header, so a lossy parse makes that header suspect in exactly the way `toc file` warns about.
 - **Q:** [auto] Are the two `minPackageDirs = 6` constants the same claim? **A:** No — 8 is the exact count in the layering guard and a deliberate one-below floor in the seam guard, so their comments are rewritten differently. **Why:** the seam guard walks `quarry/` too and documents its slack on purpose.
-- **Q:** [auto] Does any test exercise the tagged build that actually ships? **A:** Now yes — the treesitter load test carries no build tag and the task's verification is two commands, the second running that package under the subset tags. **Why:** `go test ./...` is untagged, so all 206 grammars are embedded and the load test passes regardless; a mistyped subset tag would ship a binary where every C# call fails with a green suite.
+- **Q:** [auto] Does any test exercise the configuration that actually ships? **A:** Under cgo, yes by construction — there is no build-tag surface, so `go test ./...` runs exactly the code that ships. The concern that produced this question is what surfaced the mistyped-tag panic, which in turn contributed to abandoning the pure-Go backend.
 - **Q:** [auto] What order are `symbols` and `files` in? **A:** Source order (ascending `start`) and explicit lexicographic filename order. **Why:** the integration test asserts a full envelope, which is unwritable against an unspecified order, and OS directory order is not stable across filesystems.
+- **Q:** [auto] Is the Go type symbol the `type_declaration` or the `type_spec`? **A:** The spec is the symbol unit in both grouped and ungrouped forms, but the signature is cut from the declaration and always includes the `type` keyword. **Why:** `FileLock struct` is invalid Go and useless to paste; one rule must produce identical output for both source shapes.
+- **Q:** [auto] What exit code does a single-argument toc failure give? **A:** Always 1. Rank 3 is batch-only. **Why:** `internal/cli/cli.go:13-21` documents 0/1/2 as the single-arg contract for every verb; rank 3 exists only to order batch statuses.
 - **Q:** [auto] Does toc add engine sentinels? **A:** Exactly one, `ErrLanguageUnsupported`, re-exported through the facade; path existence and type stay CLI-side. **Why:** it is the one failure the engine can detect and the CLI cannot, and it makes the facade's sentinel count a decided number rather than an open question.
 - **Q:** [auto] Is a `// Code generated … DO NOT EDIT.` banner a header? **A:** No — it is a directive block for header purposes, while still feeding `generated: true`. **Why:** same non-purpose noise as a build constraint.
 - **Q:** Have you actually tested Tree-sitter and got it working? **A:** Not at the time of the recommendation — the recommendation rested on documentation and the platform argument. A spike was then built and run against real quarry source, and it produced four findings that changed the design: the header rule must tolerate a blank line, error recovery is lossy rather than merely incomplete, "top-level" does not generalize beyond Go, and docstring placement is structurally different per language.
