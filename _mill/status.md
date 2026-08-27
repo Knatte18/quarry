@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-doc-redistribution
+phase: holistic-reviewing
 slug: quarry-thin-facade
 branch: quarry-thin-facade
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-message-prefix-rename  '2026-08-27T12:53:55Z'
 approved-engine-repackage  '2026-08-27T13:13:59Z'
 approved-architecture-guards  '2026-08-27T13:19:20Z'
 approved-doc-redistribution  '2026-08-27T13:25:46Z'
+holistic-reviewing  '2026-08-27T13:26:11Z'
 ```
 
 ## Batches
