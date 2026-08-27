@@ -52,8 +52,12 @@ version, not assumed.
   - the lookup happens in `targetDir` **and nowhere else** — no walk up the directory tree, no
     repository-root search, no project detection. toc has no repository-root concept and never detects
     a project the way the LSP verbs do, and an upward search would introduce exactly that concept;
-  - `targetDir` is the directory argument for `toc dir` and the file's parent directory for
-    `toc file`, so the resolution is per-directory rather than per-invocation;
+  - `targetDir` is the file's parent directory for `toc file`, so the resolution is per-directory
+    rather than per-invocation. `toc dir` never calls this function — it emits headers only, never
+    docstrings, so no setting in this file applies to it. The signature is directory-shaped rather
+    than file-shaped anyway, because that is the natural shape of a per-directory lookup; the doc
+    comment must say plainly that the `toc dir` case is **reserved but currently unused**, so nobody
+    reading the signature assumes a caller exists;
   - this file is **not** `servers.yaml`. It has its own name and its own environment variable
     precisely so toc never touches the language-server registry, which it needs no part of.
   Update the file's own header comment, which currently says this file resolves "the two path axes
@@ -66,6 +70,7 @@ version, not assumed.
   - `internal/quarryengine/registry/load.go`
   - `internal/cli/paths.go`
   - `internal/quarryengine/toc/types.go`
+  - `quarry/facade.go`
 - **Edits:** none
 - **Creates:**
   - `internal/cli/tocconfig.go`
@@ -133,12 +138,13 @@ version, not assumed.
   resolved value, and delete the `// TODO` comment batch 6 left there. `targetDir` is the resolved
   file's **parent** directory, computed with `filepath.Dir` after the seam-cwd join.
   Any error from the chain — an invalid flag value, an unknown key in the config file, a malformed
-  config file — is an `output.Err` and exit 1, emitted before the engine is called at all. Resolve the
-  value once per invocation, before the single-argument branch and the batch branch diverge, so a
-  batch call cannot re-read the config once per argument.
-  In batch mode the chain resolves against each argument's own parent directory, since the setting is
-  per-directory and a batch may span directories. Resolve the flag tier once and the file tier per
-  argument; a flag value short-circuits the per-argument work entirely.
+  config file — is an `output.Err` and exit 1, emitted before the engine is called at all.
+  Resolution is **per argument, not per invocation**: the setting is per-directory and a batch may
+  span directories, so each argument resolves the file tier against its own parent directory. The
+  flag tier is hoisted — parse `flagValue` once, before the single-argument branch and the batch
+  branch diverge — and a non-empty flag value short-circuits the per-argument file work entirely,
+  which is what keeps the common case from re-reading a config file once per argument. An invalid
+  flag value therefore fails once, up front, before any argument is processed.
 - **Commit:** `feat(cli): add the --doc-sentences flag and its precedence chain`
 
 ### Card 44: the two-phase flow in the help text
@@ -178,8 +184,10 @@ version, not assumed.
 - **Context:**
   - `internal/cli/tocconfig.go`
   - `internal/cli/paths.go`
+  - `internal/cli/toc.go`
   - `internal/cli/paths_test.go`
   - `internal/cli/cli_test.go`
+  - `quarry/facade.go`
 - **Edits:** none
 - **Creates:**
   - `internal/cli/tocconfig_test.go`

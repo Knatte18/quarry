@@ -217,8 +217,10 @@ Batch-local decisions live in each batch file._
 - **Decision:** the effective `doc-sentences` value is resolved highest-precedence-first:
   1. `--doc-sentences` on the command line — governs that one call;
   2. `$QUARRY_TOC_CONFIG` — an absolute path to a config file, set per shell or per directory;
-  3. `.quarry.yaml` in the **target directory itself** — the directory argument for `toc dir`, the
-     file's parent directory for `toc file`;
+  3. `.quarry.yaml` in the **target directory itself** — for `toc file`, the file's parent
+     directory. `toc dir` is deliberately not part of this chain: it emits headers only, never
+     docstrings, so the setting has nothing to affect there and `--doc-sentences` is registered on
+     `toc file` alone;
   4. the built-in default, `1`.
   The file is YAML, decoded with `KnownFields(true)` exactly as `LoadRegistry` already does, so a
   misspelled key is a loud error rather than a silent no-op. Its shape is a `toc` mapping with a

@@ -141,14 +141,21 @@ than assumed:
   The symbol unit is always the spec node — either a `type_spec` or, for `type X = Y`, a `type_alias`
   node, which the pinned grammar produces instead of a `type_spec`. Handle both kinds; a walk that
   matches only `type_spec` drops every alias.
-  - **Ungrouped** — the `type_declaration` holds exactly one spec child. Emit one symbol whose
+  The two shapes are distinguished by the **presence of a `(` child of the `type_declaration`**, never
+  by counting spec children. `type ( X int )` is legal Go with a single spec, and a spec-count test
+  would route it down the ungrouped path, cutting `Signature` from the `type_declaration` and emitting
+  the whole `type (\n\tX int\n)` block with the group's range instead of the spec's. Verified against
+  the pinned tree-sitter-go v0.25.0: a grouped declaration always has a literal `(` child and an
+  ungrouped one never does, whatever the spec count. State the reason in a comment at the branch.
+  - **Ungrouped** — the `type_declaration` has no `(` child. It holds exactly one spec. Emit one
+    symbol whose
     `Signature` and range are computed from the enclosing `type_declaration`, not from the spec:
     `Start` is the `type_declaration`'s doc-comment block's first line (or the declaration's own),
     `End` is the declaration's last line, and `Signature` is `SignatureCut` from the *declaration's*
     first byte, so the emitted signature includes the `type` keyword. A bare `FileLock struct` would
     be invalid Go and useless to paste anywhere.
-  - **Grouped** — the `type_declaration` holds two or more spec children between `(` and `)`. Emit one
-    symbol per spec. Each spec's docstring is its own `CommentBlockAbove` walked from the spec node,
+  - **Grouped** — the `type_declaration` has a `(` child, and holds one or more spec children between
+    `(` and `)`. Emit one symbol per spec. Each spec's docstring is its own `CommentBlockAbove` walked from the spec node,
     which works unchanged because the grammar makes the group's per-spec doc comments `comment`
     children of the `type_declaration`, interleaved with the specs. Each spec's range is the spec's
     own lines, extended upward to its comment block when it has one. Each spec's signature is rendered
@@ -240,6 +247,10 @@ than assumed:
   - an interface type — the signature stops at the opening brace and the method set is excluded;
   - a grouped `type ( ... )` block — one symbol per spec, each with its own range, each signature
     carrying the `type` keyword, and a comment on the `type (` line itself attributed to no spec;
+  - a **single-spec** grouped block — `type (\n\tX int\n)` — one symbol whose range is the spec's own
+    line and whose signature is `type X int`, not the whole parenthesised block. This is the
+    presence-of-`(` assertion: a spec-count branch passes every other grouped case here and fails
+    only this one;
   - several symbols in one file — `Symbols` is ascending by `Start`.
   `SigEnd` cases:
   - a docstring plus a single-line signature with a block body — `SigEnd` is the signature's line;

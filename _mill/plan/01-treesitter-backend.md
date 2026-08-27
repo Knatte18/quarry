@@ -107,7 +107,15 @@ and it is the first `internal/quarryengine/...` package `go test ./...` reaches.
     every route — the success route, the route where `fn` returns an error, and the `partial` route
     alike. `fn` must never retain the `*ts.Node` it is handed beyond its own return, and the doc
     comment must say so, since the node is invalidated by `tree.Close()`.
-  - An unknown `lang` returns an error wrapping `quarryengine.ErrNoLanguage`; a nil `*Tree` back from
+  - An unknown `lang` returns a **plain, unwrapped** `fmt.Errorf` error naming the language and the
+    wired set — deliberately not `quarryengine.ErrNoLanguage`. That sentinel's own doc comment in
+    `errors.go`, and the engine's package documentation, both define it narrowly as "no
+    registry entry's markers matched under the target directory", which is a detection outcome, not a
+    grammar-wiring outcome; reusing it here would make that documented meaning false. Say so in a
+    comment at the return, so the sentinel is not "helpfully" reintroduced later.
+    `ErrLanguageUnsupported` is not used either: it does not exist yet at this batch (batch 2 card 8
+    adds it), and it means "no toc strategy is registered", which is a different layer from "no
+    grammar is wired". A nil `*Tree` back from
     `Parse` returns a non-nil error rather than a nil-pointer dereference.
   Use the grammar constructors named in the Shared Decision "the confirmed go-tree-sitter v0.25.0 API
   surface" — in particular `tstypescript.LanguageTypescript()` for TypeScript, not a bare
@@ -137,8 +145,9 @@ and it is the first `internal/quarryengine/...` package `go test ./...` reaches.
   advances once on the success route, once on the route where the callback returns an error, and once
   on a `partial` route driven by a deliberately broken fixture — and assert `WithTree` still returns
   the callback's error unchanged on the middle route.
-  Add a test that an unknown language name returns an error satisfying
-  `errors.Is(err, quarryengine.ErrNoLanguage)`.
+  Add a test that an unknown language name returns a non-nil error whose message names the language,
+  and assert `errors.Is(err, quarryengine.ErrNoLanguage)` is **false** — the negative assertion is the
+  point, since it is what pins the sentinel to its documented detection-only meaning.
   Restore `onRelease` to nil in a `t.Cleanup` in every test that assigns it, and do not mark those
   tests `t.Parallel()` — they mutate package state.
 - **Commit:** `test(treesitter): cover grammar loading and C-memory release`

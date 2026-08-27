@@ -32,6 +32,7 @@ machinery.
   - `internal/quarryengine/toc/toc.go`
   - `internal/quarryengine/toc/types.go`
   - `internal/quarryengine/errors.go`
+  - `internal/quarryengine/registry/registry.go`
 - **Edits:**
   - `quarry/facade.go`
 - **Creates:** none
@@ -47,10 +48,16 @@ machinery.
   engine package to name a kind or ask for the whole docstring.
   Add `var ErrLanguageUnsupported = quarryengine.ErrLanguageUnsupported`, alongside the other
   re-exported sentinels.
-  Add the two delegating functions:
-  `func TOCFile(path string, lang string, opts TOCOptions) (TOCFileResult, error)` and
-  `func TOCDir(dir string, lang string) (TOCDirResult, error)`, each a single `return toc....` line.
-  Import `github.com/Knatte18/quarry/internal/quarryengine/toc` alongside the existing engine imports.
+  Add the three delegating functions:
+  `func TOCFile(path string, lang string, opts TOCOptions) (TOCFileResult, error)`,
+  `func TOCDir(dir string, lang string) (TOCDirResult, error)`, each a single `return toc....` line,
+  and `func TOCLanguages() []string`, a single `return registry.ExtensionLanguages()` line.
+  `TOCLanguages` exists so the CLI can validate `--lang` against toc's own vocabulary without
+  importing an engine subpackage directly: `internal/cli` today imports **nothing** under
+  `internal/quarryengine` — every engine identifier reaches it through this file — and cards 36 and 37
+  must not be the first exception. Say that in its doc comment.
+  Import `github.com/Knatte18/quarry/internal/quarryengine/toc` and
+  `github.com/Knatte18/quarry/internal/quarryengine/registry` alongside the existing engine imports.
   Do **not** add behaviour of any kind here — no defaulting of `opts`, no validation, no path
   handling. The facade's whole contract is that it adds nothing.
   The file's own doc comment carries a stale identifier count and a stale package-set enumeration;
@@ -73,8 +80,9 @@ machinery.
   merely present.
   Add one blank-identifier entry per new delegating function to the existing block, each against the
   exact func type its engine counterpart demands:
-  `_ func(string, string, TOCOptions) (TOCFileResult, error) = TOCFile` and
-  `_ func(string, string) (TOCDirResult, error) = TOCDir`. The comment above that block states a
+  `_ func(string, string, TOCOptions) (TOCFileResult, error) = TOCFile`,
+  `_ func(string, string) (TOCDirResult, error) = TOCDir`, and
+  `_ func() []string = TOCLanguages`. The comment above that block states a
   count of the assignments it holds; update the count to match what the block now contains.
   Add alias round-trip pairs for the new type aliases in the `aliasCheck...` variable block and the
   matching assignments in `init`, following the existing two-line engine-to-facade-and-back shape, so
@@ -117,10 +125,13 @@ machinery.
   is added to this same `Long` in batch 7, where that flag exists.
   Its `RunE`:
   - resolves the seam cwd with `CwdFrom(ctx)` and, on error, emits `output.Err` and returns nil;
-  - validates `--lang` against toc's **own** vocabulary — `registry.ExtensionLanguages()` — and not
-    against the server registry. An unrecognised value is an `output.Err` naming the valid set. State
-    in a comment why the existing verbs' registry-key validation is not reused: it runs inside
-    `resolveContext` against the servers.yaml-loaded registry, which toc never loads;
+  - validates `--lang` against toc's **own** vocabulary — `quarry.TOCLanguages()`, the facade
+    re-export card 34 adds — and not against the server registry. Call it through the facade, never
+    `registry.ExtensionLanguages()` directly: `internal/cli` imports nothing under
+    `internal/quarryengine`, and this file must not become the first exception. An unrecognised value
+    is an `output.Err` naming the valid set. State in a comment why the existing verbs' registry-key
+    validation is not reused: it runs inside `resolveContext` against the servers.yaml-loaded
+    registry, which toc never loads;
   - for a single positional argument, joins it against the seam cwd unless it is already absolute,
     `os.Stat`s the result, and emits `output.Err` for a nonexistent path or for a directory — the
     directory message must name the correct subcommand so a mistaken call carries its own fix. Use
@@ -144,7 +155,6 @@ machinery.
   - `internal/cli/cwdcontext.go`
   - `internal/output/output.go`
   - `quarry/facade.go`
-  - `internal/quarryengine/registry/extension.go`
 - **Edits:**
   - `internal/cli/toc.go`
 - **Creates:** none

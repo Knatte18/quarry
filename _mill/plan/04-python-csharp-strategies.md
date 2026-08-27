@@ -182,10 +182,37 @@ Batch-local decisions, established by dumping real parse trees from the pinned g
   - a type declaration (`class_declaration`, `interface_declaration`, `record_declaration`,
     `struct_declaration`) — emit it as `KindType`, then descend into its `body` field
     (a `declaration_list`) when it has one, to reach its members.
-  Members (`method_declaration`, and the constructor/property-free set this design lists) inside a
-  `declaration_list` are emitted as `KindMethod` with `Owner` set to the enclosing type
-  declaration's name. A declaration inside a member's body is never reached, because the walk
-  descends only into `declaration_list` and namespace bodies, never into a `block`.
+  Members inside a `declaration_list` are emitted as `KindMethod` with `Owner` set to the enclosing
+  type declaration's name. The emitted set is **closed** and consists of exactly these five node
+  kinds — the named callables:
+  - `method_declaration`
+  - `constructor_declaration`
+  - `destructor_declaration`
+
+  All three carry a `name` field in this grammar (verified against the pinned
+  tree-sitter-c-sharp v0.23.5, not assumed), so the single `ChildByFieldName("name")` rule below
+  covers the whole set with no per-kind naming branch.
+
+  Every other member kind is **deliberately excluded** and produces no symbol. Name the exclusions
+  explicitly in a comment at the switch, so a later reader sees they are decided rather than
+  forgotten: `property_declaration`, `indexer_declaration`, `event_declaration`,
+  `event_field_declaration`, `field_declaration`, `delegate_declaration`, `enum_member_declaration`,
+  `operator_declaration`, and `conversion_operator_declaration`. Two distinct reasons drive the cut,
+  and the comment must give both:
+  - a property, indexer, event, or field is **state, not a callable** — and the accessor-bearing
+    forms would additionally need a `SigEnd` rule for `accessor_list` that nothing else in this
+    design requires;
+  - `operator_declaration` and `conversion_operator_declaration` are callables, but neither has a
+    `name` field — an operator's identity lives in an `operator:` field holding the symbol, and a
+    conversion operator has no name node at all, only a `type:` field. Emitting them would require a
+    bespoke name-synthesis rule for a construct the `kind` vocabulary (`function`/`method`/`type`)
+    has no room for, so they are omitted rather than half-named.
+
+  A nested type declaration inside a `declaration_list` is not a member: it is matched by the type
+  branch above and emitted as `KindType`, then descended into like any other type.
+
+  A declaration inside a member's body is never reached, because the walk descends only into
+  `declaration_list` and namespace bodies, never into a `block`.
   `Name` is the `name` field child's text.
   **The body-bearing child is always `ChildByFieldName("body")`** — the grammar sets that field to a
   `declaration_list` for a type, a `block` for a block-bodied member, and an
@@ -276,6 +303,14 @@ Batch-local decisions, established by dumping real parse trees from the pinned g
     semicolon, and `SigEnd` is `0` so the key is omitted;
   - an `interface` declaration and its method — both listed, with the interface as `KindType`;
   - a declaration inside a method body — **not** listed;
+  - a class carrying one of each emitted member kind — a method, a constructor, and a destructor —
+    all three listed as `KindMethod` with `Owner` set to the class and with their names resolved
+    (`C` for the constructor and the destructor);
+  - a class carrying an auto-property with `{ get; set; }`, a `field_declaration`, an
+    `event` field, a `delegate_declaration`, an `operator +`, and an `explicit operator` conversion —
+    **none** of them listed. This is the closed-set assertion: it is what fails if someone later
+    widens the member switch without revisiting this design;
+  - a nested `class` inside a class — listed as `KindType`, not as a member;
   - a member with no doc comment — `Docstring` is empty and the range starts at the declaration;
   - several symbols — ascending by `Start`.
   Header cases:
