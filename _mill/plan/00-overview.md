@@ -3,7 +3,7 @@
 ```yaml
 task: Thin quarry/ facade over internal/quarryengine
 slug: quarry-thin-facade
-approved: false
+approved: true
 started: 20260827-112023
 parent: main
 root: ""
