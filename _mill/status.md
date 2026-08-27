@@ -61,6 +61,8 @@ batches:
     commit_sha: 8f715250c1564aa5b014b2d52a304eb4616a3ba0
     verify_baseline_failures: []
   - name: doc-redistribution
-    state: pending
+    state: running
+    implementer_session: 4707ae9d-1743-44f6-ab1f-84e603572f28
+    start_sha: 144358d81f34a3d004d2382f91f6e2055d3fc871
     verify_baseline_failures: []
 ```
