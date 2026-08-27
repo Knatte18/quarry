@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-27T16:28:00Z'
 discussed  '2026-08-27T17:44:07Z'
 planning  '2026-08-27T17:58:53Z'
+plan-review-r1  '2026-08-27T18:03:53Z'
 ```
