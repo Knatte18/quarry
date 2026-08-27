@@ -45,6 +45,8 @@ Batch-local decision, restating the overview's `verification-is-fail-closed-ever
   - `internal/quarryengine/query/refs.go`
   - `internal/quarryengine/lsp/wire.go`
   - `internal/quarryengine/lsp/lspclient.go`
+  - `internal/quarryengine/position.go`
+  - `internal/cli/cli.go`
   - `docs/implementation-widening-spike.md`
 - **Edits:** none
 - **Creates:**
@@ -107,6 +109,7 @@ Batch-local decision, restating the overview's `verification-is-fail-closed-ever
   - `internal/quarryengine/lsp/lspclient.go`
   - `internal/quarryengine/layering_test.go`
   - `internal/cli/cli.go`
+  - `docs/implementation-widening-spike.md`
 - **Edits:**
   - `internal/quarryengine/daemon/daemontest/daemontest.go`
 - **Creates:**
@@ -115,6 +118,7 @@ Batch-local decision, restating the overview's `verification-is-fail-closed-ever
 - **Moves:** none
 - **Requirements:**
   - Drive `callersFromClient` against a hand-built client over the in-memory pipe transport, following the fake-server construction `internal/quarryengine/query/symbol_test.go` already uses. Do not drive the exported `Callers`, which would require a spawn.
+  - Carry the same conditional on the recorded widening mode that cards 14 and 15 carry. If `docs/implementation-widening-spike.md` records `mode: directional`, every fake server in this file that is meant to let verification actually run must advertise `documentSymbolProvider` in its initialize response and answer `textDocument/documentSymbol` with a hierarchy that classifies the implementation locations it returns. Card 15 makes an unadvertised capability, an errored call, an empty result, and a phase deadline all skip-verification triggers, so a fake that stays silent on `documentSymbol` turns every drop assertion below into a keep and fails the test for a reason that has nothing to do with the behaviour under test. If the recorded mode is `symmetric`, no `documentSymbol` support is needed anywhere in this file.
   - The single most important test, written first: given a non-empty reference set and a declaration-side definition call that returns an empty location list, every reference is kept and no error is returned. Then the same with the declaration-side definition call returning an LSP error. An empty declaration set is a silent success, not an error, and nothing intersects an empty set — verifying against one would drop every reference and turn the gate green, which is the exact fail-open this whole design exists to prevent.
   - Both directions of the interface relation, on synthetic fake-server responses: querying an interface method, a reference whose own definition resolves to a concrete method is dropped; querying a concrete method, a reference whose own definition resolves to the interface's declaration is kept because the implementation half of the match set matches it. The second is the fail-open the implementation-widening exists to close and is worth writing before the first.
   - A reference matching neither half of the match set is dropped in both directions — the property that removes the unrelated structurally-identical interfaces issue #1 measures.
