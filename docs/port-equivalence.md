@@ -102,8 +102,8 @@ including the exit code.
 | `ReadJSON`,`WriteJSON` (batch) | `symbol` | 0 | 0 | MATCH | MATCH |
 
 Every error-message string compared equal verbatim, including the
-`"scoutengine: "` prefix quarry's own errors still carry (e.g.
-`{"error":"scoutengine: symbol \"QuarryNoSuchSymbolXYZ123\" not found
+`"quarry: "` prefix quarry's own errors now carry (e.g.
+`{"error":"quarry: symbol \"QuarryNoSuchSymbolXYZ123\" not found
 under <target-dir>","ok":false}` from both binaries) — the prefixes were
 deliberately left unrenamed through the port so this exact comparison
 could be strict (see the plan's "behavioural equivalence is the acceptance

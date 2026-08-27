@@ -19,7 +19,7 @@ var ErrNoLanguage = errors.New("quarry: no language detected")
 
 // ErrServerNotFoundSentinel is the package-level sentinel *ErrServerNotFound.Is compares against,
 // so callers can test for this failure mode with errors.Is(err,
-// scoutengine.ErrServerNotFoundSentinel) without needing to know the concrete field values of the
+// quarry.ErrServerNotFoundSentinel) without needing to know the concrete field values of the
 // *ErrServerNotFound the engine actually returned.
 var ErrServerNotFoundSentinel = errors.New("quarry: language server not found")
 
