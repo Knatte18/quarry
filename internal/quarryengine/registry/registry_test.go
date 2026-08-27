@@ -2,7 +2,7 @@
 // language-server-registry Shared Decision,
 // and validateEntry against each closed-vocabulary violation it must reject.
 
-package quarry
+package registry
 
 import (
 	"strings"

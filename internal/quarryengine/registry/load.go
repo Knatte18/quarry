@@ -4,7 +4,7 @@
 // absent file falls back to builtins() with no error, and present entries whole-replace the
 // corresponding built-in.
 
-package quarry
+package registry
 
 import (
 	"bytes"

@@ -3,13 +3,15 @@
 // layer) resolves — and it never spawns a subprocess;
 // every check is a stat call.
 
-package quarry
+package registry
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
 )
 
 // DetectLanguage identifies which registered language targetDir belongs to, using langOverride if
@@ -36,7 +38,7 @@ func DetectLanguage(targetDir string, reg Registry, langOverride string) (string
 		}
 	}
 
-	return "", Entry{}, fmt.Errorf("quarry: %w: searched markers %v under %s", ErrNoLanguage, searched, targetDir)
+	return "", Entry{}, fmt.Errorf("quarry: %w: searched markers %v under %s", quarryengine.ErrNoLanguage, searched, targetDir)
 }
 
 // markersMatch reports whether entry's markers match targetDir per entry.Match.

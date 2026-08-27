@@ -2,7 +2,7 @@
 // with os.WriteFile — no git spawn, no subprocess launch, entirely offline and spawn-free per the
 // batch's leaf test tier.
 
-package quarry
+package registry
 
 import (
 	"errors"
@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
 )
 
 // touchMarkers creates empty marker files.
@@ -59,7 +61,7 @@ func TestDetectLanguage_TypeScriptRequiresBothMarkers(t *testing.T) {
 		touchMarkers(t, dir, "package.json")
 
 		_, _, err := DetectLanguage(dir, reg, "")
-		if !errors.Is(err, ErrNoLanguage) {
+		if !errors.Is(err, quarryengine.ErrNoLanguage) {
 			t.Fatalf("DetectLanguage(package.json only) err = %v; want ErrNoLanguage", err)
 		}
 	})
@@ -69,7 +71,7 @@ func TestDetectLanguage_TypeScriptRequiresBothMarkers(t *testing.T) {
 		touchMarkers(t, dir, "tsconfig.json")
 
 		_, _, err := DetectLanguage(dir, reg, "")
-		if !errors.Is(err, ErrNoLanguage) {
+		if !errors.Is(err, quarryengine.ErrNoLanguage) {
 			t.Fatalf("DetectLanguage(tsconfig.json only) err = %v; want ErrNoLanguage", err)
 		}
 	})
@@ -143,7 +145,7 @@ func TestDetectLanguage_NoMarkerYieldsErrNoLanguage(t *testing.T) {
 	reg := builtins()
 
 	_, _, err := DetectLanguage(dir, reg, "")
-	if !errors.Is(err, ErrNoLanguage) {
-		t.Fatalf("DetectLanguage(empty dir) err = %v; want errors.Is(err, ErrNoLanguage)", err)
+	if !errors.Is(err, quarryengine.ErrNoLanguage) {
+		t.Fatalf("DetectLanguage(empty dir) err = %v; want errors.Is(err, quarryengine.ErrNoLanguage)", err)
 	}
 }

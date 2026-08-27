@@ -2,7 +2,7 @@
 // at a path of its own choosing and passing that path directly to LoadRegistry — the told-path
 // signature card 15 introduced.
 
-package quarry
+package registry
 
 import (
 	"os"

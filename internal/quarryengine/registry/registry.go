@@ -5,7 +5,7 @@
 // and BuiltinRegistry() is the one-line exported accessor the CLI layer uses when no servers.yaml
 // overlay is resolvable.
 
-package quarry
+package registry
 
 import "fmt"
 
