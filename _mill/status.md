@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r4
+phase: plan-fix-r4
 slug: quarry-thin-facade
 branch: quarry-thin-facade
 plan: _mill/plan
@@ -27,4 +27,5 @@ plan-fix-r2  '2026-08-27T11:50:54Z'
 plan-review-r3  '2026-08-27T12:03:03Z'
 plan-fix-r3  '2026-08-27T12:04:07Z'
 plan-review-r4  '2026-08-27T12:15:52Z'
+plan-fix-r4  '2026-08-27T12:17:32Z'
 ```
