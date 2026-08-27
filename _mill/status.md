@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: toc-verbs
 branch: toc-verbs
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-27T16:28:09Z'
+discussed  '2026-08-27T18:19:39Z'
 ```
