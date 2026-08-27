@@ -1,1 +1,0 @@
-- Close's doc comment is attached to the wrong method: **Location:** `internal/quarryengine/lsp/lspclient.go:584-597`
