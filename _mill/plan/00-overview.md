@@ -71,6 +71,12 @@ batches:
 - **Rationale:** `_mill/discussion.md` describes the facade doc as living in `quarry/doc.go`, but that path is simultaneously the source of a `Moves:` pair, and a path may not appear in both `Moves:` and `Creates:`. Hosting the package comment in `facade.go` is idiomatic Go, preserves the move's git rename history, and changes nothing about the delivered content.
 - **Applies to:** engine-repackage, doc-redistribution
 
+### Decision: test-support helpers — `daemontest` for out-of-package callers, duplication for the rest
+
+- **Decision:** `internal/quarryengine/daemon/daemontest` exports `WithFakeInstaller` and `WithTempUserCacheDir` for tests OUTSIDE `package daemon` — today only `query`'s `refs_test.go`. `daemon`'s own in-package tests keep their existing `withFakeInstaller`/`withTempUserCacheDir` helpers in `toolchain_test.go`, unchanged. The `repoRoot(t)` helper is duplicated outright: `query` keeps the existing definition in `refs_integration_test.go`, and `daemon` gets its own copy in `ensureserver_integration_test.go`. Both copies walk four `filepath.Dir` levels, not the original two.
+- **Rationale:** Go rejects an in-package test file that imports a package which imports the package under test — `daemon [test] -> daemontest -> daemon` fails to build with `import cycle not allowed in test`. This was confirmed against a scratch module, not assumed, so routing `daemon`'s own tests through `daemontest` is not merely inelegant, it does not compile. `repoRoot` has the mirror-image problem: it lives in a file moving to `query`, and `daemon` may not import `query`; it is seven lines of stdlib with no state, so duplicating it is cheaper than inventing a third home for it. This refines `_mill/discussion.md`'s *toolchain test seam* Decision, which assumed all three call sites could share one import — that assumption was wrong, and only the `query` half of it survives.
+- **Applies to:** engine-repackage, architecture-guards
+
 ### Decision: every rename is a `git mv`, never a create-plus-delete
 
 - **Decision:** all 34 relocated files (14 production, 20 test) are moved with `git mv` first, then surgically edited — package clause, import block, and the specific identifier retargets named per card. No relocated file is rewritten from scratch.
