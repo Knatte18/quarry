@@ -1,17 +1,41 @@
-// lspclient.go implements Client, a generalized stdio LSP client speaking exactly the
+// Package lsp implements Client, the generalized stdio LSP client speaking exactly the
 // request/notification surface this engine needs (initialize, initialized, textDocument/references,
-// workspace/symbol, shutdown, exit) — not the full LSP protocol, per the plan's references-only
-// Shared Decision.
-// It is ported from the recovered tools/codeintel-poc/gopls.go harness (git show 3b4dcf86),
-// generalized to launch any command []string rather than a hardcoded "gopls" lookup, and with every
-// request-level call threading a context.Context so a caller can bound it with a deadline that
-// hard-kills the subprocess on expiry.
+// textDocument/definition, textDocument/documentSymbol, workspace/symbol, shutdown, exit) — not the
+// full LSP protocol, per the plan's references-only Shared Decision.
+// No callHierarchy, no implementation — the spike's call-hierarchy recommendation (build it on
+// TypesInfo.Uses/Defs, never syntactic *ast.CallExpr pattern-matching) does not translate to a
+// language-agnostic LSP client at all, since LSP callers must accept whatever
+// callHierarchy/incomingCalls a given server implements; that generalization is explicitly deferred
+// (see quarryengine's own package doc comment, "What this engine deliberately does not do").
 //
+// Every request phase — initialize, the workspace/symbol resolver call, and
+// textDocument/references or textDocument/definition — is bounded by its own
+// context.WithTimeout(ctx, opts.Timeout) deadline (--timeout, default 30s). A phase that times out
+// returns quarryengine.ErrServerTimeout (naming the stalled phase) and the caller hard-kills the
+// subprocess (cmd.Process.Kill() via the client's Kill()) rather than attempting the graceful
+// shutdown/exit handshake, which could itself re-block on a server that is already unresponsive. A
+// phase that completes normally instead closes the server via the graceful handshake (Close()) —
+// except under the daemon package's supervised EnsureServer strategy, whose connections are never
+// closed at all; see daemon/doc.go's own package doc comment for why. This mirrors the spike's own
+// timeout-closes-the-hang-failure-mode framing, generalized from "gopls hangs on initialize" to any
+// of the request phases on any server.
+//
+// Position conversion (wire.go's ToPosition) is the one place caller-facing 1-based line/byte-column
+// positions (file:line:col as parsed from a CLI argument) cross into LSP's wire format: 0-based
+// line, UTF-16 code-unit column. The conversion re-reads the target file because the byte column and
+// the UTF-16 offset only coincide on a pure-ASCII line — any multi-byte rune before the target
+// column would otherwise misalign the position handed to the server. A workspace/symbol candidate's
+// own returned position, by contrast, is already in LSP's wire shape and is used as-is with no round
+// trip through the byte-column type, avoiding exactly that misalignment hazard on the resolver path.
+//
+// lspclient.go implements Client itself. It is ported from the recovered
+// tools/codeintel-poc/gopls.go harness (git show 3b4dcf86), generalized to launch any command
+// []string rather than a hardcoded "gopls" lookup, and with every request-level call threading a
+// context.Context so a caller can bound it with a deadline that hard-kills the subprocess on expiry.
 // The I/O is factored over an injectable transport for testability: the production constructor
-// NewClient spawns a subprocess and wires its stdio, while the unexported NewClientFromRW
-// seam builds a client over a caller-supplied io.ReadWriteCloser with no subprocess at all — the
-// fake in-memory server in lspclient_test.go drives this seam.
-
+// NewClient spawns a subprocess and wires its stdio, while the unexported NewClientFromRW seam
+// builds a client over a caller-supplied io.ReadWriteCloser with no subprocess at all — the fake
+// in-memory server in lspclient_test.go drives this seam.
 package lsp
 
 import (

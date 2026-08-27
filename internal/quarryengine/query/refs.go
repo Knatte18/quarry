@@ -1,13 +1,35 @@
-// refs.go implements References, the public orchestration entry point that ties detection
-// (detect.go), the language-server registry (registry.go), and the generalized LSP client
-// (lspclient.go) together: given a target directory and a query (a symbol name or an explicit
-// file:line:col position), it launches the right language server, resolves the query to a position
-// if needed, and returns the reference list.
+// Package query implements References, Definition, and Symbol, the engine's public orchestration
+// entry points and the sole packages internal/cli calls into.
+//
+// workspace/symbol is the name → position resolver: given a bare symbol name (no explicit
+// position), References/Definition issue workspace/symbol (via resolvePosition, refs.go) and
+// require exactly one candidate — zero is quarryengine.ErrSymbolNotFound, more than one is
+// quarryengine.ErrAmbiguousSymbol (carrying every candidate as a formatted file:line:col string so
+// the caller can disambiguate without a second broader search). A server that does not advertise
+// workspaceSymbolProvider in its initialize response fails this path immediately with
+// quarryengine.ErrResolverUnsupported rather than attempting the call and getting an empty or
+// undefined result. An explicit file:line:col position bypasses this resolver entirely.
+//
+// A second, narrower resolve mode (--in-file, Query.InFile) exists alongside workspace/symbol for
+// the case a caller already knows which file a symbol lives in: resolvePosition issues
+// textDocument/documentSymbol for that one file instead and searches its hierarchical result
+// exhaustively (collectInFileMatches, descending into every symbol's Children) for exact name
+// matches. Unlike workspace/symbol, this resolver does no fuzzy or project-wide matching — it is
+// scoped to exactly the one named file — and gates on the server advertising documentSymbolProvider
+// rather than workspaceSymbolProvider, failing with quarryengine.ErrResolverUnsupported the same way
+// when it does not. The zero/one/many candidate mapping to
+// quarryengine.ErrSymbolNotFound/success/quarryengine.ErrAmbiguousSymbol otherwise mirrors
+// workspace/symbol's exactly.
+//
+// refs.go implements References itself, the public orchestration entry point that ties detection
+// (registry.DetectLanguage), the language-server registry (the registry package), and the
+// generalized LSP client (the lsp package) together: given a target directory and a query (a symbol
+// name or an explicit file:line:col position), it launches the right language server, resolves the
+// query to a position if needed, and returns the reference list.
 // It also defines the shared lookup pipeline (acquireConnection, teardownConnection, lookup) that
 // References wraps and that Definition wraps too — both differ only in which single
 // LSP call they make once a position is resolved.
 // This is the external interface the CLI layer (internal/cli) calls.
-
 package query
 
 import (

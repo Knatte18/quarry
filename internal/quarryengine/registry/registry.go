@@ -1,10 +1,31 @@
-// registry.go defines the language-server registry shape (Entry, Registry), the pinned built-in
-// fallback set for the five supported languages, the fixed detection precedence order, and entry
-// validation.
-// builtins() is the offline default every consumer gets with zero servers.yaml present,
-// and BuiltinRegistry() is the one-line exported accessor the CLI layer uses when no servers.yaml
-// overlay is resolvable.
-
+// Package registry implements the language-server registry: a pinned built-in set with an optional
+// file overlay.
+//
+//   - Built-ins (builtins()): a pinned, default-free Registry (a map[string]Entry) for the five
+//     supported languages, each entry naming its detection Markers, whether Match requires "all" or
+//     "any" of them, the launch Command argv, an operator-facing InstallHint, and — Go's entry only
+//     in V1 — PinnedVersion and HasNativeDaemon (see daemon/doc.go's own package doc comment).
+//     BuiltinRegistry() exposes this to any caller (the CLI uses it when no servers.yaml overlay is
+//     resolvable).
+//   - Optional servers.yaml overlay (LoadRegistry(path), load.go): loaded from a resolved absolute
+//     path the caller supplies — internal/cli resolves that path via the
+//     --config/$QUARRY_CONFIG/os.UserConfigDir() precedence documented in README.md; this package
+//     joins nothing of its own. An absent file is not an error (built-ins suffice); a present file
+//     decodes with yaml.Decoder.KnownFields(true) (an unknown field anywhere is a loud error naming
+//     the offending entry and file path) and every present entry whole-replaces its built-in
+//     counterpart — no field-level merge, so an override can never silently mix a stale built-in
+//     default with a new one. See docs/servers.yaml.example for every built-in entry at its default
+//     values and for how to add a language.
+//   - Detection precedence (detect.go): a fixed order (go, rust, csharp, typescript, python, pinned
+//     as a slice — map iteration is unordered) so a project matching more than one language's
+//     markers (e.g. a Go module vendoring a TypeScript frontend) resolves deterministically to the
+//     earlier language. --lang bypasses precedence entirely, looking the override up directly in
+//     the registry (an unknown override names every valid language in its error).
+//
+// registry.go itself defines the registry shape (Entry, Registry), the pinned built-in fallback set,
+// the fixed detection precedence order, and entry validation. builtins() is the offline default
+// every consumer gets with zero servers.yaml present, and BuiltinRegistry() is the one-line exported
+// accessor the CLI layer uses when no servers.yaml overlay is resolvable.
 package registry
 
 import "fmt"
