@@ -53,6 +53,21 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   TypeScript, Rust) and **implemented and tested for Go, Python, and C#** in this task.
 - Facade re-exports `quarry.TOCFile` and `quarry.TOCDir` in `quarry/facade.go`.
 - New rows in `internal/quarryengine/layering_test.go`'s `layeringTable` for both new packages.
+- **Four exact-count / exact-claim doc invariants that go stale the moment this task lands, and
+  must be updated in the same batch as the code that invalidates them:**
+  - `quarry/facade.go:8` — "It re-exports exactly the 29 identifiers this package exported before
+    the engine-repackage move: no more, no less." Adding `TOCFile`, `TOCDir`, and the toc result
+    type aliases breaks this sentence. Recount and rewrite it; do not leave a stale number.
+  - `quarry/facade_test.go:103` — "The eight blank-identifier assignments below reference every
+    delegating function in facade.go". That block is a compile-time signature guard, so `TOCFile`
+    and `TOCDir` must each get an entry **and** the count in the comment must be updated.
+  - `internal/cli/cli.go:7` — the package doc says "exposing four verbs" and enumerates them.
+    Must account for the `toc` group.
+  - `README.md:3` — "quarry is an LSP-backed code intelligence tool." This stops being true when a
+    second, non-LSP parsing backend lands; the sentence must be reworded, not just the verb list
+    below it extended.
+- README "Building and running" update for the grammar-subset build tags (see the grammar-set
+  Decision).
 - README verb-list update.
 - A per-language docstring-association survey doc under `docs/`, in the spirit of
   `docs/scout-multilang.md`.
@@ -102,6 +117,39 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   The containment is the package split below — the backend lives behind an interface in
   `internal/quarryengine/treesitter`, so swapping runtimes is one package, not a rewrite.
 
+### Grammar set: subset build tags in the documented build, untagged build still supported
+
+- Decision: `cmd/quarry` is built with the runtime's per-language subset tags —
+  `-tags "grammar_subset,grammar_subset_go,grammar_subset_python,grammar_subset_csharp,grammar_subset_typescript,grammar_subset_rust"` —
+  and README's "Building and running" section is updated to show that command.
+  The **untagged** `go build ./cmd/quarry` and `go install` paths stay fully supported and correct;
+  they simply produce a larger binary with all 206 grammars embedded.
+  No grammar-set choice is deferred to implementation time.
+- Measured during discussion, on this tree:
+
+  | Build | Size |
+  | --- | --- |
+  | current quarry, no Tree-sitter | 5.9 MB |
+  | untagged (all 206 grammars embedded) | 30.2 MB |
+  | `-tags grammar_set_core` (curated Core100) | 23.8 MB |
+  | `-tags grammar_blobs_external` (blobs as separate files) | 14.9 MB |
+  | **per-language `grammar_subset` (the five quarry supports)** | **12.7 MB** |
+
+  The subset build was verified to still parse correctly, not merely to link.
+- Rationale: +6.8 MB over the current binary for a second parsing backend is a fair price; +24.3 MB
+  is not, and finding that out after implementation would call the whole pure-Go premise into
+  question. `grammar_blobs_external` is rejected despite being smaller than `grammar_set_core`
+  because it moves the grammars out of the binary into separate files, destroying quarry's
+  single-binary distribution — worth far more than the 2.2 MB it would save over the subset build.
+  The untagged path must keep working because `go install` users cannot pass build tags.
+- Rejected: untagged default (+24.3 MB for 201 grammars quarry can never use);
+  `grammar_set_core` (still +17.9 MB, and a fixed set quarry does not control);
+  `grammar_blobs_external` (breaks single-binary distribution);
+  the runtime `GOTREESITTER_GRAMMAR_SET` env var (restricts *loading*, not binary size — it does not
+  solve this problem at all);
+  deferring the choice to implementation with a size budget (that is a deferral wearing a decision's
+  clothes; the numbers were obtainable in minutes and are now recorded above).
+
 ### Verb shape: a `toc` command group, not two flat verbs
 
 - Decision: `quarry toc file <path>` and `quarry toc dir <path>`, as a cobra parent command with
@@ -135,8 +183,29 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   marker files (`go.mod`, `Cargo.toml`, …) against a *directory*, with a fixed precedence order.
   Reusing it would resolve a `.ts` file inside a Go module to "go", because `go.mod` wins the
   precedence list. That is correct for the LSP verbs and wrong for a file-scoped one.
+- **`--lang` for toc is validated against toc's own vocabulary, not the server registry.**
+  The existing verbs' `--lang` is a *registry key*, looked up inside `registry.DetectLanguage`
+  against the registry that `resolveContext` loaded from servers.yaml
+  (`internal/cli/cli.go:153`, flag help at `:205`). toc deliberately does not go through
+  `resolveContext` — it needs no language server and no state dir — so it cannot and must not reuse
+  that validation path.
+  toc's `--lang` accepts exactly the canonical language names its own extension map defines
+  (`go`, `python`, `csharp`, `typescript`, `rust`). An unrecognised value is an `output.Err` naming
+  the valid set. A recognised-but-unimplemented value (`typescript`, `rust`) gets the same
+  "not yet supported by toc" error the extension path gives.
+- **`--lang` overrides the extension outright; a mismatch is not an error.**
+  `quarry toc file --lang go foo.py` parses `foo.py` with the Go grammar and will almost certainly
+  come back with `partial: true` and few or no symbols. This is deliberate and matches what
+  `--lang` means on every existing verb: an explicit operator override that wins over detection.
+  Erroring on mismatch would make the flag useless for its actual purpose — a file with a
+  non-standard extension.
+  For `toc dir`, `--lang` restricts the listing to that language's extensions instead of listing
+  every supported language found.
 - Rejected: reusing `DetectLanguage` on the file's parent directory (wrong for mixed-language
-  trees); sniffing file content (unnecessary — the extension is definitive for all five languages).
+  trees); sniffing file content (unnecessary — the extension is definitive for all five languages);
+  validating toc's `--lang` against the servers.yaml registry (couples a parser-only verb to the
+  language-server config it has no other reason to load);
+  erroring on an extension/`--lang` mismatch (defeats the override's purpose).
 
 ### Language scope: five designed, three implemented
 
@@ -209,16 +278,41 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   same "docstring is part of the range it precedes" rule. Both verbs treat a docstring as part of
   the definition, never as leading noise.
 
-### Signature: exact source text, body excluded
+### Signature: exact source text, cut at the body-bearing child
 
 - Decision: the signature is the verbatim source text from the declaration's first byte up to the
-  start of its body node, trimmed.
-  No normalization, no reformatting, no synthesized canonical form.
+  start of that declaration's **body-bearing child node**, trimmed.
+  No normalization, no reformatting, no synthesized canonical form, and **never a "first line only"
+  truncation**.
+  "Body-bearing child" is resolved per kind, and every implemented kind must have an explicit rule:
+  - Go function / method: `ChildByFieldName("body")` (a `block`).
+  - Go type declaration: the type's own body node — `field_declaration_list` for a `struct_type`,
+    the interface body for an `interface_type`. So `type FileLock struct` is the signature, not the
+    whole struct with its fields.
+  - Go type alias / defined type with no body (`type ID string`): no body-bearing child exists, so
+    the signature is the whole `type_spec` text. This is short by construction.
+  - Python: `ChildByFieldName("body")` (a `block`), for both `function_definition` and
+    `class_definition`.
+  - C# block-bodied member: the `declaration_list` (for a type) or the method's `block`.
+  - C# expression-bodied member (`=>`): the `arrow_expression_clause`, so `public void Resize(double
+    factor)` is the signature and the expression is excluded.
+- A Go grouped `type ( … )` block produces **one symbol per `type_spec`**, not one symbol for the
+  whole `type_declaration`. Each `type_spec` carries its own name, its own range, and — where the
+  spec has its own preceding comment inside the group — its own docstring; a docstring attached to
+  the `type (` line itself attaches to no individual spec and is dropped.
 - Rationale: it is what the parser already gives, it is guaranteed correct because no transformation
   can introduce drift, and an LLM reads native source syntax at least as well as an invented normal
   form. A normalizer would be five per-language formatters to write, test, and keep correct.
+  The per-kind body rule is what makes the "no normalization" rule actually implementable: a Go
+  `type_declaration` has no `body` field at all, so a naive `ChildByFieldName("body")` returns nil
+  and the signature silently becomes the entire struct body — the exact token blowup this verb
+  exists to prevent. The discussion spike papered over this with a first-line-only cut, which is a
+  hack that breaks on any multi-line function signature.
 - Rejected: a normalized `name + param types + return type` rendering (uniform across languages,
-  but five formatters' worth of maintenance and five ways to be subtly wrong).
+  but five formatters' worth of maintenance and five ways to be subtly wrong);
+  cutting at the first `\n` (loses everything after the first line of a multi-line signature, and
+  the repo has such signatures — see `buildOptions` in `internal/cli/cli.go:492`);
+  cutting at the first `{` byte (wrong for a generic constraint or a map literal in a default).
 
 ### Docstring text: strip comment syntax, keep the prose
 
@@ -277,7 +371,12 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - Decision: `toc dir` reads exactly one directory level, non-recursively.
   It lists every file whose extension maps to a *supported* language, regardless of which language —
   a mixed directory produces one list with per-file language resolution.
-  Each file's header is truncated to its first paragraph.
+  Each file's header is truncated to its first paragraph, where **"first paragraph" is defined
+  after delimiter stripping, not before**: strip the language's comment or string delimiters per the
+  docstring-text rule, then cut at the first blank line in the resulting prose.
+  This one rule covers every comment form without a per-form special case, because a bare `//` line
+  in a Go block, a bare `///` line in a C# block, and a blank line inside a Python module docstring
+  all strip to the same empty line. A header with no blank line is emitted whole.
 - Rationale: recursion is what calling `toc dir` on the subdirectory is for, and a recursive dump
   defeats the "is this worth opening" question the verb answers. Multi-language listing is required
   because a directory is not guaranteed single-language and the per-file extension map already gives
@@ -320,17 +419,62 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   incomplete — an unparseable `func Broken(` swallowed the rest of the file and a later, perfectly
   valid `func Later()` vanished from the output. `partial: true` is the only thing distinguishing
   "this file has two symbols" from "we lost some".
+- **The same never-fail-the-directory rule extends to I/O, not just to parsing.** A file inside a
+  `toc dir` listing that cannot be read (permissions, I/O error) or whose bytes are not valid UTF-8
+  is still listed, with an `"error"` key naming the failure and no `header`. It never aborts the
+  directory, and it never sets `partial` — `partial` means "parsed, lossily", which is a different
+  fact from "never read".
+  In `toc file`, where that file *is* the whole request, the same failure is an `output.Err` (exit 1
+  single-arg, `status: "error"` rank 3 in batch), because there is no partial answer to give.
+- **Empty and no-supported-files directories return success, not an error.** `toc dir` on a
+  directory with no files matching a supported extension returns `{"ok":true,"files":[]}` and exit
+  0. An empty result is a true answer to "what code is in here", not a failure.
+- **No file-size cap.** Tree-sitter's parse cost is linear and the runtime enforces its own
+  work budgets, so no arbitrary byte threshold is imposed. A pathological file surfaces as an
+  ordinary slow parse or as `partial: true`, never as a special-cased refusal.
 - Rejected: hard-failing the file (loses the directory over one bad file);
-  returning recovered symbols with no marker (the consumer cannot know the list is incomplete).
+  returning recovered symbols with no marker (the consumer cannot know the list is incomplete);
+  reusing `partial` for unreadable files (conflates "lossy parse" with "no parse");
+  erroring on an empty directory (an empty listing is a valid answer);
+  a size cap (invents a threshold with no evidence any real file needs one).
 
-### Batch mode, consistent with the existing four verbs
+### Batch mode: same shape, own driver, `path` as the per-entry key
 
 - Decision: both subcommands accept 2+ positional arguments and switch to the existing batch shape —
   `{"ok":true,"results":[…]}` with a per-entry `status`, and a process exit code set to the worst
   status across the batch.
-- Rationale: every existing verb does this, an agent frequently wants several files in one call, and
-  the machinery (`runBatch`, `batchStatus` in `internal/cli/cli.go`) already exists.
-- Rejected: exactly-one-argument (simpler, but breaks a pattern all four existing verbs follow).
+  The per-entry identity key is **`"path"`**, not `"symbol"`.
+  Because `runBatch` (`internal/cli/cli.go:909`) hard-codes `entry["symbol"] = arg` at line 918,
+  toc gets **its own small driver** in `internal/cli` rather than reusing or generalizing `runBatch`.
+  It reuses the existing `batchStatus` constants and the `statusRank` map (`internal/cli/cli.go:857`
+  and `:867`) unchanged — the shared vocabulary is reused, only the entry-key line differs.
+- Explicit outcome → status mapping, covering every failure mode this design defines:
+
+  | toc outcome | `status` | rank |
+  | --- | --- | --- |
+  | parsed, symbols/files returned | `found` | 0 |
+  | parsed with recovery errors (`partial: true` on the entry) | `found` | 0 |
+  | `toc dir` on a directory containing no supported files | `found` (empty `files`) | 0 |
+  | path does not exist | `not_found` | 1 |
+  | wrong path type for the subcommand | `error` | 3 |
+  | extension maps to no supported language, or to a designed-but-unimplemented one (`.ts`, `.rs`) | `error` | 3 |
+  | file unreadable, or invalid UTF-8 | `error` | 3 |
+
+  `ambiguous` (rank 2) is never produced by either toc subcommand — there is no ambiguity state in a
+  path-addressed lookup — so toc's exit codes are 0, 1, and 3 only.
+  `partial: true` is a field on the entry and deliberately does **not** degrade the status: a partial
+  outline is a usable answer, and ranking it as a failure would poison the exit code of any batch
+  containing one mid-edit file.
+- Rationale: an agent frequently wants several files in one call, and every existing verb offers
+  this. But `"symbol": "internal/foo/bar.go"` would be an actively wrong label for a path, and
+  generalizing `runBatch` to take a key name would change the shape all four existing verbs emit —
+  a breaking output change to shipped verbs, for a task that is supposed to add verbs, not alter
+  them.
+- Rejected: reusing `runBatch` as-is (mislabels paths as symbols);
+  generalizing `runBatch`'s key (breaks the four existing verbs' output shape);
+  exactly-one-argument (simpler, but breaks a pattern all four existing verbs follow);
+  ranking `partial` as its own status (invents a fifth vocabulary member and pollutes batch exit
+  codes).
 
 ### Package layout: backend and orchestration split
 
@@ -494,13 +638,23 @@ Scenarios that must be covered for each implemented language:
   found;
 - a declaration inside a function body — assert it is *not* found;
 - an expression-bodied C# member (`=>`) — assert the signature is correct;
-- a Python symbol — assert the range needs no docstring adjustment because the docstring is in-body.
+- a Python symbol — assert the range needs no docstring adjustment because the docstring is in-body;
+- a multi-line function signature — assert the whole signature is returned, not just its first line
+  (this is the regression the spike's first-line hack would have shipped);
+- a Go `type X struct { … }` with fields — assert the signature is `type X struct` and the field
+  body is **not** in the signature;
+- a Go type alias with no body (`type ID string`) — assert the whole spec is the signature;
+- a Go grouped `type ( … )` block — assert one symbol per `type_spec`, each with its own range.
 
 **Header extraction (TDD).**
 Explicitly cover the two shapes the spike found in this repo:
 - a header separated from `package` by a blank line — assert it is still found;
 - a file with both a file header and a package doc comment — assert the *first* block wins.
 Plus: a file with no header at all — assert the key is absent and the file is still returned.
+Truncation, one case per comment form, all asserting the same post-stripping blank-line rule:
+a Go `//` block with a bare `//` separator line; a C# `///` block with a bare `///` separator line;
+a Python module docstring with a blank line; and a header with no blank line at all — assert it is
+returned whole.
 
 **Docstring text stripping (TDD).**
 One test per language delimiter form: Go `//`, Python triple-quoted `string_content`, C# `///` plus
@@ -530,9 +684,23 @@ Follow the existing `cli_test.go` patterns.
   names the correct subcommand;
 - a non-existent path — assert `output.Err` and exit 1;
 - bare `quarry toc` — assert help is printed (the `GroupRunE` contract);
-- batch mode with 2+ arguments — assert the `results` array shape and the worst-status exit code,
-  matching the existing verbs' batch tests;
-- a `.ts` or `.rs` file — assert the explicit "not yet supported" error rather than an empty result.
+- batch mode with 2+ arguments — assert the per-entry key is `"path"` (not `"symbol"`), and assert
+  the worst-status exit code across a batch mixing `found`, `not_found`, and `error`;
+- a batch containing one `partial: true` file — assert the exit code is still 0, i.e. `partial` does
+  not degrade batch status;
+- a `.ts` or `.rs` file — assert the explicit "not yet supported" error rather than an empty result;
+- `--lang` with an unrecognised value — assert the error names the valid set;
+- `--lang go` on a `.py` file — assert it parses with the Go grammar and does **not** error on the
+  mismatch;
+- `toc dir` on a directory with no supported files — assert `{"ok":true,"files":[]}` and exit 0;
+- an unreadable or invalid-UTF-8 file inside `toc dir` — assert the file is still listed with an
+  `error` key, no `header`, no `partial`, and that the rest of the directory is unaffected.
+
+**Regression guard for the stale doc invariants.**
+`quarry/facade_test.go`'s blank-identifier block is already a compile-time signature guard; adding
+`TOCFile` and `TOCDir` entries there is what makes the facade re-export self-checking. Verify the
+package builds after the `facade.go:8` count is rewritten — a stale count is a doc bug the compiler
+cannot catch, so it needs a reviewer's eye rather than a test.
 
 **Guard tests.**
 `layering_test.go` and `seam_enforcement_test.go` must pass unmodified except for the new
@@ -554,4 +722,8 @@ This is the end-to-end proof the spike demonstrated by hand.
 - **Q:** Should `toc dir` list only the detected language's files, or all languages? **A:** All supported languages, since a directory is not guaranteed single-language. Go first, Python and C# in the same task, TypeScript and Rust deferred.
 - **Q:** How can a test file even be flagged, given Go has `_test.go` but C# has nothing? **A:** It cannot, uniformly. Emit the key only where a reliable rule exists; omit it entirely for C# and Rust rather than emitting a false `test: false`.
 - **Q:** Is the output format even JSON? Is `start`/`end` too verbose? **A:** JSON, because all four existing verbs use the `output.Ok` envelope and `internal/cli` is the sole JSON site. Flat `"start"` / `"end"` keys rather than a nested range object, to keep it cheap.
+- **Q:** [auto] Should the signature rule handle type declarations, which have no `body` field? **A:** Yes — the rule is per-kind "body-bearing child", never a first-line cut, and a grouped `type ( … )` block yields one symbol per `type_spec`. **Why:** a naive `ChildByFieldName("body")` returns nil for Go's `type_declaration` and the signature silently becomes the whole struct — the token blowup the verb exists to prevent.
+- **Q:** [auto] Can toc reuse `runBatch`? **A:** No — its own driver, keyed on `"path"`, reusing `batchStatus`/`statusRank`. **Why:** `runBatch` hard-codes `entry["symbol"]`, and generalizing it would change the output shape of all four shipped verbs.
+- **Q:** [auto] What does `--lang` mean for toc? **A:** Validated against toc's own five-name vocabulary, not the servers.yaml registry; it overrides the extension outright and a mismatch is not an error. **Why:** toc loads no language server, so it must not be coupled to the registry; erroring on mismatch would defeat the override's only real use.
+- **Q:** [auto] Which grammar set ships? **A:** Per-language `grammar_subset` tags in the documented build (12.7 MB), with the untagged build still supported (30.2 MB). **Why:** measured during discussion — the untagged default costs +24.3 MB for 201 grammars quarry can never use, and `grammar_blobs_external` would break single-binary distribution.
 - **Q:** Have you actually tested Tree-sitter and got it working? **A:** Not at the time of the recommendation — the recommendation rested on documentation and the platform argument. A spike was then built and run against real quarry source, and it produced four findings that changed the design: the header rule must tolerate a blank line, error recovery is lossy rather than merely incomplete, "top-level" does not generalize beyond Go, and docstring placement is structurally different per language.
