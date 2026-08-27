@@ -55,12 +55,19 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - New rows in `internal/quarryengine/layering_test.go`'s `layeringTable` for both new packages.
 - **Exact-count and exact-claim invariants that go stale the moment this task lands, and must be
   updated in the same batch as the code that invalidates them.**
-  This list is not asserted to be exhaustive by inspection; it is the output of a stated,
-  repeatable enumeration the plan writer must re-run rather than trust:
-  `grep -rn 'five-package\|five packages\|four verbs\|29 identifiers\|eight blank-identifier\|LSP-backed\|minPackageDirs' --include='*.go' --include='*.md' .`
-  Anything that grep surfaces outside `_mill/` and `.scratch/` is in scope, including hits added
-  after this discussion was written.
-  What it currently returns:
+  The enumeration below was produced by actually running this command and reading its output — it
+  is not a hand-curated list wearing a grep's clothes, and the plan writer should re-run it rather
+  than trust the transcription:
+
+  ```
+  grep -rnE 'five-package|four verbs|29 identifiers|eight blank-identifier|LSP-backed|minPackageDirs|The six internal|import all four|seven re-exported' \
+    --include='*.go' --include='*.md' . | grep -v '^\./_mill/' | grep -v '^\./\.scratch/'
+  ```
+
+  Two hits it returns are **explicitly out of scope**: `docs/scout-vs-grep.md:3` and `:130` use
+  "LSP-backed" to describe a past measurement of `lyx scout`, not a current claim about what quarry
+  is. Historical research documents are not updated when the product changes.
+  Everything else it returns is in scope:
   - `quarry/facade.go:8` — "It re-exports exactly the 29 identifiers this package exported before
     the engine-repackage move: no more, no less." Adding `TOCFile`, `TOCDir`, and the toc result
     type aliases breaks this sentence. Recount and rewrite it; do not leave a stale number.
@@ -72,25 +79,33 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   - `README.md:3` — "quarry is an LSP-backed code intelligence tool." This stops being true when a
     second, non-LSP parsing backend lands; the sentence must be reworded, not just the verb list
     below it extended. `README.md:8` — "quarry exposes four verbs".
-  - `quarry/facade.go:3` and `internal/quarryengine/doc.go:44` — both call the engine a
-    "five-package DAG" and enumerate its members. It becomes seven packages
-    (adding `treesitter` and `toc`). `internal/quarryengine/doc.go:66` — "It imports all four
-    packages above", describing `query`.
-  - `internal/quarryengine/seam_enforcement_test.go:2-3` and
-    `internal/quarryengine/layering_test.go:159` — both enumerate the DAG's members in prose.
+  - `quarry/facade.go:3`, `internal/quarryengine/doc.go:44`, and
+    `internal/quarryengine/seam_enforcement_test.go:10` — all three call the engine a
+    "five-package DAG". It becomes seven packages (adding `treesitter` and `toc`).
+  - `internal/quarryengine/doc.go:66` — "It imports all four packages above", describing `query`.
+  - `internal/quarryengine/layering_test.go:20` — "The six internal/quarryengine/... import paths
+    this guard reasons about" (becomes eight), and `:53` — "query's production files import all
+    four".
   - `internal/quarryengine/layering_test.go:162` and
-    `internal/quarryengine/seam_enforcement_test.go:104` — `const minPackageDirs = 6`.
+    `internal/quarryengine/seam_enforcement_test.go:104` — `const minPackageDirs = 6` in both.
     **These are floors (`< minPackageDirs` fails), so adding packages does not break the build** —
-    which is exactly the risk: the guard silently loses strength while still passing. Raise both to
-    8 and update the accompanying comments, so the "a package added later and silently skipped must
-    not let the guard go green" intent those comments state still holds.
+    which is exactly the risk: the guard silently loses strength while still passing.
+    **The two constants do not mean the same thing, so their comment rewrites differ:**
+    `layering_test.go` walks only `internal/quarryengine/` (6 dirs today, 8 after this task), so 8
+    is the *exact* count there.
+    `seam_enforcement_test.go` walks that tree **plus** `quarry/` (7 today, 9 after), and its
+    comment at `:102-103` states the floor is deliberately set one below the real count. Raising it
+    to 8 preserves that intentional slack rather than making it an exact-count claim.
+    Raise both to 8; write the comments to say what each 8 actually is.
   - `quarry/facade_test.go:117` — "each of the seven re-exported sentinel error values". Only
     stale if the toc work adds a sentinel; check rather than assume.
 - README "Building and running" update for the grammar-subset build tags (see the grammar-set
   Decision).
 - README verb-list update.
-- A per-language docstring-association survey doc under `docs/`, in the spirit of
-  `docs/scout-multilang.md`.
+- A per-language docstring-association survey at **`docs/toc-docstring-association.md`**, in the
+  spirit of `docs/scout-multilang.md`. Its content is the per-language node-shape material recorded
+  under "Technical context" below, written up as a standalone reference — including the two
+  languages this task designs but does not implement.
 
 **Out:**
 
@@ -196,9 +211,16 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 
   **`toc dir <path>`** — envelope field `files` (array). **Each entry:**
   `path` (string, see the path-form rule below), `language` (string),
-  `header` (string, omitted when absent), `test` (bool, omitted when the language has no reliable
-  rule), `generated` (bool, same omission rule), `error` (string, present only on a per-file
-  failure, and mutually exclusive with `header`).
+  `header` (string, omitted when absent), `partial` (bool, omitted when false),
+  `test` (bool, omitted when the language has no reliable rule),
+  `generated` (bool, same omission rule), `error` (string, present only on a per-file
+  failure, and mutually exclusive with both `header` and `partial`).
+
+  `partial` **is** in the `toc dir` key set: `toc dir` parses each file to extract its header, so a
+  file whose parse reports `HasError()` is exactly as lossy here as it is in `toc file`, and the
+  header it yielded may be wrong or missing for that reason. The consumer needs the same warning in
+  both verbs. `partial` and `error` are mutually exclusive by construction — `partial` means
+  "parsed, lossily", `error` means "never parsed at all".
 
 - **The `kind` vocabulary is closed and shared across all five languages: `function`, `method`,
   `type`.**
@@ -424,9 +446,26 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 
 ### File header: first block in the file, blank line tolerated
 
-- Decision: the file header is the **first** comment block in the file, and the rule tolerates a
-  blank line between that block and the following declaration.
+- Decision: the file header is the first **non-directive** comment block in the file, and the rule
+  tolerates a blank line between that block and the following declaration.
   This is a different rule from docstring association, which requires strict adjacency.
+- **Directive-only leading blocks are skipped, and the next block is taken.**
+  A leading comment block is classified as a directive block — and skipped — when *every* line in it,
+  after delimiter stripping, matches a known directive form:
+  - Go: `go:build`, `+build`, `go:generate`, `go:embed`, `nolint`.
+  - Python: a `#!` shebang on line 1, and a PEP 263 coding line (`coding[:=]`) on line 1 or 2.
+  - C#, TypeScript, Rust: preprocessor and attribute forms (`#pragma`, `#nullable`, `#!`) are not
+    `comment` nodes in these grammars, so they never reach this rule. Rust's `//!` inner doc comment
+    is a *header*, not a directive — see the per-language notes.
+
+  A block mixing directive and prose lines is **not** a directive block and is taken as the header.
+  If every leading block is a directive block, the file has no header and the key is omitted.
+- Why this is not a hypothetical: verified in this tree. `internal/proc/proc_windows.go:1` is
+  `//go:build windows`, then a blank line, then the real header at `:3`. Same shape in
+  `internal/quarryengine/query/refs_integration_test.go:1` (`//go:build lsp`),
+  `daemon/supervised_lsp_test.go:1`, and `daemon/ensureserver_integration_test.go:1`.
+  Without this rule, `quarry toc dir internal/proc` would emit `header: "go:build windows"` — the
+  build constraint presented as the file's purpose, which is worse than emitting no header at all.
 - Rationale: this decision comes directly out of a spike finding. `internal/output/output.go` has a
   blank line between its header block and `package output`, so the strict-adjacency rule that
   docstrings require drops the header entirely. `internal/cli/cli.go` has *two* top-of-file blocks —
@@ -754,6 +793,12 @@ Explicitly cover the two shapes the spike found in this repo:
 - a header separated from `package` by a blank line — assert it is still found;
 - a file with both a file header and a package doc comment — assert the *first* block wins.
 Plus: a file with no header at all — assert the key is absent and the file is still returned.
+Directive-block skipping, using real shapes from this tree:
+a Go file starting with `//go:build windows`, a blank line, then the header — assert the header is
+returned and the build constraint is not (fixture modelled on `internal/proc/proc_windows.go`);
+a Go file whose only leading block is a build constraint — assert no `header` key;
+a block mixing a `//go:generate` line with prose — assert it is treated as a header, not skipped;
+a Python file with a shebang then a module docstring — assert the docstring is the header.
 Truncation, one case per comment form, all asserting the same post-stripping blank-line rule:
 a Go `//` block with a bare `//` separator line; a C# `///` block with a bare `///` separator line;
 a Python module docstring with a blank line; and a header with no blank line at all — assert it is
@@ -835,4 +880,7 @@ This is the end-to-end proof the spike demonstrated by hand.
 - **Q:** [auto] How are paths resolved and emitted? **A:** Relative arguments join against `CwdFrom(ctx)`; `toc dir` entries emit the directory argument as written joined with the filename; the batch key echoes the argument verbatim. **Why:** these paths exist to be pasted back into `quarry toc file`, so they must round-trip in the caller's own frame of reference.
 - **Q:** [auto] What is the full emitted key set, and the `kind` vocabulary? **A:** Fixed explicitly in the "Emitted schema" Decision; `kind` is the closed three-member set `function` / `method` / `type` across all five languages. **Why:** a richer vocabulary would be per-language noise the verbatim signature already conveys on the next field.
 - **Q:** [auto] Use the library's `Outliner` for owner resolution? **A:** No. **Why:** it does not do docstring association, so our own walk exists regardless, and by then the receiver/enclosing class is one `ChildByFieldName` away — using `Outliner` would mean a per-language `OutlineOwnerRule` table for a value already in hand.
+- **Q:** [auto] What happens when the first comment block is a `//go:build` directive? **A:** Directive-only leading blocks are skipped and the next block is taken; a block mixing directives and prose is a header. **Why:** verified in this tree — `internal/proc/proc_windows.go` and three integration tests have exactly that shape, and the naive rule would emit `header: "go:build windows"`.
+- **Q:** [auto] Does a `toc dir` entry carry `partial`? **A:** Yes; it is in the closed key set, mutually exclusive with `error`. **Why:** `toc dir` parses each file to get its header, so a lossy parse makes that header suspect in exactly the way `toc file` warns about.
+- **Q:** [auto] Are the two `minPackageDirs = 6` constants the same claim? **A:** No — 8 is the exact count in the layering guard and a deliberate one-below floor in the seam guard, so their comments are rewritten differently. **Why:** the seam guard walks `quarry/` too and documents its slack on purpose.
 - **Q:** Have you actually tested Tree-sitter and got it working? **A:** Not at the time of the recommendation — the recommendation rested on documentation and the platform argument. A spike was then built and run against real quarry source, and it produced four findings that changed the design: the header rule must tolerate a blank line, error recovery is lossy rather than merely incomplete, "top-level" does not generalize beyond Go, and docstring placement is structurally different per language.
