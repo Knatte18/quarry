@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: quarry-thin-facade
 branch: quarry-thin-facade
 plan: _mill/plan
@@ -32,4 +32,19 @@ blocked  '2026-08-27T12:17:45Z'
 planning  '2026-08-27T12:43:57Z'
 plan-review-r5  '2026-08-27T12:48:58Z'
 planned  '2026-08-27T12:49:16Z'
+implementing  '2026-08-27T12:49:53Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: message-prefix-rename
+    state: pending
+  - name: engine-repackage
+    state: pending
+  - name: architecture-guards
+    state: pending
+  - name: doc-redistribution
+    state: pending
 ```
