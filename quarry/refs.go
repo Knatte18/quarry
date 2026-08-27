@@ -74,7 +74,7 @@ func acquireConnection(ctx context.Context, lang string, entry Entry, opts Optio
 		if errors.Is(err, exec.ErrNotFound) {
 			return nil, connKindLegacy, &ErrServerNotFound{Language: lang, InstallHint: entry.InstallHint}
 		}
-		return nil, connKindLegacy, fmt.Errorf("scoutengine: start language server for %q: %w", lang, err)
+		return nil, connKindLegacy, fmt.Errorf("quarry: start language server for %q: %w", lang, err)
 	}
 	client.lang = lang
 
@@ -246,7 +246,7 @@ func resolvePosition(ctx context.Context, client *lspClient, opts Options, lang 
 	if opts.Query.Pos != nil {
 		lspPos, err := toLSPPosition(*opts.Query.Pos)
 		if err != nil {
-			return "", lspPosition{}, fmt.Errorf("scoutengine: convert position %+v: %w", *opts.Query.Pos, err)
+			return "", lspPosition{}, fmt.Errorf("quarry: convert position %+v: %w", *opts.Query.Pos, err)
 		}
 		return "file://" + opts.Query.Pos.File, lspPos, nil
 	}

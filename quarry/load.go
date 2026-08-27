@@ -28,7 +28,7 @@ func LoadRegistry(path string) (Registry, error) {
 			// not a failure.
 			return builtins(), nil
 		}
-		return nil, fmt.Errorf("scoutengine: read %s: %w", path, err)
+		return nil, fmt.Errorf("quarry: read %s: %w", path, err)
 	}
 
 	var fileEntries map[string]Entry
@@ -41,7 +41,7 @@ func LoadRegistry(path string) (Registry, error) {
 		if errors.Is(err, io.EOF) {
 			return builtins(), nil
 		}
-		return nil, fmt.Errorf("scoutengine: parse %s: %w", path, err)
+		return nil, fmt.Errorf("quarry: parse %s: %w", path, err)
 	}
 
 	registry := builtins()

@@ -19,7 +19,7 @@ func DetectLanguage(targetDir string, reg Registry, langOverride string) (string
 	if langOverride != "" {
 		entry, ok := reg[langOverride]
 		if !ok {
-			return "", Entry{}, fmt.Errorf("scoutengine: unknown language %q; known languages: %v", langOverride, sortedLanguages(reg))
+			return "", Entry{}, fmt.Errorf("quarry: unknown language %q; known languages: %v", langOverride, sortedLanguages(reg))
 		}
 		return langOverride, entry, nil
 	}
@@ -36,7 +36,7 @@ func DetectLanguage(targetDir string, reg Registry, langOverride string) (string
 		}
 	}
 
-	return "", Entry{}, fmt.Errorf("scoutengine: %w: searched markers %v under %s", ErrNoLanguage, searched, targetDir)
+	return "", Entry{}, fmt.Errorf("quarry: %w: searched markers %v under %s", ErrNoLanguage, searched, targetDir)
 }
 
 // markersMatch reports whether entry's markers match targetDir per entry.Match.

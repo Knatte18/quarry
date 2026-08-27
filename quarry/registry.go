@@ -108,16 +108,16 @@ func BuiltinRegistry() Registry {
 // servers.yaml.
 func validateEntry(name string, e Entry) error {
 	if len(e.Markers) == 0 {
-		return fmt.Errorf("scoutengine: entry %q has no markers", name)
+		return fmt.Errorf("quarry: entry %q has no markers", name)
 	}
 	if e.Match != "all" && e.Match != "any" {
-		return fmt.Errorf("scoutengine: entry %q has invalid match %q; want \"all\" or \"any\"", name, e.Match)
+		return fmt.Errorf("quarry: entry %q has invalid match %q; want \"all\" or \"any\"", name, e.Match)
 	}
 	if len(e.Command) == 0 {
-		return fmt.Errorf("scoutengine: entry %q has no command", name)
+		return fmt.Errorf("quarry: entry %q has no command", name)
 	}
 	if e.InstallHint == "" {
-		return fmt.Errorf("scoutengine: entry %q has no install hint", name)
+		return fmt.Errorf("quarry: entry %q has no install hint", name)
 	}
 	return nil
 }

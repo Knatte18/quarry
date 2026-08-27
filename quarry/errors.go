@@ -15,13 +15,13 @@ import (
 // under the target directory.
 // Callers wrap it with the searched markers via fmt.Errorf("...: %w", ErrNoLanguage) so
 // errors.Is(err, ErrNoLanguage) still succeeds after wrapping.
-var ErrNoLanguage = errors.New("scoutengine: no language detected")
+var ErrNoLanguage = errors.New("quarry: no language detected")
 
 // ErrServerNotFoundSentinel is the package-level sentinel *ErrServerNotFound.Is compares against,
 // so callers can test for this failure mode with errors.Is(err,
 // scoutengine.ErrServerNotFoundSentinel) without needing to know the concrete field values of the
 // *ErrServerNotFound the engine actually returned.
-var ErrServerNotFoundSentinel = errors.New("scoutengine: language server not found")
+var ErrServerNotFoundSentinel = errors.New("quarry: language server not found")
 
 // ErrServerNotFound reports that the language server binary for Language is absent from $PATH.
 // InstallHint carries the registry entry's operator-facing install command so the CLI can surface
@@ -34,7 +34,7 @@ type ErrServerNotFound struct {
 // Error implements error, naming both the language and the install hint so a user sees exactly what
 // to run to fix the failure.
 func (e *ErrServerNotFound) Error() string {
-	return fmt.Sprintf("scoutengine: no language server found for %q; install with: %s", e.Language, e.InstallHint)
+	return fmt.Sprintf("quarry: no language server found for %q; install with: %s", e.Language, e.InstallHint)
 }
 
 // Is reports whether target is ErrServerNotFoundSentinel, letting errors.Is(err,
@@ -45,7 +45,7 @@ func (e *ErrServerNotFound) Is(target error) bool {
 
 // ErrSymbolNotFoundSentinel is the package-level sentinel *ErrSymbolNotFound.Is compares against,
 // mirroring ErrServerNotFoundSentinel.
-var ErrSymbolNotFoundSentinel = errors.New("scoutengine: symbol not found")
+var ErrSymbolNotFoundSentinel = errors.New("quarry: symbol not found")
 
 // ErrSymbolNotFound reports that Symbol resolved to zero candidates when queried against the
 // language server rooted at TargetDir.
@@ -57,7 +57,7 @@ type ErrSymbolNotFound struct {
 // Error implements error, naming both the queried symbol and the directory the search was rooted
 // at.
 func (e *ErrSymbolNotFound) Error() string {
-	return fmt.Sprintf("scoutengine: symbol %q not found under %s", e.Symbol, e.TargetDir)
+	return fmt.Sprintf("quarry: symbol %q not found under %s", e.Symbol, e.TargetDir)
 }
 
 // Is reports whether target is ErrSymbolNotFoundSentinel, letting errors.Is(err,
@@ -68,7 +68,7 @@ func (e *ErrSymbolNotFound) Is(target error) bool {
 
 // ErrAmbiguousSymbolSentinel is the package-level sentinel *ErrAmbiguousSymbol.Is compares against,
 // mirroring ErrServerNotFoundSentinel.
-var ErrAmbiguousSymbolSentinel = errors.New("scoutengine: ambiguous symbol")
+var ErrAmbiguousSymbolSentinel = errors.New("quarry: ambiguous symbol")
 
 // ErrAmbiguousSymbol reports that Symbol resolved to more than one candidate position.
 // Candidates holds each match formatted as "file:line:col" so the CLI layer can list them verbatim
@@ -81,7 +81,7 @@ type ErrAmbiguousSymbol struct {
 // Error implements error, naming the symbol and listing every candidate position so the user can
 // pick the intended one without re-running a broader search.
 func (e *ErrAmbiguousSymbol) Error() string {
-	return fmt.Sprintf("scoutengine: symbol %q is ambiguous; candidates: %s", e.Symbol, strings.Join(e.Candidates, ", "))
+	return fmt.Sprintf("quarry: symbol %q is ambiguous; candidates: %s", e.Symbol, strings.Join(e.Candidates, ", "))
 }
 
 // Is reports whether target is ErrAmbiguousSymbolSentinel, letting errors.Is(err,
@@ -92,7 +92,7 @@ func (e *ErrAmbiguousSymbol) Is(target error) bool {
 
 // ErrResolverUnsupportedSentinel is the package-level sentinel *ErrResolverUnsupported.Is compares
 // against, mirroring ErrServerNotFoundSentinel.
-var ErrResolverUnsupportedSentinel = errors.New("scoutengine: resolver unsupported")
+var ErrResolverUnsupportedSentinel = errors.New("quarry: resolver unsupported")
 
 // ErrResolverUnsupported reports that the language server launched for Language (server binary
 // Server) does not advertise the capability the engine needs (e.g.
@@ -105,7 +105,7 @@ type ErrResolverUnsupported struct {
 // Error implements error, naming both the language and the concrete server binary that lacks the
 // required capability.
 func (e *ErrResolverUnsupported) Error() string {
-	return fmt.Sprintf("scoutengine: language server %q for %q does not support this resolver", e.Server, e.Language)
+	return fmt.Sprintf("quarry: language server %q for %q does not support this resolver", e.Server, e.Language)
 }
 
 // Is reports whether target is ErrResolverUnsupportedSentinel, letting errors.Is(err,
@@ -117,7 +117,7 @@ func (e *ErrResolverUnsupported) Is(target error) bool {
 
 // ErrServerTimeoutSentinel is the package-level sentinel *ErrServerTimeout.Is compares against,
 // mirroring ErrServerNotFoundSentinel.
-var ErrServerTimeoutSentinel = errors.New("scoutengine: language server timed out")
+var ErrServerTimeoutSentinel = errors.New("quarry: language server timed out")
 
 // ErrServerTimeout reports that the language server subprocess failed to respond to Phase within
 // Timeout.
@@ -132,7 +132,7 @@ type ErrServerTimeout struct {
 // Error implements error, naming the stalled phase and the deadline that expired so a user can
 // distinguish a slow server from a hung one.
 func (e *ErrServerTimeout) Error() string {
-	return fmt.Sprintf("scoutengine: language server timed out during %q after %s", e.Phase, e.Timeout)
+	return fmt.Sprintf("quarry: language server timed out during %q after %s", e.Phase, e.Timeout)
 }
 
 // Is reports whether target is ErrServerTimeoutSentinel, letting errors.Is(err,
@@ -143,7 +143,7 @@ func (e *ErrServerTimeout) Is(target error) bool {
 
 // ErrServerSpawnTimeoutSentinel is the package-level sentinel *ErrServerSpawnTimeout.Is compares
 // against, mirroring ErrServerNotFoundSentinel.
-var ErrServerSpawnTimeoutSentinel = errors.New("scoutengine: gave up waiting for supervised daemon spawn")
+var ErrServerSpawnTimeoutSentinel = errors.New("quarry: gave up waiting for supervised daemon spawn")
 
 // ErrServerSpawnTimeout reports that ensureSupervised's bounded retry loop exhausted its deadline
 // without ever observing a healthy daemon for Lang — distinct from ErrServerTimeout, which names a
@@ -157,7 +157,7 @@ type ErrServerSpawnTimeout struct {
 // Error implements error, naming the language whose supervised daemon spawn never became ready in
 // time.
 func (e *ErrServerSpawnTimeout) Error() string {
-	return fmt.Sprintf("scout: gave up waiting for the supervised daemon for %q to become ready", e.Lang)
+	return fmt.Sprintf("quarry: gave up waiting for the supervised daemon for %q to become ready", e.Lang)
 }
 
 // Is reports whether target is ErrServerSpawnTimeoutSentinel, letting errors.Is(err,

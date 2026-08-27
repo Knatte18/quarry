@@ -157,12 +157,12 @@ func (c *lspClient) readLoop() {
 // rather than silently discarded or deadlocking on a full pipe.
 func newLSPClient(command []string) (*lspClient, error) {
 	if len(command) == 0 {
-		return nil, fmt.Errorf("scoutengine: empty launch command")
+		return nil, fmt.Errorf("quarry: empty launch command")
 	}
 
 	bin, err := exec.LookPath(command[0])
 	if err != nil {
-		return nil, fmt.Errorf("scoutengine: resolve %q on $PATH: %w", command[0], err)
+		return nil, fmt.Errorf("quarry: resolve %q on $PATH: %w", command[0], err)
 	}
 
 	cmd := exec.Command(bin, command[1:]...)
@@ -225,7 +225,7 @@ func newLSPClientDial(ctx context.Context, network, address string) (*lspClient,
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, network, address)
 	if err != nil {
-		return nil, fmt.Errorf("scoutengine: dial lsp server at %s %s: %w", network, address, err)
+		return nil, fmt.Errorf("quarry: dial lsp server at %s %s: %w", network, address, err)
 	}
 	return newLSPClientFromRW(conn), nil
 }
@@ -571,15 +571,15 @@ func (c *lspClient) close() {
 	defer cancel()
 
 	if _, err := c.call(ctx, "shutdown", "shutdown", nil); err != nil {
-		defaultLogHandler.Warn("scoutengine: lsp shutdown request", "lang", c.lang, "err", err)
+		defaultLogHandler.Warn("quarry: lsp shutdown request", "lang", c.lang, "err", err)
 	}
 	if err := c.notify("exit", nil); err != nil {
-		defaultLogHandler.Warn("scoutengine: lsp exit notification", "lang", c.lang, "err", err)
+		defaultLogHandler.Warn("quarry: lsp exit notification", "lang", c.lang, "err", err)
 	}
 	c.closer.Close()
 	if c.cmd != nil {
 		if err := c.cmd.Wait(); err != nil {
-			defaultLogHandler.Warn("scoutengine: lsp process exit", "lang", c.lang, "err", err)
+			defaultLogHandler.Warn("quarry: lsp process exit", "lang", c.lang, "err", err)
 		}
 	}
 }
@@ -602,9 +602,9 @@ func (c *lspClient) kill() {
 		return
 	}
 	if err := c.cmd.Process.Kill(); err != nil {
-		defaultLogHandler.Warn("scoutengine: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		defaultLogHandler.Warn("quarry: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 	if err := c.cmd.Wait(); err != nil {
-		defaultLogHandler.Warn("scoutengine: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		defaultLogHandler.Warn("quarry: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 }

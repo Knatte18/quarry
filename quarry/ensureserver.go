@@ -61,7 +61,7 @@ const (
 func ensureServer(ctx context.Context, lang string, entry Entry, targetDir string, stateDir string, timeout time.Duration) (*lspClient, connKind, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {
-		return nil, connKindNative, fmt.Errorf("scoutengine: resolve go toolchain for %q: %w", lang, err)
+		return nil, connKindNative, fmt.Errorf("quarry: resolve go toolchain for %q: %w", lang, err)
 	}
 
 	// binPath (the toolchain-resolved binary), not entry.Command[0] (the
@@ -112,7 +112,7 @@ func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, 
 		// needing errors.Is gymnastics; %w still preserves the chain, so
 		// errors.Is(err, ErrServerTimeoutSentinel) keeps matching when the
 		// underlying cause is a timeout.
-		return fmt.Errorf("scoutengine: probe failed: %w", err)
+		return fmt.Errorf("quarry: probe failed: %w", err)
 	}
 
 	return nil
@@ -125,7 +125,7 @@ func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, 
 func rootURIFor(targetDir string) (string, error) {
 	absTargetDir, err := filepath.Abs(targetDir)
 	if err != nil {
-		return "", fmt.Errorf("scoutengine: resolve absolute path for %s: %w", targetDir, err)
+		return "", fmt.Errorf("quarry: resolve absolute path for %s: %w", targetDir, err)
 	}
 	return "file://" + absTargetDir, nil
 }
@@ -171,7 +171,7 @@ func nativeArgv(binPath string, extraArgs []string) []string {
 func ensureNative(ctx context.Context, lang string, entry Entry, targetDir string, timeout time.Duration) (*lspClient, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {
-		return nil, fmt.Errorf("scoutengine: resolve go toolchain for %q: %w", lang, err)
+		return nil, fmt.Errorf("quarry: resolve go toolchain for %q: %w", lang, err)
 	}
 
 	argv := nativeArgv(binPath, entry.Command[1:])
@@ -181,7 +181,7 @@ func ensureNative(ctx context.Context, lang string, entry Entry, targetDir strin
 		if errors.Is(err, exec.ErrNotFound) {
 			return nil, &ErrServerNotFound{Language: lang, InstallHint: entry.InstallHint}
 		}
-		return nil, fmt.Errorf("scoutengine: start language server for %q: %w", lang, err)
+		return nil, fmt.Errorf("quarry: start language server for %q: %w", lang, err)
 	}
 	client.lang = lang
 
@@ -327,7 +327,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// full) — distinct from "no state file yet" (found == false,
 			// err == nil) — aborts the whole call rather than being folded
 			// into the retry logic below.
-			return nil, fmt.Errorf("scoutengine: ensureSupervised read daemon state for %q: %w", lang, err)
+			return nil, fmt.Errorf("quarry: ensureSupervised read daemon state for %q: %w", lang, err)
 		}
 		// escalating distinguishes two very different reasons for reaching
 		// the lock below: a non-stale state whose dial-or-finalize just
@@ -365,11 +365,11 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		// matching this package's own MkdirAll-before-lock precedent
 		// (goToolchainInstallLock in toolchain.go).
 		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
-			return nil, fmt.Errorf("scoutengine: ensureSupervised create spawn lock dir %s: %w", filepath.Dir(lockPath), err)
+			return nil, fmt.Errorf("quarry: ensureSupervised create spawn lock dir %s: %w", filepath.Dir(lockPath), err)
 		}
 		fileLock, acquired, err := lock.TryAcquireWriteLock(lockPath)
 		if err != nil {
-			return nil, fmt.Errorf("scoutengine: ensureSupervised acquire spawn lock for %q: %w", lang, err)
+			return nil, fmt.Errorf("quarry: ensureSupervised acquire spawn lock for %q: %w", lang, err)
 		}
 		if !acquired {
 			// Someone else is spawning, restarting, or running this same
@@ -394,7 +394,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			escalationState, escalationFound, err := readDaemonState(statePath)
 			if err != nil {
 				fileLock.Release()
-				return nil, fmt.Errorf("scoutengine: ensureSupervised re-read daemon state during wedged-daemon escalation for %q: %w", lang, err)
+				return nil, fmt.Errorf("quarry: ensureSupervised re-read daemon state during wedged-daemon escalation for %q: %w", lang, err)
 			}
 
 			var reconnected *lspClient
@@ -406,7 +406,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 					})
 					if err != nil {
 						fileLock.Release()
-						return nil, fmt.Errorf("scoutengine: ensureSupervised re-dial under lock for %q: %w", lang, err)
+						return nil, fmt.Errorf("quarry: ensureSupervised re-dial under lock for %q: %w", lang, err)
 					}
 				}
 			}
@@ -444,7 +444,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// call's own failure.
 			if escalationFound {
 				if err := proc.KillPID(escalationState.PID); err != nil {
-					defaultLogHandler.Warn("scoutengine: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
+					defaultLogHandler.Warn("quarry: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
 				}
 			}
 			// Fall through to step 4 below to respawn — the lock acquired
@@ -457,7 +457,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			state, found, err = readDaemonState(statePath)
 			if err != nil {
 				fileLock.Release()
-				return nil, fmt.Errorf("scoutengine: ensureSupervised re-read daemon state for %q: %w", lang, err)
+				return nil, fmt.Errorf("quarry: ensureSupervised re-read daemon state for %q: %w", lang, err)
 			}
 			if found && !daemonStale(state) {
 				fileLock.Release()
@@ -495,7 +495,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		// spawn's bind fail with EADDRINUSE.
 		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 			fileLock.Release()
-			return nil, fmt.Errorf("scoutengine: ensureSupervised remove stale socket %s: %w", socketPath, err)
+			return nil, fmt.Errorf("quarry: ensureSupervised remove stale socket %s: %w", socketPath, err)
 		}
 
 		argv := supervisedArgv(command, socketPath)
@@ -521,7 +521,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			fileLock.Release()
-			return nil, fmt.Errorf("scoutengine: ensureSupervised open daemon log %s: %w", logPath, err)
+			return nil, fmt.Errorf("quarry: ensureSupervised open daemon log %s: %w", logPath, err)
 		}
 		cmd.Stderr = logFile
 		if err := cmd.Start(); err != nil {
@@ -529,7 +529,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// A spawn that fails to even start is not a race-losable
 			// condition worth looping on.
 			fileLock.Release()
-			return nil, fmt.Errorf("scoutengine: ensureSupervised spawn daemon for %q: %w", lang, err)
+			return nil, fmt.Errorf("quarry: ensureSupervised spawn daemon for %q: %w", lang, err)
 		}
 		// cmd.Start() gave the child its own duplicated copy of logFile's
 		// fd; this process's handle must not be held open for the rest of
@@ -540,7 +540,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		// is guaranteed non-nil here since cmd.Start() has already succeeded
 		// (the line 548 error path above returns before ever reaching this
 		// point).
-		defaultLogHandler.Info("scoutengine: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
+		defaultLogHandler.Info("quarry: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
 
 		// Step 5: write the state file *before* releasing the lock, so a
 		// losing caller that acquires the lock immediately after release
@@ -553,7 +553,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			StartedAt:       time.Now().UTC().Format(time.RFC3339),
 		}); err != nil {
 			fileLock.Release()
-			return nil, fmt.Errorf("scoutengine: ensureSupervised write daemon state for %q: %w", lang, err)
+			return nil, fmt.Errorf("quarry: ensureSupervised write daemon state for %q: %w", lang, err)
 		}
 		fileLock.Release()
 
@@ -570,7 +570,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			time.Sleep(50 * time.Millisecond)
 		}
 		if dialErr != nil {
-			return nil, fmt.Errorf("scoutengine: ensureSupervised dial newly spawned daemon for %q: %w", lang, dialErr)
+			return nil, fmt.Errorf("quarry: ensureSupervised dial newly spawned daemon for %q: %w", lang, dialErr)
 		}
 		client.lang = lang
 

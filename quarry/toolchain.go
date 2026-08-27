@@ -77,7 +77,7 @@ func runGoInstall(ctx context.Context, version, destDir string) error {
 	// one Go's os/exec passes through unchanged.
 	cmd.Env = append(os.Environ(), "GOBIN="+destDir)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("scoutengine: go install %s: %w: %s", target, err, out)
+		return fmt.Errorf("quarry: go install %s: %w: %s", target, err, out)
 	}
 	return nil
 }
@@ -107,11 +107,11 @@ func resolveGoToolchain(ctx context.Context, pinnedVersion string) (string, erro
 	// internal/reedengine's own MkdirAll-before-lock pattern.
 	lockPath := goToolchainInstallLock()
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
-		return "", fmt.Errorf("scoutengine: create go toolchain install lock dir %s: %w", filepath.Dir(lockPath), err)
+		return "", fmt.Errorf("quarry: create go toolchain install lock dir %s: %w", filepath.Dir(lockPath), err)
 	}
 	fileLock, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
-		return "", fmt.Errorf("scoutengine: acquire go toolchain install lock: %w", err)
+		return "", fmt.Errorf("quarry: acquire go toolchain install lock: %w", err)
 	}
 	defer fileLock.Release()
 
@@ -122,10 +122,10 @@ func resolveGoToolchain(ctx context.Context, pinnedVersion string) (string, erro
 	}
 
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return "", fmt.Errorf("scoutengine: create go toolchain cache dir %s: %w", cacheDir, err)
+		return "", fmt.Errorf("quarry: create go toolchain cache dir %s: %w", cacheDir, err)
 	}
 	if err := installGoToolchain(ctx, pinnedVersion, cacheDir); err != nil {
-		return "", fmt.Errorf("scoutengine: install go toolchain %s: %w", pinnedVersion, err)
+		return "", fmt.Errorf("quarry: install go toolchain %s: %w", pinnedVersion, err)
 	}
 	return binPath, nil
 }

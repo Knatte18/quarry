@@ -59,12 +59,12 @@ func readDaemonState(path string) (daemonState, bool, error) {
 		if os.IsNotExist(err) {
 			return daemonState{}, false, nil
 		}
-		return daemonState{}, false, fmt.Errorf("scoutengine: read daemon state file %s: %w", path, err)
+		return daemonState{}, false, fmt.Errorf("quarry: read daemon state file %s: %w", path, err)
 	}
 
 	var s daemonState
 	if err := json.Unmarshal(data, &s); err != nil {
-		return daemonState{}, false, fmt.Errorf("scoutengine: unmarshal daemon state file %s: %w", path, err)
+		return daemonState{}, false, fmt.Errorf("quarry: unmarshal daemon state file %s: %w", path, err)
 	}
 	return s, true, nil
 }
@@ -73,20 +73,20 @@ func readDaemonState(path string) (daemonState, bool, error) {
 // (via temp-file-then-rename) to ensure concurrent readers never observe partial writes.
 func writeDaemonState(path string, s daemonState) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("scoutengine: create daemon state dir %s: %w", filepath.Dir(path), err)
+		return fmt.Errorf("quarry: create daemon state dir %s: %w", filepath.Dir(path), err)
 	}
 
 	data, err := json.Marshal(s)
 	if err != nil {
-		return fmt.Errorf("scoutengine: marshal daemon state: %w", err)
+		return fmt.Errorf("quarry: marshal daemon state: %w", err)
 	}
 
 	tmpPath := path + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
-		return fmt.Errorf("scoutengine: write daemon state temp file %s: %w", tmpPath, err)
+		return fmt.Errorf("quarry: write daemon state temp file %s: %w", tmpPath, err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("scoutengine: rename daemon state temp file %s to %s: %w", tmpPath, path, err)
+		return fmt.Errorf("quarry: rename daemon state temp file %s to %s: %w", tmpPath, path, err)
 	}
 	return nil
 }
