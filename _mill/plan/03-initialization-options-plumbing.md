@@ -45,6 +45,9 @@ It is one batch because the `Initialize` signature change, the two `EnsureServer
   - `internal/quarryengine/daemon/doc.go`
   - `internal/quarryengine/daemon/ensureserver_test.go`
   - `internal/quarryengine/daemon/ensureserver_integration_test.go`
+  - `internal/quarryengine/daemon/supervised_test.go`
+  - `internal/quarryengine/daemon/supervised_lsp_test.go`
+  - `internal/quarryengine/daemon/supervised_integration_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -55,7 +58,8 @@ It is one batch because the `Initialize` signature change, the two `EnsureServer
   - Document on `nativeArgv` why the private spawn exists: the `tags-<hex>` state-directory segment partitions only the supervised strategy, whose socket path derives from the state directory, whereas gopls itself picks the shared `-remote=auto` daemon's address, so on the native path two tag sets would otherwise land in one daemon. Note that native is the fallback on every platform and the only path on windows, so this is not a windows-only concern.
   - Update `internal/quarryengine/daemon/doc.go` where it spells out `EnsureServer`'s signature so the doc comment matches the new parameter list.
   - Update `internal/quarryengine/daemon/ensureserver_test.go`: pass the new argument at every `finalizeConnection`, `nativeArgv`, and `EnsureServer` call site, and add two `nativeArgv` assertions — `private == false` produces today's argv byte for byte (the back-compat assertion, written first), and `private == true` produces an argv containing neither `-remote=auto` nor any `-remote.listen.timeout` flag while preserving `binPath` first and `extraArgs` in order.
-  - Update the two `EnsureServer` call sites in `internal/quarryengine/daemon/ensureserver_integration_test.go` to pass a nil map, leaving those tests' behaviour unchanged.
+  - Update every call site of all four changed functions across this package's test files to pass a nil map, leaving those tests' behaviour unchanged. That means `EnsureServer` and `ensureNative` in `internal/quarryengine/daemon/ensureserver_integration_test.go`, `ensureSupervised` in `internal/quarryengine/daemon/supervised_test.go`, `internal/quarryengine/daemon/supervised_lsp_test.go` and `internal/quarryengine/daemon/supervised_integration_test.go`, and `finalizeConnection`, `nativeArgv` and `EnsureServer` in `internal/quarryengine/daemon/ensureserver_test.go`. Search for each of the four names rather than working from this list alone.
+  - Three of those files are `//go:build lsp`-tagged and one is not, so a missed site surfaces in different places: `internal/quarryengine/daemon/supervised_test.go` breaks the hermetic `go test` this batch runs, while the tagged files break only the leading `go vet -tags lsp ./...`. Both are in this batch's `verify:`, but update them deliberately rather than discovering them from a failure.
 - **Commit:** `feat(daemon): thread initializationOptions through both strategies and spawn privately when tagged`
 
 ### Card 11: Options.BuildTags and the pre-spawn hard error
@@ -91,6 +95,7 @@ It is one batch because the `Initialize` signature change, the two `EnsureServer
   - `internal/quarryengine/query/symbol.go`
   - `internal/quarryengine/query/definition.go`
   - `internal/quarryengine/query/definition_test.go`
+  - `internal/quarryengine/registry/registry.go`
   - `internal/quarryengine/registry/initoptions.go`
   - `internal/quarryengine/errors.go`
 - **Edits:** none

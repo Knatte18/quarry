@@ -130,6 +130,9 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/quarryengine/daemon/ensureserver.go`
 - `internal/quarryengine/daemon/ensureserver_integration_test.go`
 - `internal/quarryengine/daemon/ensureserver_test.go`
+- `internal/quarryengine/daemon/supervised_integration_test.go`
+- `internal/quarryengine/daemon/supervised_lsp_test.go`
+- `internal/quarryengine/daemon/supervised_test.go`
 - `internal/quarryengine/errors.go`
 - `internal/quarryengine/lsp/lspclient.go`
 - `internal/quarryengine/lsp/lspclient_test.go`

@@ -45,6 +45,7 @@ It is one batch because both tests are the same shape — spawn a real gopls aga
   - `internal/quarryengine/query/refs.go`
   - `internal/quarryengine/registry/registry.go`
   - `internal/quarryengine/daemon/daemontest/daemontest.go`
+  - `internal/cli/paths.go`
   - `testdata/buildtagfixture/lib/lib.go`
   - `testdata/buildtagfixture/consumer/plain.go`
   - `testdata/buildtagfixture/consumer/tagged.go`
