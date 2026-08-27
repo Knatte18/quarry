@@ -40,11 +40,17 @@ implementing  '2026-08-27T12:49:53Z'
 ```yaml
 batches:
   - name: message-prefix-rename
-    state: pending
+    state: running
+    implementer_session: 6fceebdf-14fd-4faf-b344-210d4b6bbe68
+    start_sha: 36c30fa6d398728c8157ae23ea54b4a6e7479c58
+    verify_baseline_failures: []
   - name: engine-repackage
     state: pending
+    verify_baseline_failures: []
   - name: architecture-guards
     state: pending
+    verify_baseline_failures: []
   - name: doc-redistribution
     state: pending
+    verify_baseline_failures: []
 ```
