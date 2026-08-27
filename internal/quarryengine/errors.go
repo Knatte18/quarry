@@ -3,7 +3,7 @@
 // Each failure mode gets its own sentinel or data-carrying type so the CLI layer can map it to a
 // specific output.Err response instead of a generic message.
 
-package quarry
+package quarryengine
 
 import (
 	"errors"
@@ -19,7 +19,7 @@ var ErrNoLanguage = errors.New("quarry: no language detected")
 
 // ErrServerNotFoundSentinel is the package-level sentinel *ErrServerNotFound.Is compares against,
 // so callers can test for this failure mode with errors.Is(err,
-// quarry.ErrServerNotFoundSentinel) without needing to know the concrete field values of the
+// quarryengine.ErrServerNotFoundSentinel) without needing to know the concrete field values of the
 // *ErrServerNotFound the engine actually returned.
 var ErrServerNotFoundSentinel = errors.New("quarry: language server not found")
 
