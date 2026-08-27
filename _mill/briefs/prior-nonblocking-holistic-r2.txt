@@ -1,0 +1,2 @@
+- Stale `lspClient` identifier in a doc comment: The file header still reads "lspclient_test.go exercises lspClient's framing/protocol logic," but card 4 renamed the type `lspClient` -> `Client`; the doc comment was not updated to match.
+- Stale lowercase `connKindSupervised` in test comments: Two prose comments still refer to "teardownConnection's connKindSupervised branch," but card 8 retargeted the identifier to `daemon.ConnKindSupervised`; the comment prose was not updated alongside the code.

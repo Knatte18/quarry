@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: quarry-thin-facade
 branch: quarry-thin-facade
 plan: _mill/plan
@@ -41,6 +41,8 @@ holistic-reviewing  '2026-08-27T13:26:11Z'
 holistic-fixing  '2026-08-27T13:28:56Z'
 holistic-reviewing  '2026-08-27T15:51:10Z'
 holistic-fixing  '2026-08-27T15:54:48Z'
+nits-fixed-holistic  '2026-08-27T15:56:37Z'
+holistic-approved  '2026-08-27T15:56:47Z'
 ```
 
 ## Batches

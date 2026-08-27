@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: Thin quarry/ facade over internal/quarryengine — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-27
+```
+
+## Findings
+
+### [NIT:consistency] Stale lowercase `ensureServer` identifier in test comments
+**Location:** `internal/quarryengine/query/refs_test.go:515,519,521,553`, `internal/quarryengine/query/refs_integration_test.go:89,191`, `internal/quarryengine/registry/registry_test.go:87`
+**Issue:** Card 6 exported `ensureServer` -> `daemon.EnsureServer`, but seven prose comments across three test files still say bare lowercase `ensureServer` (e.g. `refs_test.go:519`'s "References -> lookup -> acquireConnection -> ensureServer -> resolveGoToolchain"), the same class of staleness as the two items already judged non-blocking in the prior round.
+**Fix:** Retarget these comment mentions to `daemon.EnsureServer` (or `EnsureServer` where package-local context is unambiguous) in a follow-up doc pass.
+
+### [NIT:consistency] Stale file reference in `FormatLocation` comment
+**Location:** `internal/quarryengine/query/refs.go:373`
+**Issue:** `trimFileURI`'s doc comment reads "the same conversion lsp.FormatLocation (position.go) applies," but card 4 moved `FormatLocation` into `lsp/wire.go`, not `position.go` — `position.go` (root package) no longer contains any LSP wire code after card 3's strip.
+**Fix:** Update the parenthetical to `(wire.go)`.
+
+## Verdict
+
+APPROVE
+Package DAG, exports, facade aliases, guards, and message-prefix rename all match the plan; only stale doc-comment identifiers remain, consistent with prior non-blocking findings.
+MILL_REVIEW_END
