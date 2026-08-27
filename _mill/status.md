@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-architecture-guards
+phase: approved-doc-redistribution
 slug: quarry-thin-facade
 branch: quarry-thin-facade
 plan: _mill/plan
@@ -36,6 +36,7 @@ implementing  '2026-08-27T12:49:53Z'
 approved-message-prefix-rename  '2026-08-27T12:53:55Z'
 approved-engine-repackage  '2026-08-27T13:13:59Z'
 approved-architecture-guards  '2026-08-27T13:19:20Z'
+approved-doc-redistribution  '2026-08-27T13:25:46Z'
 ```
 
 ## Batches
@@ -61,8 +62,9 @@ batches:
     commit_sha: 8f715250c1564aa5b014b2d52a304eb4616a3ba0
     verify_baseline_failures: []
   - name: doc-redistribution
-    state: running
+    state: approved
     implementer_session: 4707ae9d-1743-44f6-ab1f-84e603572f28
     start_sha: 144358d81f34a3d004d2382f91f6e2055d3fc871
+    commit_sha: 4101d62bd2a23cc381ee80c1b2290570e088e502
     verify_baseline_failures: []
 ```
