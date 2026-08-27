@@ -139,7 +139,7 @@ roles:
       rounds: 4
       # min_rounds -- floor: the review loop may not terminate on APPROVE before this round, regardless of verdict. Optional; defaults to 1 (today's unfloored behavior) when absent.
       min_rounds: 1
-      reviewer: sonnetmax
+      reviewer: opushigh
       # large_prompt:            # optional: override reviewer for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled
@@ -157,7 +157,7 @@ roles:
     holistic:
       rounds: 4
       min_rounds: 1
-      reviewer: sonnetmax
+      reviewer: opushigh
       # large_prompt:            # optional: override reviewer and timeout for large prompts
       #   threshold_ktok: 100    # switch when estimated tok count >= this (char/4000)
       #   reviewer: null         # override reviewer from agents.yaml; null = disabled
@@ -185,12 +185,12 @@ roles:
 
   implementer:
     self_fix_rounds: 2
-    model: sonnethigh
+    model: sonnetmedium
 
   fixer:
     # roles.fixer.model and roles.code-review.<scope>.reviewer should generally be escalated
     # together -- millpy-fix.py warns (stderr, non-blocking) when it detects this asymmetry.
-    model: haiku
+    model: sonnetmedium
 
 # ---------------------------------------------------------------------------
 # Notifications
@@ -216,8 +216,8 @@ groom:
 # template will have it pre-populated.
 
 merge:
-  # model: LLM alias for the merge-in sub-agent (haiku is sufficient for conflict resolution)
-  model: haiku
+  # model: LLM alias for the merge-in sub-agent (PR/conflict resolution)
+  model: sonnethigh
   verify_fix_rounds: 3
 
 # ---------------------------------------------------------------------------
