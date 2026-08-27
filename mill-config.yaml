@@ -79,7 +79,7 @@ spawn:
 # Configure git integration settings for PR vs. direct push.
 git:
   parent-branch: null         # consumed by git-pr (reads .millhouse/config.yaml); null/absent -> falls back to arg/main
-  require_pr_to_base: false    # consumed by mill-finalize; true -> open a PR instead of pushing directly
+  require_pr_to_base: true    # consumed by mill-finalize; true -> open a PR instead of pushing directly
   base_branch: main            # consumed by mill-finalize; PR --base target; falls back to main if absent
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ llm:
 # ---------------------------------------------------------------------------
 
 pipeline:
-  auto_merge: false
+  auto_merge: true
   auto_report: true
   done_gate: null  # Repo-wide check command run from git_root before marking done; null = disabled. Default to including the language's lint command (e.g. golangci-lint run, ruff check .) ONLY after first confirming that command exits 0 against the current worktree tip -- never set this to a command that is currently failing on pre-existing debt. e.g. "go test ./... && golangci-lint run" or "dotnet test". (#561, #861)
   done_gate_baseline_preflight: false  # Opt-in Prepare-phase done_gate baseline capture for self-capturing regression suites; see done_gate above. (#650)
