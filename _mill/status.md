@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-repackage
+phase: approved-architecture-guards
 slug: quarry-thin-facade
 branch: quarry-thin-facade
 plan: _mill/plan
@@ -35,6 +35,7 @@ planned  '2026-08-27T12:49:16Z'
 implementing  '2026-08-27T12:49:53Z'
 approved-message-prefix-rename  '2026-08-27T12:53:55Z'
 approved-engine-repackage  '2026-08-27T13:13:59Z'
+approved-architecture-guards  '2026-08-27T13:19:20Z'
 ```
 
 ## Batches
@@ -54,9 +55,10 @@ batches:
     commit_sha: 84682a68dfd5637d3c65d9c0f5a9295e4d4449dd
     verify_baseline_failures: []
   - name: architecture-guards
-    state: running
+    state: approved
     implementer_session: 85f90eed-b778-41e0-b8be-569eedd90fd0
     start_sha: ead276396f06444308c78fa5795b763e1cb554bb
+    commit_sha: 8f715250c1564aa5b014b2d52a304eb4616a3ba0
     verify_baseline_failures: []
   - name: doc-redistribution
     state: pending
