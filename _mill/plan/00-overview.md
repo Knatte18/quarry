@@ -7,7 +7,7 @@ approved: false
 started: "20260827-174944"
 parent: "main"
 root: ""
-verify: go vet ./... && go vet -tags lsp ./...
+verify: go vet ./... && go vet -tags lsp ./... && go test ./internal/quarryengine/
 ```
 
 ## Batch Index
@@ -64,6 +64,7 @@ Batch-local decisions live in each batch file._
 
 - **Decision:** The five-package engine DAG stays exactly as `internal/quarryengine/layering_test.go` encodes it, and the engine/CLI seam stays exactly as `internal/quarryengine/seam_enforcement_test.go` encodes it. Build-tag normalization and `initializationOptions` template rendering live in `registry`; the rendered `map[string]any` is what travels down through `query` → `daemon` → `lsp`. `internal/quarryengine/lsp/lspclient.go` keeps its stdlib-plus-`internal/quarryengine`-only import set (`internal/quarryengine/lsp/lspclient_guard_test.go` enforces it), so it must never import `registry`: it receives an already-rendered `map[string]any` and nothing more. `internal/cli` reaches the engine only through `quarry/facade.go`.
 - **Rationale:** Three existing guard tests already fail loudly on a violation; keeping the new code inside those boundaries means the guards keep working instead of needing amendment.
+- **Enforcement:** `layering_test.go` and `seam_enforcement_test.go` live in the `internal/quarryengine` root package, so they run only under `go test ./internal/quarryengine/`. A per-batch `go vet` cannot fail them — vet type-checks, it does not run a custom guard test. That command is therefore part of the overview's module-wide `verify:`, which runs at every batch boundary, so a batch that adds a file anywhere under `internal/quarryengine/` or `quarry/` re-runs both guards rather than landing green on an import that drifts across the DAG.
 - **Applies to:** all batches
 
 ### Decision: empty-tag-set-is-a-uniform-no-op
@@ -76,7 +77,7 @@ Batch-local decisions live in each batch file._
 
 - **Decision:** `registry.RenderInitializationOptions` returns `(nil, nil)` for an empty tag set and a non-nil map for a non-empty one. Every downstream consumer keys off that one signal: `daemon.EnsureServer` treats a non-nil `initOptions` as "this query is tagged" and therefore spawns a private gopls on the native path, and `lsp.Client.Initialize` sends the `initializationOptions` key exactly when its argument is non-nil.
 - **Rationale:** One derivation of "is this query tagged?", computed once in `registry`, rather than a `[]string` and a `map` travelling in parallel down three packages and drifting apart.
-- **Applies to:** initialization-options-plumbing, callers-verification-entry-point, cli-surface
+- **Applies to:** registry-build-tag-template, initialization-options-plumbing, callers-verification-entry-point, cli-surface
 
 ### Decision: verification-is-fail-closed-everywhere
 
@@ -104,8 +105,8 @@ Batch-local decisions live in each batch file._
 
 ### Decision: card-scoped-commits
 
-- **Decision:** Every card produces its own commit with the message its `Commit:` field names. No card's diff is folded into another card's commit.
-- **Rationale:** The repo's existing one-commit-per-card convention, and the harness's no-amend rule makes any cross-card squash instruction unimplementable.
+- **Decision:** Every card that changes a file produces its own commit with the message its `Commit:` field names, and no card's diff is folded into another card's commit. The one exception is a card that changes no file at all: it carries `Commit: none` and makes no commit, because there is nothing to commit. Batch 7's card 29, which only files GitHub issues, is the sole such card in this plan.
+- **Rationale:** The repo's existing one-commit-per-card convention, and the harness's no-amend rule makes any cross-card squash instruction unimplementable. The file-less exception is stated here rather than left implicit so the decision and card 29 do not read as contradicting each other.
 - **Applies to:** all batches
 
 ## All Files Touched
@@ -124,6 +125,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/cli/paths.go`
 - `internal/cli/paths_test.go`
 - `internal/cli/resolve_test.go`
+- `internal/quarryengine/daemon/daemontest/daemontest.go`
 - `internal/quarryengine/daemon/doc.go`
 - `internal/quarryengine/daemon/ensureserver.go`
 - `internal/quarryengine/daemon/ensureserver_integration_test.go`

@@ -64,6 +64,7 @@ It is one batch because every card edits `internal/cli/cli.go` and they share on
 - **Context:**
   - `quarry/facade.go`
   - `internal/quarryengine/query/callers.go`
+  - `internal/quarryengine/query/refs.go`
   - `internal/output/output.go`
 - **Edits:**
   - `internal/cli/cli.go`

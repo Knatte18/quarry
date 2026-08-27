@@ -44,6 +44,7 @@ It is one batch because both tests are the same shape — spawn a real gopls aga
   - `internal/quarryengine/query/refs_integration_test.go`
   - `internal/quarryengine/query/refs.go`
   - `internal/quarryengine/registry/registry.go`
+  - `internal/quarryengine/daemon/daemontest/daemontest.go`
   - `testdata/buildtagfixture/lib/lib.go`
   - `testdata/buildtagfixture/consumer/plain.go`
   - `testdata/buildtagfixture/consumer/tagged.go`
@@ -57,6 +58,7 @@ It is one batch because both tests are the same shape — spawn a real gopls aga
   - Call `References` twice against the exported symbol declared in `testdata/buildtagfixture/lib/lib.go`, resolved as an explicit position located by scanning the fixture source rather than by hard-coded line numbers: once with `BuildTags` empty and once with `BuildTags` set to the fixture's tag.
   - Assert that the untagged call reports the call site in `testdata/buildtagfixture/consumer/plain.go` and does not report the one in `testdata/buildtagfixture/consumer/tagged.go`, and that the tagged call reports both. That difference is the entire defect issue #2 describes, and it is not reproducible without a real gopls.
   - Give the two calls two explicitly distinct `t.TempDir()` state directories, so the second call cannot be answered from the first call's warm daemon view. Do not rely on the tag set producing them: the `tags-<hex>` segment is appended by `resolveStateDir` in `internal/cli/paths.go`, and this test drives `References` directly, so the query layer never applies it.
+  - Reap both spawned daemons. Go's registry entry has `HasNativeDaemon` true, so each call routes through the supervised strategy, which spawns a detached daemon that lives for a ten-minute idle timeout and that the supervised teardown branch deliberately never kills — two of them here, one per state directory. Pair each state directory with `daemontest.StateFile(stateDir, "go")` and a `t.Cleanup` calling `daemontest.KillRecordedDaemon`, exactly as `internal/quarryengine/query/refs_integration_test.go` already does at each of its own three spawn sites.
   - Assert nothing about latency or daemon counts. A daemon-identity assertion is only worth adding here if it can be made deterministic without racing the daemon lifecycle; the hermetic path-derivation tests in batch 5 are the contract for that, so leave it out rather than write a flaky test.
 - **Commit:** `test(query): assert build-tag-constrained references are visible only with --build-tags`
 
@@ -66,6 +68,9 @@ It is one batch because both tests are the same shape — spawn a real gopls aga
   - `internal/cli/cli.go`
   - `internal/cli/exec.go`
   - `internal/cli/cli_test.go`
+  - `internal/quarryengine/daemon/daemonstate.go`
+  - `internal/proc/proc_linux.go`
+  - `quarry/facade.go`
   - `docs/implementation-widening-spike.md`
   - `testdata/clockfixture/builder/poll.go`
   - `testdata/clockfixture/runner/tick.go`
@@ -82,6 +87,7 @@ It is one batch because both tests are the same shape — spawn a real gopls aga
   - Assert the reported `callers` list's length against the figure `docs/implementation-widening-spike.md` records under the literal label `callers-verified:`, which is the declaration-excluded count — not against its `references-unfiltered:` or `references-verified:` figures, both of which include the declaration site that `filterUnexpectedCallers` removes, and not against issue #1's pre-fix "31 → 2" measurement, which was taken on a different repository. If the recorded figure and the observed one disagree, fix the code or re-run the spike; do not adjust the assertion to whatever the run produced.
   - Run the same query again with `--no-verify` and assert the result is strictly larger and does include at least one call site from `runner` or `sched`, pinning both the fix and its escape hatch in one fixture.
   - Assert the exit code in both runs: the envelope carries `violation: true` and the process exit is 1 whenever the `callers` list is non-empty, unchanged from today's contract.
+  - Reap the supervised daemon both runs share. Go's registry entry has `HasNativeDaemon` true, so the first run spawns a detached daemon that lives for a ten-minute idle timeout and that the supervised teardown branch deliberately never kills. This test may not use `daemontest`: the `layering-is-non-negotiable` Shared Decision confines `internal/cli` to reaching the engine through `quarry/facade.go`, and `daemontest` is an engine-internal package. Reap it through the sanctioned surface instead — resolve the state file with `quarry.DaemonStateFile(stateDir, "go")`, json-decode its `pid` field, and kill it with `proc.KillPID` from a `t.Cleanup`, treating an already-dead process's error as the expected outcome rather than a failure. Give both runs the same `--state-dir` so there is exactly one daemon to reap.
 - **Commit:** `test(cli): pin the interface-conflation fix and the --no-verify escape hatch against live gopls`
 
 ## Batch Tests

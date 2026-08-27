@@ -25,6 +25,8 @@ Batch-local decision, restating the overview's `verification-is-fail-closed-ever
   - `internal/quarryengine/query/symbol.go`
   - `internal/quarryengine/query/definition.go`
   - `internal/quarryengine/daemon/ensureserver.go`
+  - `internal/quarryengine/errors.go`
+  - `internal/quarryengine/lsp/lspclient.go`
 - **Edits:**
   - `internal/quarryengine/query/refs.go`
 - **Creates:** none
@@ -99,7 +101,9 @@ Batch-local decision, restating the overview's `verification-is-fail-closed-ever
   - `internal/quarryengine/query/refs_test.go`
   - `internal/quarryengine/daemon/ensureserver.go`
   - `internal/quarryengine/lsp/lspclient.go`
-- **Edits:** none
+  - `internal/quarryengine/layering_test.go`
+- **Edits:**
+  - `internal/quarryengine/daemon/daemontest/daemontest.go`
 - **Creates:**
   - `internal/quarryengine/query/callers_test.go`
 - **Deletes:** none
@@ -113,7 +117,9 @@ Batch-local decision, restating the overview's `verification-is-fail-closed-ever
   - `SkipVerification` set keeps every reference and issues no per-reference definition calls at all; assert the call count the fake server observed, not just the result.
   - The declaration return value is the definition-only set, not the union: with an implementation result that is not in the definition result, assert the returned declaration does not contain it. Assert too that the declaration site survives verification and is present in the returned reference set, since `filterUnexpectedCallers` depends on being able to remove it.
   - A verification phase that hits its deadline returns a successful result with the remaining references kept and sets the timed-out flag. Assert both halves — asserting only the return value would let a teardown regression through. Drive the deadline with a fake server that stalls on the per-reference definition call and a short timeout.
-  - Assert the flag's consequence per `ConnKind` by calling `teardownConnection` directly with `timedOut` true: `ConnKindNative` and `ConnKindLegacy` tear the client down, and `ConnKindSupervised` leaves it neither killed nor closed, observable via the client's exported `Closed` accessor.
+  - Assert the flag's consequence per connection kind by calling `teardownConnection` directly with `timedOut` true: the native and legacy kinds tear the client down, and the supervised kind leaves it neither killed nor closed, observable via the client's exported `Closed` accessor.
+  - Reaching those constants needs one small addition first, because `internal/quarryengine/layering_test.go`'s row for `query`'s test files allows only the root, `registry`, `lsp` and `daemontest` packages — a `query` test may not import `daemon` directly. Add three re-export constants to `internal/quarryengine/daemon/daemontest/daemontest.go`, named `ConnKindNative`, `ConnKindSupervised` and `ConnKindLegacy`, each bound to the corresponding `daemon.ConnKind` value, and have the test use those. `daemontest` already imports `daemon` and its own layering row permits it, and any `_test.go` file may import `daemontest` unconditionally, so this is the sanctioned route rather than a widening of the table.
+  - Document on those constants that they exist so a package which cannot import `daemon` under the DAG can still name a `ConnKind`, mirroring how `StateFile` already re-exports `daemon.DaemonStateFile` for the same reason.
 - **Commit:** `test(query): cover Callers fail-closed verification, both interface directions, and deadline teardown`
 
 ### Card 17: facade re-exports and the identifier-count comment
