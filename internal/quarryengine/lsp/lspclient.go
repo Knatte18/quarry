@@ -1,4 +1,4 @@
-// lspclient.go implements lspClient, a generalized stdio LSP client speaking exactly the
+// lspclient.go implements Client, a generalized stdio LSP client speaking exactly the
 // request/notification surface this engine needs (initialize, initialized, textDocument/references,
 // workspace/symbol, shutdown, exit) — not the full LSP protocol, per the plan's references-only
 // Shared Decision.
@@ -8,11 +8,11 @@
 // hard-kills the subprocess on expiry.
 //
 // The I/O is factored over an injectable transport for testability: the production constructor
-// newLSPClient spawns a subprocess and wires its stdio, while the unexported newLSPClientFromRW
+// NewClient spawns a subprocess and wires its stdio, while the unexported NewClientFromRW
 // seam builds a client over a caller-supplied io.ReadWriteCloser with no subprocess at all — the
 // fake in-memory server in lspclient_test.go drives this seam.
 
-package quarry
+package lsp
 
 import (
 	"bufio"
@@ -28,6 +28,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
 )
 
 // lspError is the LSP/JSON-RPC error object shape.
@@ -45,20 +47,20 @@ type lspMessage struct {
 	Error   *lspError       `json:"error,omitempty"`
 }
 
-// symbolInformation is the LSP wire shape for a workspace/symbol result.
-type symbolInformation struct {
-	Name     string      `json:"name"`
-	Kind     int         `json:"kind"`
-	Location lspLocation `json:"location"`
+// SymbolInformation is the LSP wire shape for a workspace/symbol result.
+type SymbolInformation struct {
+	Name     string   `json:"name"`
+	Kind     int      `json:"kind"`
+	Location Location `json:"location"`
 }
 
-// lspDocumentSymbol is the LSP wire shape for a textDocument/documentSymbol result.
-type lspDocumentSymbol struct {
-	Name           string              `json:"name"`
-	Kind           int                 `json:"kind"`
-	Range          lspRange            `json:"range"`
-	SelectionRange lspRange            `json:"selectionRange"`
-	Children       []lspDocumentSymbol `json:"children"`
+// DocumentSymbol is the LSP wire shape for a textDocument/documentSymbol result.
+type DocumentSymbol struct {
+	Name           string           `json:"name"`
+	Kind           int              `json:"kind"`
+	Range          Range            `json:"range"`
+	SelectionRange Range            `json:"selectionRange"`
+	Children       []DocumentSymbol `json:"children"`
 }
 
 // capabilities reports the server's workspace/symbol and documentSymbol support.
@@ -97,8 +99,8 @@ func (f *capabilityFlag) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// lspClient drives a language-server subprocess or caller-supplied transport over Content-Length-framed LSP.
-type lspClient struct {
+// Client drives a language-server subprocess or caller-supplied transport over Content-Length-framed LSP.
+type Client struct {
 	cmd      *exec.Cmd
 	w        io.Writer
 	stdout   *bufio.Reader
@@ -110,14 +112,14 @@ type lspClient struct {
 	// lang is the language identifier this client's server was launched or
 	// dialed for (e.g. "go"), set only at production construction call
 	// sites where a language identifier is already in scope — every
-	// test-constructed client via newLSPClientFromRW leaves this at its
+	// test-constructed client via NewClientFromRW leaves this at its
 	// zero value "". It exists solely so close()/kill()'s diagnostic
-	// defaultLogHandler.Warn calls can name which language server misbehaved.
+	// quarryengine.Logger.Warn calls can name which language server misbehaved.
 	lang string
 }
 
 // lspReadResult is one readLoop iteration's outcome, delivered to whichever
-// call() is currently selecting on lspClient.incoming.
+// call() is currently selecting on Client.incoming.
 type lspReadResult struct {
 	msg *lspMessage
 	err error
@@ -135,7 +137,7 @@ type lspReadResult struct {
 // caller has already given up), that send — and the goroutine — blocks
 // forever; this is a bounded, one-goroutine-per-client leak accepted for
 // the client's remaining process lifetime, not an unbounded one.
-func (c *lspClient) readLoop() {
+func (c *Client) readLoop() {
 	for {
 		msg, err := c.readMessage()
 		c.incoming <- lspReadResult{msg: msg, err: err}
@@ -145,8 +147,8 @@ func (c *lspClient) readLoop() {
 	}
 }
 
-// newLSPClient resolves command[0] on $PATH and spawns it with command[1:]
-// as arguments, wiring its stdin/stdout for LSP framing. newLSPClient knows
+// NewClient resolves command[0] on $PATH and spawns it with command[1:]
+// as arguments, wiring its stdin/stdout for LSP framing. NewClient knows
 // nothing of which language or install hint command belongs to — that is
 // registry.Entry data the caller (refs.go) already has — so a LookPath
 // failure is returned as a plain wrapped error (errors.Is(err,
@@ -155,7 +157,7 @@ func (c *lspClient) readLoop() {
 // *ErrServerNotFound. The subprocess's stderr is forwarded to this
 // process's stderr so the server's own diagnostic logging is visible
 // rather than silently discarded or deadlocking on a full pipe.
-func newLSPClient(command []string) (*lspClient, error) {
+func NewClient(command []string) (*Client, error) {
 	if len(command) == 0 {
 		return nil, fmt.Errorf("quarry: empty launch command")
 	}
@@ -180,7 +182,7 @@ func newLSPClient(command []string) (*lspClient, error) {
 		return nil, fmt.Errorf("start %s: %w", bin, err)
 	}
 
-	c := &lspClient{
+	c := &Client{
 		cmd:      cmd,
 		w:        stdin,
 		stdout:   bufio.NewReader(stdout),
@@ -191,14 +193,14 @@ func newLSPClient(command []string) (*lspClient, error) {
 	return c, nil
 }
 
-// newLSPClientFromRW builds an lspClient over a caller-supplied
+// NewClientFromRW builds an Client over a caller-supplied
 // io.ReadWriteCloser transport with no subprocess. This is the seam
 // lspclient_test.go's in-memory fake server drives: it lets the framing and
 // protocol logic (writeMessage/readMessage, call/notify, the
 // server-initiated-request handling, initialize/references/workspaceSymbol)
 // be exercised without spawning a real language server.
-func newLSPClientFromRW(rwc io.ReadWriteCloser) *lspClient {
-	c := &lspClient{
+func NewClientFromRW(rwc io.ReadWriteCloser) *Client {
+	c := &Client{
 		w:        rwc,
 		stdout:   bufio.NewReader(rwc),
 		closer:   rwc,
@@ -208,32 +210,32 @@ func newLSPClientFromRW(rwc io.ReadWriteCloser) *lspClient {
 	return c
 }
 
-// newLSPClientDial dials network/address (a Unix socket path or a TCP
-// address) and wraps the resulting connection with newLSPClientFromRW —
+// NewClientDial dials network/address (a Unix socket path or a TCP
+// address) and wraps the resulting connection with NewClientFromRW —
 // net.Conn already satisfies io.ReadWriteCloser, so the dial-transport mode
 // needs no framing, readLoop, or protocol code of its own; it reuses every
-// piece of newLSPClientFromRW's already-tested behavior unchanged. This is
+// piece of NewClientFromRW's already-tested behavior unchanged. This is
 // the supervised-strategy constructor: it dials an already-running,
 // externally-owned language server process rather than spawning one, so
-// unlike newLSPClient the returned client's cmd field is nil — close()'s
+// unlike NewClient the returned client's cmd field is nil — close()'s
 // `if c.cmd != nil { c.cmd.Wait() }` branch is already a no-op for a dialed
 // client, since close() guards on c.cmd == nil correctly. network/address
 // are passed through verbatim to net.Dialer.DialContext; this function has
 // no opinion on Unix-vs-TCP, the caller decides based on the daemon's
 // recorded state-file address.
-func newLSPClientDial(ctx context.Context, network, address string) (*lspClient, error) {
+func NewClientDial(ctx context.Context, network, address string) (*Client, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, network, address)
 	if err != nil {
 		return nil, fmt.Errorf("quarry: dial lsp server at %s %s: %w", network, address, err)
 	}
-	return newLSPClientFromRW(conn), nil
+	return NewClientFromRW(conn), nil
 }
 
 // writeMessage marshals v and frames it with the LSP Content-Length header,
 // the wire shape every LSP implementation requires regardless of message
 // kind (request, response, or notification).
-func (c *lspClient) writeMessage(v any) error {
+func (c *Client) writeMessage(v any) error {
 	body, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshal lsp message: %w", err)
@@ -250,7 +252,7 @@ func (c *lspClient) writeMessage(v any) error {
 // readMessage reads one Content-Length-framed message from the transport.
 // Header lines other than Content-Length (e.g. Content-Type) are accepted
 // and ignored, per the LSP base protocol.
-func (c *lspClient) readMessage() (*lspMessage, error) {
+func (c *Client) readMessage() (*lspMessage, error) {
 	contentLength := -1
 	for {
 		line, err := c.stdout.ReadString('\n')
@@ -285,10 +287,10 @@ func (c *lspClient) readMessage() (*lspMessage, error) {
 	return &msg, nil
 }
 
-// call sends a JSON-RPC request and blocks until either the matching
+// Call sends a JSON-RPC request and blocks until either the matching
 // response arrives on c.incoming or ctx is done, whichever comes first.
 // incoming is fed by the client's single persistent readLoop goroutine
-// (started once at construction, not per call) — see lspClient's doc
+// (started once at construction, not per call) — see Client's doc
 // comment for why sharing one reader across every call matters. While
 // waiting, call also answers any server-initiated request it encounters in
 // the meantime (e.g. client/registerCapability or workspace/configuration)
@@ -298,9 +300,9 @@ func (c *lspClient) readMessage() (*lspMessage, error) {
 // never come. Notifications and any other message not addressed to this
 // call's id (e.g. a stale message for a call this client already gave up
 // on after a previous timeout) are dropped silently and the wait
-// continues. phase names the current request for ErrServerTimeout's Phase
+// continues. phase names the current request for quarryengine.ErrServerTimeout's Phase
 // field if ctx expires first.
-func (c *lspClient) call(ctx context.Context, phase, method string, params any) (json.RawMessage, error) {
+func (c *Client) Call(ctx context.Context, phase, method string, params any) (json.RawMessage, error) {
 	// writeMessage below has no context awareness of its own: on a
 	// pipe/subprocess-stdin transport a Write can block until something
 	// reads it, so a ctx that is already expired before the write is even
@@ -308,7 +310,7 @@ func (c *lspClient) call(ctx context.Context, phase, method string, params any) 
 	// write has actually started, the select loop below is what bounds the
 	// remaining wait.
 	if err := ctx.Err(); err != nil {
-		return nil, &ErrServerTimeout{Phase: phase, Timeout: err.Error()}
+		return nil, &quarryengine.ErrServerTimeout{Phase: phase, Timeout: err.Error()}
 	}
 
 	c.nextID++
@@ -326,7 +328,7 @@ func (c *lspClient) call(ctx context.Context, phase, method string, params any) 
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, &ErrServerTimeout{Phase: phase, Timeout: ctx.Err().Error()}
+			return nil, &quarryengine.ErrServerTimeout{Phase: phase, Timeout: ctx.Err().Error()}
 		case r := <-c.incoming:
 			if r.err != nil {
 				return nil, fmt.Errorf("await response to %s: %w", method, r.err)
@@ -349,9 +351,9 @@ func (c *lspClient) call(ctx context.Context, phase, method string, params any) 
 	}
 }
 
-// notify sends a JSON-RPC notification (a message with no id, expecting no
+// Notify sends a JSON-RPC notification (a message with no id, expecting no
 // response) — the shape "initialized" and "exit" require per the LSP spec.
-func (c *lspClient) notify(method string, params any) error {
+func (c *Client) Notify(method string, params any) error {
 	n := map[string]any{"jsonrpc": "2.0", "method": method}
 	if params != nil {
 		n["params"] = params
@@ -362,18 +364,18 @@ func (c *lspClient) notify(method string, params any) error {
 	return nil
 }
 
-// initialize sends the "initialize" request rooted at rootURI, retains the
+// Initialize sends the "initialize" request rooted at rootURI, retains the
 // server's reported capabilities (at least workspaceSymbolProvider
 // presence, via supportsWorkspaceSymbol), and then sends the "initialized"
 // notification per the LSP handshake.
 // It advertises textDocument.documentSymbol.hierarchicalDocumentSymbolSupport
 // so gopls answers textDocument/documentSymbol with the DocumentSymbol[]
-// (range/selectionRange) wire shape lspDocumentSymbol parses — without it,
+// (range/selectionRange) wire shape DocumentSymbol parses — without it,
 // gopls falls back to the flat SymbolInformation[] shape, which unmarshals
 // into a zero-valued SelectionRange for every result and silently breaks
 // every InFile query.
-func (c *lspClient) initialize(ctx context.Context, rootURI string) error {
-	raw, err := c.call(ctx, "initialize", "initialize", map[string]any{
+func (c *Client) Initialize(ctx context.Context, rootURI string) error {
+	raw, err := c.Call(ctx, "initialize", "initialize", map[string]any{
 		"processId": os.Getpid(),
 		"rootUri":   rootURI,
 		"capabilities": map[string]any{
@@ -396,31 +398,31 @@ func (c *lspClient) initialize(ctx context.Context, rootURI string) error {
 	}
 	c.caps = result.Capabilities
 
-	if err := c.notify("initialized", map[string]any{}); err != nil {
+	if err := c.Notify("initialized", map[string]any{}); err != nil {
 		return fmt.Errorf("initialized notification: %w", err)
 	}
 	return nil
 }
 
-// supportsWorkspaceSymbol reports whether the server's initialize response
+// SupportsWorkspaceSymbol reports whether the server's initialize response
 // advertised workspaceSymbolProvider. It is only meaningful after a
 // successful initialize call.
-func (c *lspClient) supportsWorkspaceSymbol() bool {
+func (c *Client) SupportsWorkspaceSymbol() bool {
 	return c.caps.WorkspaceSymbolProvider.Supported
 }
 
-// supportsDocumentSymbol reports whether the server's initialize response
+// SupportsDocumentSymbol reports whether the server's initialize response
 // advertised documentSymbolProvider. It is only meaningful after a
 // successful initialize call.
-func (c *lspClient) supportsDocumentSymbol() bool {
+func (c *Client) SupportsDocumentSymbol() bool {
 	return c.caps.DocumentSymbolProvider.Supported
 }
 
-// references issues one textDocument/references request (with
+// References issues one textDocument/references request (with
 // includeDeclaration: true, so the declaration site is included alongside
 // call sites) and returns the raw location list.
-func (c *lspClient) references(ctx context.Context, fileURI string, pos lspPosition) ([]lspLocation, error) {
-	raw, err := c.call(ctx, "references", "textDocument/references", map[string]any{
+func (c *Client) References(ctx context.Context, fileURI string, pos Position) ([]Location, error) {
+	raw, err := c.Call(ctx, "references", "textDocument/references", map[string]any{
 		"textDocument": map[string]any{"uri": fileURI},
 		"position":     pos,
 		"context":      map[string]any{"includeDeclaration": true},
@@ -429,22 +431,22 @@ func (c *lspClient) references(ctx context.Context, fileURI string, pos lspPosit
 		return nil, err
 	}
 
-	var locations []lspLocation
+	var locations []Location
 	if err := json.Unmarshal(raw, &locations); err != nil {
 		return nil, fmt.Errorf("unmarshal textDocument/references result: %w", err)
 	}
 	return locations, nil
 }
 
-// definition issues one textDocument/definition request and returns the
+// Definition issues one textDocument/definition request and returns the
 // server's reported definition location(s), parsed via
 // parseDefinitionResult since the LSP spec allows three distinct wire
 // shapes for this method's response. Unlike references, no
 // context.includeDeclaration parameter is sent — that field is specific to
 // textDocument/references's request shape and does not exist on
 // textDocument/definition's.
-func (c *lspClient) definition(ctx context.Context, fileURI string, pos lspPosition) ([]lspLocation, error) {
-	raw, err := c.call(ctx, "definition", "textDocument/definition", map[string]any{
+func (c *Client) Definition(ctx context.Context, fileURI string, pos Position) ([]Location, error) {
+	raw, err := c.Call(ctx, "definition", "textDocument/definition", map[string]any{
 		"textDocument": map[string]any{"uri": fileURI},
 		"position":     pos,
 	})
@@ -466,7 +468,7 @@ func (c *lspClient) definition(ctx context.Context, fileURI string, pos lspPosit
 // this task can empirically confirm exercises against the one real server
 // V1 ships with — lspclient_test.go's table-driven coverage is what
 // actually exercises it.
-func parseDefinitionResult(raw json.RawMessage) ([]lspLocation, error) {
+func parseDefinitionResult(raw json.RawMessage) ([]Location, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || string(trimmed) == "null" {
 		return nil, nil
@@ -475,11 +477,11 @@ func parseDefinitionResult(raw json.RawMessage) ([]lspLocation, error) {
 	// A bare Location object (not wrapped in an array) is the single-result
 	// shape some servers use; JSON objects start with '{', arrays with '['.
 	if trimmed[0] == '{' {
-		var loc lspLocation
+		var loc Location
 		if err := json.Unmarshal(trimmed, &loc); err != nil {
 			return nil, fmt.Errorf("unmarshal textDocument/definition bare Location result: %w", err)
 		}
-		return []lspLocation{loc}, nil
+		return []Location{loc}, nil
 	}
 
 	var elements []json.RawMessage
@@ -487,81 +489,82 @@ func parseDefinitionResult(raw json.RawMessage) ([]lspLocation, error) {
 		return nil, fmt.Errorf("unmarshal textDocument/definition result array: %w", err)
 	}
 
-	locations := make([]lspLocation, len(elements))
+	locations := make([]Location, len(elements))
 	for i, elem := range elements {
 		// probe carries both possible per-element shapes at once (Location's
 		// uri/range and LocationLink's targetUri/targetSelectionRange) so a
 		// single unmarshal determines which one the server actually sent.
 		var probe struct {
-			URI                  string   `json:"uri"`
-			Range                lspRange `json:"range"`
-			TargetURI            string   `json:"targetUri"`
-			TargetSelectionRange lspRange `json:"targetSelectionRange"`
+			URI                  string `json:"uri"`
+			Range                Range  `json:"range"`
+			TargetURI            string `json:"targetUri"`
+			TargetSelectionRange Range  `json:"targetSelectionRange"`
 		}
 		if err := json.Unmarshal(elem, &probe); err != nil {
 			return nil, fmt.Errorf("unmarshal textDocument/definition result element %d: %w", i, err)
 		}
 		if probe.URI != "" {
-			locations[i] = lspLocation{URI: probe.URI, Range: probe.Range}
+			locations[i] = Location{URI: probe.URI, Range: probe.Range}
 		} else {
-			locations[i] = lspLocation{URI: probe.TargetURI, Range: probe.TargetSelectionRange}
+			locations[i] = Location{URI: probe.TargetURI, Range: probe.TargetSelectionRange}
 		}
 	}
 	return locations, nil
 }
 
-// workspaceSymbol issues one workspace/symbol query and returns the
+// WorkspaceSymbol issues one workspace/symbol query and returns the
 // server's candidate matches, each carrying the symbol's name and
 // declaration location.
-func (c *lspClient) workspaceSymbol(ctx context.Context, query string) ([]symbolInformation, error) {
-	raw, err := c.call(ctx, "workspace/symbol", "workspace/symbol", map[string]any{
+func (c *Client) WorkspaceSymbol(ctx context.Context, query string) ([]SymbolInformation, error) {
+	raw, err := c.Call(ctx, "workspace/symbol", "workspace/symbol", map[string]any{
 		"query": query,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var symbols []symbolInformation
+	var symbols []SymbolInformation
 	if err := json.Unmarshal(raw, &symbols); err != nil {
 		return nil, fmt.Errorf("unmarshal workspace/symbol result: %w", err)
 	}
 	sort.Slice(symbols, func(i, j int) bool {
-		return formatLocation(symbols[i].Location) < formatLocation(symbols[j].Location)
+		return FormatLocation(symbols[i].Location) < FormatLocation(symbols[j].Location)
 	})
 	return symbols, nil
 }
 
-// documentSymbol issues one textDocument/documentSymbol request and returns
+// DocumentSymbols issues one textDocument/documentSymbol request and returns
 // the server's hierarchical DocumentSymbol[] result unchanged (children
-// still nested under their parent). gopls returns this hierarchical shape,
+// still nested under their parent), named in the plural since it returns a
+// slice of DocumentSymbol. gopls returns this hierarchical shape,
 // not the LSP spec's alternative flat SymbolInformation[] shape; parsing
 // only the hierarchical shape is a deliberate scope choice (see
-// lspDocumentSymbol's doc comment), not an oversight of the spec's other
+// DocumentSymbol's doc comment), not an oversight of the spec's other
 // legal response shape.
-func (c *lspClient) documentSymbol(ctx context.Context, fileURI string) ([]lspDocumentSymbol, error) {
-	raw, err := c.call(ctx, "documentSymbol", "textDocument/documentSymbol", map[string]any{
+func (c *Client) DocumentSymbols(ctx context.Context, fileURI string) ([]DocumentSymbol, error) {
+	raw, err := c.Call(ctx, "documentSymbol", "textDocument/documentSymbol", map[string]any{
 		"textDocument": map[string]any{"uri": fileURI},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var symbols []lspDocumentSymbol
+	var symbols []DocumentSymbol
 	if err := json.Unmarshal(raw, &symbols); err != nil {
 		return nil, fmt.Errorf("unmarshal textDocument/documentSymbol result: %w", err)
 	}
 	return symbols, nil
 }
 
-// close runs the graceful LSP shutdown handshake (shutdown request, exit
+// Close runs the graceful LSP shutdown handshake (shutdown request, exit
 // notification) and waits for the subprocess to exit. It is best-effort and
 // idempotent, for the normal end of a run: a failed shutdown RPC is logged
 // rather than returned, since by the time close is called the caller has
 // already gathered the result it needs and a clean process exit is a
 // nice-to-have, not a correctness requirement. When the client was built
-// with no subprocess (newLSPClientFromRW), close only closes the
+// with no subprocess (NewClientFromRW), close only closes the
 // transport.
-func (c *lspClient) close() {
+func (c *Client) Close() {
 	if c.closed {
 		return
 	}
@@ -570,28 +573,28 @@ func (c *lspClient) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if _, err := c.call(ctx, "shutdown", "shutdown", nil); err != nil {
-		defaultLogHandler.Warn("quarry: lsp shutdown request", "lang", c.lang, "err", err)
+	if _, err := c.Call(ctx, "shutdown", "shutdown", nil); err != nil {
+		quarryengine.Logger.Warn("quarry: lsp shutdown request", "lang", c.lang, "err", err)
 	}
-	if err := c.notify("exit", nil); err != nil {
-		defaultLogHandler.Warn("quarry: lsp exit notification", "lang", c.lang, "err", err)
+	if err := c.Notify("exit", nil); err != nil {
+		quarryengine.Logger.Warn("quarry: lsp exit notification", "lang", c.lang, "err", err)
 	}
 	c.closer.Close()
 	if c.cmd != nil {
 		if err := c.cmd.Wait(); err != nil {
-			defaultLogHandler.Warn("quarry: lsp process exit", "lang", c.lang, "err", err)
+			quarryengine.Logger.Warn("quarry: lsp process exit", "lang", c.lang, "err", err)
 		}
 	}
 }
 
-// kill hard-terminates the subprocess (cmd.Process.Kill(), then Wait to
+// Kill hard-terminates the subprocess (cmd.Process.Kill(), then Wait to
 // reap it) rather than attempting the graceful shutdown/exit handshake,
 // which could itself re-block on a server that is already unresponsive —
 // this is the timeout-path teardown per the plan's deadline-with-hard-kill
 // Shared Decision. It guards on a nil *exec.Cmd: a client built over an
-// injected transport (newLSPClientFromRW) has no subprocess to kill, so
+// injected transport (NewClientFromRW) has no subprocess to kill, so
 // kill only closes the transport.
-func (c *lspClient) kill() {
+func (c *Client) Kill() {
 	if c.closed {
 		return
 	}
@@ -602,9 +605,9 @@ func (c *lspClient) kill() {
 		return
 	}
 	if err := c.cmd.Process.Kill(); err != nil {
-		defaultLogHandler.Warn("quarry: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		quarryengine.Logger.Warn("quarry: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 	if err := c.cmd.Wait(); err != nil {
-		defaultLogHandler.Warn("quarry: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		quarryengine.Logger.Warn("quarry: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 }

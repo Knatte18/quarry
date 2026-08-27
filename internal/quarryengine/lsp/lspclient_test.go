@@ -1,5 +1,5 @@
 // lspclient_test.go exercises lspClient's framing/protocol logic without launching a real
-// subprocess: it builds the client over the newLSPClientFromRW(rwc) seam with an io.Pipe-backed
+// subprocess: it builds the client over the NewClientFromRW(rwc) seam with an io.Pipe-backed
 // transport, driven by a scripted fake-server goroutine that reads Content-Length-framed requests
 // and writes back Content-Length-framed responses.
 // Untagged and spawn-free — no subprocess launch anywhere in this file;
@@ -12,7 +12,7 @@
 // the client-side call's own context timeout (5s in every test here) is what bounds the test's
 // total runtime if the fake server bails out early without ever responding.
 
-package quarry
+package lsp
 
 import (
 	"bufio"
@@ -28,6 +28,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
 )
 
 // pipeTransport wires client and server sides over two io.Pipes.
@@ -165,7 +167,7 @@ func TestLSPClient_InitializeCapturesCapabilities(t *testing.T) {
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -193,12 +195,12 @@ func TestLSPClient_InitializeCapturesCapabilities(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-done
 
-	if !client.supportsWorkspaceSymbol() {
+	if !client.SupportsWorkspaceSymbol() {
 		t.Error("supportsWorkspaceSymbol() = false; want true (server advertised workspaceSymbolProvider)")
 	}
 }
@@ -209,7 +211,7 @@ func TestLSPClient_AnswersServerInitiatedRequest(t *testing.T) {
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -249,7 +251,7 @@ func TestLSPClient_AnswersServerInitiatedRequest(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-done
@@ -262,7 +264,7 @@ func TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult(t *testing.T
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -310,7 +312,7 @@ func TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult(t *testing.T
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	locations, err := client.references(ctx, "file:///tmp/example/foo.go", lspPosition{Line: 4, Character: 6})
+	locations, err := client.References(ctx, "file:///tmp/example/foo.go", Position{Line: 4, Character: 6})
 	if err != nil {
 		t.Fatalf("references() returned unexpected error: %v", err)
 	}
@@ -319,10 +321,10 @@ func TestLSPClient_ReferencesSendsIncludeDeclarationAndParsesResult(t *testing.T
 	if len(locations) != 2 {
 		t.Fatalf("references() returned %d locations; want 2", len(locations))
 	}
-	if got, want := formatLocation(locations[0]), "/tmp/example/foo.go:5:7"; got != want {
+	if got, want := FormatLocation(locations[0]), "/tmp/example/foo.go:5:7"; got != want {
 		t.Errorf("references()[0] = %q; want %q", got, want)
 	}
-	if got, want := formatLocation(locations[1]), "/tmp/example/bar.go:11:3"; got != want {
+	if got, want := FormatLocation(locations[1]), "/tmp/example/bar.go:11:3"; got != want {
 		t.Errorf("references()[1] = %q; want %q", got, want)
 	}
 }
@@ -335,7 +337,7 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 	tests := []struct {
 		name     string
 		response any
-		want     []lspLocation
+		want     []Location
 	}{
 		{
 			name: "BareLocationObject",
@@ -346,10 +348,10 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 					"end":   map[string]any{"line": 4, "character": 9},
 				},
 			},
-			want: []lspLocation{
+			want: []Location{
 				{
 					URI:   "file:///tmp/example/foo.go",
-					Range: lspRange{Start: lspPosition{Line: 4, Character: 6}, End: lspPosition{Line: 4, Character: 9}},
+					Range: Range{Start: Position{Line: 4, Character: 6}, End: Position{Line: 4, Character: 9}},
 				},
 			},
 		},
@@ -371,14 +373,14 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 					},
 				},
 			},
-			want: []lspLocation{
+			want: []Location{
 				{
 					URI:   "file:///tmp/example/foo.go",
-					Range: lspRange{Start: lspPosition{Line: 4, Character: 6}, End: lspPosition{Line: 4, Character: 9}},
+					Range: Range{Start: Position{Line: 4, Character: 6}, End: Position{Line: 4, Character: 9}},
 				},
 				{
 					URI:   "file:///tmp/example/bar.go",
-					Range: lspRange{Start: lspPosition{Line: 10, Character: 2}, End: lspPosition{Line: 10, Character: 5}},
+					Range: Range{Start: Position{Line: 10, Character: 2}, End: Position{Line: 10, Character: 5}},
 				},
 			},
 		},
@@ -393,10 +395,10 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 					},
 				},
 			},
-			want: []lspLocation{
+			want: []Location{
 				{
 					URI:   "file:///tmp/example/baz.go",
-					Range: lspRange{Start: lspPosition{Line: 1, Character: 2}, End: lspPosition{Line: 1, Character: 5}},
+					Range: Range{Start: Position{Line: 1, Character: 2}, End: Position{Line: 1, Character: 5}},
 				},
 			},
 		},
@@ -413,7 +415,7 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 			defer clientTransport.Close()
 			defer serverTransport.Close()
 
-			client := newLSPClientFromRW(clientTransport)
+			client := NewClientFromRW(clientTransport)
 			server := newFakeServer(serverTransport)
 
 			done := make(chan struct{})
@@ -432,7 +434,7 @@ func TestLSPClient_DefinitionParsesMultipleWireShapes(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			got, err := client.definition(ctx, "file:///tmp/example/foo.go", lspPosition{Line: 4, Character: 6})
+			got, err := client.Definition(ctx, "file:///tmp/example/foo.go", Position{Line: 4, Character: 6})
 			if err != nil {
 				t.Fatalf("definition() returned unexpected error: %v", err)
 			}
@@ -460,7 +462,7 @@ func TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy(t *testing.T) {
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -520,7 +522,7 @@ func TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	symbols, err := client.documentSymbol(ctx, "file:///tmp/example/foo.go")
+	symbols, err := client.DocumentSymbols(ctx, "file:///tmp/example/foo.go")
 	if err != nil {
 		t.Fatalf("documentSymbol() returned unexpected error: %v", err)
 	}
@@ -536,11 +538,11 @@ func TestLSPClient_DocumentSymbolSendsURIAndParsesHierarchy(t *testing.T) {
 	if top.Kind != 23 {
 		t.Errorf("documentSymbol()[0].Kind = %d; want %d", top.Kind, 23)
 	}
-	wantRange := lspRange{Start: lspPosition{Line: 4, Character: 0}, End: lspPosition{Line: 10, Character: 1}}
+	wantRange := Range{Start: Position{Line: 4, Character: 0}, End: Position{Line: 10, Character: 1}}
 	if top.Range != wantRange {
 		t.Errorf("documentSymbol()[0].Range = %+v; want %+v", top.Range, wantRange)
 	}
-	wantSelectionRange := lspRange{Start: lspPosition{Line: 4, Character: 5}, End: lspPosition{Line: 4, Character: 8}}
+	wantSelectionRange := Range{Start: Position{Line: 4, Character: 5}, End: Position{Line: 4, Character: 8}}
 	if top.SelectionRange != wantSelectionRange {
 		t.Errorf("documentSymbol()[0].SelectionRange = %+v; want %+v", top.SelectionRange, wantSelectionRange)
 	}
@@ -584,7 +586,7 @@ func TestLSPClient_SupportsDocumentSymbol(t *testing.T) {
 			defer clientTransport.Close()
 			defer serverTransport.Close()
 
-			client := newLSPClientFromRW(clientTransport)
+			client := NewClientFromRW(clientTransport)
 			server := newFakeServer(serverTransport)
 
 			done := make(chan struct{})
@@ -602,12 +604,12 @@ func TestLSPClient_SupportsDocumentSymbol(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+			if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 				t.Fatalf("initialize() returned unexpected error: %v", err)
 			}
 			<-done
 
-			if got := client.supportsDocumentSymbol(); got != tt.want {
+			if got := client.SupportsDocumentSymbol(); got != tt.want {
 				t.Errorf("supportsDocumentSymbol() = %v; want %v", got, tt.want)
 			}
 		})
@@ -623,25 +625,25 @@ func TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext(t *testing.T) {
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := NewClientFromRW(clientTransport)
 	// No fake-server goroutine reads or responds: the point of this test is
 	// that call() never waits for one because ctx is already expired.
 
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 
-	_, err := client.references(ctx, "file:///tmp/example/foo.go", lspPosition{Line: 0, Character: 0})
+	_, err := client.References(ctx, "file:///tmp/example/foo.go", Position{Line: 0, Character: 0})
 	if err == nil {
 		t.Fatal("references() with an expired context returned nil error; want ErrServerTimeout")
 	}
-	if !errors.Is(err, ErrServerTimeoutSentinel) {
-		t.Errorf("references() with an expired context err = %v; want errors.Is(err, ErrServerTimeoutSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
+		t.Errorf("references() with an expired context err = %v; want errors.Is(err, quarryengine.ErrServerTimeoutSentinel)", err)
 	}
 }
 
-// TestLSPClient_DialTransport_InitializeOverUnixSocket proves the dial transport (newLSPClientDial)
+// TestLSPClient_DialTransport_InitializeOverUnixSocket proves the dial transport (NewClientDial)
 // is not a new protocol implementation, only a new way to obtain the io.ReadWriteCloser
-// newLSPClientFromRW already knows how to drive: it runs the exact same initialize-handshake script
+// NewClientFromRW already knows how to drive: it runs the exact same initialize-handshake script
 // TestLSPClient_InitializeCapturesCapabilities uses, but over a real net.Listen("unix", ...)
 // socket instead of an in-process io.Pipe.
 func TestLSPClient_DialTransport_InitializeOverUnixSocket(t *testing.T) {
@@ -650,9 +652,9 @@ func TestLSPClient_DialTransport_InitializeOverUnixSocket(t *testing.T) {
 		// elsewhere skips platform-specific socket tests rather than adding
 		// a second listener code path; this is a scoping choice, not an
 		// oversight. TCP is covered by the address-form flexibility of
-		// newLSPClientDial itself (it passes network/address through
+		// NewClientDial itself (it passes network/address through
 		// verbatim with no Unix-specific handling).
-		t.Skip("unix sockets not exercised on windows here; TCP is covered by the address-form flexibility of newLSPClientDial itself")
+		t.Skip("unix sockets not exercised on windows here; TCP is covered by the address-form flexibility of NewClientDial itself")
 	}
 
 	socketPath := filepath.Join(t.TempDir(), "test.sock")
@@ -695,21 +697,21 @@ func TestLSPClient_DialTransport_InitializeOverUnixSocket(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	client, err := newLSPClientDial(ctx, "unix", socketPath)
+	client, err := NewClientDial(ctx, "unix", socketPath)
 	if err != nil {
-		t.Fatalf("newLSPClientDial() returned unexpected error: %v", err)
+		t.Fatalf("NewClientDial() returned unexpected error: %v", err)
 	}
 	// kill() rather than close(): the fake-server goroutine above answers
 	// only the initialize handshake and exits, so a graceful close() would
 	// block on an unanswered shutdown request until its own 5s timeout.
-	defer client.kill()
+	defer client.Kill()
 
-	if err := client.initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-done
 
-	if !client.supportsWorkspaceSymbol() {
+	if !client.SupportsWorkspaceSymbol() {
 		t.Error("supportsWorkspaceSymbol() = false; want true (server advertised workspaceSymbolProvider)")
 	}
 }
