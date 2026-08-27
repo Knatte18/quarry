@@ -53,8 +53,14 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   TypeScript, Rust) and **implemented and tested for Go, Python, and C#** in this task.
 - Facade re-exports `quarry.TOCFile` and `quarry.TOCDir` in `quarry/facade.go`.
 - New rows in `internal/quarryengine/layering_test.go`'s `layeringTable` for both new packages.
-- **Four exact-count / exact-claim doc invariants that go stale the moment this task lands, and
-  must be updated in the same batch as the code that invalidates them:**
+- **Exact-count and exact-claim invariants that go stale the moment this task lands, and must be
+  updated in the same batch as the code that invalidates them.**
+  This list is not asserted to be exhaustive by inspection; it is the output of a stated,
+  repeatable enumeration the plan writer must re-run rather than trust:
+  `grep -rn 'five-package\|five packages\|four verbs\|29 identifiers\|eight blank-identifier\|LSP-backed\|minPackageDirs' --include='*.go' --include='*.md' .`
+  Anything that grep surfaces outside `_mill/` and `.scratch/` is in scope, including hits added
+  after this discussion was written.
+  What it currently returns:
   - `quarry/facade.go:8` — "It re-exports exactly the 29 identifiers this package exported before
     the engine-repackage move: no more, no less." Adding `TOCFile`, `TOCDir`, and the toc result
     type aliases breaks this sentence. Recount and rewrite it; do not leave a stale number.
@@ -65,7 +71,21 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
     Must account for the `toc` group.
   - `README.md:3` — "quarry is an LSP-backed code intelligence tool." This stops being true when a
     second, non-LSP parsing backend lands; the sentence must be reworded, not just the verb list
-    below it extended.
+    below it extended. `README.md:8` — "quarry exposes four verbs".
+  - `quarry/facade.go:3` and `internal/quarryengine/doc.go:44` — both call the engine a
+    "five-package DAG" and enumerate its members. It becomes seven packages
+    (adding `treesitter` and `toc`). `internal/quarryengine/doc.go:66` — "It imports all four
+    packages above", describing `query`.
+  - `internal/quarryengine/seam_enforcement_test.go:2-3` and
+    `internal/quarryengine/layering_test.go:159` — both enumerate the DAG's members in prose.
+  - `internal/quarryengine/layering_test.go:162` and
+    `internal/quarryengine/seam_enforcement_test.go:104` — `const minPackageDirs = 6`.
+    **These are floors (`< minPackageDirs` fails), so adding packages does not break the build** —
+    which is exactly the risk: the guard silently loses strength while still passing. Raise both to
+    8 and update the accompanying comments, so the "a package added later and silently skipped must
+    not let the guard go green" intent those comments state still holds.
+  - `quarry/facade_test.go:117` — "each of the seven re-exported sentinel error values". Only
+    stale if the toc work adds a sentinel; check rather than assume.
 - README "Building and running" update for the grammar-subset build tags (see the grammar-set
   Decision).
 - README verb-list update.
@@ -161,9 +181,67 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - Rejected: `outline <file>` + `manifest <dir>` (two flat verbs matching the existing four, but two
   unrelated names to learn); `toc <file>` + `survey <dir>` (still asymmetric).
 
+### Emitted schema: the closed key set for both verbs
+
+- Decision: the exact keys each verb emits are fixed here, so the plan writer invents none.
+
+  **`toc file <path>`** — envelope fields:
+  `header` (string, omitted when absent), `language` (string, one of the five canonical names),
+  `symbols` (array), `partial` (bool, omitted when false).
+
+  **Each entry in `symbols`:**
+  `kind` (string, closed vocabulary below), `name` (bare identifier),
+  `owner` (string, omitted when the symbol has no owner), `signature` (string),
+  `docstring` (string, omitted when absent), `start` (int), `end` (int).
+
+  **`toc dir <path>`** — envelope field `files` (array). **Each entry:**
+  `path` (string, see the path-form rule below), `language` (string),
+  `header` (string, omitted when absent), `test` (bool, omitted when the language has no reliable
+  rule), `generated` (bool, same omission rule), `error` (string, present only on a per-file
+  failure, and mutually exclusive with `header`).
+
+- **The `kind` vocabulary is closed and shared across all five languages: `function`, `method`,
+  `type`.**
+  A Python `class_definition`, a C# `class_declaration` / `interface_declaration` /
+  `record_declaration` / `struct_declaration`, and a Go `type_spec` all emit `kind: "type"`.
+  A function with an owner (Go method receiver, Python/C# member) emits `kind: "method"`; one
+  without emits `kind: "function"`.
+- Rationale: three kinds is exactly the set the brief asks for, and it is the set for which
+  "signature + docstring tells you what it is for" holds uniformly. A richer vocabulary
+  (`class` vs `interface` vs `record` vs `struct`) would be per-language noise that the verbatim
+  signature already shows on the very next field — the consumer reads `public interface IFoo` and
+  knows, without a redundant `kind: "interface"` costing a token on every entry.
+  Fixing the key set here also prevents the plan writer from silently choosing a different one.
+- Rejected: a per-language `kind` vocabulary mirroring the grammar node types (breaks the flat,
+  uniform shape the output decision committed to, and makes a consumer learn five vocabularies);
+  omitting `kind` entirely (the consumer cannot cheaply separate types from functions);
+  a `language` field per symbol rather than per file (a file has exactly one language).
+
+### Path handling: seam-relative resolution, round-trippable output
+
+- Decision: **relative positional arguments are joined against the seam cwd**, `CwdFrom(ctx)`
+  (`internal/cli/cwdcontext.go:41`), never passed to `os.Stat` raw.
+  This mirrors what every existing verb's `RunE` already does when defaulting `--target-dir`, and
+  it is what makes `RunCLIIn`/`WithCwd` — the seam `internal/cli`'s own tests depend on — actually
+  govern toc. A raw `os.Stat(arg)` would silently use the process cwd and bypass it.
+- **`toc dir` emits each file's `path` as the directory argument *as the caller wrote it*, joined
+  with the file's name.**
+  So `quarry toc dir internal/cli` yields `internal/cli/exec.go`, which the agent can paste
+  straight into `quarry toc file internal/cli/exec.go` and have it work from the same cwd.
+- **The batch `"path"` key echoes the positional argument verbatim**, exactly as `runBatch` echoes
+  `arg` today (`internal/cli/cli.go:918`) — not the absolutized form.
+- Rationale: these paths exist to be fed back into another quarry call by an agent. Absolutizing
+  them would make every entry longer and pin the output to one machine's layout; emitting bare
+  basenames would make them unusable as `toc file` arguments unless the agent reconstructs the
+  join itself. Echoing the caller's own form round-trips in the caller's own frame of reference.
+- Rejected: absolute paths (verbose, machine-pinned, and not what the caller typed);
+  bare basenames (not directly reusable as a `toc file` argument);
+  paths relative to the repo root (there is no repo-root concept in toc — it never detects a project
+  the way the LSP verbs do).
+
 ### Path-type validation
 
-- Decision: `os.Stat` the positional argument first.
+- Decision: `os.Stat` the positional argument first (after the seam-cwd join above).
   A non-existent path is an `output.Err` (exit 1).
   A directory passed to `toc file`, or a file passed to `toc dir`, is a hard error whose message
   names the correct subcommand — e.g. `"<path> is a directory; use quarry toc dir"`.
@@ -310,8 +388,10 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   hack that breaks on any multi-line function signature.
 - Rejected: a normalized `name + param types + return type` rendering (uniform across languages,
   but five formatters' worth of maintenance and five ways to be subtly wrong);
-  cutting at the first `\n` (loses everything after the first line of a multi-line signature, and
-  the repo has such signatures — see `buildOptions` in `internal/cli/cli.go:492`);
+  cutting at the first `\n` (loses everything after the first line of a multi-line signature; this
+  tree happens to contain no multi-line function signature today, so the hack would pass its own
+  tests here and break on the first target repo that has one — which is precisely why the rule must
+  be structural rather than line-based);
   cutting at the first `{` byte (wrong for a generic constraint or a map literal in a default).
 
 ### Docstring text: strip comment syntax, keep the prose
@@ -426,9 +506,23 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   fact from "never read".
   In `toc file`, where that file *is* the whole request, the same failure is an `output.Err` (exit 1
   single-arg, `status: "error"` rank 3 in batch), because there is no partial answer to give.
-- **Empty and no-supported-files directories return success, not an error.** `toc dir` on a
-  directory with no files matching a supported extension returns `{"ok":true,"files":[]}` and exit
-  0. An empty result is a true answer to "what code is in here", not a failure.
+- **A `.ts` or `.rs` file inside a `toc dir` listing is listed, with an `error` key.**
+  It gets `path`, `language` (`typescript` / `rust`), and
+  `error: "language not yet supported by toc"`, and no `header`.
+  It is **not** skipped silently, and it **does** count as a supported extension for the
+  empty-directory question — a directory containing only `.ts` files returns a non-empty `files`
+  array of error entries, not `files: []`.
+  This is the same principle as the header-absent rule: a file the agent might need to know about
+  is never dropped from a directory overview. Silently skipping would tell the agent the directory
+  contains no code, which is false.
+  The directory's own `status` stays `found` (rank 0) — an unimplemented language is a known,
+  reported limitation, not a failure of the directory listing. The rank-3 `error` row in the batch
+  table applies to a `.ts` path passed **directly** to `toc file` or `toc dir`, where the
+  unsupported language is the entire request.
+- **Empty and no-code-files directories return success, not an error.** `toc dir` on a
+  directory containing no file with any of the five languages' extensions returns
+  `{"ok":true,"files":[]}` and exit 0. An empty result is a true answer to "what code is in here",
+  not a failure.
 - **No file-size cap.** Tree-sitter's parse cost is linear and the runtime enforces its own
   work budgets, so no arbitrary byte threshold is imposed. A pathological file surfaces as an
   ordinary slow parse or as `partial: true`, never as a special-cased refusal.
@@ -549,14 +643,23 @@ Relevant `gotreesitter` API surface, confirmed present:
 `(*Node).Type(lang)`, `.ChildCount()`, `.Child(i)`, `.NamedChild(i)`, `.ChildByFieldName(name, lang)`,
 `.PrevSibling()`, `.StartByte()`, `.EndByte()`, `.StartPoint()`, `.EndPoint()`, `.HasError()`;
 `Point{Row, Column}` is 0-based, so line numbers are `Row + 1`.
-The library also ships an `Outliner` (`outline.go`) with an `Owner` field, which is worth evaluating
-for the owner-resolution step, but it does not do docstring association — that walk is ours either
-way.
+The library also ships an `Outliner` (`outline.go`) with an `Owner` field.
+**Decision: do not use it.** Owner resolution is done in our own walk.
+Rationale: the `Outliner` does not do docstring association, so the sibling/in-body walk is ours
+regardless — and by the time that walk has the declaration node in hand, the receiver or enclosing
+class is one `ChildByFieldName` away. Using `Outliner` for `Owner` alone would mean maintaining a
+declarative `OutlineOwnerRule` table per language (`WithOutlineOwnerRules`, `outline.go:104`) to
+obtain a value the walk already holds, and would couple us to a second, larger piece of the
+library's API surface for no gain.
 
-Selective grammar inclusion is supported via the `grammar_set_core` build tag and the
-`GOTREESITTER_GRAMMAR_SET` environment variable, and external (non-embedded) blobs via the
-`grammar_blobs_external` tag. Binary-size impact of the default embedded set was not measured in the
-spike and should be checked during implementation.
+Grammar-set build tags, all confirmed present in the module's `//go:build` lines:
+`grammar_set_core` (a fixed curated set), `grammar_blobs_external` (blobs shipped as separate
+files), and the `grammar_subset` family — `grammar_subset` plus one `grammar_subset_<lang>` tag per
+language, which is the mechanism the grammar-set Decision adopts.
+There is also a runtime `GOTREESITTER_GRAMMAR_SET` environment variable, which restricts *loading*
+and has no effect on binary size.
+Binary sizes for every option were measured during discussion — see the "Grammar set" Decision for
+the table and the choice. Nothing here is left to implementation time.
 
 ### Per-language extraction shapes, confirmed by dumping real parse trees
 
@@ -703,8 +806,10 @@ package builds after the `facade.go:8` count is rewritten — a stale count is a
 cannot catch, so it needs a reviewer's eye rather than a test.
 
 **Guard tests.**
-`layering_test.go` and `seam_enforcement_test.go` must pass unmodified except for the new
-`layeringTable` rows. Do not relax either guard to make the new packages fit.
+`layering_test.go` and `seam_enforcement_test.go` must pass with only two kinds of change: the new
+`layeringTable` rows, and raising `minPackageDirs` from 6 to 8 in both files (a *strengthening*, not
+a relaxation — the constant is a floor, so leaving it at 6 would pass while quietly weakening the
+guard). Do not relax either guard in any other way to make the new packages fit.
 
 **Integration.**
 One test running `toc file` against a real file in this repository (`internal/output/output.go` is a
@@ -726,4 +831,8 @@ This is the end-to-end proof the spike demonstrated by hand.
 - **Q:** [auto] Can toc reuse `runBatch`? **A:** No — its own driver, keyed on `"path"`, reusing `batchStatus`/`statusRank`. **Why:** `runBatch` hard-codes `entry["symbol"]`, and generalizing it would change the output shape of all four shipped verbs.
 - **Q:** [auto] What does `--lang` mean for toc? **A:** Validated against toc's own five-name vocabulary, not the servers.yaml registry; it overrides the extension outright and a mismatch is not an error. **Why:** toc loads no language server, so it must not be coupled to the registry; erroring on mismatch would defeat the override's only real use.
 - **Q:** [auto] Which grammar set ships? **A:** Per-language `grammar_subset` tags in the documented build (12.7 MB), with the untagged build still supported (30.2 MB). **Why:** measured during discussion — the untagged default costs +24.3 MB for 201 grammars quarry can never use, and `grammar_blobs_external` would break single-binary distribution.
+- **Q:** [auto] What does `toc dir` do with a `.ts`/`.rs` file? **A:** Lists it with `error: "language not yet supported by toc"` and no header; it counts as a code file, so such a directory is not "empty". **Why:** silently skipping would tell the agent the directory contains no code, which is false — the same principle as never dropping a header-less file.
+- **Q:** [auto] How are paths resolved and emitted? **A:** Relative arguments join against `CwdFrom(ctx)`; `toc dir` entries emit the directory argument as written joined with the filename; the batch key echoes the argument verbatim. **Why:** these paths exist to be pasted back into `quarry toc file`, so they must round-trip in the caller's own frame of reference.
+- **Q:** [auto] What is the full emitted key set, and the `kind` vocabulary? **A:** Fixed explicitly in the "Emitted schema" Decision; `kind` is the closed three-member set `function` / `method` / `type` across all five languages. **Why:** a richer vocabulary would be per-language noise the verbatim signature already conveys on the next field.
+- **Q:** [auto] Use the library's `Outliner` for owner resolution? **A:** No. **Why:** it does not do docstring association, so our own walk exists regardless, and by then the receiver/enclosing class is one `ChildByFieldName` away — using `Outliner` would mean a per-language `OutlineOwnerRule` table for a value already in hand.
 - **Q:** Have you actually tested Tree-sitter and got it working? **A:** Not at the time of the recommendation — the recommendation rested on documentation and the platform argument. A spike was then built and run against real quarry source, and it produced four findings that changed the design: the header rule must tolerate a blank line, error recovery is lossy rather than merely incomplete, "top-level" does not generalize beyond Go, and docstring placement is structurally different per language.
