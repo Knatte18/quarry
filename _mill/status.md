@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-27T16:28:00Z'
+discussed  '2026-08-27T17:44:07Z'
 ```
