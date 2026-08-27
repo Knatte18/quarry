@@ -155,7 +155,7 @@ roles:
       reviewer: null
       blocking_classes: [design, scope]
     holistic:
-      rounds: 4
+      rounds: 6
       min_rounds: 1
       reviewer: opushigh
       # large_prompt:            # optional: override reviewer and timeout for large prompts
