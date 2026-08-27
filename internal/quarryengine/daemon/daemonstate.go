@@ -6,7 +6,7 @@
 // ensureSupervised, the sole production caller, resolves its state-file and lock paths through these
 // rather than any other package's helper.
 
-package quarry
+package daemon
 
 import (
 	"encoding/json"
@@ -41,37 +41,37 @@ func DaemonLock(stateDir string, lang string) string {
 	return filepath.Join(stateDir, lang, "daemon.lock")
 }
 
-// daemonState is the JSON shape written to the supervised daemon's state file.
+// State is the JSON shape written to the supervised daemon's state file.
 // Address is the dial target in "network;addr" form; StartedAt is RFC3339 format.
-type daemonState struct {
+type State struct {
 	PID             int    `json:"pid"`
 	Address         string `json:"address"`
 	ProtocolVersion string `json:"protocol_version"`
 	StartedAt       string `json:"started_at"`
 }
 
-// readDaemonState reads and parses the daemon state file at path.
-// Missing files return (daemonState{}, false, nil) rather than an error;
+// ReadState reads and parses the daemon state file at path.
+// Missing files return (State{}, false, nil) rather than an error;
 // other errors are wrapped and returned with found=false.
-func readDaemonState(path string) (daemonState, bool, error) {
+func ReadState(path string) (State, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return daemonState{}, false, nil
+			return State{}, false, nil
 		}
-		return daemonState{}, false, fmt.Errorf("quarry: read daemon state file %s: %w", path, err)
+		return State{}, false, fmt.Errorf("quarry: read daemon state file %s: %w", path, err)
 	}
 
-	var s daemonState
+	var s State
 	if err := json.Unmarshal(data, &s); err != nil {
-		return daemonState{}, false, fmt.Errorf("quarry: unmarshal daemon state file %s: %w", path, err)
+		return State{}, false, fmt.Errorf("quarry: unmarshal daemon state file %s: %w", path, err)
 	}
 	return s, true, nil
 }
 
 // writeDaemonState marshals s and writes it to path atomically
 // (via temp-file-then-rename) to ensure concurrent readers never observe partial writes.
-func writeDaemonState(path string, s daemonState) error {
+func writeDaemonState(path string, s State) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("quarry: create daemon state dir %s: %w", filepath.Dir(path), err)
 	}
@@ -93,6 +93,6 @@ func writeDaemonState(path string, s daemonState) error {
 
 // daemonStale reports whether the daemon state s is unusable.
 // It checks whether the PID is still alive and whether the protocol version matches.
-func daemonStale(s daemonState) bool {
+func daemonStale(s State) bool {
 	return !proc.IsAlive(s.PID) || s.ProtocolVersion != supervisedProtocolVersion
 }

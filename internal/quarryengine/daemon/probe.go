@@ -7,18 +7,20 @@
 // proof of health;
 // probe is what actually exercises the connection end-to-end.
 
-package quarry
+package daemon
 
 import (
 	"context"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
 )
 
 // probe queries the language server to verify the connection is alive and responsive.
-func probe(ctx context.Context, client *lspClient, timeout time.Duration) error {
+func probe(ctx context.Context, client *lsp.Client, timeout time.Duration) error {
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	_, err := client.workspaceSymbol(probeCtx, "")
+	_, err := client.WorkspaceSymbol(probeCtx, "")
 	return err
 }

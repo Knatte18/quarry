@@ -1,7 +1,7 @@
 // quarrydaemon_test.go tests the DaemonStateFile/DaemonLock path constructors as told-string path
 // math over a single told-stateDir fixture — pure path arithmetic, no spawning, untagged (Tier 1).
 
-package quarry
+package daemon
 
 import (
 	"path/filepath"

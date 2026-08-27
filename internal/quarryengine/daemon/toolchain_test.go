@@ -1,11 +1,11 @@
 // toolchain_test.go covers resolveGoToolchain's three observable paths — already-installed fast
 // path, cold-cache install, and concurrent-install serialization — entirely offline: every sub-test
-// swaps installGoToolchain for a fake before running and restores the original via t.Cleanup, so no
+// swaps InstallGoToolchain for a fake before running and restores the original via t.Cleanup, so no
 // sub-test ever spawns a real `go install`.
-// userCacheDir is likewise redirected at a t.TempDir() per sub-test, so nothing here touches the
+// UserCacheDir is likewise redirected at a t.TempDir() per sub-test, so nothing here touches the
 // real machine-global toolchain cache.
 
-package quarry
+package daemon
 
 import (
 	"context"
@@ -15,27 +15,27 @@ import (
 	"testing"
 )
 
-// withFakeInstaller swaps installGoToolchain for fake for the duration of
+// withFakeInstaller swaps InstallGoToolchain for fake for the duration of
 // the calling test and restores the original (runGoInstall) via
-// t.Cleanup, mirroring lspclient_test.go's newLSPClientFromRW test-seam
+// t.Cleanup, mirroring lspclient_test.go's lsp.NewClientFromRW test-seam
 // convention for this package.
-func withFakeInstaller(t *testing.T, fake toolchainInstaller) {
+func withFakeInstaller(t *testing.T, fake ToolchainInstaller) {
 	t.Helper()
-	original := installGoToolchain
-	installGoToolchain = fake
-	t.Cleanup(func() { installGoToolchain = original })
+	original := InstallGoToolchain
+	InstallGoToolchain = fake
+	t.Cleanup(func() { InstallGoToolchain = original })
 }
 
-// withTempUserCacheDir redirects userCacheDir at a fresh t.TempDir() for the
+// withTempUserCacheDir redirects UserCacheDir at a fresh t.TempDir() for the
 // duration of the calling test and restores the original (os.UserCacheDir)
 // via t.Cleanup, so goToolchainCacheDir/goToolchainInstallLock never resolve
 // to the real machine-global cache during this package's tests.
 func withTempUserCacheDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	original := userCacheDir
-	userCacheDir = func() (string, error) { return dir, nil }
-	t.Cleanup(func() { userCacheDir = original })
+	original := UserCacheDir
+	UserCacheDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { UserCacheDir = original })
 	return dir
 }
 

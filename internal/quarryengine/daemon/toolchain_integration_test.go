@@ -12,7 +12,7 @@
 // This test spawns `go install` and the freshly installed gopls binary but
 // no git, so it needs no git-environment isolation.
 
-package quarry
+package daemon
 
 import (
 	"context"
@@ -20,15 +20,17 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
 func TestResolveGoToolchain_Integration(t *testing.T) {
 	dir := t.TempDir()
-	original := userCacheDir
-	userCacheDir = func() (string, error) { return dir, nil }
-	t.Cleanup(func() { userCacheDir = original })
+	original := UserCacheDir
+	UserCacheDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { UserCacheDir = original })
 
-	// installGoToolchain stays at its production value (runGoInstall) here:
+	// InstallGoToolchain stays at its production value (runGoInstall) here:
 	// this test's entire point is proving the real `go install` path
 	// produces a working gopls binary, not exercising the mocked seam
 	// toolchain_test.go already covers.
@@ -38,7 +40,7 @@ func TestResolveGoToolchain_Integration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	binPath, err := resolveGoToolchain(ctx, builtins()["go"].PinnedVersion)
+	binPath, err := resolveGoToolchain(ctx, registry.BuiltinRegistry()["go"].PinnedVersion)
 	if err != nil {
 		t.Fatalf("resolveGoToolchain() error = %v; want nil", err)
 	}

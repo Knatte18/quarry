@@ -8,7 +8,7 @@
 // names its real precondition, a real language-server binary on $PATH, and
 // is the only gate).
 
-package quarry
+package daemon
 
 import (
 	"context"
@@ -46,24 +46,24 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 	if client == nil {
 		t.Fatal("ensureSupervised() returned a nil client with a nil error")
 	}
-	// The daemon is meant to outlive this call; per the connKindSupervised
+	// The daemon is meant to outlive this call; per the ConnKindSupervised
 	// teardown rule a real caller must never close()/kill() it, but a test
 	// must still reap the process it spawned so repeated test runs don't
 	// accumulate stray gopls processes.
 	t.Cleanup(func() {
-		if state, found, _ := readDaemonState(statePath); found {
+		if state, found, _ := ReadState(statePath); found {
 			if p, err := os.FindProcess(state.PID); err == nil {
 				_ = p.Kill()
 			}
 		}
 	})
 
-	state, found, err := readDaemonState(statePath)
+	state, found, err := ReadState(statePath)
 	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
+		t.Fatalf("ReadState() failed: %v", err)
 	}
 	if !found {
-		t.Fatal("readDaemonState() found = false after ensureSupervised() succeeded; want true")
+		t.Fatal("ReadState() found = false after ensureSupervised() succeeded; want true")
 	}
 	if want := "unix;" + socketPath; state.Address != want {
 		t.Errorf("state.Address = %q; want %q (the deterministic socket path, successfully rebound after cleanup)", state.Address, want)
@@ -97,7 +97,7 @@ func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
 		t.Fatal("ensureSupervised() returned a nil client with a nil error")
 	}
 	t.Cleanup(func() {
-		if state, found, _ := readDaemonState(statePath); found {
+		if state, found, _ := ReadState(statePath); found {
 			if p, err := os.FindProcess(state.PID); err == nil {
 				_ = p.Kill()
 			}

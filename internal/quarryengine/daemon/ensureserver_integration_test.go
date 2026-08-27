@@ -3,7 +3,7 @@
 // ensureserver_integration_test.go exercises ensureNative against a real,
 // network-installed gopls, mirroring refs_integration_test.go's and
 // toolchain_integration_test.go's //go:build lsp-tagged,
-// t.Skip(builtins()["go"].InstallHint)-gated style: the tag names its real
+// t.Skip(registry.BuiltinRegistry()["go"].InstallHint)-gated style: the tag names its real
 // precondition, a real language-server binary on $PATH, so this file is
 // excluded from the plain `go test` verify and run separately with
 // `-tags lsp`. Even though ensureNative itself ignores $PATH and resolves
@@ -14,49 +14,71 @@
 // This test spawns no git and needs no git-environment isolation — it
 // spawns only gopls.
 //
-// It also now covers ensureServer's supervised dispatch: since the
-// engine-supervised-flip batch, ensureServer routes Go through
+// It also now covers EnsureServer's supervised dispatch: since the
+// engine-supervised-flip batch, EnsureServer routes Go through
 // ensureSupervised first, falling back to ensureNative (still directly
 // exercised above) only on failure. TestEnsureServer_Integration_
-// SupervisedDispatch below drives ensureServer itself end to end and
+// SupervisedDispatch below drives EnsureServer itself end to end and
 // asserts it lands on the supervised strategy and reuses one daemon across
 // calls, complementing supervised_integration_test.go's direct
 // ensureSupervised coverage.
 
-package quarry
+package daemon
 
 import (
 	"context"
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
 // errNoWorkspaceSymbolCandidates reports when workspace/symbol returns no candidates.
 var errNoWorkspaceSymbolCandidates = errors.New("workspace/symbol returned zero candidates; want at least one")
 
+// repoRoot returns the repository root, resolved relative to this file's own location via
+// runtime.Caller(0) rather than the process's cwd. It walks four filepath.Dir levels, not the
+// two a sibling copy in refs_integration_test.go used before the engine-repackage move — this
+// file now sits at internal/quarryengine/daemon/, three directories below the repo root rather
+// than one, so two levels would silently resolve to internal/quarryengine/ instead of the module
+// root. query keeps its own copy in refs_integration_test.go, walking the same four levels from
+// its own new location; daemon cannot import query, so this copy is duplicated rather than
+// shared, per the test-support-helpers Shared Decision.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("repoRoot: could not determine quarry source directory location")
+	}
+	return filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(file))))
+}
+
 // TestEnsureNative_Integration verifies ensureNative's chain works end-to-end against a real gopls.
 func TestEnsureNative_Integration(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
+		t.Skip(registry.BuiltinRegistry()["go"].InstallHint)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := ensureNative(ctx, "go", builtins()["go"], repoRoot(t), 30*time.Second)
+	client, err := ensureNative(ctx, "go", registry.BuiltinRegistry()["go"], repoRoot(t), 30*time.Second)
 	if err != nil {
 		t.Fatalf("ensureNative() returned unexpected error: %v", err)
 	}
-	defer client.kill()
+	defer client.Kill()
 
 	if client == nil {
 		t.Fatal("ensureNative() returned a nil client with a nil error")
 	}
-	if client.closed {
+	if client.Closed() {
 		t.Error("ensureNative() returned a client with closed = true; want an open, ready-to-use connection")
 	}
 }
@@ -65,11 +87,11 @@ func TestEnsureNative_Integration(t *testing.T) {
 // the same daemon.
 func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
+		t.Skip(registry.BuiltinRegistry()["go"].InstallHint)
 	}
 
 	root := repoRoot(t)
-	entry := builtins()["go"]
+	entry := registry.BuiltinRegistry()["go"]
 
 	type result struct {
 		location string
@@ -91,11 +113,11 @@ func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 				results[i] = result{err: err}
 				return
 			}
-			defer client.kill()
+			defer client.Kill()
 
 			symbolCtx, symbolCancel := context.WithTimeout(ctx, 30*time.Second)
 			defer symbolCancel()
-			candidates, err := client.workspaceSymbol(symbolCtx, "Resolve")
+			candidates, err := client.WorkspaceSymbol(symbolCtx, "Resolve")
 			if err != nil {
 				results[i] = result{err: err}
 				return
@@ -104,7 +126,7 @@ func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 				results[i] = result{err: errNoWorkspaceSymbolCandidates}
 				return
 			}
-			results[i] = result{location: formatLocation(candidates[0].Location)}
+			results[i] = result{location: lsp.FormatLocation(candidates[0].Location)}
 		}(i)
 	}
 	wg.Wait()
@@ -119,17 +141,17 @@ func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 	}
 }
 
-// TestEnsureServer_Integration_SupervisedDispatch proves ensureServer's live dispatch decision end
+// TestEnsureServer_Integration_SupervisedDispatch proves EnsureServer's live dispatch decision end
 // to end against a real gopls, not just the mocked-transport unit coverage in ensureserver_test.go:
 // since Go's registry entry now dispatches to the supervised strategy first, a call through
-// ensureServer (not ensureSupervised directly, which supervised_integration_test.go already covers)
-// must come back with connKindSupervised, must have recorded a live daemon state file, and a second
+// EnsureServer (not ensureSupervised directly, which supervised_integration_test.go already covers)
+// must come back with ConnKindSupervised, must have recorded a live daemon state file, and a second
 // call against the same anchorRoot must reuse that same daemon (identical PID, stable Address)
 // rather than spawning a second one — mirroring TestEnsureSupervised_Integration's own reuse
 // assertions, but through the exact entry point production code calls.
 func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
+		t.Skip(registry.BuiltinRegistry()["go"].InstallHint)
 	}
 
 	root := repoRoot(t)
@@ -142,30 +164,30 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, kind, err := ensureServer(ctx, "go", builtins()["go"], root, worktreeRoot, 30*time.Second)
+	client, kind, err := EnsureServer(ctx, "go", registry.BuiltinRegistry()["go"], root, worktreeRoot, 30*time.Second)
 	if err != nil {
-		t.Fatalf("ensureServer() returned unexpected error: %v", err)
+		t.Fatalf("EnsureServer() returned unexpected error: %v", err)
 	}
-	// Per the connKindSupervised teardown rule, a supervised connection must
+	// Per the ConnKindSupervised teardown rule, a supervised connection must
 	// never be close()'d or kill()'d — the daemon it dials into is meant to
 	// outlive this call. The state-file PID read below is what this test
 	// reaps instead, exactly like supervised_integration_test.go's own
 	// killRecordedDaemon.
 	t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
-	if kind != connKindSupervised {
-		t.Errorf("ensureServer() connKind = %v; want connKindSupervised (native is now the fallback path only)", kind)
+	if kind != ConnKindSupervised {
+		t.Errorf("EnsureServer() ConnKind = %v; want ConnKindSupervised (native is now the fallback path only)", kind)
 	}
 	if client == nil {
-		t.Fatal("ensureServer() returned a nil client with a nil error")
+		t.Fatal("EnsureServer() returned a nil client with a nil error")
 	}
 
-	state, found, err := readDaemonState(statePath)
+	state, found, err := ReadState(statePath)
 	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
+		t.Fatalf("ReadState() failed: %v", err)
 	}
 	if !found {
-		t.Fatal("readDaemonState() found = false after ensureServer() succeeded; want true")
+		t.Fatal("ReadState() found = false after EnsureServer() succeeded; want true")
 	}
 	if _, err := os.FindProcess(state.PID); err != nil {
 		t.Fatalf("os.FindProcess(%d) failed: %v", state.PID, err)
@@ -173,21 +195,21 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 
 	// A second call against the same anchorRoot/lang must reuse the
 	// existing daemon rather than spawning a second one.
-	if _, _, err := ensureServer(ctx, "go", builtins()["go"], root, worktreeRoot, 30*time.Second); err != nil {
-		t.Fatalf("ensureServer() second call returned unexpected error: %v", err)
+	if _, _, err := EnsureServer(ctx, "go", registry.BuiltinRegistry()["go"], root, worktreeRoot, 30*time.Second); err != nil {
+		t.Fatalf("EnsureServer() second call returned unexpected error: %v", err)
 	}
 
-	state2, found, err := readDaemonState(statePath)
+	state2, found, err := ReadState(statePath)
 	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
+		t.Fatalf("ReadState() failed: %v", err)
 	}
 	if !found {
-		t.Fatal("readDaemonState() found = false after the second ensureServer() call; want true")
+		t.Fatal("ReadState() found = false after the second EnsureServer() call; want true")
 	}
 	if state2.PID != state.PID {
-		t.Errorf("state.PID after the second ensureServer() call = %d; want unchanged %d (reuse, not a second spawn)", state2.PID, state.PID)
+		t.Errorf("state.PID after the second EnsureServer() call = %d; want unchanged %d (reuse, not a second spawn)", state2.PID, state.PID)
 	}
 	if state2.Address != state.Address {
-		t.Errorf("state.Address after the second ensureServer() call = %q; want unchanged %q", state2.Address, state.Address)
+		t.Errorf("state.Address after the second EnsureServer() call = %q; want unchanged %q", state2.Address, state.Address)
 	}
 }

@@ -109,13 +109,14 @@ type Client struct {
 	closed   bool
 	caps     capabilities
 	incoming chan lspReadResult
-	// lang is the language identifier this client's server was launched or
-	// dialed for (e.g. "go"), set only at production construction call
-	// sites where a language identifier is already in scope — every
-	// test-constructed client via NewClientFromRW leaves this at its
-	// zero value "". It exists solely so close()/kill()'s diagnostic
-	// quarryengine.Logger.Warn calls can name which language server misbehaved.
-	lang string
+	// Lang is the language identifier this client's server was launched or
+	// dialed for (e.g. "go"), set by the daemon package after construction —
+	// production constructors here take no language argument, so the
+	// caller assigns it once it is in scope — every test-constructed
+	// client via NewClientFromRW leaves this at its zero value "". It
+	// exists solely so Close()/Kill()'s diagnostic Warn calls can name
+	// which language server misbehaved.
+	Lang string
 }
 
 // lspReadResult is one readLoop iteration's outcome, delivered to whichever
@@ -564,6 +565,11 @@ func (c *Client) DocumentSymbols(ctx context.Context, fileURI string) ([]Documen
 // nice-to-have, not a correctness requirement. When the client was built
 // with no subprocess (NewClientFromRW), close only closes the
 // transport.
+// Closed reports whether Close or Kill has already torn this client down.
+func (c *Client) Closed() bool {
+	return c.closed
+}
+
 func (c *Client) Close() {
 	if c.closed {
 		return
@@ -574,15 +580,15 @@ func (c *Client) Close() {
 	defer cancel()
 
 	if _, err := c.Call(ctx, "shutdown", "shutdown", nil); err != nil {
-		quarryengine.Logger.Warn("quarry: lsp shutdown request", "lang", c.lang, "err", err)
+		quarryengine.Logger.Warn("quarry: lsp shutdown request", "lang", c.Lang, "err", err)
 	}
 	if err := c.Notify("exit", nil); err != nil {
-		quarryengine.Logger.Warn("quarry: lsp exit notification", "lang", c.lang, "err", err)
+		quarryengine.Logger.Warn("quarry: lsp exit notification", "lang", c.Lang, "err", err)
 	}
 	c.closer.Close()
 	if c.cmd != nil {
 		if err := c.cmd.Wait(); err != nil {
-			quarryengine.Logger.Warn("quarry: lsp process exit", "lang", c.lang, "err", err)
+			quarryengine.Logger.Warn("quarry: lsp process exit", "lang", c.Lang, "err", err)
 		}
 	}
 }
@@ -605,9 +611,9 @@ func (c *Client) Kill() {
 		return
 	}
 	if err := c.cmd.Process.Kill(); err != nil {
-		quarryengine.Logger.Warn("quarry: kill lsp process", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		quarryengine.Logger.Warn("quarry: kill lsp process", "lang", c.Lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 	if err := c.cmd.Wait(); err != nil {
-		quarryengine.Logger.Warn("quarry: lsp process exit after kill", "lang", c.lang, "pid", c.cmd.Process.Pid, "err", err)
+		quarryengine.Logger.Warn("quarry: lsp process exit after kill", "lang", c.Lang, "pid", c.cmd.Process.Pid, "err", err)
 	}
 }

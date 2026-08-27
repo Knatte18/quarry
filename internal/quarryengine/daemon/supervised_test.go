@@ -10,7 +10,7 @@
 // Each remaining subtest spawns one real short-lived child process via spawnAndHoldSubprocess only
 // as a PID-liveness fixture, never gopls itself.
 
-package quarry
+package daemon
 
 import (
 	"context"
@@ -26,6 +26,7 @@ import (
 
 	"github.com/Knatte18/quarry/internal/lock"
 	"github.com/Knatte18/quarry/internal/proc"
+	"github.com/Knatte18/quarry/internal/quarryengine"
 )
 
 // spawnAndHoldSubprocess starts a child process that blocks for several
@@ -56,7 +57,7 @@ func spawnAndHoldSubprocess(t *testing.T) int {
 // TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout asserts that when
 // ensureSupervised can neither reuse a recorded daemon (its address is unreachable) nor win the
 // spawn lock (this test holds it for the sub-test's own duration), it returns within its timeout
-// bound rather than hanging, with an error satisfying errors.Is(err, ErrServerSpawnTimeoutSentinel)
+// bound rather than hanging, with an error satisfying errors.Is(err, quarryengine.ErrServerSpawnTimeoutSentinel)
 // — proving the bounded-retry contract rather than indefinite blocking.
 func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing.T) {
 	worktreeRoot := t.TempDir()
@@ -69,7 +70,7 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 	// current protocol version) but whose recorded address nothing is
 	// listening on, so every dial-and-finalize attempt in step 1 fails.
 	pid := spawnAndHoldSubprocess(t)
-	if err := writeDaemonState(statePath, daemonState{
+	if err := writeDaemonState(statePath, State{
 		PID:             pid,
 		Address:         "unix;" + socketPath,
 		ProtocolVersion: supervisedProtocolVersion,
@@ -96,10 +97,10 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 	elapsed := time.Since(start)
 
 	if err == nil {
-		t.Fatal("ensureSupervised() with an unreachable daemon and a held lock returned nil error; want ErrServerSpawnTimeout")
+		t.Fatal("ensureSupervised() with an unreachable daemon and a held lock returned nil error; want quarryengine.ErrServerSpawnTimeout")
 	}
-	if !errors.Is(err, ErrServerSpawnTimeoutSentinel) {
-		t.Errorf("ensureSupervised() err = %v; want errors.Is(err, ErrServerSpawnTimeoutSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrServerSpawnTimeoutSentinel) {
+		t.Errorf("ensureSupervised() err = %v; want errors.Is(err, quarryengine.ErrServerSpawnTimeoutSentinel)", err)
 	}
 	// Generous upper bound: the retry loop must return once its deadline
 	// passes, not hang indefinitely. A few seconds is ample margin over the
@@ -118,7 +119,7 @@ func TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout(t *testing
 // fails against the non-stale state, the uncontended lock is acquired immediately, and the
 // escalation's own re-dial-under-lock retry (~500ms worst case) is what actually consumes this
 // test's 300ms deadline — the deadline guard placed immediately after that retry is what returns
-// ErrServerSpawnTimeout here, before ever attempting proc.KillPID against the held fixture PID.
+// quarryengine.ErrServerSpawnTimeout here, before ever attempting proc.KillPID against the held fixture PID.
 // Unlike TestEnsureSupervised_RetryExhaustionReturnsErrServerSpawnTimeout (which pre-holds the lock
 // so every retry falls into the "lock not acquired" branch, step 2), this sub-test never touches
 // the lock itself, so it reaches the escalation branch on its very first iteration.
@@ -135,7 +136,7 @@ func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrSer
 	// and the lock is left free, so the escalation acquires it immediately
 	// rather than falling into step 2's !acquired branch.
 	pid := spawnAndHoldSubprocess(t)
-	if err := writeDaemonState(statePath, daemonState{
+	if err := writeDaemonState(statePath, State{
 		PID:             pid,
 		Address:         "unix;" + socketPath,
 		ProtocolVersion: supervisedProtocolVersion,
@@ -153,10 +154,10 @@ func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrSer
 	elapsed := time.Since(start)
 
 	if err == nil {
-		t.Fatal("ensureSupervised() with an uncontended lock and an undialable healthy state returned nil error; want ErrServerSpawnTimeout")
+		t.Fatal("ensureSupervised() with an uncontended lock and an undialable healthy state returned nil error; want quarryengine.ErrServerSpawnTimeout")
 	}
-	if !errors.Is(err, ErrServerSpawnTimeoutSentinel) {
-		t.Errorf("ensureSupervised() err = %v; want errors.Is(err, ErrServerSpawnTimeoutSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrServerSpawnTimeoutSentinel) {
+		t.Errorf("ensureSupervised() err = %v; want errors.Is(err, quarryengine.ErrServerSpawnTimeoutSentinel)", err)
 	}
 	// Generous upper bound: before the fix, this path had no deadline check
 	// at all and would spin indefinitely rather than return here.
@@ -196,7 +197,7 @@ func TestEnsureSupervised_UncontendedLockWithUndialableHealthyStateReturnsErrSer
 func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// Mirrors lspclient_test.go's own unix-socket skip: this is a
-		// scoping choice (TCP is covered elsewhere via newLSPClientDial's
+		// scoping choice (TCP is covered elsewhere via lsp.NewClientDial's
 		// address-form flexibility), not an oversight.
 		t.Skip("unix sockets not exercised on windows here")
 	}
@@ -212,7 +213,7 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 	// wrongly take the wedged branch, proc.KillPID would hit this held
 	// fixture PID, never the test process itself.
 	pid := spawnAndHoldSubprocess(t)
-	if err := writeDaemonState(statePath, daemonState{
+	if err := writeDaemonState(statePath, State{
 		PID:             pid,
 		Address:         "unix;" + socketPath,
 		ProtocolVersion: supervisedProtocolVersion,
@@ -324,7 +325,7 @@ func TestEnsureSupervised_WedgedEscalationReuseReleasesLock(t *testing.T) {
 	}
 	// kill() only tears down this test's own dialed connection to the fake
 	// server above; it has no bearing on the held fixture PID.
-	defer client.kill()
+	defer client.Kill()
 
 	if !proc.IsAlive(pid) {
 		t.Error("ensureSupervised()'s reuse-success escalation killed the held fixture PID; want it left alive (the daemon was never actually wedged)")

@@ -6,16 +6,16 @@
 // recording, dial-or-reconnect, and staleness-triggered-restart behavior end
 // to end at the strategy-internals level, independent of whichever entry
 // point dispatches to it. Since the engine-supervised-flip batch,
-// ensureServer now dispatches Go to ensureSupervised as its live V1
+// EnsureServer now dispatches Go to ensureSupervised as its live V1
 // strategy — TestEnsureServer_Integration_SupervisedDispatch in
 // ensureserver_integration_test.go additionally proves that dispatch path
-// end to end through ensureServer itself. The tag names its real
+// end to end through EnsureServer itself. The tag names its real
 // precondition, a real language-server binary on $PATH, so this file is
 // excluded from the plain `go test` verify and run separately with
 // `-tags lsp` on a machine with gopls installed, alongside
 // refs_integration_test.go and ensureserver_integration_test.go.
 
-package quarry
+package daemon
 
 import (
 	"context"
@@ -23,12 +23,14 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
 // killRecordedDaemon kills the daemon PID recorded in the state file, ensuring cleanup.
 func killRecordedDaemon(t *testing.T, statePath string) {
 	t.Helper()
-	state, found, err := readDaemonState(statePath)
+	state, found, err := ReadState(statePath)
 	if err != nil || !found {
 		return
 	}
@@ -43,7 +45,7 @@ func killRecordedDaemon(t *testing.T, statePath string) {
 // TestEnsureSupervised_Integration verifies spawn, reconnect, and respawn behavior end-to-end.
 func TestEnsureSupervised_Integration(t *testing.T) {
 	if _, err := exec.LookPath("gopls"); err != nil {
-		t.Skip(builtins()["go"].InstallHint)
+		t.Skip(registry.BuiltinRegistry()["go"].InstallHint)
 	}
 
 	const lang = "go"
@@ -63,12 +65,12 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 	}
 	t.Cleanup(func() { killRecordedDaemon(t, statePath) })
 
-	state, found, err := readDaemonState(statePath)
+	state, found, err := ReadState(statePath)
 	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
+		t.Fatalf("ReadState() failed: %v", err)
 	}
 	if !found {
-		t.Fatal("readDaemonState() found = false after the first ensureSupervised() call; want true")
+		t.Fatal("ReadState() found = false after the first ensureSupervised() call; want true")
 	}
 	if state.ProtocolVersion != supervisedProtocolVersion {
 		t.Errorf("state.ProtocolVersion = %q; want %q", state.ProtocolVersion, supervisedProtocolVersion)
@@ -78,7 +80,7 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 	// Prove the returned client actually works end to end, not merely that
 	// initialize/probe succeeded: issue a real workspace/symbol query
 	// against this module's own source.
-	symbols, err := client.workspaceSymbol(ctx, "Resolve")
+	symbols, err := client.WorkspaceSymbol(ctx, "Resolve")
 	if err != nil {
 		t.Fatalf("workspaceSymbol(%q) returned unexpected error: %v", "Resolve", err)
 	}
@@ -92,12 +94,12 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 		t.Fatalf("ensureSupervised() second call returned unexpected error: %v", err)
 	}
 
-	state2, found, err := readDaemonState(statePath)
+	state2, found, err := ReadState(statePath)
 	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
+		t.Fatalf("ReadState() failed: %v", err)
 	}
 	if !found {
-		t.Fatal("readDaemonState() found = false after the second ensureSupervised() call; want true")
+		t.Fatal("ReadState() found = false after the second ensureSupervised() call; want true")
 	}
 	if state2.PID != firstPID {
 		t.Errorf("state.PID after the second ensureSupervised() call = %d; want unchanged %d (reconnect, not a second spawn)", state2.PID, firstPID)
@@ -115,12 +117,12 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 		t.Fatalf("ensureSupervised() third call (after killing the daemon) returned unexpected error: %v", err)
 	}
 
-	state3, found, err := readDaemonState(statePath)
+	state3, found, err := ReadState(statePath)
 	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
+		t.Fatalf("ReadState() failed: %v", err)
 	}
 	if !found {
-		t.Fatal("readDaemonState() found = false after the third ensureSupervised() call; want true")
+		t.Fatal("ReadState() found = false after the third ensureSupervised() call; want true")
 	}
 	if state3.PID == firstPID {
 		t.Errorf("state.PID after killing the daemon and calling ensureSupervised() again = %d; want a new PID (respawn), not the killed one", state3.PID)

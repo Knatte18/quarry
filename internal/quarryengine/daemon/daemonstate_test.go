@@ -4,7 +4,7 @@
 // (3) below (TestDaemonStale_DeadPIDIsStale), which spawns a short-lived exec.Command child to
 // obtain a confirmed-dead PID fixture, mirroring internal/proc/isalive_test.go's own technique.
 
-package quarry
+package daemon
 
 import (
 	"context"
@@ -16,13 +16,16 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
 )
 
-// TestDaemonState_WriteReadRoundTrip verifies writeDaemonState/readDaemonState preserves all
+// TestDaemonState_WriteReadRoundTrip verifies writeDaemonState/ReadState preserves all
 // fields.
 func TestDaemonState_WriteReadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "daemon.json")
-	want := daemonState{
+	want := State{
 		PID:             12345,
 		Address:         "unix;/tmp/example.sock",
 		ProtocolVersion: supervisedProtocolVersion,
@@ -33,15 +36,15 @@ func TestDaemonState_WriteReadRoundTrip(t *testing.T) {
 		t.Fatalf("writeDaemonState() failed: %v", err)
 	}
 
-	got, found, err := readDaemonState(path)
+	got, found, err := ReadState(path)
 	if err != nil {
-		t.Fatalf("readDaemonState() failed: %v", err)
+		t.Fatalf("ReadState() failed: %v", err)
 	}
 	if !found {
-		t.Fatal("readDaemonState() found = false; want true")
+		t.Fatal("ReadState() found = false; want true")
 	}
 	if got != want {
-		t.Errorf("readDaemonState() = %+v; want %+v", got, want)
+		t.Errorf("ReadState() = %+v; want %+v", got, want)
 	}
 }
 
@@ -50,15 +53,15 @@ func TestDaemonState_WriteReadRoundTrip(t *testing.T) {
 func TestReadDaemonState_MissingFileIsNotAnError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.json")
 
-	got, found, err := readDaemonState(path)
+	got, found, err := ReadState(path)
 	if err != nil {
-		t.Fatalf("readDaemonState() on missing file returned error: %v", err)
+		t.Fatalf("ReadState() on missing file returned error: %v", err)
 	}
 	if found {
-		t.Error("readDaemonState() on missing file found = true; want false")
+		t.Error("ReadState() on missing file found = true; want false")
 	}
-	if got != (daemonState{}) {
-		t.Errorf("readDaemonState() on missing file = %+v; want zero value", got)
+	if got != (State{}) {
+		t.Errorf("ReadState() on missing file = %+v; want zero value", got)
 	}
 }
 
@@ -83,7 +86,7 @@ func spawnAndWaitForDeadPID(t *testing.T) int {
 
 // TestDaemonStale_DeadPIDIsStale verifies a dead PID is considered stale.
 func TestDaemonStale_DeadPIDIsStale(t *testing.T) {
-	s := daemonState{
+	s := State{
 		PID:             spawnAndWaitForDeadPID(t),
 		ProtocolVersion: supervisedProtocolVersion,
 	}
@@ -94,7 +97,7 @@ func TestDaemonStale_DeadPIDIsStale(t *testing.T) {
 
 // TestDaemonStale_MismatchedProtocolVersionIsStale verifies a mismatched protocol version is stale.
 func TestDaemonStale_MismatchedProtocolVersionIsStale(t *testing.T) {
-	s := daemonState{
+	s := State{
 		PID:             os.Getpid(),
 		ProtocolVersion: "stale-version",
 	}
@@ -106,7 +109,7 @@ func TestDaemonStale_MismatchedProtocolVersionIsStale(t *testing.T) {
 // TestDaemonStale_LivePIDAndCurrentVersionIsNotStale verifies a live PID with matching version is
 // not stale.
 func TestDaemonStale_LivePIDAndCurrentVersionIsNotStale(t *testing.T) {
-	s := daemonState{
+	s := State{
 		PID:             os.Getpid(),
 		ProtocolVersion: supervisedProtocolVersion,
 	}
@@ -131,7 +134,7 @@ func TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite(t *testing.T) {
 		defer wg.Done()
 		defer close(stop)
 		for i := 0; i < writes; i++ {
-			s := daemonState{
+			s := State{
 				PID:             i,
 				Address:         "unix;/tmp/example.sock",
 				ProtocolVersion: supervisedProtocolVersion,
@@ -150,9 +153,9 @@ func TestWriteDaemonState_ConcurrentReadersNeverSeeAPartialWrite(t *testing.T) {
 		go func() {
 			defer readerWG.Done()
 			for {
-				_, _, err := readDaemonState(path)
+				_, _, err := ReadState(path)
 				if err != nil {
-					t.Errorf("readDaemonState() returned an error during concurrent writes (partial-write leak): %v", err)
+					t.Errorf("ReadState() returned an error during concurrent writes (partial-write leak): %v", err)
 					return
 				}
 				select {
@@ -175,7 +178,7 @@ func TestProbe_EmptyWorkspaceSymbolResultReturnsNil(t *testing.T) {
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -207,7 +210,7 @@ func TestProbe_NoResponseReturnsErrServerTimeout(t *testing.T) {
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	// The fake server reads the workspace/symbol request off the pipe (an
@@ -228,8 +231,8 @@ func TestProbe_NoResponseReturnsErrServerTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("probe() with an unresponsive server returned nil error; want ErrServerTimeout")
 	}
-	if !errors.Is(err, ErrServerTimeoutSentinel) {
-		t.Errorf("probe() with an unresponsive server err = %v; want errors.Is(err, ErrServerTimeoutSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
+		t.Errorf("probe() with an unresponsive server err = %v; want errors.Is(err, quarryengine.ErrServerTimeoutSentinel)", err)
 	}
 	<-done
 }

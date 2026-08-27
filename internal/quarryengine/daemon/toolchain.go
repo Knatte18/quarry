@@ -1,7 +1,7 @@
 // toolchain.go implements the Go-only toolchain manager: resolving (and, on a cold cache,
 // installing) a pinned gopls binary into a quarry-owned, machine-global cache directory.
 // It ignores $PATH entirely for Go — unlike the other four languages' legacy cold-spawn-per-call
-// path, which resolves entry.Command[0] on $PATH via newLSPClient, the native Go strategy (batch
+// path, which resolves entry.Command[0] on $PATH via lsp.NewClient, the native Go strategy (batch
 // 5's ensureNative) always launches the exact pinned version this file resolved, never whatever
 // gopls happens to be on the operator's PATH.
 // The cache root is os.UserCacheDir(), joined directly rather than resolved through internal/cli's
@@ -10,7 +10,7 @@
 // than workspace geometry, which is why the toolchain cache is engine-derived and machine-global,
 // and no caller has a reason to override where quarry stashes a gopls it installed itself.
 
-package quarry
+package daemon
 
 import (
 	"context"
@@ -23,22 +23,23 @@ import (
 	"github.com/Knatte18/quarry/internal/lock"
 )
 
-// userCacheDir is the seam goToolchainCacheDir/goToolchainInstallLock call
-// through instead of os.UserCacheDir() directly, so tests can redirect the
-// toolchain manager at a t.TempDir() without ever touching the real
-// machine-global cache. Production leaves it at the stdlib default.
-var userCacheDir = os.UserCacheDir
+// UserCacheDir is the seam goToolchainCacheDir/goToolchainInstallLock call
+// through instead of os.UserCacheDir() directly. It is an injection point
+// that exists so tests can redirect the toolchain manager at a t.TempDir()
+// without ever touching the real machine-global cache; production code
+// never reassigns it, and it stays at the stdlib default.
+var UserCacheDir = os.UserCacheDir
 
 // goToolchainCacheDir returns the machine-global cache directory for a pinned
 // gopls version, ensuring different versions don't collide across worktrees.
 func goToolchainCacheDir(version string) string {
-	// userCacheDir() only fails when neither $XDG_CACHE_HOME nor $HOME (or
+	// UserCacheDir() only fails when neither $XDG_CACHE_HOME nor $HOME (or
 	// their per-OS equivalents) is set; the error is ignored here because the
 	// function signature returns a bare string, matching resolveGoToolchain's
 	// own no-inputs-to-validate contract for this helper — an empty root
 	// simply yields a path rooted at "quarry/tools/...", which os.MkdirAll
 	// then reports as a normal filesystem error.
-	dir, _ := userCacheDir()
+	dir, _ := UserCacheDir()
 	return filepath.Join(dir, "quarry", "tools", "go", version)
 }
 
@@ -46,23 +47,24 @@ func goToolchainCacheDir(version string) string {
 // Deliberately one lock per language (not per version) so concurrent installs
 // serialize through the same lock, per toolchain-manager-authority's design.
 func goToolchainInstallLock() string {
-	// See goToolchainCacheDir's comment for why userCacheDir()'s error is
+	// See goToolchainCacheDir's comment for why UserCacheDir()'s error is
 	// ignored here.
-	dir, _ := userCacheDir()
+	dir, _ := UserCacheDir()
 	return filepath.Join(dir, "quarry", "tools", "go", "install.lock")
 }
 
-// toolchainInstaller installs the Go toolchain binary for version into
+// ToolchainInstaller installs the Go toolchain binary for version into
 // destDir. It is the seam resolveGoToolchain calls through instead of
 // invoking `go install` directly, so unit tests can substitute a fake that
-// never spawns a real subprocess (see installGoToolchain below).
-type toolchainInstaller func(ctx context.Context, version, destDir string) error
+// never spawns a real subprocess (see InstallGoToolchain below).
+type ToolchainInstaller func(ctx context.Context, version, destDir string) error
 
-// installGoToolchain is the production toolchainInstaller resolveGoToolchain
-// calls. Tests overwrite this package-level var with a fake and restore the
-// original (runGoInstall) via t.Cleanup, mirroring lspclient.go's
-// newLSPClient/newLSPClientFromRW test-seam convention.
-var installGoToolchain toolchainInstaller = runGoInstall
+// InstallGoToolchain is the production ToolchainInstaller resolveGoToolchain
+// calls. It is an injection point that exists so tests can substitute a fake
+// and restore the original (runGoInstall) via t.Cleanup, mirroring
+// lspclient.go's NewClient/NewClientFromRW test-seam convention; production
+// code never reassigns it.
+var InstallGoToolchain ToolchainInstaller = runGoInstall
 
 // runGoInstall installs the pinned gopls version into destDir by running
 // `go install golang.org/x/tools/gopls@<version>` with GOBIN set to destDir
@@ -124,7 +126,7 @@ func resolveGoToolchain(ctx context.Context, pinnedVersion string) (string, erro
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", fmt.Errorf("quarry: create go toolchain cache dir %s: %w", cacheDir, err)
 	}
-	if err := installGoToolchain(ctx, pinnedVersion, cacheDir); err != nil {
+	if err := InstallGoToolchain(ctx, pinnedVersion, cacheDir); err != nil {
 		return "", fmt.Errorf("quarry: install go toolchain %s: %w", pinnedVersion, err)
 	}
 	return binPath, nil

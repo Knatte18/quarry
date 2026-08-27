@@ -1,18 +1,17 @@
 // ensureserver.go implements the EnsureServer(lang, stateDir) -> LSPConn seam: given a
 // registry entry whose HasNativeDaemon field is true, it resolves, spawns or dials, and hands
-// back an already-initialized, already-probed *lspClient ready for immediate use.
-// ensureServer is called only for a registry entry with HasNativeDaemon == true — in V1 this means
+// back an already-initialized, already-probed *lsp.Client ready for immediate use.
+// EnsureServer is called only for a registry entry with HasNativeDaemon == true — in V1 this means
 // Go only.
-// Every other language's caller keeps using newLSPClient/client.initialize directly, unchanged, and
+// Every other language's caller keeps using lsp.NewClient/client.initialize directly, unchanged, and
 // never calls into this file at all.
 
-package quarry
+package daemon
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,47 +20,42 @@ import (
 
 	"github.com/Knatte18/quarry/internal/lock"
 	"github.com/Knatte18/quarry/internal/proc"
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
 
-// defaultLogHandler is quarry's own package-level slog handler: it writes to
-// stderr at slog.LevelWarn unless the process has configured otherwise. Since
-// the threshold defaults to Warn, an slog.Info call anywhere in this package
-// is suppressed by default and only becomes visible once a caller lowers the
-// handler's level — this matches Loomyard's own internal/logger, which also
-// defaults to warn-level stderr output.
-var defaultLogHandler = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-
-// connKind reports which EnsureServer strategy produced a given *lspClient,
+// ConnKind reports which EnsureServer strategy produced a given *lsp.Client,
 // so the caller knows the correct teardown rule for the connection it got
 // back — the two strategies wrap fundamentally different kinds of process
 // lifetime and must not be torn down the same way.
-type connKind int
+type ConnKind int
 
 const (
-	// connKindNative marks a connection from the native strategy: a
+	// ConnKindNative marks a connection from the native strategy: a
 	// disposable local -remote=auto proxy subprocess this call spawned
 	// itself. It is safe to close()/kill() — doing so ends only this proxy,
 	// never the shared daemon behind it.
-	connKindNative connKind = iota
-	// connKindSupervised marks a connection from the supervised strategy: a
+	ConnKindNative ConnKind = iota
+	// ConnKindSupervised marks a connection from the supervised strategy: a
 	// dial into a daemon quarry spawned to outlive this call. Never
 	// close()/kill() it — the daemon is meant to keep serving other
 	// callers, and the graceful-shutdown handshake close() sends would be a
 	// needless (and potentially harmful) RPC round trip against it.
-	connKindSupervised
-	// connKindLegacy marks the legacy path's kind — never produced by
-	// ensureServer itself (that function is only ever called when
+	ConnKindSupervised
+	// ConnKindLegacy marks the legacy path's kind — never produced by
+	// EnsureServer itself (that function is only ever called when
 	// entry.HasNativeDaemon is true); acquireConnection returns this
-	// directly for the false case without calling ensureServer.
-	connKindLegacy
+	// directly for the false case without calling EnsureServer.
+	ConnKindLegacy
 )
 
-// ensureServer resolves, spawns or dials, and initializes a language server connection,
-// returning it ready for use alongside the connKind needed for correct teardown.
-func ensureServer(ctx context.Context, lang string, entry Entry, targetDir string, stateDir string, timeout time.Duration) (*lspClient, connKind, error) {
+// EnsureServer resolves, spawns or dials, and initializes a language server connection,
+// returning it ready for use alongside the ConnKind needed for correct teardown.
+func EnsureServer(ctx context.Context, lang string, entry registry.Entry, targetDir string, stateDir string, timeout time.Duration) (*lsp.Client, ConnKind, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {
-		return nil, connKindNative, fmt.Errorf("quarry: resolve go toolchain for %q: %w", lang, err)
+		return nil, ConnKindNative, fmt.Errorf("quarry: resolve go toolchain for %q: %w", lang, err)
 	}
 
 	// binPath (the toolchain-resolved binary), not entry.Command[0] (the
@@ -72,11 +66,11 @@ func ensureServer(ctx context.Context, lang string, entry Entry, targetDir strin
 	command := append([]string{binPath}, entry.Command[1:]...)
 	client, err := ensureSupervised(ctx, command, lang, targetDir, stateDir, timeout)
 	if err == nil {
-		return client, connKindSupervised, nil
+		return client, ConnKindSupervised, nil
 	}
 
 	client, err = ensureNative(ctx, lang, entry, targetDir, timeout)
-	return client, connKindNative, err
+	return client, ConnKindNative, err
 }
 
 // finalizeConnection runs the initialize-then-probe-then-kill-on-failure
@@ -89,16 +83,16 @@ func ensureServer(ctx context.Context, lang string, entry Entry, targetDir strin
 //
 // finalizeConnection performs no restart/retry of its own: an initialize
 // or probe failure is reported once and the connection is torn down once
-// via client.kill() — never a second spawn attempt. Callers that need
+// via client.Kill() — never a second spawn attempt. Callers that need
 // restart-on-failure semantics (none exist for native; supervised decides
 // to restart based on its own state-file staleness check, before ever
 // calling finalizeConnection) implement that above this function, not
 // inside it.
-func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, timeout time.Duration) error {
+func finalizeConnection(ctx context.Context, client *lsp.Client, rootURI string, timeout time.Duration) error {
 	initCtx, initCancel := context.WithTimeout(ctx, timeout)
 	defer initCancel()
-	if err := client.initialize(initCtx, rootURI); err != nil {
-		client.kill()
+	if err := client.Initialize(initCtx, rootURI); err != nil {
+		client.Kill()
 		return err
 	}
 
@@ -106,7 +100,7 @@ func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, 
 	// health (see probe.go's own doc comment) — probe exercises the
 	// connection end-to-end before it is handed back to the caller.
 	if err := probe(ctx, client, timeout); err != nil {
-		client.kill()
+		client.Kill()
 		// Wrap (rather than return verbatim) so a probe failure is
 		// distinguishable in logs from an initialize failure without
 		// needing errors.Is gymnastics; %w still preserves the chain, so
@@ -118,11 +112,11 @@ func finalizeConnection(ctx context.Context, client *lspClient, rootURI string, 
 	return nil
 }
 
-// rootURIFor converts targetDir into the file:// rootURI the LSP
+// RootURIFor converts targetDir into the file:// rootURI the LSP
 // "initialize" request expects, exactly as References builds it today.
 // Factored out here so ensureNative and References share exactly
 // one implementation of "path to rootURI" rather than duplicating it.
-func rootURIFor(targetDir string) (string, error) {
+func RootURIFor(targetDir string) (string, error) {
 	absTargetDir, err := filepath.Abs(targetDir)
 	if err != nil {
 		return "", fmt.Errorf("quarry: resolve absolute path for %s: %w", targetDir, err)
@@ -168,7 +162,7 @@ func nativeArgv(binPath string, extraArgs []string) []string {
 // supervisory authority over the shared daemon under native, so a single
 // reported-and-torn-down failure is the correct behavior, not a retry
 // loop.
-func ensureNative(ctx context.Context, lang string, entry Entry, targetDir string, timeout time.Duration) (*lspClient, error) {
+func ensureNative(ctx context.Context, lang string, entry registry.Entry, targetDir string, timeout time.Duration) (*lsp.Client, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {
 		return nil, fmt.Errorf("quarry: resolve go toolchain for %q: %w", lang, err)
@@ -176,18 +170,18 @@ func ensureNative(ctx context.Context, lang string, entry Entry, targetDir strin
 
 	argv := nativeArgv(binPath, entry.Command[1:])
 
-	client, err := newLSPClient(argv)
+	client, err := lsp.NewClient(argv)
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, &ErrServerNotFound{Language: lang, InstallHint: entry.InstallHint}
+			return nil, &quarryengine.ErrServerNotFound{Language: lang, InstallHint: entry.InstallHint}
 		}
 		return nil, fmt.Errorf("quarry: start language server for %q: %w", lang, err)
 	}
-	client.lang = lang
+	client.Lang = lang
 
-	rootURI, err := rootURIFor(targetDir)
+	rootURI, err := RootURIFor(targetDir)
 	if err != nil {
-		client.kill()
+		client.Kill()
 		return nil, err
 	}
 
@@ -242,7 +236,7 @@ const spawnRacePollInterval = 100 * time.Millisecond
 // already inherently bounded (~500ms worst case), and the caller applies
 // its own deadline check immediately after this function returns, exactly
 // as it already does around the spawner's step 6 dial retry.
-func reconnectUnderLock(ctx context.Context, network, address string, dial func(ctx context.Context, network, address string) (*lspClient, error), finalize func(ctx context.Context, client *lspClient) error) (client *lspClient, healthy bool, err error) {
+func reconnectUnderLock(ctx context.Context, network, address string, dial func(ctx context.Context, network, address string) (*lsp.Client, error), finalize func(ctx context.Context, client *lsp.Client) error) (client *lsp.Client, healthy bool, err error) {
 	var dialErr error
 	for attempt := 0; attempt < 10; attempt++ {
 		client, dialErr = dial(ctx, network, address)
@@ -267,14 +261,14 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 // file so every reconnecting caller — this worktree's own future quarry
 // invocations — finds and reuses the same daemon rather than spawning a new
 // one. Unlike ensureNative, this function takes a raw command []string, not
-// an Entry: it does no toolchain resolution of its own — that is
-// ensureServer's job, which resolves the toolchain and dispatches Go's
+// a registry.Entry: it does no toolchain resolution of its own — that is
+// EnsureServer's job, which resolves the toolchain and dispatches Go's
 // registry entry here as its live V1 strategy, with ensureNative as its
 // fallback.
 //
 // The whole call is bounded by deadline := time.Now().Add(timeout): a
 // caller that keeps losing the spawn race, or keeps finding a healthy state
-// it can never actually dial, gets ErrServerSpawnTimeout rather than
+// it can never actually dial, gets quarryengine.ErrServerSpawnTimeout rather than
 // blocking indefinitely — the "bounded retry, not indefinite blocking" the
 // concurrency-locking decision requires.
 //
@@ -299,10 +293,10 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 // the wedged-daemon escalation above: a dial-or-finalize failure against a
 // non-stale state re-dials under the spawn lock and, only if that fresh
 // attempt also fails, force-kills and respawns. Now that Go's registry
-// entry dispatches here as its live V1 strategy (via ensureServer), that
+// entry dispatches here as its live V1 strategy (via EnsureServer), that
 // escalation is what keeps a single wedged daemon from stranding every
 // caller in this worktree indefinitely.
-func ensureSupervised(ctx context.Context, command []string, lang, targetDir string, stateDir string, timeout time.Duration) (*lspClient, error) {
+func ensureSupervised(ctx context.Context, command []string, lang, targetDir string, stateDir string, timeout time.Duration) (*lsp.Client, error) {
 	statePath := DaemonStateFile(stateDir, lang)
 	lockPath := DaemonLock(stateDir, lang)
 	// The daemon's socket path is a deterministic function of
@@ -311,7 +305,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 	// nothing to "choose" or persist separately from recomputing it.
 	socketPath := filepath.Join(filepath.Dir(statePath), "daemon.sock")
 
-	rootURI, err := rootURIFor(targetDir)
+	rootURI, err := RootURIFor(targetDir)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +315,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 	for {
 		// Step 1: the common-case reconnect-to-a-healthy-daemon path. This
 		// never touches the lock at all.
-		state, found, err := readDaemonState(statePath)
+		state, found, err := ReadState(statePath)
 		if err != nil {
 			// A genuine OS-level failure (permissions, corrupt file, disk
 			// full) — distinct from "no state file yet" (found == false,
@@ -341,8 +335,8 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		escalating := false
 		if found && !daemonStale(state) {
 			if network, address, ok := strings.Cut(state.Address, ";"); ok {
-				if client, dialErr := newLSPClientDial(ctx, network, address); dialErr == nil {
-					client.lang = lang
+				if client, dialErr := lsp.NewClientDial(ctx, network, address); dialErr == nil {
+					client.Lang = lang
 					if finalizeErr := finalizeConnection(ctx, client, rootURI, timeout); finalizeErr == nil {
 						return client, nil
 					}
@@ -377,7 +371,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// rather than blocking on the lock, so this call keeps
 			// re-evaluating whether the state has become healthy meanwhile.
 			if time.Now().After(deadline) {
-				return nil, &ErrServerSpawnTimeout{Lang: lang}
+				return nil, &quarryengine.ErrServerSpawnTimeout{Lang: lang}
 			}
 			time.Sleep(spawnRacePollInterval)
 			continue
@@ -391,17 +385,17 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// with the same bounded retry the spawner's own step 6 uses,
 			// before concluding the daemon is genuinely wedged rather than
 			// merely racing another caller.
-			escalationState, escalationFound, err := readDaemonState(statePath)
+			escalationState, escalationFound, err := ReadState(statePath)
 			if err != nil {
 				fileLock.Release()
 				return nil, fmt.Errorf("quarry: ensureSupervised re-read daemon state during wedged-daemon escalation for %q: %w", lang, err)
 			}
 
-			var reconnected *lspClient
+			var reconnected *lsp.Client
 			healthy := false
 			if escalationFound {
 				if network, address, ok := strings.Cut(escalationState.Address, ";"); ok {
-					reconnected, healthy, err = reconnectUnderLock(ctx, network, address, newLSPClientDial, func(ctx context.Context, client *lspClient) error {
+					reconnected, healthy, err = reconnectUnderLock(ctx, network, address, lsp.NewClientDial, func(ctx context.Context, client *lsp.Client) error {
 						return finalizeConnection(ctx, client, rootURI, timeout)
 					})
 					if err != nil {
@@ -423,14 +417,14 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// Same deadline guard step 2's !acquired branch above already
 			// applies: reconnectUnderLock's own retry is inherently bounded
 			// (~500ms worst case), but a caller whose deadline expires
-			// during that retry must still get ErrServerSpawnTimeout here,
+			// during that retry must still get quarryengine.ErrServerSpawnTimeout here,
 			// before ever attempting proc.KillPID/respawn below — otherwise
 			// a caller racing a deadline this short could fall through to
 			// respawn and fail at cmd.Start() with a spawn error instead of
 			// the documented timeout.
 			if time.Now().After(deadline) {
 				fileLock.Release()
-				return nil, &ErrServerSpawnTimeout{Lang: lang}
+				return nil, &quarryengine.ErrServerSpawnTimeout{Lang: lang}
 			}
 
 			// The fresh under-lock dial+finalize also failed (or there was
@@ -444,7 +438,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// call's own failure.
 			if escalationFound {
 				if err := proc.KillPID(escalationState.PID); err != nil {
-					defaultLogHandler.Warn("quarry: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
+					quarryengine.Logger.Warn("quarry: kill wedged supervised daemon", "pid", escalationState.PID, "lang", lang, "err", err)
 				}
 			}
 			// Fall through to step 4 below to respawn — the lock acquired
@@ -454,7 +448,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			// Step 3: double-check under the lock — another process may
 			// have spawned a fresh daemon while this call was waiting for
 			// the lock.
-			state, found, err = readDaemonState(statePath)
+			state, found, err = ReadState(statePath)
 			if err != nil {
 				fileLock.Release()
 				return nil, fmt.Errorf("quarry: ensureSupervised re-read daemon state for %q: %w", lang, err)
@@ -472,7 +466,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 				// "whole call is bounded by deadline" guarantee documented
 				// above.
 				if time.Now().After(deadline) {
-					return nil, &ErrServerSpawnTimeout{Lang: lang}
+					return nil, &quarryengine.ErrServerSpawnTimeout{Lang: lang}
 				}
 				// The winner writes the state file and releases the lock
 				// *before* its own dial-retry loop (step 6 below) confirms
@@ -540,13 +534,13 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		// is guaranteed non-nil here since cmd.Start() has already succeeded
 		// (the line 548 error path above returns before ever reaching this
 		// point).
-		defaultLogHandler.Info("quarry: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
+		quarryengine.Logger.Info("quarry: spawned supervised daemon", "lang", lang, "pid", cmd.Process.Pid, "socket", socketPath)
 
 		// Step 5: write the state file *before* releasing the lock, so a
 		// losing caller that acquires the lock immediately after release
 		// always sees a state file, never a window where the lock is free
 		// but no state exists yet.
-		if err := writeDaemonState(statePath, daemonState{
+		if err := writeDaemonState(statePath, State{
 			PID:             cmd.Process.Pid,
 			Address:         "unix;" + socketPath,
 			ProtocolVersion: supervisedProtocolVersion,
@@ -560,10 +554,10 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		// Step 6: dial the daemon just spawned, with a short bounded retry
 		// of its own — the process needs a moment to bind the listen socket
 		// after cmd.Start() returns.
-		var client *lspClient
+		var client *lsp.Client
 		var dialErr error
 		for attempt := 0; attempt < 10; attempt++ {
-			client, dialErr = newLSPClientDial(ctx, "unix", socketPath)
+			client, dialErr = lsp.NewClientDial(ctx, "unix", socketPath)
 			if dialErr == nil {
 				break
 			}
@@ -572,7 +566,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		if dialErr != nil {
 			return nil, fmt.Errorf("quarry: ensureSupervised dial newly spawned daemon for %q: %w", lang, dialErr)
 		}
-		client.lang = lang
+		client.Lang = lang
 
 		// Step 7.
 		if err := finalizeConnection(ctx, client, rootURI, timeout); err != nil {

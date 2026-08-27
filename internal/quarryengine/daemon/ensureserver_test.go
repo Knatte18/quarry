@@ -2,28 +2,160 @@
 // sequence ensureserver.go defines, plus the argv-shape and wedged-daemon-escalation decision
 // helpers (nativeArgv/supervisedArgv, reconnectUnderLock) that are unit-testable without spawning
 // anything.
-// Untagged and offline: every case here builds a client over newLSPClientFromRW +
-// newPipeTransportPair/fakeServer, the same fake-transport harness lspclient_test.go already
-// establishes for this package, reusable with no import since it's the same package, or drives a
-// pure decision helper with injected fakes.
+// Untagged and offline: every case here builds a client over lsp.NewClientFromRW +
+// newPipeTransportPair/fakeServer, a fake-transport harness duplicated from
+// internal/quarryengine/lsp/lspclient_test.go — package lsp's own copy is a _test.go-only
+// helper and therefore not importable from here, so this package keeps its own, per the
+// test-support-helpers Shared Decision's duplicate-when-a-package-boundary-blocks-sharing
+// precedent — or drives a pure decision helper with injected fakes.
 // This file must never spawn a real process — any test needing a real subprocess belongs in
 // supervised_test.go or a //go:build integration file instead.
 
-package quarry
+package daemon
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/quarry/internal/lock"
+	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 )
+
+// pipeTransport wires client and server sides over two io.Pipes.
+type pipeTransport struct {
+	io.Reader
+	io.Writer
+	closers []io.Closer
+}
+
+func (p pipeTransport) Close() error {
+	var err error
+	for _, c := range p.closers {
+		if cerr := c.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}
+	return err
+}
+
+// newPipeTransportPair returns two linked transports for client and server.
+func newPipeTransportPair() (client, server pipeTransport) {
+	clientReadServerWrite, serverWriteClientRead := io.Pipe()
+	serverReadClientWrite, clientWriteServerRead := io.Pipe()
+
+	client = pipeTransport{
+		Reader:  clientReadServerWrite,
+		Writer:  clientWriteServerRead,
+		closers: []io.Closer{clientReadServerWrite, clientWriteServerRead},
+	}
+	server = pipeTransport{
+		Reader:  serverReadClientWrite,
+		Writer:  serverWriteClientRead,
+		closers: []io.Closer{serverReadClientWrite, serverWriteClientRead},
+	}
+	return client, server
+}
+
+// fakeServer reads and writes Content-Length-framed JSON-RPC messages.
+type fakeServer struct {
+	r *bufio.Reader
+	w io.Writer
+}
+
+func newFakeServer(rw io.ReadWriter) *fakeServer {
+	return &fakeServer{r: bufio.NewReader(rw), w: rw}
+}
+
+// fakeServerMessage mirrors lsp's wire message shape for testing.
+type fakeServerMessage struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+}
+
+// readMessage reads one Content-Length-framed message, reporting errors via t.Errorf.
+func (s *fakeServer) readMessage(t *testing.T) (msg fakeServerMessage, ok bool) {
+	t.Helper()
+	contentLength := -1
+	for {
+		line, err := s.r.ReadString('\n')
+		if err != nil {
+			t.Errorf("fakeServer: read header: %v", err)
+			return fakeServerMessage{}, false
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+		if name, value, cut := strings.Cut(line, ":"); cut && strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+			n, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				t.Errorf("fakeServer: parse Content-Length: %v", err)
+				return fakeServerMessage{}, false
+			}
+			contentLength = n
+		}
+	}
+	if contentLength < 0 {
+		t.Errorf("fakeServer: message missing Content-Length header")
+		return fakeServerMessage{}, false
+	}
+	body := make([]byte, contentLength)
+	if _, err := io.ReadFull(s.r, body); err != nil {
+		t.Errorf("fakeServer: read body: %v", err)
+		return fakeServerMessage{}, false
+	}
+	if err := json.Unmarshal(body, &msg); err != nil {
+		t.Errorf("fakeServer: unmarshal body: %v", err)
+		return fakeServerMessage{}, false
+	}
+	return msg, true
+}
+
+// writeMessage frames and writes a value, reporting errors via t.Errorf.
+func (s *fakeServer) writeMessage(t *testing.T, v any) bool {
+	t.Helper()
+	body, err := json.Marshal(v)
+	if err != nil {
+		t.Errorf("fakeServer: marshal: %v", err)
+		return false
+	}
+	if _, err := fmt.Fprintf(s.w, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
+		t.Errorf("fakeServer: write header: %v", err)
+		return false
+	}
+	if _, err := s.w.Write(body); err != nil {
+		t.Errorf("fakeServer: write body: %v", err)
+		return false
+	}
+	return true
+}
+
+// respond writes a success response for a request ID.
+func (s *fakeServer) respond(t *testing.T, id json.RawMessage, result any) bool {
+	t.Helper()
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Errorf("fakeServer: marshal result: %v", err)
+		return false
+	}
+	return s.writeMessage(t, fakeServerMessage{JSONRPC: "2.0", ID: id, Result: raw})
+}
 
 // TestFinalizeConnection_SuccessReturnsNil verifies finalizeConnection succeeds with a responsive
 // server.
@@ -32,7 +164,7 @@ func TestFinalizeConnection_SuccessReturnsNil(t *testing.T) {
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -72,14 +204,14 @@ func TestFinalizeConnection_SuccessReturnsNil(t *testing.T) {
 
 // TestFinalizeConnection_InitializeErrorKillsClient drives a fake server that answers initialize
 // with an LSP error response,
-// and asserts finalizeConnection returns a non-nil error and, whitebox-asserted via the unexported
-// client.closed field, that the client was torn down.
+// and asserts finalizeConnection returns a non-nil error and, checked via lsp.Client's exported
+// Closed() accessor, that the client was torn down.
 func TestFinalizeConnection_InitializeErrorKillsClient(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -107,22 +239,22 @@ func TestFinalizeConnection_InitializeErrorKillsClient(t *testing.T) {
 	if err == nil {
 		t.Fatal("finalizeConnection() returned nil error; want a non-nil error from the failed initialize handshake")
 	}
-	if !client.closed {
-		t.Error("finalizeConnection() left client.closed = false after an initialize failure; want true")
+	if !client.Closed() {
+		t.Error("finalizeConnection() left client.Closed() = false after an initialize failure; want true")
 	}
 }
 
 // TestFinalizeConnection_ProbeTimeoutKillsClient drives a fake server that answers initialize
 // successfully but never answers the follow-up workspace/symbol probe request,
 // and asserts finalizeConnection returns an error satisfying errors.Is(err,
-// ErrServerTimeoutSentinel) once the short timeout passed as the timeout argument expires, and that
-// client.closed is true.
+// quarryengine.ErrServerTimeoutSentinel) once the short timeout passed as the timeout argument expires, and that
+// client.Closed() is true.
 func TestFinalizeConnection_ProbeTimeoutKillsClient(t *testing.T) {
 	clientTransport, serverTransport := newPipeTransportPair()
 	defer clientTransport.Close()
 	defer serverTransport.Close()
 
-	client := newLSPClientFromRW(clientTransport)
+	client := lsp.NewClientFromRW(clientTransport)
 	server := newFakeServer(serverTransport)
 
 	done := make(chan struct{})
@@ -160,11 +292,11 @@ func TestFinalizeConnection_ProbeTimeoutKillsClient(t *testing.T) {
 	if err == nil {
 		t.Fatal("finalizeConnection() returned nil error; want a probe-timeout error")
 	}
-	if !errors.Is(err, ErrServerTimeoutSentinel) {
-		t.Errorf("finalizeConnection() err = %v; want errors.Is(err, ErrServerTimeoutSentinel)", err)
+	if !errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
+		t.Errorf("finalizeConnection() err = %v; want errors.Is(err, quarryengine.ErrServerTimeoutSentinel)", err)
 	}
-	if !client.closed {
-		t.Error("finalizeConnection() left client.closed = false after a probe timeout; want true")
+	if !client.Closed() {
+		t.Error("finalizeConnection() left client.Closed() = false after a probe timeout; want true")
 	}
 }
 
@@ -250,41 +382,41 @@ func TestSupervisedArgv_IncludesServeListenAndIdleTimeout(t *testing.T) {
 // No real dial, finalize, spawn, or kill happens anywhere in this test — reconnectUnderLock is a
 // pure helper, per its own doc comment.
 func TestReconnectUnderLock_ReuseOrRestart(t *testing.T) {
-	fakeClient := &lspClient{}
+	fakeClient := &lsp.Client{}
 	fakeDialErr := errors.New("dial refused")
 	fakeFinalizeErr := errors.New("initialize failed")
 
 	tests := []struct {
 		name        string
-		dial        func(ctx context.Context, network, address string) (*lspClient, error)
-		finalize    func(ctx context.Context, client *lspClient) error
-		wantClient  *lspClient
+		dial        func(ctx context.Context, network, address string) (*lsp.Client, error)
+		finalize    func(ctx context.Context, client *lsp.Client) error
+		wantClient  *lsp.Client
 		wantHealthy bool
 	}{
 		{
 			name: "AnotherCallerAlreadyRespawned",
-			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+			dial: func(ctx context.Context, network, address string) (*lsp.Client, error) {
 				return fakeClient, nil
 			},
-			finalize:    func(ctx context.Context, client *lspClient) error { return nil },
+			finalize:    func(ctx context.Context, client *lsp.Client) error { return nil },
 			wantClient:  fakeClient,
 			wantHealthy: true,
 		},
 		{
 			name: "SameDaemonRecovered",
-			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+			dial: func(ctx context.Context, network, address string) (*lsp.Client, error) {
 				return fakeClient, nil
 			},
-			finalize:    func(ctx context.Context, client *lspClient) error { return nil },
+			finalize:    func(ctx context.Context, client *lsp.Client) error { return nil },
 			wantClient:  fakeClient,
 			wantHealthy: true,
 		},
 		{
 			name: "GenuinelyWedged_DialAlwaysFails",
-			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+			dial: func(ctx context.Context, network, address string) (*lsp.Client, error) {
 				return nil, fakeDialErr
 			},
-			finalize: func(ctx context.Context, client *lspClient) error {
+			finalize: func(ctx context.Context, client *lsp.Client) error {
 				t.Fatal("finalize called despite every dial attempt failing")
 				return nil
 			},
@@ -293,10 +425,10 @@ func TestReconnectUnderLock_ReuseOrRestart(t *testing.T) {
 		},
 		{
 			name: "GenuinelyWedged_DialSucceedsFinalizeFails",
-			dial: func(ctx context.Context, network, address string) (*lspClient, error) {
+			dial: func(ctx context.Context, network, address string) (*lsp.Client, error) {
 				return fakeClient, nil
 			},
-			finalize:    func(ctx context.Context, client *lspClient) error { return fakeFinalizeErr },
+			finalize:    func(ctx context.Context, client *lsp.Client) error { return fakeFinalizeErr },
 			wantClient:  nil,
 			wantHealthy: false,
 		},
@@ -318,7 +450,7 @@ func TestReconnectUnderLock_ReuseOrRestart(t *testing.T) {
 	}
 }
 
-// TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative drives ensureServer's
+// TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative drives EnsureServer's
 // step-3 safety net — "supervised fails for a non-toolchain reason, so native is attempted and
 // native's own result is returned" — the one branch no other untagged test reaches: the
 // toolchain-failure test (TestReferences_HasNativeDaemonRoutesThroughEnsureServer, refs_test.go)
@@ -327,7 +459,7 @@ func TestReconnectUnderLock_ReuseOrRestart(t *testing.T) {
 // resolveGoToolchain succeeds here — a fake installer writes a non-executable stub binary,
 // and resolveGoToolchain's own fast-path/post-install check is a bare os.Stat that never inspects
 // the executable bit — but ensureSupervised cannot acquire its spawn lock (pre-held by this test)
-// and returns ErrServerSpawnTimeout within a short deadline, a non-toolchain reason that triggers
+// and returns quarryengine.ErrServerSpawnTimeout within a short deadline, a non-toolchain reason that triggers
 // the fallback.
 // The fallback's ensureNative re-resolves the same stub binPath and fails at exec.LookPath (the
 // stub is non-executable) before any cmd.Start, so this test spawns no subprocess and stays
@@ -343,7 +475,7 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 		// A present-but-non-executable stub: resolveGoToolchain's os.Stat-
 		// only checks are satisfied by mere presence, which is all step 1
 		// (the toolchain resolve) needs to succeed, while still guaranteeing
-		// the fallback's newLSPClient -> exec.LookPath call fails, with no
+		// the fallback's lsp.NewClient -> exec.LookPath call fails, with no
 		// real subprocess ever spawned by either strategy.
 		return os.WriteFile(filepath.Join(destDir, binName), nil, 0o644)
 	})
@@ -364,7 +496,7 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 	}
 	t.Cleanup(func() { _ = fileLock.Release() })
 
-	entry := Entry{
+	entry := registry.Entry{
 		Command:         []string{"gopls"},
 		PinnedVersion:   "v0.0.0-test",
 		HasNativeDaemon: true,
@@ -373,20 +505,20 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// command is never reached by either strategy: ensureSupervised can
-	// never win the pre-held lock, so it returns ErrServerSpawnTimeout well
+	// never win the pre-held lock, so it returns quarryengine.ErrServerSpawnTimeout well
 	// within this deadline, and the fallback's ensureNative fails at
 	// exec.LookPath before spawning anything either.
-	client, kind, err := ensureServer(ctx, "go", entry, t.TempDir(), worktreeRoot, 300*time.Millisecond)
+	client, kind, err := EnsureServer(ctx, "go", entry, t.TempDir(), worktreeRoot, 300*time.Millisecond)
 	if client != nil {
-		t.Errorf("ensureServer() client = %v; want nil", client)
+		t.Errorf("EnsureServer() client = %v; want nil", client)
 	}
-	if kind != connKindNative {
-		t.Errorf("ensureServer() connKind = %v; want connKindNative (proving the fallback fired, not the supervised success path)", kind)
+	if kind != ConnKindNative {
+		t.Errorf("EnsureServer() ConnKind = %v; want ConnKindNative (proving the fallback fired, not the supervised success path)", kind)
 	}
 	if err == nil {
-		t.Fatal("ensureServer() returned nil error; want native's own LookPath failure")
+		t.Fatal("EnsureServer() returned nil error; want native's own LookPath failure")
 	}
-	if errors.Is(err, ErrServerSpawnTimeoutSentinel) {
-		t.Errorf("ensureServer() err = %v; want it to NOT satisfy errors.Is(err, ErrServerSpawnTimeoutSentinel) (native's own result, not supervised's timeout, must be what ensureServer returns)", err)
+	if errors.Is(err, quarryengine.ErrServerSpawnTimeoutSentinel) {
+		t.Errorf("EnsureServer() err = %v; want it to NOT satisfy errors.Is(err, quarryengine.ErrServerSpawnTimeoutSentinel) (native's own result, not supervised's timeout, must be what EnsureServer returns)", err)
 	}
 }
