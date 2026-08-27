@@ -55,19 +55,28 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - New rows in `internal/quarryengine/layering_test.go`'s `layeringTable` for both new packages.
 - **Exact-count and exact-claim invariants that go stale the moment this task lands, and must be
   updated in the same batch as the code that invalidates them.**
-  The enumeration below was produced by actually running this command and reading its output — it
-  is not a hand-curated list wearing a grep's clothes, and the plan writer should re-run it rather
-  than trust the transcription:
+  **The invariant being defended, stated first, because the greps below serve it rather than
+  define it:** *no prose anywhere in the tree may enumerate the engine's packages, count them,
+  count quarry's verbs, or count the facade's re-exports, and still be true after this task lands.*
+  Anything matching that description is in scope whether or not the commands below happen to find
+  it — a phrase grep is a search aid, not the specification.
+
+  Two complementary commands, both actually run and their output read:
 
   ```
+  # (a) counts and exact-number claims
   grep -rnE 'five-package|four verbs|29 identifiers|eight blank-identifier|LSP-backed|minPackageDirs|The six internal|import all four|seven re-exported' \
+    --include='*.go' --include='*.md' . | grep -v '^\./_mill/' | grep -v '^\./\.scratch/'
+
+  # (b) package-set enumerations, which (a) misses because they use no count word
+  grep -rnE 'lsp, registry|registry, daemon|root leaf' \
     --include='*.go' --include='*.md' . | grep -v '^\./_mill/' | grep -v '^\./\.scratch/'
   ```
 
-  Two hits it returns are **explicitly out of scope**: `docs/scout-vs-grep.md:3` and `:130` use
+  Two hits are **explicitly out of scope**: `docs/scout-vs-grep.md:3` and `:130` use
   "LSP-backed" to describe a past measurement of `lyx scout`, not a current claim about what quarry
   is. Historical research documents are not updated when the product changes.
-  Everything else it returns is in scope:
+  Everything else both commands return is in scope:
   - `quarry/facade.go:8` — "It re-exports exactly the 29 identifiers this package exported before
     the engine-repackage move: no more, no less." Adding `TOCFile`, `TOCDir`, and the toc result
     type aliases breaks this sentence. Recount and rewrite it; do not leave a stale number.
@@ -83,6 +92,16 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
     `internal/quarryengine/seam_enforcement_test.go:10` — all three call the engine a
     "five-package DAG". It becomes seven packages (adding `treesitter` and `toc`).
   - `internal/quarryengine/doc.go:66` — "It imports all four packages above", describing `query`.
+  - **Package-set enumerations found only by grep (b)**, each of which lists the DAG's members and
+    must gain `treesitter` and `toc`:
+    `quarry/facade.go:4` ("the root leaf package, lsp, registry, daemon, and query");
+    `internal/quarryengine/doc.go:25` ("this package and its lsp, registry, daemon, and query
+    subpackages") and `:37` (the seam-enforcement walk list);
+    `internal/quarryengine/seam_enforcement_test.go:2-3` and `:101`;
+    `internal/quarryengine/layering_test.go:159`.
+  - `internal/quarryengine/doc.go:47-71` — the bulleted package-layout list, which describes each
+    package and its allowed imports. It needs **two new bullets**, not just a count edit. This is
+    the largest single doc change in the task and the one most likely to be skipped.
   - `internal/quarryengine/layering_test.go:20` — "The six internal/quarryengine/... import paths
     this guard reasons about" (becomes eight), and `:53` — "query's production files import all
     four".
@@ -222,6 +241,24 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   both verbs. `partial` and `error` are mutually exclusive by construction — `partial` means
   "parsed, lossily", `error` means "never parsed at all".
 
+- **Ordering is specified, not incidental.**
+  `symbols` is in **source order**, ascending by `start`.
+  `files` is in **lexicographic order by filename**, explicitly sorted — not the order the OS
+  returns directory entries in, which is not guaranteed stable across filesystems.
+  Both orders are part of the contract: the integration test asserts a full JSON envelope, which is
+  unwritable against an unspecified order, and a caller diffing two `toc` runs deserves a stable
+  result.
+- **toc adds exactly one engine sentinel: `ErrLanguageUnsupported`.**
+  It is returned by `internal/quarryengine/toc` when a resolved extension maps to no language, or
+  to one designed but not yet implemented, and it is re-exported through `quarry/facade.go` like
+  every other sentinel. `internal/cli` classifies it with `errors.Is`, matching how the existing
+  verbs classify (`internal/cli/cli.go:875-906`).
+  Everything else stays CLI-side: path existence and path-type validation happen in `internal/cli`
+  before the engine is called at all (they are `os.Stat` concerns the CLI already owns), and read
+  failures surface as wrapped `os` errors with no sentinel of their own.
+  Consequence: `quarry/facade_test.go:117`'s "seven re-exported sentinel error values" becomes
+  eight, and `TestFacadeSentinels_Identity` gains a row. This resolves the "check rather than
+  assume" note in the Scope inventory — it is now checked and decided.
 - **The `kind` vocabulary is closed and shared across all five languages: `function`, `method`,
   `type`.**
   A Python `class_definition`, a C# `class_declaration` / `interface_declaration` /
@@ -452,7 +489,14 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
 - **Directive-only leading blocks are skipped, and the next block is taken.**
   A leading comment block is classified as a directive block — and skipped — when *every* line in it,
   after delimiter stripping, matches a known directive form:
-  - Go: `go:build`, `+build`, `go:generate`, `go:embed`, `nolint`.
+  - Go: `go:build`, `+build`, `go:generate`, `go:embed`, `nolint`, and the generated-file banner
+    `Code generated ... DO NOT EDIT.`.
+    The banner is a directive block for header purposes — it is the same class of non-purpose noise
+    as a build constraint, and emitting "Code generated by protoc. DO NOT EDIT." as a file's stated
+    purpose would be exactly the failure the `//go:build windows` rule exists to prevent.
+    The same block is still read by the `generated` detection rule; being skipped as a header and
+    being consumed as a marker are independent.
+    C#'s `<auto-generated>` block is treated identically.
   - Python: a `#!` shebang on line 1, and a PEP 263 coding line (`coding[:=]`) on line 1 or 2.
   - C#, TypeScript, Rust: preprocessor and attribute forms (`#pragma`, `#nullable`, `#!`) are not
     `comment` nodes in these grammars, so they never reach this rule. Rust's `//!` inner doc comment
@@ -798,7 +842,11 @@ a Go file starting with `//go:build windows`, a blank line, then the header — 
 returned and the build constraint is not (fixture modelled on `internal/proc/proc_windows.go`);
 a Go file whose only leading block is a build constraint — assert no `header` key;
 a block mixing a `//go:generate` line with prose — assert it is treated as a header, not skipped;
-a Python file with a shebang then a module docstring — assert the docstring is the header.
+a Python file with a shebang then a module docstring — assert the docstring is the header;
+a Go file starting with `// Code generated by X. DO NOT EDIT.` then a real header — assert the
+banner is skipped as a header **and** `generated: true` is still set from it.
+Ordering: a file with several symbols — assert `symbols` is ascending by `start`; a directory —
+assert `files` is lexicographic by filename, not filesystem order.
 Truncation, one case per comment form, all asserting the same post-stripping blank-line rule:
 a Go `//` block with a bare `//` separator line; a C# `///` block with a bare `///` separator line;
 a Python module docstring with a blank line; and a header with no blank line at all — assert it is
@@ -819,9 +867,25 @@ Use the exact spike scenario as a fixture: a file whose broken declaration swall
 one. Assert `partial: true` is set and that the surviving symbols are returned. This test documents
 that recovery is lossy.
 
-**`internal/quarryengine/treesitter` — backend.**
-Thin. Assert each supported grammar loads non-nil and parses a trivial valid file without error.
-This is the canary for a grammar-registry change in the upstream library.
+**`internal/quarryengine/treesitter` — backend, and it must be run twice.**
+Thin in content: assert each supported grammar loads non-nil and parses a trivial valid file
+without error.
+**But the test is worthless in the configuration that ships unless it is also run under the subset
+tags.** `go test ./...` runs untagged, where all 206 grammars are embedded, so the load test passes
+no matter what the subset tag names are. A renamed or mistyped `grammar_subset_csharp` would ship a
+binary where every C# `toc` call fails while the test suite stays green — the exact failure the
+"canary" claim is supposed to prevent.
+
+The test file therefore carries no build tag of its own (so it runs in both configurations), and
+the task's verification step is **two** commands, both of which must pass:
+
+```
+go test ./...
+go test -tags "grammar_subset,grammar_subset_go,grammar_subset_python,grammar_subset_csharp,grammar_subset_typescript,grammar_subset_rust" ./internal/quarryengine/treesitter/
+```
+
+Both belong in README's testing section alongside the tagged build command, so the tagged
+configuration is verified by a command rather than by hand.
 
 **`internal/quarryengine/registry` — extension map.**
 Table test over all five extensions plus an unknown one, plus the `--lang` override path.
@@ -883,4 +947,8 @@ This is the end-to-end proof the spike demonstrated by hand.
 - **Q:** [auto] What happens when the first comment block is a `//go:build` directive? **A:** Directive-only leading blocks are skipped and the next block is taken; a block mixing directives and prose is a header. **Why:** verified in this tree — `internal/proc/proc_windows.go` and three integration tests have exactly that shape, and the naive rule would emit `header: "go:build windows"`.
 - **Q:** [auto] Does a `toc dir` entry carry `partial`? **A:** Yes; it is in the closed key set, mutually exclusive with `error`. **Why:** `toc dir` parses each file to get its header, so a lossy parse makes that header suspect in exactly the way `toc file` warns about.
 - **Q:** [auto] Are the two `minPackageDirs = 6` constants the same claim? **A:** No — 8 is the exact count in the layering guard and a deliberate one-below floor in the seam guard, so their comments are rewritten differently. **Why:** the seam guard walks `quarry/` too and documents its slack on purpose.
+- **Q:** [auto] Does any test exercise the tagged build that actually ships? **A:** Now yes — the treesitter load test carries no build tag and the task's verification is two commands, the second running that package under the subset tags. **Why:** `go test ./...` is untagged, so all 206 grammars are embedded and the load test passes regardless; a mistyped subset tag would ship a binary where every C# call fails with a green suite.
+- **Q:** [auto] What order are `symbols` and `files` in? **A:** Source order (ascending `start`) and explicit lexicographic filename order. **Why:** the integration test asserts a full envelope, which is unwritable against an unspecified order, and OS directory order is not stable across filesystems.
+- **Q:** [auto] Does toc add engine sentinels? **A:** Exactly one, `ErrLanguageUnsupported`, re-exported through the facade; path existence and type stay CLI-side. **Why:** it is the one failure the engine can detect and the CLI cannot, and it makes the facade's sentinel count a decided number rather than an open question.
+- **Q:** [auto] Is a `// Code generated … DO NOT EDIT.` banner a header? **A:** No — it is a directive block for header purposes, while still feeding `generated: true`. **Why:** same non-purpose noise as a build constraint.
 - **Q:** Have you actually tested Tree-sitter and got it working? **A:** Not at the time of the recommendation — the recommendation rested on documentation and the platform argument. A spike was then built and run against real quarry source, and it produced four findings that changed the design: the header rule must tolerate a blank line, error recovery is lossy rather than merely incomplete, "top-level" does not generalize beyond Go, and docstring placement is structurally different per language.
