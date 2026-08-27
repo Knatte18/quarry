@@ -59,7 +59,9 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   updated in the same batch as the code that invalidates them.**
   **The invariant being defended, stated first, because the greps below serve it rather than
   define it:** *no prose anywhere in the tree may, after this task lands, still assert any of —*
-  (a) *a count or enumeration of the engine's packages;* (b) *a count of quarry's verbs or of the
+  (a) *a count or enumeration of the engine's packages;* (b) *a count **or enumeration** of
+  quarry's verbs or capabilities — including prose that lists what quarry does without counting it,
+  such as the root cobra command's `Short` — or a count of the
   facade's re-exports;* (c) *that quarry is LSP-only, or that it does not parse source itself;*
   (d) *that a batch entry is keyed on `symbol`;* (e) *that quarry builds without a C toolchain.*
   Clauses (c), (d), and (e) are not count claims and no grep phrase reliably finds them — verified
@@ -136,9 +138,10 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
     README's "Building and running" section — must gain the `CGO_ENABLED=1` / C-toolchain
     dependency and the windows cross-compile recipe.
     README's "Testing" section (`README.md:66-71`, two tiers today) — must reflect the cgo build.
-- README "Building and running" update for the grammar-subset build tags (see the grammar-set
-  Decision).
-- README verb-list update.
+- README verb-list update, and the root cobra command's `Short` string
+  (`internal/cli/cli.go:51`), which today reads "code intelligence lookups (references,
+  definitions, symbol search) across supported languages" — a capability enumeration that leaves
+  `quarry --help` describing a tool without `toc`.
 - A per-language docstring-association survey at **`docs/toc-docstring-association.md`**, in the
   spirit of `docs/scout-multilang.md`. Its content is the per-language node-shape material recorded
   under "Technical context" below, written up as a standalone reference — including the two
@@ -221,6 +224,12 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   **Unverified:** the cross-compile command above was *not* run during discussion — no mingw-w64
   cross-compiler was installed on the discussion machine. It is the standard incantation, but the
   implementation batch must actually run it and adjust if needed, rather than copy it on trust.
+  **If no mingw-w64 toolchain is available to the implementation batch, this does not block the
+  task.** Document the recipe in README marked explicitly as unverified, and file a follow-up task
+  to verify it on a machine that has the toolchain. Rationale: windows support is a property of the
+  *source* — nothing in this task's code is platform-specific, and `internal/proc`'s existing
+  windows implementation is untouched — so an unverified build recipe is a documentation gap, not a
+  regression. Blocking a whole task on one absent cross-compiler would be the wrong trade.
   Note also that building inside WSL2 without `GOOS=windows` produces a *Linux* binary that runs in
   WSL2, not a windows-native `.exe`; both are legitimate targets but they are not the same artifact.
 - Rejected: the pure-Go runtime `github.com/odvcencio/gotreesitter` (measured above — no size
@@ -437,6 +446,15 @@ replacement for it — which is the piece the toc verbs need and the piece quarr
   non-standard extension.
   For `toc dir`, `--lang` restricts the listing to that language's extensions instead of listing
   every supported language found.
+- **`toc dir --lang <designed-but-unimplemented>` lists, it does not error.**
+  `quarry toc dir --lang rust <dir>` returns `ok:true`, exit 0, with every `.rs` file listed and
+  each carrying `error: "language not yet supported by toc"` — identical to what the extension path
+  produces for `.rs` files in a mixed directory. `--lang` here selects *which files to list*, and
+  the listing rule for an unimplemented language is already decided.
+  This differs from `toc file --lang rust <path>`, which is `output.Err` exit 1: there the
+  unsupported language is the entire request and there is nothing to list.
+  The batch table's rank-3 "designed-but-unimplemented" row therefore applies to `toc file`, and to
+  a `.rs` path passed directly to `toc dir`'s positional — never to files *inside* a listing.
 - Rejected: reusing `DetectLanguage` on the file's parent directory (wrong for mixed-language
   trees); sniffing file content (unnecessary — the extension is definitive for all five languages);
   validating toc's `--lang` against the servers.yaml registry (couples a parser-only verb to the
@@ -863,10 +881,8 @@ under the previous backend: an outline helper does not do docstring association,
 sibling/in-body walk is ours regardless — and by the time that walk holds the declaration node, the
 receiver or enclosing class is one `ChildByFieldName` away.
 
-There is also a runtime `GOTREESITTER_GRAMMAR_SET` environment variable, which restricts *loading*
-and has no effect on binary size.
-Binary sizes for every option were measured during discussion — see the "Grammar set" Decision for
-the table and the choice. Nothing here is left to implementation time.
+There is no grammar-set choice to make and no build tags to pass: each grammar is its own Go module,
+so quarry imports exactly the five languages it supports and links nothing else.
 
 ### Per-language extraction shapes, confirmed by dumping real parse trees
 
