@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-impact-verb
+phase: approved-docs-and-live-tier
 slug: impact-verb
 branch: impact-verb
 plan: _mill/plan
@@ -35,6 +35,7 @@ implementing  '2026-08-28T09:43:58Z'
 approved-engine-impact-package  '2026-08-28T09:52:33Z'
 approved-facade-reexports  '2026-08-28T09:55:04Z'
 approved-cli-impact-verb  '2026-08-28T10:01:26Z'
+approved-docs-and-live-tier  '2026-08-28T10:06:25Z'
 ```
 
 ## Batches
@@ -60,8 +61,9 @@ batches:
     commit_sha: a748432f7274978119f7a8f827cf18f7532f3cfe
     verify_baseline_failures: []
   - name: docs-and-live-tier
-    state: running
+    state: approved
     implementer_session: 02a538b1-5d9f-4b25-908e-e4d8a388e8b6
     start_sha: e66d1034b65333e8ac51b6189552b557311bbb1d
+    commit_sha: 0a94912db335e4f1272aa260a8b12c80f50abd88
     verify_baseline_failures: []
 ```
