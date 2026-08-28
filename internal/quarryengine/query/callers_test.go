@@ -3,12 +3,11 @@
 // the exported Callers, which would require a spawn.
 //
 // docs/implementation-widening-spike.md records mode: directional, so every fake server in this
-// file that is meant to let verification actually run advertises documentSymbolProvider and
-// answers textDocument/documentSymbol with a hierarchy that classifies the implementation
-// locations it returns — card 15 makes an unadvertised capability, an errored call, an empty
-// result, and a phase deadline all skip-verification triggers, so a fake that stays silent on
-// documentSymbol would turn every drop assertion below into a keep for a reason that has nothing
-// to do with the behaviour under test.
+// file that is meant to let verification actually run advertises implementationProvider —
+// declarationMatchSet (verify.go) scopes match-set inclusion by directory identity between the
+// declaration- and implementation-side URIs, not by SymbolKind, so these fixtures distinguish
+// kept from dropped references with distinct directory paths rather than fake documentSymbol
+// responses.
 
 package query
 
@@ -22,15 +21,10 @@ import (
 	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
 )
 
-// symbolKindConcreteMethod is an arbitrary non-interface SymbolKind (a method, 6) used to build
-// fake documentSymbol responses that must classify as "not an interface".
-const symbolKindConcreteMethod = 6
-
-// bothCapabilities advertises implementationProvider and documentSymbolProvider, letting
-// verification run all the way through the directional classification phase.
-var bothCapabilities = map[string]any{
+// verifiableCapabilities advertises implementationProvider, letting verification run all the way
+// through the declaration match-set phase.
+var verifiableCapabilities = map[string]any{
 	"implementationProvider": true,
-	"documentSymbolProvider": true,
 }
 
 // locJSON builds the LSP wire JSON for a Location at uri/line/character, one character wide.
@@ -40,24 +34,6 @@ func locJSON(uri string, line, character int) map[string]any {
 		"range": map[string]any{
 			"start": map[string]any{"line": line, "character": character},
 			"end":   map[string]any{"line": line, "character": character + 1},
-		},
-	}
-}
-
-// symbolJSON builds a DocumentSymbol whose range spans exactly line (through line+1), so a
-// position on that line at any character is contained by it — enough for isInterfaceDeclaration's
-// rangeContains check.
-func symbolJSON(kind, line int) map[string]any {
-	return map[string]any{
-		"name": "Sym",
-		"kind": kind,
-		"range": map[string]any{
-			"start": map[string]any{"line": line, "character": 0},
-			"end":   map[string]any{"line": line + 1, "character": 0},
-		},
-		"selectionRange": map[string]any{
-			"start": map[string]any{"line": line, "character": 0},
-			"end":   map[string]any{"line": line, "character": 5},
 		},
 	}
 }
@@ -196,7 +172,7 @@ func TestCallersFromClient_EmptyDeclarationSkipsVerification_EmptyResult(t *test
 			locJSON("file:///tmp/example/caller.go", 20, 4),
 		}},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -228,7 +204,7 @@ func TestCallersFromClient_DeclarationDefinitionErrorSkipsVerification(t *testin
 			locJSON("file:///tmp/example/caller.go", 20, 4),
 		}},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -246,24 +222,22 @@ func TestCallersFromClient_DeclarationDefinitionErrorSkipsVerification(t *testin
 	}
 }
 
-// TestCallersFromClient_ConcreteQuery_ReferenceResolvingToInterfaceDeclKept covers the fail-open
-// the implementation-widening exists to close: querying a concrete method, a reference whose own
-// definition resolves to the interface's declaration is kept because the implementation half of
-// the match set — the interface declaration textDocument/implementation reports and
-// isInterfaceDeclaration classifies — matches it.
-func TestCallersFromClient_ConcreteQuery_ReferenceResolvingToInterfaceDeclKept(t *testing.T) {
-	fileURI := "file:///tmp/example/concrete.go"
-	pos := lsp.Position{Line: 20, Character: 2}
-	ifaceURI := "file:///tmp/example/iface.go"
+// TestCallersFromClient_ReferenceResolvingToSamePackageImplementationKept covers the property
+// declarationMatchSet exists to preserve: a reference whose own definition resolves to an
+// implementation location in the same directory as the declaration is kept, regardless of that
+// implementation location's own SymbolKind (documentSymbol is never consulted).
+func TestCallersFromClient_ReferenceResolvingToSamePackageImplementationKept(t *testing.T) {
+	fileURI := "file:///tmp/example/builder/query.go"
+	pos := lsp.Position{Line: 5, Character: 2}
+	samePkgURI := "file:///tmp/example/builder/other.go"
 
 	script := []scriptedResponse{
-		{method: "textDocument/definition", result: []map[string]any{locJSON(fileURI, 20, 2)}},
-		{method: "textDocument/implementation", result: []map[string]any{locJSON(ifaceURI, 5, 2)}},
-		{method: "textDocument/documentSymbol", result: []map[string]any{symbolJSON(symbolKindInterface, 5)}},
-		{method: "textDocument/references", result: []map[string]any{locJSON("file:///tmp/example/caller.go", 40, 3)}},
-		{method: "textDocument/definition", result: []map[string]any{locJSON(ifaceURI, 5, 2)}},
+		{method: "textDocument/definition", result: []map[string]any{locJSON(fileURI, 5, 2)}},
+		{method: "textDocument/implementation", result: []map[string]any{locJSON(samePkgURI, 20, 2)}},
+		{method: "textDocument/references", result: []map[string]any{locJSON("file:///tmp/example/builder/caller.go", 40, 3)}},
+		{method: "textDocument/definition", result: []map[string]any{locJSON(samePkgURI, 20, 2)}},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -274,27 +248,26 @@ func TestCallersFromClient_ConcreteQuery_ReferenceResolvingToInterfaceDeclKept(t
 		t.Fatalf("callersFromClient() returned unexpected error: %v", res.err)
 	}
 	if len(res.references) != 1 {
-		t.Fatalf("callersFromClient() returned %d references; want 1 (kept: its own definition resolves to the classified interface declaration)", len(res.references))
+		t.Fatalf("callersFromClient() returned %d references; want 1 (kept: its own definition resolves to a same-directory implementation location)", len(res.references))
 	}
 }
 
-// TestCallersFromClient_InterfaceQuery_ReferenceResolvingToConcreteMethodDropped covers the other
-// direction: querying an interface method, a reference whose own definition resolves to a concrete
-// satisfier's method (not classified as an interface declaration, so absent from the match set) is
-// dropped.
-func TestCallersFromClient_InterfaceQuery_ReferenceResolvingToConcreteMethodDropped(t *testing.T) {
-	fileURI := "file:///tmp/example/iface.go"
+// TestCallersFromClient_ReferenceResolvingToDifferentPackageImplementationDropped covers the fix
+// itself: a reference whose own definition resolves to an implementation location in a different
+// directory from the declaration is dropped — the cross-package leak issue #1 describes,
+// regardless of that location's own SymbolKind.
+func TestCallersFromClient_ReferenceResolvingToDifferentPackageImplementationDropped(t *testing.T) {
+	fileURI := "file:///tmp/example/builder/query.go"
 	pos := lsp.Position{Line: 5, Character: 2}
-	concreteURI := "file:///tmp/example/concrete.go"
+	otherPkgURI := "file:///tmp/example/runner/other.go"
 
 	script := []scriptedResponse{
 		{method: "textDocument/definition", result: []map[string]any{locJSON(fileURI, 5, 2)}},
-		{method: "textDocument/implementation", result: []map[string]any{locJSON(concreteURI, 20, 2)}},
-		{method: "textDocument/documentSymbol", result: []map[string]any{symbolJSON(symbolKindConcreteMethod, 20)}},
-		{method: "textDocument/references", result: []map[string]any{locJSON("file:///tmp/example/caller.go", 40, 3)}},
-		{method: "textDocument/definition", result: []map[string]any{locJSON(concreteURI, 20, 2)}},
+		{method: "textDocument/implementation", result: []map[string]any{locJSON(otherPkgURI, 20, 2)}},
+		{method: "textDocument/references", result: []map[string]any{locJSON("file:///tmp/example/runner/caller.go", 40, 3)}},
+		{method: "textDocument/definition", result: []map[string]any{locJSON(otherPkgURI, 20, 2)}},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -305,50 +278,38 @@ func TestCallersFromClient_InterfaceQuery_ReferenceResolvingToConcreteMethodDrop
 		t.Fatalf("callersFromClient() returned unexpected error: %v", res.err)
 	}
 	if len(res.references) != 0 {
-		t.Errorf("callersFromClient() returned %d references; want 0 (dropped: its own definition resolves to an unclassified concrete method)", len(res.references))
+		t.Errorf("callersFromClient() returned %d references; want 0 (dropped: its own definition resolves to a different-directory implementation location)", len(res.references))
 	}
 }
 
 // TestCallersFromClient_ReferenceMatchingNeitherHalfDropped covers the property that removes the
-// unrelated, structurally-identical interfaces issue #1 measures: in both query directions, a
-// reference whose own definition resolves to neither the definition-side nor the (classified)
-// implementation-side match-set half is dropped.
+// unrelated, structurally-identical interfaces issue #1 measures: a reference whose own definition
+// resolves to neither the definition-side location nor any same-directory implementation location
+// is dropped.
 func TestCallersFromClient_ReferenceMatchingNeitherHalfDropped(t *testing.T) {
-	tests := []struct {
-		name        string
-		implSymKind int
-	}{
-		{name: "InterfaceQuery", implSymKind: symbolKindConcreteMethod},
-		{name: "ConcreteQuery", implSymKind: symbolKindInterface},
+	fileURI := "file:///tmp/example/query.go"
+	pos := lsp.Position{Line: 5, Character: 2}
+	implURI := "file:///tmp/example/impl.go"
+	unrelatedURI := "file:///tmp/example/unrelated.go"
+
+	script := []scriptedResponse{
+		{method: "textDocument/definition", result: []map[string]any{locJSON(fileURI, 5, 2)}},
+		{method: "textDocument/implementation", result: []map[string]any{locJSON(implURI, 20, 2)}},
+		{method: "textDocument/references", result: []map[string]any{locJSON("file:///tmp/example/caller.go", 40, 3)}},
+		{method: "textDocument/definition", result: []map[string]any{locJSON(unrelatedURI, 99, 9)}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fileURI := "file:///tmp/example/query.go"
-			pos := lsp.Position{Line: 5, Character: 2}
-			implURI := "file:///tmp/example/impl.go"
-			unrelatedURI := "file:///tmp/example/unrelated.go"
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
-			script := []scriptedResponse{
-				{method: "textDocument/definition", result: []map[string]any{locJSON(fileURI, 5, 2)}},
-				{method: "textDocument/implementation", result: []map[string]any{locJSON(implURI, 20, 2)}},
-				{method: "textDocument/documentSymbol", result: []map[string]any{symbolJSON(tt.implSymKind, 20)}},
-				{method: "textDocument/references", result: []map[string]any{locJSON("file:///tmp/example/caller.go", 40, 3)}},
-				{method: "textDocument/definition", result: []map[string]any{locJSON(unrelatedURI, 99, 9)}},
-			}
-			client, done := newInitializedTestClient(t, bothCapabilities, script)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res := callCallersFromClient(t, ctx, client, fileURI, pos, 5*time.Second, false)
+	<-done
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			res := callCallersFromClient(t, ctx, client, fileURI, pos, 5*time.Second, false)
-			<-done
-
-			if res.err != nil {
-				t.Fatalf("callersFromClient() returned unexpected error: %v", res.err)
-			}
-			if len(res.references) != 0 {
-				t.Errorf("callersFromClient() returned %d references; want 0 (its own definition resolves to a location in neither match-set half)", len(res.references))
-			}
-		})
+	if res.err != nil {
+		t.Fatalf("callersFromClient() returned unexpected error: %v", res.err)
+	}
+	if len(res.references) != 0 {
+		t.Errorf("callersFromClient() returned %d references; want 0 (its own definition resolves to a location in neither match-set half)", len(res.references))
 	}
 }
 
@@ -359,7 +320,7 @@ func TestCallersFromClient_NoImplementationProviderSkipsVerification(t *testing.
 	fileURI := "file:///tmp/example/query.go"
 	pos := lsp.Position{Line: 5, Character: 2}
 
-	caps := map[string]any{"documentSymbolProvider": true}
+	caps := map[string]any{}
 	script := []scriptedResponse{
 		{method: "textDocument/definition", result: []map[string]any{locJSON(fileURI, 5, 2)}},
 		{method: "textDocument/references", result: []map[string]any{
@@ -396,7 +357,7 @@ func TestCallersFromClient_ImplementationCallErrorSkipsVerification(t *testing.T
 			locJSON("file:///tmp/example/caller.go", 40, 3),
 		}},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -426,7 +387,7 @@ func TestCallersFromClient_SkipVerificationKeepsEveryReferenceNoPerRefCalls(t *t
 			locJSON("file:///tmp/example/caller.go", 40, 3),
 		}},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -455,7 +416,6 @@ func TestCallersFromClient_DeclarationIsDefinitionOnlyNotUnion(t *testing.T) {
 	script := []scriptedResponse{
 		{method: "textDocument/definition", result: []map[string]any{locJSON(declURI, 5, 2)}},
 		{method: "textDocument/implementation", result: []map[string]any{locJSON(implURI, 20, 2)}},
-		{method: "textDocument/documentSymbol", result: []map[string]any{symbolJSON(symbolKindConcreteMethod, 20)}},
 		{method: "textDocument/references", result: []map[string]any{
 			// includeDeclaration: true puts the declaration site itself in
 			// the references result.
@@ -463,7 +423,7 @@ func TestCallersFromClient_DeclarationIsDefinitionOnlyNotUnion(t *testing.T) {
 		}},
 		{method: "textDocument/definition", result: []map[string]any{locJSON(declURI, 5, 2)}},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -504,7 +464,7 @@ func TestCallersFromClient_VerificationPhaseDeadlineKeepsRemainingAndSetsTimedOu
 		}},
 		{method: "textDocument/definition", stall: true},
 	}
-	client, done := newInitializedTestClient(t, bothCapabilities, script)
+	client, done := newInitializedTestClient(t, verifiableCapabilities, script)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

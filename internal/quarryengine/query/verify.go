@@ -1,18 +1,15 @@
 // verify.go implements the pure, transport-free half of Callers's verification pipeline
-// (callers.go): the declaration-match set, the interface/concrete classification directional mode
-// requires, and the fail-closed filter predicate that decides which references survive. Nothing in
-// this file touches context, a *lsp.Client, or any other form of I/O, so all of it is unit-testable
-// (verify_test.go) without a fake LSP server.
+// (callers.go): the declaration-match set and the fail-closed filter predicate that decides which
+// references survive. Nothing in this file touches context, a *lsp.Client, or any other form of
+// I/O, so all of it is unit-testable (verify_test.go) without a fake LSP server.
 
 package query
 
 import (
+	"strings"
+
 	"github.com/Knatte18/quarry/internal/quarryengine/lsp"
 )
-
-// symbolKindInterface is the LSP SymbolKind wire value for an interface declaration. It is named
-// here rather than left as a bare literal at isInterfaceDeclaration's comparison site.
-const symbolKindInterface = 11
 
 // locationKey is a location reduced to its comparable identity: the document URI plus the 0-based
 // line and UTF-16 character its range starts at. All match-set membership and lookup happens in
@@ -71,61 +68,37 @@ func anyKeyIn(locs []lsp.Location, matchSet map[locationKey]bool) bool {
 	return false
 }
 
-// declarationMatchSet builds the directional-mode declaration match set: every defLocs key, plus
-// only those implLocs keys present in interfaceDecl. This crosses into every structurally
-// unrelated satisfier's declaration only when the query started on an interface method — the
-// classification isInterfaceDeclaration performs — never when it started on a concrete method,
-// which is why a caller must derive interfaceDecl from the query's own implementation results
-// before calling this function, not guess the direction from the query itself.
-func declarationMatchSet(defLocs, implLocs []lsp.Location, interfaceDecl map[locationKey]bool) map[locationKey]bool {
+// declarationMatchSet builds the package-scoped declaration match set: every defLocs key, plus
+// every implLocs key whose URI shares a directory with some defLocs entry. This keeps every
+// same-package satisfier — concrete or interface, gopls's own Kind for it is never consulted —
+// while dropping every different-package satisfier regardless of its own kind. A call through the
+// interface from another package still verifies despite that exclusion: it resolves via
+// textDocument/definition to the interface's own declaration position, which is a defLocs entry
+// and is unconditionally included.
+func declarationMatchSet(defLocs, implLocs []lsp.Location) map[locationKey]bool {
 	matchSet := make(map[locationKey]bool, len(defLocs)+len(implLocs))
+	defDirs := make(map[string]bool, len(defLocs))
 	for _, loc := range defLocs {
 		matchSet[keyOf(loc)] = true
+		defDirs[uriDir(loc.URI)] = true
 	}
 	for _, loc := range implLocs {
-		key := keyOf(loc)
-		if interfaceDecl[key] {
-			matchSet[key] = true
+		if defDirs[uriDir(loc.URI)] {
+			matchSet[keyOf(loc)] = true
 		}
 	}
 	return matchSet
 }
 
-// isInterfaceDeclaration walks symbols' hierarchical DocumentSymbol tree, follows the chain of
-// symbols whose Range contains pos, and reports whether any symbol in that chain has Kind equal to
-// symbolKindInterface. pos matching no symbol, or matching only a chain with no interface ancestor,
-// reports false.
-func isInterfaceDeclaration(symbols []lsp.DocumentSymbol, pos lsp.Position) bool {
-	for _, sym := range symbols {
-		if !rangeContains(sym.Range, pos) {
-			continue
-		}
-		if sym.Kind == symbolKindInterface {
-			return true
-		}
-		if isInterfaceDeclaration(sym.Children, pos) {
-			return true
-		}
-		// pos falls inside this symbol's range but not inside any child's;
-		// this symbol itself is not an interface, and no sibling range can
-		// also contain pos (LSP ranges within one hierarchy level do not
-		// overlap), so the search is done.
-		return false
+// uriDir returns uri with its final "/"-delimited path segment (the file name) dropped. LSP
+// document URIs are always forward-slash, regardless of host OS, so this is a plain string
+// operation on the wire form rather than filepath.Dir — and it is deliberately a directory-identity
+// comparison, not a Go import-path or package-name lookup, since declarationMatchSet only ever
+// compares two URIs already known to come from the same gopls workspace.
+func uriDir(uri string) string {
+	i := strings.LastIndex(uri, "/")
+	if i < 0 {
+		return uri
 	}
-	return false
-}
-
-// rangeContains reports whether r's half-open [Start, End) span contains pos, comparing line first
-// and character only when pos falls on Start's or End's own line.
-func rangeContains(r lsp.Range, pos lsp.Position) bool {
-	if pos.Line < r.Start.Line || pos.Line > r.End.Line {
-		return false
-	}
-	if pos.Line == r.Start.Line && pos.Character < r.Start.Character {
-		return false
-	}
-	if pos.Line == r.End.Line && pos.Character >= r.End.Character {
-		return false
-	}
-	return true
+	return uri[:i]
 }

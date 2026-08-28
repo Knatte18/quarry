@@ -43,9 +43,9 @@ func Callers(ctx context.Context, opts Options) (references []Reference, declara
 // against a hand-built client with no spawn. timeout brackets each phase with its own
 // context.WithTimeout(ctx, timeout); timedOut is set (via the pointer runOnConnection passed
 // through) whenever a phase's error satisfies errors.Is(err, quarryengine.ErrServerTimeoutSentinel),
-// or whenever the verification classification or per-reference loop's own deadline expires with
-// work still outstanding — both cases where the connection might be stalled and teardownConnection
-// needs to know to dispose of it rather than close it gracefully.
+// or whenever the per-reference verification loop's own deadline expires with work still
+// outstanding — both cases where the connection might be stalled and teardownConnection needs to
+// know to dispose of it rather than close it gracefully.
 //
 // The call order on the connection is fixed: textDocument/definition at pos, then
 // textDocument/implementation at pos, then textDocument/references at pos, then one
@@ -56,16 +56,10 @@ func Callers(ctx context.Context, opts Options) (references []Reference, declara
 //
 // Verification skips entirely — every reference kept, declaration returned as whatever the
 // definition call produced — in exactly these cases: skipVerification is set; the declaration-side
-// definition call errored or returned an empty location set; client.SupportsImplementation()
-// reports false or the implementation call errored; or, in directional mode,
-// client.SupportsDocumentSymbol() reports false, or classifyImplementations reports a degraded
-// classification (a documentSymbol call errored, returned empty, or the classification phase's own
-// deadline expired). Each of those directional-mode cases would otherwise make
-// isInterfaceDeclaration false for every implementation location, narrowing the match set and
-// dropping references a healthy server would have kept — a degraded server making the gate
-// greener, which is exactly what the verification-is-fail-closed-everywhere Shared Decision
-// forbids. In every error case the timed-out flag is set first if the error was a server timeout,
-// then the pipeline continues rather than returning the error.
+// definition call errored or returned an empty location set; or client.SupportsImplementation()
+// reports false or the implementation call errored. In every error case the timed-out flag is set
+// first if the error was a server timeout, then the pipeline continues rather than returning the
+// error.
 func callersFromClient(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position, timeout time.Duration, timedOut *bool, skipVerification bool) ([]Reference, []Reference, error) {
 	defCtx, defCancel := context.WithTimeout(ctx, timeout)
 	defLocs, defErr := client.Definition(defCtx, fileURI, pos)
@@ -107,16 +101,7 @@ func callersFromClient(ctx context.Context, client *lsp.Client, fileURI string, 
 
 	var matchSet map[locationKey]bool
 	if verify {
-		if !client.SupportsDocumentSymbol() {
-			verify = false
-		} else {
-			interfaceDecl, ok := classifyImplementations(ctx, client, implLocs, timeout, timedOut)
-			if !ok {
-				verify = false
-			} else {
-				matchSet = declarationMatchSet(defLocs, implLocs, interfaceDecl)
-			}
-		}
+		matchSet = declarationMatchSet(defLocs, implLocs)
 	}
 
 	referencesCtx, referencesCancel := context.WithTimeout(ctx, timeout)
@@ -175,51 +160,4 @@ func markRemainingUnattempted(outcomes []verificationOutcome, from int) {
 	for j := from; j < len(outcomes); j++ {
 		outcomes[j] = verificationOutcome{Attempted: false}
 	}
-}
-
-// classifyImplementations issues one textDocument/documentSymbol request per distinct file URI
-// among implLocs, bracketing the whole phase in one context.WithTimeout(ctx, timeout) — one
-// deadline for the phase, not one per file — and classifies each implLocs entry with
-// isInterfaceDeclaration. It reports ok = false, meaning the caller must skip verification rather
-// than narrow the match set on a degraded classification, when any per-file documentSymbol call
-// errors or returns an empty result, or when the phase's own deadline expires before every
-// distinct file is classified. timedOut is set when the triggering condition was itself a server
-// timeout or the phase deadline.
-func classifyImplementations(ctx context.Context, client *lsp.Client, implLocs []lsp.Location, timeout time.Duration, timedOut *bool) (map[locationKey]bool, bool) {
-	classifyCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	symbolsByURI := make(map[string][]lsp.DocumentSymbol)
-	for _, implLoc := range implLocs {
-		if _, done := symbolsByURI[implLoc.URI]; done {
-			continue
-		}
-
-		select {
-		case <-classifyCtx.Done():
-			*timedOut = true
-			return nil, false
-		default:
-		}
-
-		symbols, err := client.DocumentSymbols(classifyCtx, implLoc.URI)
-		if err != nil {
-			if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
-				*timedOut = true
-			}
-			return nil, false
-		}
-		if len(symbols) == 0 {
-			return nil, false
-		}
-		symbolsByURI[implLoc.URI] = symbols
-	}
-
-	interfaceDecl := make(map[locationKey]bool, len(implLocs))
-	for _, implLoc := range implLocs {
-		if isInterfaceDeclaration(symbolsByURI[implLoc.URI], implLoc.Range.Start) {
-			interfaceDecl[keyOf(implLoc)] = true
-		}
-	}
-	return interfaceDecl, true
 }

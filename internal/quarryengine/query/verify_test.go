@@ -110,80 +110,27 @@ func TestFilterVerifiedReferences(t *testing.T) {
 }
 
 // TestDeclarationMatchSet_Directional asserts declarationMatchSet returns every defLocs key plus
-// only those implLocs keys present in interfaceDecl.
+// only those implLocs keys that share a directory with a defLocs entry — package-scoped inclusion,
+// not classification by SymbolKind.
 func TestDeclarationMatchSet_Directional(t *testing.T) {
-	defLocs := []lsp.Location{loc("file:///a.go", 1, 1)}
+	defLocs := []lsp.Location{loc("file:///builder/poll.go", 1, 1)}
 	implLocs := []lsp.Location{
-		loc("file:///b.go", 2, 2), // classified as an interface declaration: included
-		loc("file:///c.go", 3, 3), // a concrete satisfier: excluded
-	}
-	interfaceDecl := map[locationKey]bool{
-		keyOf(implLocs[0]): true,
+		loc("file:///builder/poll.go", 2, 2), // same directory as defLocs: included
+		loc("file:///runner/tick.go", 3, 3),  // a different directory: excluded
 	}
 
-	got := declarationMatchSet(defLocs, implLocs, interfaceDecl)
+	got := declarationMatchSet(defLocs, implLocs)
 
 	if !got[keyOf(defLocs[0])] {
 		t.Error("declarationMatchSet() missing the definition-side key")
 	}
 	if !got[keyOf(implLocs[0])] {
-		t.Error("declarationMatchSet() missing the interface-classified implementation key")
+		t.Error("declarationMatchSet() missing the same-directory implementation key")
 	}
 	if got[keyOf(implLocs[1])] {
-		t.Error("declarationMatchSet() unexpectedly includes the concrete (non-interface) implementation key")
+		t.Error("declarationMatchSet() unexpectedly includes the different-directory implementation key")
 	}
 	if len(got) != 2 {
 		t.Errorf("declarationMatchSet() returned %d keys; want 2", len(got))
-	}
-}
-
-// TestIsInterfaceDeclaration covers each of the required classification cases: a position inside
-// an interface's method returns true, a position inside a concrete type's method returns false, a
-// position matching no symbol returns false, and a nested chain where the interface is an ancestor
-// rather than the innermost symbol returns true.
-func TestIsInterfaceDeclaration(t *testing.T) {
-	tree := []lsp.DocumentSymbol{
-		{
-			Name:  "clock",
-			Kind:  symbolKindInterface,
-			Range: lsp.Range{Start: lsp.Position{Line: 0, Character: 0}, End: lsp.Position{Line: 4, Character: 1}},
-			Children: []lsp.DocumentSymbol{
-				{
-					Name:  "Now",
-					Kind:  6, // method
-					Range: lsp.Range{Start: lsp.Position{Line: 1, Character: 2}, End: lsp.Position{Line: 1, Character: 20}},
-				},
-			},
-		},
-		{
-			Name:  "realClock",
-			Kind:  23, // struct
-			Range: lsp.Range{Start: lsp.Position{Line: 10, Character: 0}, End: lsp.Position{Line: 14, Character: 1}},
-			Children: []lsp.DocumentSymbol{
-				{
-					Name:  "(realClock).Now",
-					Kind:  6,
-					Range: lsp.Range{Start: lsp.Position{Line: 11, Character: 2}, End: lsp.Position{Line: 11, Character: 20}},
-				},
-			},
-		},
-	}
-
-	tests := []struct {
-		name string
-		pos  lsp.Position
-		want bool
-	}{
-		{name: "InsideInterfaceMethod_NestedAncestorIsInterface", pos: lsp.Position{Line: 1, Character: 5}, want: true},
-		{name: "InsideConcreteTypeMethod", pos: lsp.Position{Line: 11, Character: 5}, want: false},
-		{name: "NoSymbolMatches", pos: lsp.Position{Line: 100, Character: 5}, want: false},
-		{name: "InterfaceItselfAsInnermostMatch", pos: lsp.Position{Line: 3, Character: 0}, want: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isInterfaceDeclaration(tree, tt.pos); got != tt.want {
-				t.Errorf("isInterfaceDeclaration(tree, %+v) = %v; want %v", tt.pos, got, tt.want)
-			}
-		})
 	}
 }

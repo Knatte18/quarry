@@ -96,22 +96,27 @@ structurally identical, unrelated satisfiers declared independently in
 
 The seven raw `textDocument/references` locations listed above.
 
-`references-verified:` 7
+`references-verified:` 3
 
-Applying `mode: directional`'s filter by hand: the declaration match set is
-the position-level `textDocument/definition` result (`poll.go:13:2`) unioned
-with the `textDocument/implementation` result (`poll.go:21:18`,
-`tick.go:12:2`, `tick.go:20:18`, `wait.go:12:2`, `wait.go:20:18` — six
-locations total, directional mode crosses into `runner` and `sched`). Every
-one of the seven references' own logged per-reference definition result
-lands on a location in that six-location set, so none is dropped.
+Applying `declarationMatchSet`'s package-scoped filter by hand: the
+declaration match set is the position-level `textDocument/definition`
+result (`poll.go:13:2`, directory `builder`) unioned with only the
+`textDocument/implementation` locations whose own directory is also
+`builder` (`poll.go:21:18` — `tick.go:12:2`, `tick.go:20:18`, `wait.go:12:2`,
+and `wait.go:20:18` are excluded, their directories being `runner` and
+`sched`). Of the seven references' own logged per-reference definition
+results, three land on a location in that two-location set
+(`poll.go:13:2 -> poll.go:13:2`, `poll.go:33:11 -> poll.go:13:2`, and
+`poll.go:41:11 -> poll.go:21:18`); the remaining four resolve to `runner`'s
+or `sched`'s own interface or concrete declaration, neither of which is in
+the match set, so all four are dropped.
 
-`callers-verified:` 6
+`callers-verified:` 2
 
-`references-verified` (7) minus the declaration site the position-level
+`references-verified` (3) minus the declaration site the position-level
 `textDocument/definition` result names (`poll.go:13:2`, which is present in
 the reference list only because `includeDeclaration: true` puts it there):
-`7 - 1 = 6`. This is the figure batch 6's live test asserts against —
+`3 - 1 = 2`. This is the figure batch 6's live test asserts against —
 `assert-no-callers`'s reported `callers` list excludes every returned
 declaration by construction, so its count is `references-verified` minus
 the declaration count, not the raw `references-unfiltered` figure.
