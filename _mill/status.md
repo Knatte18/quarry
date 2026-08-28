@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r3
+phase: plan-fix-r3
 slug: impact-verb
 branch: impact-verb
 plan: _mill/plan
@@ -26,4 +26,5 @@ plan-fix-r1  '2026-08-28T09:19:58Z'
 plan-review-r2  '2026-08-28T09:26:59Z'
 plan-fix-r2  '2026-08-28T09:27:01Z'
 plan-review-r3  '2026-08-28T09:34:21Z'
+plan-fix-r3  '2026-08-28T09:34:23Z'
 ```

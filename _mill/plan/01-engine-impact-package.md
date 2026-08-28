@@ -255,8 +255,8 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   already cached, return `ctx.Err()` if it is non-nil.
   The definition-side lookup is deliberately **not** cancellation-checked: it is a single parse of
   one file, performed once before the loop, whereas the loop's cost grows with the caller file
-  count — which is the unbounded quantity the `parse-loop-cancellation-and-timeout-scope` Shared
-  Decision scopes the check to.
+  count — which is the unbounded quantity the `parse-loop-cancellation-scope` Shared Decision scopes
+  the check to.
   Adding a second check there would guard a bounded cost while implying a granularity the backend
   cannot deliver.
   Do not attempt to interrupt a parse already in flight, and do not thread a deadline into
@@ -300,9 +300,13 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   not match.
 
   Add file-level tests for the card 4 parse cache against the card 1 fixture tree, resolving the
-  repo root from the test file's own location the way
-  `internal/cli/assertnocallers_lsp_test.go`'s `repoRoot` helper does, rather than from a working
-  directory. Assert: the Go fixture's `ApplyDiscount` resolves from a line inside its body to a
+  repo root from the test file's own location rather than from a working directory.
+  Borrow the *technique* `internal/cli/assertnocallers_lsp_test.go`'s `repoRoot` helper uses —
+  `runtime.Caller(0)` walked up with `filepath.Dir` — but not its literal body: that helper hard-codes
+  three `filepath.Dir` calls because it sits two directories below the repo root, while this test
+  file sits three below and needs four.
+  Count the depth from this file's own location; do not copy the call count.
+  Assert: the Go fixture's `ApplyDiscount` resolves from a line inside its body to a
   symbol whose `Start` is its docstring's first line and strictly less than its `func` line; a line
   at the package-level `var` in that same file resolves to no enclosing symbol; a nonexistent path
   yields a resolver error; the TypeScript fixture yields a resolver error naming an unsupported

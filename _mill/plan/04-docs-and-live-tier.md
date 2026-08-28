@@ -181,10 +181,29 @@ the pipeline checks at all.
 
   Do not add a second `repoRoot` or daemon-reaping helper: both already exist in this package's
   `lsp`-tagged tier and are reachable from a new file in the same package and under the same build
-  tag.
+  tag, at the same directory depth, so their bodies apply unchanged.
+  That reuse rule covers those two helpers only — the position-scanning helper below is genuinely
+  new and must be added, since the existing one matches a different declaration shape.
 
-  Drive `impact` against the fixture's `ApplyDiscount` method through the CLI seam and decode the
-  JSON envelope. Assert: the envelope carries `ok:true` and `"resolution":"complete"`; `target`
+  **Query form — pinned, not left to the implementer.** Drive `impact` with an explicit
+  `file:line:col` position, never a bare symbol name.
+  `workspace/symbol` resolution of a Go method is fragile: gopls reports the method under a
+  receiver-qualified name, so a bare `ApplyDiscount` argument can resolve to zero candidates or to
+  several, turning a real regression and a resolution quirk into the same red test.
+  The existing live-tier test takes the position route for the same reason, which is what "follow it
+  exactly" means here.
+
+  Locate the position by scanning the fixture source for the method's declaration line and taking
+  the column of the method name, exactly as `findInterfaceMethodPosition` scans rather than
+  hard-coding a line number.
+  Add a **new** scan helper for this, with its own name — do not reuse
+  `findInterfaceMethodPosition`, whose pattern matches a bare interface-method line (no `func`
+  keyword, no receiver) and will not match a receiver-method declaration.
+  The new helper's pattern must match a Go method declaration carrying a receiver and capture the
+  method name, and it must fail the test loudly when no match is found, the way the existing helper
+  does.
+
+  Drive that position through the CLI seam and decode the JSON envelope. Assert: the envelope carries `ok:true` and `"resolution":"complete"`; `target`
   names the method by its bare name with its owner and package; `definition` carries a `start_line`
   strictly less than its `line`, proving the definition range reaches back over the docstring;
   the `callers` array contains one entry per call site in the calling package, including **two**

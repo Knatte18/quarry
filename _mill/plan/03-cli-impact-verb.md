@@ -20,6 +20,19 @@ It is one batch because the command, its registration, and the table that mechan
 flag set are a single reviewable unit — the table's second loop is what turns the Scope "Out" claim
 that `impact` gains no `--no-verify` flag from prose into a check.
 
+Batch-local decision on file placement, recorded because it deviates from `discussion.md`:
+that document's `cli-shape-mirrors-refs` decision places `impactCommand()` in `internal/cli/cli.go`,
+alongside the four existing commands.
+This plan puts it in a new `internal/cli/impact.go` instead, together with the three `impact`-typed
+helpers, following `internal/cli/toc.go`'s established precedent of giving a verb group its own file
+plus the helpers only it uses.
+The reason is size and blast radius: `internal/cli/cli.go` is already 972 lines, the new command and
+its three helpers add a comparable block again, and card 11 must make three surgical doc edits to
+that same file — keeping the new code out of it makes both diffs reviewable.
+Nothing else about `cli-shape-mirrors-refs` changes: the command's shape, flags, query construction,
+batch behaviour, and exit-code contract all follow `refsCommand` exactly as that decision requires.
+This is a recorded deviation, not drift.
+
 Batch-local decision beyond `## Shared Decisions`: `buildQuery` is *not* a shared helper to call.
 It is a per-command local closure, duplicated today at both `refsCommand` and `definitionCommand`,
 so `impactCommand` re-creates it the same way. That closure is what makes `--in-file` compose with
@@ -55,15 +68,24 @@ end-to-end claim is proved by the live-tier test in batch 4.
   path, and a batch path through the existing `runBatch`, symbol-keyed.
   Register exactly six flags, matching `refsCommand`'s set: `--target-dir`, `--lang`, `--timeout`
   (default `30*time.Second`), `--in-file`, `--within`, and `--build-tags`.
-  Copy `refsCommand`'s help strings for five of them, but **not** for `--timeout`: copy
-  `assertNoCallersCommand`'s wording for that one — "deadline for each LSP request phase
-  (initialize, resolve, references/definition)".
+  Copy `refsCommand`'s help strings verbatim for four of them — `--target-dir`, `--lang`,
+  `--in-file`, and `--build-tags`. Two are exempt and need their own wording.
+
+  `--timeout`: copy `assertNoCallersCommand`'s wording instead — "deadline for each LSP request
+  phase (initialize, resolve, references/definition)".
   `refsCommand`'s narrower "(initialize, resolve, references)" would be false here, because
   `impact` goes through `query.Callers`, which also runs a definition phase, an implementation
   phase, and a per-reference verification phase — the same phase set `assert-no-callers` already
   describes with the wider wording.
   The help string must not name the tree-sitter parse phase either, since `--timeout` deliberately
   does not cover it.
+
+  `--within`: `refsCommand`'s text reads "restrict results to references whose file lies within this
+  directory", which is false on this verb — here the flag filters the **caller list only** and
+  leaves `target` and `definition` untouched, exactly as `filterImpactWithin` below requires.
+  Word it as restricting the reported callers to those whose file lies within this directory
+  (relative to `--target-dir`, or absolute), and keep a pointer to the interface-method conflation
+  note in the Long help, which is the reason the flag is useful here.
   Register no `--no-verify` flag and never set `SkipVerification` — that flag is
   `assert-no-callers`-only.
 
@@ -81,10 +103,13 @@ end-to-end claim is proved by the live-tier test in batch 4.
   only, never the tree-sitter parse phase.
 
   Add `emitImpactResult(ctx context.Context, out io.Writer, result quarry.ImpactResult, err error)`,
-  reproducing `emitLookupResult`'s three-way error routing verbatim and in the same order, with no
-  fourth branch: an `*quarry.ErrAmbiguousSymbol` matched via `errors.As` emits `candidates` through
-  `output.Ok` and forces exit 2; `quarry.ErrSymbolNotFoundSentinel` matched via `errors.Is` and
-  every other error go to `output.Err`'s exit 1.
+  reproducing `emitLookupResult`'s error routing and its order, adding no branch of its own.
+  Note the branch count differs between the two helpers and the card is precise about which is
+  which: `emitLookupResult` has **two** error paths — an `*quarry.ErrAmbiguousSymbol` matched via
+  `errors.As` emits `candidates` through `output.Ok` and forces exit 2, and every other error
+  (including `quarry.ErrSymbolNotFoundSentinel`, which it deliberately does not special-case) falls
+  through to `output.Err`'s hardcoded exit 1.
+  Reproduce exactly those two, in that order.
   On success, marshal the result through the existing `structToFields` helper, add
   `"resolution": "complete"` to the returned map, and emit it through `output.Ok`.
   A `structToFields` failure is itself an `output.Err` exit 1 — but not with that helper's own
@@ -97,9 +122,15 @@ end-to-end claim is proved by the live-tier test in batch 4.
   same message.
 
   Add `classifyImpactError(err error, result quarry.ImpactResult) (batchStatus, map[string]any)`,
-  the batch-mode counterpart, preserving `classifyLookupError`'s same three-way routing and order:
-  `statusAmbiguous` with `candidates`, `statusNotFound` with no extra fields, and `statusError` with
-  an `error` field, plus `statusFound` carrying the marshalled result and the same
+  the batch-mode counterpart. This one genuinely has **three** error branches, unlike
+  `emitImpactResult`'s two, because batch mode must distinguish `not_found` from `error` in the
+  status vocabulary where the single-argument shape collapses both onto exit 1.
+  Preserve `classifyLookupError`'s routing and order exactly: `*quarry.ErrAmbiguousSymbol` via
+  `errors.As` → `statusAmbiguous` with `candidates`; `quarry.ErrSymbolNotFoundSentinel` via
+  `errors.Is` → `statusNotFound` with no extra fields; anything else → `statusError` with an `error`
+  field.
+  Add no fourth branch and do not reorder the three.
+  The nil-error branch yields `statusFound` carrying the marshalled result and the same
   `"resolution": "complete"` marker each found entry gets today.
 
   Add `filterImpactWithin(result quarry.ImpactResult, within, baseDir string) quarry.ImpactResult`,
