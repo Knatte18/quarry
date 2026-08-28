@@ -48,7 +48,9 @@ batches:
     commit_sha: ed14849afa97dbffa3d529bbd7af8941c8e3eece
     verify_baseline_failures: []
   - name: registry-build-tag-template
-    state: pending
+    state: running
+    implementer_session: 6f424e67-f33c-4be3-9ebd-0e7af3e80810
+    start_sha: 13113478c0f74d826348f233965a85cd983b0b20
     verify_baseline_failures: []
   - name: initialization-options-plumbing
     state: pending
