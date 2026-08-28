@@ -557,19 +557,27 @@ these two exit-1 cases apart. Exit 2: the symbol name was ambiguous (more than
 one workspace/symbol candidate) — the envelope carries "candidates", exactly
 as refs/definition already report ambiguity.
 
-Use --within <dir> when checking an interface method. gopls' references for
-an interface method conservatively include every method matching that
-name+signature across every structurally-compatible interface anywhere in
-the workspace — not just calls through the interface value you're actually
-checking. Without --within, that means checking an interface method can
-report an unrelated, structurally-identical interface elsewhere in the repo
-as a false "violation" (e.g. two unrelated local "type clock interface {
-Now() time.Time }" declarations in different packages). --within <dir>
-restricts the caller search to references whose file lies within <dir>
-(relative to --target-dir, or absolute) before --except is applied, so a
-check already known to be scoped to one package's own interface stays
-correct. This has no effect on plain functions/methods with no interface
-involved — only interface methods are at risk of this conflation.`,
+--within <dir> is an ordinary optional scoping filter: it restricts the
+caller search to references whose file lies within <dir> (relative to
+--target-dir, or absolute), before --except is applied. Useful when you
+already know the callers you care about live under one directory and want
+to narrow the search, but not required for a correct interface-method
+check — see below.
+
+gopls' references for an interface method conservatively include every
+method matching that name+signature across every structurally-compatible
+interface anywhere in the workspace — not just calls through the interface
+value you're actually checking (e.g. two unrelated local "type clock
+interface { Now() time.Time }" declarations in different packages). By
+default, assert-no-callers filters that conservative set itself: it
+resolves each candidate reference's own definition and keeps only those
+that resolve back to the queried symbol's declaration, so the reported
+callers are precise without needing --within to scope away the noise.
+
+--no-verify reinstates the older, noisier behaviour that reports every
+gopls reference unfiltered by declaration, including the interface-method
+conflation above. --no-verify is assert-no-callers-only: refs, definition,
+and symbol are unchanged by this task and gain no verification flag.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -656,7 +664,7 @@ involved — only interface methods are at risk of this conflation.`,
 	cmd.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references/definition)")
 	cmd.Flags().StringArrayVar(&except, "except", nil, "file path allowed to reference the symbol without failing the check (repeatable)")
-	cmd.Flags().StringVar(&within, "within", "", "restrict the caller search to references whose file lies within this directory (relative to --target-dir, or absolute) — required for a correct check on an interface method, see above")
+	cmd.Flags().StringVar(&within, "within", "", "optional: restrict the caller search to references whose file lies within this directory (relative to --target-dir, or absolute), applied before --except")
 	cmd.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
 	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "skip per-caller definition verification (fail-closed by default: an unverifiable reference is kept as a violation rather than dropped); assert-no-callers only")
 
