@@ -82,7 +82,9 @@ batches:
     commit_sha: edbb08971428ce7365b1aa96270e6820f6163848
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: doc-sentences-config
-    state: pending
+    state: running
+    implementer_session: 08d214fb-9d26-4464-b374-4e12d63bb142
+    start_sha: 1e33a1fa5aca96a02b5e160358f483d3fd53b2c7
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: docs-and-sweep
     state: pending
