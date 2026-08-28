@@ -4,6 +4,10 @@
 // designed-but-unimplemented language, nonexistent path, invalid UTF-8, and a partial parse). Every
 // fixture is written into a t.TempDir(), since TOCFile is the first code in this package that
 // touches disk.
+//
+// It also covers TOCDir: single-level listing and ordering, per-file language resolution and
+// langOverride restriction, the Error/Partial mutual-exclusion invariant, and every per-file failure
+// route, over directories built in a t.TempDir().
 
 package toc
 
@@ -371,5 +375,356 @@ func TestTOCFile_PartialParseReturnsSurvivingSymbols(t *testing.T) {
 	}
 	if len(got.Symbols) == 0 {
 		t.Error("len(Symbols) = 0; want the surviving symbols returned")
+	}
+}
+
+// writeDirFile writes content to name inside dir.
+func writeDirFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(%q, ...) failed: %v", path, err)
+	}
+}
+
+// entryByName returns the DirEntry named name from files, failing the test if it is absent.
+func entryByName(t *testing.T, files []DirEntry, name string) DirEntry {
+	t.Helper()
+	for _, f := range files {
+		if f.Name == name {
+			return f
+		}
+	}
+	t.Fatalf("no DirEntry named %q in %+v", name, files)
+	return DirEntry{}
+}
+
+// TestTOCDir_MixedDirectoryOrdering asserts a mixed directory holding Go, Python, and C# files
+// produces one list, each entry carrying its own resolved language, and Files in lexicographic order
+// by base filename regardless of creation order.
+func TestTOCDir_MixedDirectoryOrdering(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "zebra.go", "package p\n\nfunc F() {}\n")
+	writeDirFile(t, dir, "apple.py", "def f():\n    pass\n")
+	writeDirFile(t, dir, "middle.cs", "namespace N { class C {} }\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir(%q, \"\") returned error: %v", dir, err)
+	}
+	if len(got.Files) != 3 {
+		t.Fatalf("len(Files) = %d; want 3", len(got.Files))
+	}
+	wantOrder := []string{"apple.py", "middle.cs", "zebra.go"}
+	for i, name := range wantOrder {
+		if got.Files[i].Name != name {
+			t.Errorf("Files[%d].Name = %q; want %q", i, got.Files[i].Name, name)
+		}
+	}
+	if entryByName(t, got.Files, "zebra.go").Language != "go" {
+		t.Error("zebra.go Language != go")
+	}
+	if entryByName(t, got.Files, "apple.py").Language != "python" {
+		t.Error("apple.py Language != python")
+	}
+	if entryByName(t, got.Files, "middle.cs").Language != "csharp" {
+		t.Error("middle.cs Language != csharp")
+	}
+}
+
+// TestTOCDir_SubdirectoryNotListedNotRecursed asserts a subdirectory is skipped entirely, never
+// listed and never descended into.
+func TestTOCDir_SubdirectoryNotListedNotRecursed(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "top.go", "package p\n")
+	subdir := filepath.Join(dir, "sub")
+	if err := os.Mkdir(subdir, 0o755); err != nil {
+		t.Fatalf("os.Mkdir(%q) failed: %v", subdir, err)
+	}
+	writeDirFile(t, subdir, "nested.go", "package p\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
+	}
+	if got.Files[0].Name != "top.go" {
+		t.Errorf("Files[0].Name = %q; want %q", got.Files[0].Name, "top.go")
+	}
+}
+
+// TestTOCDir_NonCodeFileNotListed asserts a file whose extension maps to no language never appears.
+func TestTOCDir_NonCodeFileNotListed(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "top.go", "package p\n")
+	writeDirFile(t, dir, "README.md", "# Title\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
+	}
+	if got.Files[0].Name != "top.go" {
+		t.Errorf("Files[0].Name = %q; want %q", got.Files[0].Name, "top.go")
+	}
+}
+
+// TestTOCDir_NoSupportedFileEmptyNonNilFilesNilError asserts a directory with no supported file
+// returns an empty, non-nil Files and a nil error.
+func TestTOCDir_NoSupportedFileEmptyNonNilFilesNilError(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "README.md", "# Title\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	if got.Files == nil {
+		t.Error("Files == nil; want empty, non-nil slice")
+	}
+	if len(got.Files) != 0 {
+		t.Errorf("len(Files) = %d; want 0", len(got.Files))
+	}
+}
+
+// TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty asserts a directory holding only
+// unimplemented-language files returns a non-empty Files, each entry carrying Error and no Header,
+// and a nil directory-level error.
+func TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "main.rs", "fn main() {}\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
+	}
+	entry := got.Files[0]
+	if entry.Error == "" {
+		t.Error("Error is empty; want it set for an unimplemented language")
+	}
+	if entry.Header != "" {
+		t.Errorf("Header = %q; want empty", entry.Header)
+	}
+}
+
+// TestTOCDir_HeaderFirstParagraphOnly asserts a file with a multi-paragraph header gets Header set
+// to its first paragraph only.
+func TestTOCDir_HeaderFirstParagraphOnly(t *testing.T) {
+	dir := t.TempDir()
+	src := "// First paragraph line one.\n" +
+		"//\n" +
+		"// Second paragraph must not appear.\n" +
+		"package p\n"
+	writeDirFile(t, dir, "doc.go", src)
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	want := "First paragraph line one."
+	if got.Files[0].Header != want {
+		t.Errorf("Header = %q; want %q", got.Files[0].Header, want)
+	}
+}
+
+// TestTOCDir_PackagePerFileOmittedForPython asserts a Go and a C# file each carry their own package
+// or namespace name, and a Python file in the same listing has Package empty (and hence the key
+// omitted).
+func TestTOCDir_PackagePerFileOmittedForPython(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "a.go", "package mypkg\n\nfunc F() {}\n")
+	writeDirFile(t, dir, "b.cs", "namespace MyNamespace { class C {} }\n")
+	writeDirFile(t, dir, "c.py", "def f():\n    pass\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	if p := entryByName(t, got.Files, "a.go").Package; p != "mypkg" {
+		t.Errorf("a.go Package = %q; want %q", p, "mypkg")
+	}
+	if p := entryByName(t, got.Files, "b.cs").Package; p != "MyNamespace" {
+		t.Errorf("b.cs Package = %q; want %q", p, "MyNamespace")
+	}
+	if p := entryByName(t, got.Files, "c.py").Package; p != "" {
+		t.Errorf("c.py Package = %q; want empty", p)
+	}
+}
+
+// TestTOCDir_TestPointerAndOmission asserts a Go test-suffixed file gets Test pointing to true, and
+// a C# file (a language with no test-file rule) gets a nil Test pointer — the omission case, which
+// must be asserted as nil rather than as false.
+func TestTOCDir_TestPointerAndOmission(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "foo_test.go", "package p\n\nfunc TestFoo(t *testing.T) {}\n")
+	writeDirFile(t, dir, "bar.cs", "namespace N { class C {} }\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	goEntry := entryByName(t, got.Files, "foo_test.go")
+	if goEntry.Test == nil || !*goEntry.Test {
+		t.Errorf("foo_test.go Test = %v; want pointer to true", goEntry.Test)
+	}
+	csEntry := entryByName(t, got.Files, "bar.cs")
+	if csEntry.Test != nil {
+		t.Errorf("bar.cs Test = %v; want nil (the omission case)", csEntry.Test)
+	}
+}
+
+// TestTOCDir_GeneratedPointerAndHeaderAfterBanner asserts a generated Go file gets Generated
+// pointing to true, and Header is the block after the banner, not the banner itself.
+func TestTOCDir_GeneratedPointerAndHeaderAfterBanner(t *testing.T) {
+	dir := t.TempDir()
+	src := "// Code generated by mockgen. DO NOT EDIT.\n" +
+		"\n" +
+		"// Real header text.\n" +
+		"package p\n"
+	writeDirFile(t, dir, "gen.go", src)
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	entry := entryByName(t, got.Files, "gen.go")
+	if entry.Generated == nil || !*entry.Generated {
+		t.Errorf("Generated = %v; want pointer to true", entry.Generated)
+	}
+	if entry.Header != "Real header text." {
+		t.Errorf("Header = %q; want %q", entry.Header, "Real header text.")
+	}
+}
+
+// TestTOCDir_UnreadableFileIsListedWithErrorOthersUnaffected asserts a file made unreadable via
+// chmod is still listed, with Error set and Header/Partial unset, while every other file in the
+// directory is unaffected. Skipped when running as a user for whom chmod 0000 has no effect (e.g.
+// root).
+func TestTOCDir_UnreadableFileIsListedWithErrorOthersUnaffected(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as a privileged user for whom chmod 0000 does not block reads")
+	}
+	dir := t.TempDir()
+	writeDirFile(t, dir, "readable.go", "package p\n\nfunc F() {}\n")
+	unreadablePath := filepath.Join(dir, "unreadable.go")
+	if err := os.WriteFile(unreadablePath, []byte("package p\n"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile(%q, ...) failed: %v", unreadablePath, err)
+	}
+	if err := os.Chmod(unreadablePath, 0o000); err != nil {
+		t.Fatalf("os.Chmod(%q, 0000) failed: %v", unreadablePath, err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unreadablePath, 0o644)
+	})
+
+	if _, err := os.ReadFile(unreadablePath); err == nil {
+		t.Skip("chmod 0000 did not block reads in this environment")
+	}
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	unreadable := entryByName(t, got.Files, "unreadable.go")
+	if unreadable.Error == "" {
+		t.Error("unreadable.go Error is empty; want it set")
+	}
+	if unreadable.Header != "" || unreadable.Partial {
+		t.Errorf("unreadable.go Header=%q Partial=%v; want both unset", unreadable.Header, unreadable.Partial)
+	}
+	readable := entryByName(t, got.Files, "readable.go")
+	if readable.Error != "" {
+		t.Errorf("readable.go Error = %q; want empty, unaffected by the unreadable sibling", readable.Error)
+	}
+}
+
+// TestTOCDir_InvalidUTF8IsListedWithErrorNoPartial asserts a file whose bytes are not valid UTF-8 is
+// listed with Error set and Partial unset.
+func TestTOCDir_InvalidUTF8IsListedWithErrorNoPartial(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "bad.go", "package p\n\xff\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	entry := entryByName(t, got.Files, "bad.go")
+	if entry.Error == "" {
+		t.Error("Error is empty; want it set for invalid UTF-8")
+	}
+	if entry.Partial {
+		t.Error("Partial = true; want false")
+	}
+}
+
+// TestTOCDir_SyntaxErrorIsListedWithPartialNoError asserts a file with a syntax error is listed with
+// Partial true and Error empty, and that the two are never both set.
+func TestTOCDir_SyntaxErrorIsListedWithPartialNoError(t *testing.T) {
+	dir := t.TempDir()
+	src := "package p\n" +
+		"\n" +
+		"func Broken(\n" +
+		"\n" +
+		"func Recovered() {}\n"
+	writeDirFile(t, dir, "broken.go", src)
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	entry := entryByName(t, got.Files, "broken.go")
+	if !entry.Partial {
+		t.Error("Partial = false; want true")
+	}
+	if entry.Error != "" {
+		t.Errorf("Error = %q; want empty — Error and Partial are mutually exclusive", entry.Error)
+	}
+}
+
+// TestTOCDir_LangOverrideRestrictsListing asserts a langOverride of "python" on a mixed directory
+// lists only the Python files.
+func TestTOCDir_LangOverrideRestrictsListing(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "a.go", "package p\n")
+	writeDirFile(t, dir, "b.py", "def f():\n    pass\n")
+	writeDirFile(t, dir, "c.py", "def g():\n    pass\n")
+
+	got, err := TOCDir(dir, "python")
+	if err != nil {
+		t.Fatalf("TOCDir(dir, \"python\") returned error: %v", err)
+	}
+	if len(got.Files) != 2 {
+		t.Fatalf("len(Files) = %d; want 2", len(got.Files))
+	}
+	for _, f := range got.Files {
+		if f.Language != "python" {
+			t.Errorf("Files entry %q Language = %q; want python", f.Name, f.Language)
+		}
+	}
+}
+
+// TestTOCDir_LangOverrideOnUnimplementedLanguageListsWithErrorNoDirError asserts a langOverride of
+// "rust" on a directory holding Rust files lists those files with Error set, and the call itself
+// returns no error.
+func TestTOCDir_LangOverrideOnUnimplementedLanguageListsWithErrorNoDirError(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "main.rs", "fn main() {}\n")
+
+	got, err := TOCDir(dir, "rust")
+	if err != nil {
+		t.Fatalf("TOCDir(dir, \"rust\") returned error: %v", err)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
+	}
+	if got.Files[0].Error == "" {
+		t.Error("Error is empty; want it set for the unimplemented rust strategy")
 	}
 }
