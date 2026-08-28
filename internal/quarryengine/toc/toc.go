@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"unicode/utf8"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -115,4 +116,110 @@ func applyDocSentences(symbols []Symbol, docSentences int) {
 			symbols[i].Docstring = FirstSentences(symbols[i].Docstring, docSentences)
 		}
 	}
+}
+
+// TOCDir extracts a DirTOC from exactly one directory level of dir. It never recurses and never
+// descends into a subdirectory — a subdirectory entry is simply skipped.
+//
+// For each remaining entry, the language is resolved from its extension; an extension mapping to no
+// language skips the file entirely, so a Markdown or YAML file never appears. When langOverride is
+// non-empty, the listing is restricted to that language's extensions via
+// registry.ExtensionsForLanguage, rather than reinterpreting every other file under the override.
+//
+// The surviving entries are sorted lexicographically by base filename with an explicit sort.Slice,
+// never left in os.ReadDir's own order.
+//
+// Error and Partial are mutually exclusive by construction: Partial is only ever set on the route
+// that actually parsed the file through treesitter.WithTree. A language with no registered
+// Strategy, an unreadable file, and invalid UTF-8 all set Error instead and leave Header and Partial
+// unset — the file is still listed, never skipped, and still counts as a code file for the
+// empty-directory question: a directory holding only unimplemented-language files returns a
+// non-empty Files, not an empty one.
+//
+// A directory containing no file with a supported extension returns a DirTOC whose Files is an
+// empty, non-nil slice and a nil error — a true answer to "what code is in here", not a failure.
+//
+// TOCDir imposes no file-size cap: parse cost is linear and the runtime enforces its own work
+// budgets, so a pathological file surfaces as a slow parse or as Partial, never as a special-cased
+// refusal.
+//
+// TOCDir takes no Options: it emits headers, never docstrings, so the doc-sentences policy has
+// nothing to affect here — that asymmetry with TOCFile is deliberate, not an oversight.
+func TOCDir(dir string, langOverride string) (DirTOC, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return DirTOC{}, fmt.Errorf("toc: read dir %s: %w", dir, err)
+	}
+
+	var allowedExts map[string]bool
+	if langOverride != "" {
+		exts := registry.ExtensionsForLanguage(langOverride)
+		allowedExts = make(map[string]bool, len(exts))
+		for _, ext := range exts {
+			allowedExts[ext] = true
+		}
+	}
+
+	result := DirTOC{Files: []DirEntry{}}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		base := entry.Name()
+		lang, ok := registry.LanguageForExtension(filepath.Ext(base))
+		if !ok {
+			continue
+		}
+		if allowedExts != nil && !allowedExts[filepath.Ext(base)] {
+			continue
+		}
+		result.Files = append(result.Files, buildDirEntry(dir, base, lang))
+	}
+
+	sort.Slice(result.Files, func(i, j int) bool {
+		return result.Files[i].Name < result.Files[j].Name
+	})
+
+	return result, nil
+}
+
+// buildDirEntry builds one DirEntry for base (a file's base name inside dir), already resolved to
+// lang. See TOCDir's doc comment for the Error/Partial mutual-exclusion invariant this function
+// upholds.
+func buildDirEntry(dir, base, lang string) DirEntry {
+	entry := DirEntry{Name: base, Language: lang}
+
+	strategy, ok := StrategyFor(lang)
+	if !ok {
+		entry.Error = quarryengine.ErrLanguageUnsupported.Error()
+		return entry
+	}
+
+	path := filepath.Join(dir, base)
+	src, err := os.ReadFile(path)
+	if err != nil {
+		entry.Error = err.Error()
+		return entry
+	}
+	if !utf8.Valid(src) {
+		entry.Error = fmt.Sprintf("toc: %s: not valid UTF-8", path)
+		return entry
+	}
+
+	err = treesitter.WithTree(lang, src, func(root *ts.Node, partial bool) error {
+		entry.Partial = partial
+		entry.Package = strategy.Package(root, src)
+		entry.Header = FirstParagraph(strategy.Header(root, src))
+		if isTest, known := strategy.TestFile(base); known {
+			entry.Test = &isTest
+		}
+		if generated, known := strategy.Generated(root, src); known {
+			entry.Generated = &generated
+		}
+		return nil
+	})
+	if err != nil {
+		entry.Error = err.Error()
+	}
+	return entry
 }
