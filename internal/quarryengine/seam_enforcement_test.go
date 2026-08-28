@@ -99,9 +99,11 @@ func TestEngineSeamInvariant_BannedImports(t *testing.T) {
 
 	// A package added later and silently skipped by this walk must not let the guard go green
 	// by finding nothing to check against it: internal/quarryengine itself, lsp, registry,
-	// daemon, daemon/daemontest, and query is six, quarry/ makes seven, so six is the floor a
-	// correctly-widened walk always clears.
-	const minPackageDirs = 6
+	// daemon, daemon/daemontest, query, treesitter, and toc is eight, quarry/ makes nine — this
+	// walk covers both trees, unlike layering_test.go's engine-only walk, so its floor is
+	// deliberately kept one below the real count (8, not 9) rather than raised to match it
+	// exactly.
+	const minPackageDirs = 8
 	if len(visitedDirs) < minPackageDirs {
 		t.Fatalf("walk visited %d distinct directories; want at least %d, proving the walk actually covers the whole engine tree rather than silently skipping a package", len(visitedDirs), minPackageDirs)
 	}
