@@ -135,11 +135,11 @@ func pythonDeclSymbol(kind Kind, name, owner string, decl, outer *ts.Node, src [
 // inside a docstring's code example is not preserved, for Python no more and no less than for the
 // other two languages.
 func pythonDocstring(body *ts.Node, src []byte) string {
-	if body == nil || body.NamedChildCount() == 0 {
+	if body == nil {
 		return ""
 	}
-	first := body.NamedChild(0)
-	if first.Kind() != "expression_statement" || first.NamedChildCount() != 1 {
+	first := pythonFirstStatement(body)
+	if first == nil || first.Kind() != "expression_statement" || first.NamedChildCount() != 1 {
 		return ""
 	}
 	str := first.NamedChild(0)
@@ -151,6 +151,20 @@ func pythonDocstring(body *ts.Node, src []byte) string {
 		return ""
 	}
 	return StripLineComment(NodeText(content, src), "")
+}
+
+// pythonFirstStatement returns body's first named child that is not a "comment" node, or nil when
+// body has none. A leading comment — a shebang or a PEP 263 coding line at the module root, or a
+// stray comment at the top of a def's block — is not a statement, so it must not be mistaken for
+// the docstring candidate the way a bare NamedChild(0) would.
+func pythonFirstStatement(body *ts.Node) *ts.Node {
+	for i := uint(0); i < body.NamedChildCount(); i++ {
+		c := body.NamedChild(i)
+		if c.Kind() != "comment" {
+			return c
+		}
+	}
+	return nil
 }
 
 // pythonStringContent returns str's (a "string" node) "string_content" child — the text between its
