@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-sweep
+phase: holistic-reviewing
 slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-toc-entry-points  '2026-08-28T07:06:46Z'
 approved-facade-and-cli  '2026-08-28T07:13:26Z'
 approved-doc-sentences-config  '2026-08-28T07:19:24Z'
 approved-docs-and-sweep  '2026-08-28T07:27:07Z'
+holistic-reviewing  '2026-08-28T07:27:32Z'
 ```
 
 ## Batches
