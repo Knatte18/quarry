@@ -60,6 +60,8 @@ batches:
     commit_sha: a748432f7274978119f7a8f827cf18f7532f3cfe
     verify_baseline_failures: []
   - name: docs-and-live-tier
-    state: pending
+    state: running
+    implementer_session: 02a538b1-5d9f-4b25-908e-e4d8a388e8b6
+    start_sha: e66d1034b65333e8ac51b6189552b557311bbb1d
     verify_baseline_failures: []
 ```
