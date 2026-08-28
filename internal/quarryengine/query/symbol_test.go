@@ -119,7 +119,7 @@ func TestSymbolFromClient_TwoCandidatesReturnsBothMatchesNotAmbiguous(t *testing
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -183,7 +183,7 @@ func TestSymbolFromClient_ZeroCandidatesReturnsErrSymbolNotFound(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -228,7 +228,7 @@ func TestSymbolFromClient_UnsupportedWorkspaceSymbolNeverSendsRequest(t *testing
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-initDone

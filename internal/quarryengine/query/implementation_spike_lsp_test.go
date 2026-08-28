@@ -134,7 +134,7 @@ func TestImplementationWidening_Spike(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	if err := client.Initialize(ctx, "file://"+fixtureRoot); err != nil {
+	if err := client.Initialize(ctx, "file://"+fixtureRoot, nil); err != nil {
 		t.Fatalf("client.Initialize(%s) returned unexpected error: %v", fixtureRoot, err)
 	}
 

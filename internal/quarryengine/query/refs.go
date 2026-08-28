@@ -77,10 +77,33 @@ type Options struct {
 	// per-language daemon.json, daemon.lock, and daemon.sock live.
 	// It is required and must be a usable absolute path.
 	// Populating it is entirely the caller's obligation.
+	//
+	// Because the supervised daemon is partitioned by StateDir alone, a
+	// caller that varies BuildTags while holding StateDir fixed has two tag
+	// sets served by one daemon and will get the other tag set's answers.
+	// internal/cli discharges this by appending a "tags-<hex>" segment to
+	// the resolved leaf; a facade or SDK caller must supply a distinct
+	// StateDir per distinct BuildTags value itself — the engine deliberately
+	// does not re-key the directory on the caller's behalf.
 	StateDir string
 	Lang     string
 	Query    Query
 	Timeout  time.Duration
+	// BuildTags is the normalized build-tag set to scope this query's
+	// language server to. The engine re-normalizes it defensively on entry
+	// (via registry.NormalizeBuildTags, in detectAndRender) rather than
+	// trusting the caller's normalization, because Options is public through
+	// the facade and an unnormalized value would otherwise fail silently —
+	// unlike StateDir, whose misuse fails loudly (the wrong daemon answers,
+	// or a stale one is reused) and which stays entirely the caller's
+	// obligation.
+	//
+	// BuildTags carries the same "populating it is entirely the caller's
+	// obligation" contract StateDir already does, for the same reason
+	// stated on StateDir above: a caller that varies BuildTags without also
+	// varying StateDir gets served by whichever daemon StateDir already
+	// points at, tag set mismatch and all.
+	BuildTags []string
 }
 
 // References resolves a query and returns every reference to it, sorted by file:line:character.
@@ -90,10 +113,36 @@ func References(ctx context.Context, opts Options) ([]Reference, error) {
 	})
 }
 
-// acquireConnection obtains a ready-to-use LSP client and its teardown kind.
-func acquireConnection(ctx context.Context, lang string, entry registry.Entry, opts Options) (*lsp.Client, daemon.ConnKind, error) {
+// detectAndRender detects opts.TargetDir's language and renders its
+// initializationOptions map for opts.BuildTags, defensively re-normalizing
+// the tag set (see Options.BuildTags's doc comment for why) rather than
+// trusting the caller already did. Both a detection failure and
+// registry.RenderInitializationOptions's quarryengine.ErrBuildTagsUnsupported
+// come back through the returned error unchanged, so a caller of this
+// function need not distinguish the two failure modes to propagate them
+// correctly.
+func detectAndRender(opts Options) (string, registry.Entry, map[string]any, error) {
+	lang, entry, err := registry.DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
+	if err != nil {
+		return "", registry.Entry{}, nil, err
+	}
+
+	tags := registry.NormalizeBuildTags(opts.BuildTags...)
+	initOptions, err := registry.RenderInitializationOptions(lang, entry, tags)
+	if err != nil {
+		return "", registry.Entry{}, nil, err
+	}
+
+	return lang, entry, initOptions, nil
+}
+
+// acquireConnection obtains a ready-to-use LSP client and its teardown kind. initOptions is the
+// already-rendered initializationOptions map (detectAndRender's result, nil for an untagged
+// query) — threaded to daemon.EnsureServer on the native-daemon path and to the legacy path's own
+// client.Initialize call below, unchanged either way.
+func acquireConnection(ctx context.Context, lang string, entry registry.Entry, opts Options, initOptions map[string]any) (*lsp.Client, daemon.ConnKind, error) {
 	if entry.HasNativeDaemon {
-		return daemon.EnsureServer(ctx, lang, entry, opts.TargetDir, opts.StateDir, opts.Timeout)
+		return daemon.EnsureServer(ctx, lang, entry, opts.TargetDir, opts.StateDir, opts.Timeout, initOptions)
 	}
 
 	client, err := lsp.NewClient(entry.Command)
@@ -113,7 +162,7 @@ func acquireConnection(ctx context.Context, lang string, entry registry.Entry, o
 
 	initCtx, initCancel := context.WithTimeout(ctx, opts.Timeout)
 	defer initCancel()
-	if err := client.Initialize(initCtx, rootURI); err != nil {
+	if err := client.Initialize(initCtx, rootURI, initOptions); err != nil {
 		// Mirror the existing timedOut-branching teardown logic exactly,
 		// just localized to this one failure instead of spanning the whole
 		// call: a timed-out server could re-block on the graceful shutdown
@@ -173,12 +222,12 @@ func teardownConnection(client *lsp.Client, kind daemon.ConnKind, timedOut bool)
 // connection down via teardownConnection's timedOut branch rather than its
 // normal-completion branch.
 func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position) ([]lsp.Location, error)) ([]Reference, error) {
-	lang, entry, err := registry.DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
+	lang, entry, initOptions, err := detectAndRender(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	client, kind, err := acquireConnection(ctx, lang, entry, opts)
+	client, kind, err := acquireConnection(ctx, lang, entry, opts, initOptions)
 	if err != nil {
 		// No deferred teardown needed here: acquireConnection already tears
 		// down any partial connection itself on its own error path.
