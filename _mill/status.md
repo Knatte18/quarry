@@ -61,7 +61,9 @@ batches:
     commit_sha: 97aa6711114b5c31bf83e5d0c9557cc12b5238bc
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: python-csharp-strategies
-    state: pending
+    state: running
+    implementer_session: 35816808-26b0-4d25-bf8b-ab1e4c312b14
+    start_sha: 06bce1aa4c422810cdc43c6534249d6b72512469
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: toc-entry-points
     state: pending
