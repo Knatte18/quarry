@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-// The six internal/quarryengine/... import paths this guard reasons about.
+// The seven internal/quarryengine/... import paths this guard reasons about.
 const (
 	rootPkg       = "github.com/Knatte18/quarry/internal/quarryengine"
 	lspPkg        = rootPkg + "/lsp"
@@ -25,6 +25,7 @@ const (
 	daemonPkg     = rootPkg + "/daemon"
 	daemontestPkg = daemonPkg + "/daemontest"
 	queryPkg      = rootPkg + "/query"
+	treesitterPkg = rootPkg + "/treesitter"
 )
 
 // layeringRow names the set of internal/quarryengine/... import paths a file belonging to pkgDir
@@ -65,6 +66,8 @@ var layeringTable = []layeringRow{
 	{pkgDir: "daemon/daemontest", isTestRow: true, allowed: pathSet(daemonPkg)},
 	{pkgDir: "query", isTestRow: false, allowed: pathSet(rootPkg, registryPkg, lspPkg, daemonPkg)},
 	{pkgDir: "query", isTestRow: true, allowed: pathSet(rootPkg, registryPkg, lspPkg, daemontestPkg)},
+	{pkgDir: "treesitter", isTestRow: false, allowed: pathSet(rootPkg)},
+	{pkgDir: "treesitter", isTestRow: true, allowed: pathSet(rootPkg)},
 }
 
 // allowedFor looks up the layeringTable row for pkgDir and isTestRow, reporting ok = false if no
