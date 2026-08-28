@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-live-tier
+phase: holistic-reviewing
 slug: impact-verb
 branch: impact-verb
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-engine-impact-package  '2026-08-28T09:52:33Z'
 approved-facade-reexports  '2026-08-28T09:55:04Z'
 approved-cli-impact-verb  '2026-08-28T10:01:26Z'
 approved-docs-and-live-tier  '2026-08-28T10:06:25Z'
+holistic-reviewing  '2026-08-28T10:06:41Z'
 ```
 
 ## Batches
