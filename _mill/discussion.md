@@ -55,12 +55,19 @@ into this task.
   the `var` block, add their round-trip assignments to `init()`, add the blank-identifier func-type
   assignment for `Impact`, and correct the stale "the fourteen blank-identifier assignments" and
   "twenty-one aliased types" counts in the surrounding comments.
-- Doc updates, enumerated precisely (each verified to exist at the stated site):
+- Doc updates. **The rule, not just the list:** update *every* comment, doc block, or hand-enumerated
+  test table that lists the engine package set or the verb set. Derive the sites from that rule —
+  do not grep for the phrase "seven-package DAG" and stop, which is how the list below was first
+  built and how it first missed sites that carry no such phrase. The verified sites under that rule
+  are:
   - `README.md` — the verb list, **and** line 17's "All four verbs accept `--build-tags`", which is
     already wrong today (it lists six verbs) and becomes wronger with a seventh.
-  - `internal/quarryengine/doc.go` — two separate stale enumerations: the "# The package layout"
-    section's "seven-package DAG" (line 50), **and** the engine/CLI-split paragraph's own package
-    list at lines 41-46, which enumerates the packages a second time outside that section.
+  - `internal/quarryengine/doc.go` — **four** edits, not two: the "# The package layout" section's
+    "seven-package DAG" (line 50); the engine/CLI-split paragraph's package list at lines 41-46; a
+    *third* package enumeration at lines 29-30 ("this package and its lsp, registry, daemon, query,
+    treesitter, and toc subpackages"), which carries no "seven-package" phrase and was missed by the
+    original grep; and the package-layout bullet list at lines 53-92, which needs a **new `impact`
+    bullet** describing the package and its allowed imports.
   - `quarry/facade.go`'s header comment — the second "seven-package DAG" occurrence (line 3).
   - `internal/cli/cli.go`'s package doc comment — enumerates every verb, the exit-code contract, and
     the per-verb batch identity key.
@@ -71,6 +78,14 @@ into this task.
   - `internal/quarryengine/layering_test.go` — the const block's "eight import paths" comment, the
     `layeringTable` comment enumerating the allowed directions, and the `minPackageDirs` comment
     enumerating the package directories.
+  - `internal/cli/cli_test.go` — `TestBuildTagsFlag_RegisteredOnAllFourVerbs` is a hand-enumerated
+    four-verb table (`refs`, `definition`, `symbol`, `assert-no-callers`). It must gain an `impact`
+    row, and its name and doc comment must be corrected off "AllFourVerbs". This is the same
+    silent-under-coverage category as `quarry/facade_test.go`: without the row, `impact`'s
+    `--build-tags` registration is untested, **and** the table's second loop — which asserts
+    `--no-verify` is registered on `assert-no-callers` alone — is the mechanical enforcement of the
+    Scope "Out" claim that `impact` gains no `--no-verify` flag. Adding the row is what makes that
+    claim actually checked rather than merely asserted in prose.
 
 **Out:**
 
@@ -136,12 +151,17 @@ into this task.
   also resolves the language from the file's own extension, so a caller file's language is handled
   per file with no extra plumbing. `DocSentences: 0` is used because `impact` emits no docstring
   text; per `toc.TOCFile`'s own contract, `Start`/`SigEnd`/`End` are never affected by that setting.
-- Rationale for the greatest-`Start` tie-break: Go's `Strategy.Symbols` never descends into a
-  function body, so nested closures cannot produce a false innermost match; but a grouped
-  `type ( ... )` declaration and other container shapes can produce genuinely overlapping ranges,
-  and the innermost is the useful answer. The rule is stated as a rule rather than left to slice
-  order because `Symbols` is documented as source-ordered by `Start`, which makes "last match wins"
-  and "greatest Start wins" equivalent — but only the latter survives a future ordering change.
+- Rationale for the greatest-`Start` tie-break: **class↔method nesting in Python and C#** is the
+  case that guarantees overlap. `pythonClassSymbols` (`internal/quarryengine/toc/python.go`) emits a
+  `KindType` Symbol spanning the whole class body *and* a `KindMethod` Symbol per method inside it,
+  so every line in a Python method is covered by two symbols; the method is the useful answer. Go's
+  `Strategy.Symbols` never descends into a function body, so nested closures cannot produce a false
+  innermost match there. Note a grouped Go `type ( ... )` declaration is **not** an overlap case —
+  `goGroupedTypeSymbol` computes each spec's range from the spec itself, never from the enclosing
+  `type_declaration`, so grouped specs are siblings, not nested. The rule is stated as a rule rather
+  than left to slice order because `Symbols` is documented as source-ordered by `Start`, which makes
+  "last match wins" and "greatest Start wins" equivalent — but only the latter survives a future
+  ordering change.
 - Rejected: a new tree-sitter walk inside `toc` — it would have to reimplement `CommentBlockAbove`'s
   docstring-association rule (see `docs/toc-docstring-association.md`) and could drift from it.
   Rejected: LSP `textDocument/documentSymbol` — its ranges do not include the preceding docstring,
@@ -326,9 +346,13 @@ into this task.
 ### cli-shape-mirrors-refs
 
 - Decision: `impactCommand()` in `internal/cli/cli.go` mirrors `refsCommand()`: same
-  cwd/target-dir/config/state-dir resolution via `CwdFrom` + `resolveContext` + `buildOptions`, the
-  same `buildQuery` seam (so `--in-file` composes with batch mode and a positional is never
-  position-parsed under `--in-file`), the same `--within` filter applied to the caller set, the
+  cwd/target-dir/config/state-dir resolution via `CwdFrom` + `resolveContext` + `buildOptions`, and
+  the same `buildQuery` closure *shape* — note `buildQuery` is not a shared helper to call: it is a
+  per-command local closure, duplicated today at both `refsCommand` and `definitionCommand`, so
+  `impact` re-creates it the same way (dispatching to `inFileQuery` when `--in-file` is set and
+  `parseQuery` otherwise, which is what makes `--in-file` compose with batch mode and keeps a
+  positional from ever being position-parsed under `--in-file`). Plus the same `--within` filter
+  applied to the caller set, the
   same `--build-tags` handling, `Args: cobra.MinimumNArgs(1)`, and batch mode via the existing
   `runBatch` (symbol-keyed).
 - Decision: exit-code contract identical to `refs`/`definition` — 0 found, 1 not found or engine
@@ -392,8 +416,13 @@ into this task.
   contract) alongside `target`, `definition`, and `callers`.
 - Decision: the full per-key disposition, stated exhaustively so the two degraded shapes above are
   actually emittable:
-  - **Envelope:** `ok`, `resolution`, `callers` always present (`callers` is an empty, non-nil array
-    when there are none). `target` and `definition` are `omitempty`.
+  - **Envelope, split by which layer owns each key.** Only `target`, `definition`, and `callers` are
+    struct-tag-fixed on `impact.Result`; `callers` is always present (an empty, non-nil array when
+    there are none) and `target`/`definition` are `omitempty`. `ok` and `resolution` are **not**
+    engine fields: `ok` is injected by `output.Ok`, and `resolution` is added CLI-side exactly as
+    `emitLookupResult` adds it for `refs`. Putting `resolution` on `impact.Result` would leak a
+    CLI-layer trust marker into `quarry.Impact`'s SDK contract and would violate the engine/CLI seam
+    the whole package layout exists to keep.
   - **`target` / caller identity fields** (`kind`, `name`, `owner`, `package`, `signature`): *all
     five* are `omitempty`. `kind` and `name` being omitempty is what makes a file-scope caller entry
     emittable — without it the entry emits `"kind":"","name":""`. A file-scope entry **does** keep
@@ -466,8 +495,15 @@ into this task.
     duplication is deliberate and forced by the seam, not an oversight to collapse later.
     Consequence, stated so the SDK contract is unambiguous: `quarry.Impact` returns a caller list
     that **already excludes** declaration sites.
-  - **`--within` is applied CLI-side**, over `impact`'s own entry type, by filtering on each entry's
-    `file` with the existing `isWithinDir` helper (which is type-agnostic — it takes two strings).
+  - **`--within` is applied CLI-side**, over `impact`'s own entry type. It reproduces
+    `filterWithin`'s *three* within-value normalization steps before any comparison — join onto the
+    resolved target directory when the flag value is relative, then `filepath.Abs`, then
+    `filepath.Clean` — and only then calls the existing type-agnostic `isWithinDir` helper (which
+    takes two strings) per entry. The normalization is load-bearing, not ceremony:
+    `filterWithin`'s own comment records the failure mode — every compared path is absolute, so an
+    un-normalized relative `--within internal/foo` makes `filepath.Rel` error and silently filters
+    **every** caller out, producing an empty-but-successful answer. Copying the helper's rule
+    without its normalization would reintroduce exactly that bug.
     Consequence: `quarry.Impact` is **not** `--within`-filtered; `--within` is a CLI flag with no
     engine option behind it.
 - `internal/cli/toc.go` — `structToFields` for struct→`map[string]any` marshalling.
@@ -505,8 +541,10 @@ into this task.
 - `toc`'s Go strategy never descends into a function body, so a func literal or a type declared
   inside a body is not a listable symbol. A call site inside a closure therefore resolves to the
   enclosing top-level function — which is the desired answer.
-- A grouped `type ( ... )` declaration produces one `Symbol` per spec, with ranges covering the spec
-  only, not the group. Overlaps are possible; the greatest-`Start` tie-break handles them.
+- A grouped Go `type ( ... )` declaration produces one `Symbol` per spec, with ranges covering the
+  spec only, never the group — so grouped specs do **not** overlap. The overlap that the
+  greatest-`Start` tie-break actually exists for is Python/C# class↔method nesting, where a class
+  Symbol spans every method Symbol inside it.
 - `FileTOC.Partial` is true when the parse hit a syntax error. Decide nothing new here: propagate
   nothing, but do not treat `Partial` as an error — a partial parse still yields usable ranges, and
   a missing enclosing symbol in a partial file degrades to the existing "no enclosing declaration"
@@ -552,9 +590,15 @@ Repo-root is not a stylistic preference: `layering_test.go` walks *every* `.go` 
 `internal/quarryengine/impact/testdata/` fails the guard with "no layering row declared". Cover: a Go file
 with a docstring'd method (assert `start_line` is the docstring line, not the `func` line); a file
 where the reference is at package scope; an unreadable path; a `.ts` file (unsupported language →
-per-entry error, no range). Assert the cache parses a file once when several call sites share it —
-the observable proxy is that the result is identical and the test does not need a parse counter if
-the design exposes one; otherwise inject a counting seam rather than asserting on timing.
+per-entry error, no range); and — the case the greatest-`Start` tie-break exists for — a **Python**
+fixture with a method inside a class, asserting a line inside the method resolves to the *method*,
+not the enclosing class. Go fixtures alone cannot exercise that rule, since Go produces no
+overlapping ranges.
+
+For the parse cache, **inject a counting seam** and assert the parse count is exactly one when
+several call sites share a file. This is the committed mechanism, not one of two options: identical
+results do not prove a single parse, so the identical-result proxy cannot establish the
+`per-call-parse-cache` decision's claim at all. Do not assert on timing.
 
 **`internal/quarryengine/impact` — the assembly step.** `Impact` itself needs the LSP, so test the
 assembly seam separately from the transport, the way `query`'s own `callersFromClient`/
@@ -576,7 +620,9 @@ code. Cover: the `ok`/`resolution` envelope; `callers: []` on zero callers; ambi
 `candidates` and `ok:true`; not-found → exit 1; batch mode with mixed statuses → worst-status exit
 code and per-entry `symbol`/`status` keys — and specifically that a batch entry's `symbol` key still
 holds the **query string**, with the identity object present as `target`, proving the `runBatch`
-merge-order collision is actually avoided; `--within` filtering; `--in-file` composing with batch
+merge-order collision is actually avoided; `--within` filtering with a **relative** flag value (not
+only an absolute one — a relative value is what an un-normalized filter silently turns into an empty
+result set); `--in-file` composing with batch
 mode; `--build-tags` on a language with no tag template → error, not a silent no-op.
 
 **`internal/cli` — live-tier test.** Add an `impact_lsp_test.go` guarded by `//go:build lsp` and
@@ -617,4 +663,10 @@ separately on a machine with gopls and is not part of the default verify.
 - **Q:** Where do the top-level `target` fields come from? **A:** [auto-pick] The same `toc.Symbol` the `definition` enclosing lookup found — never the query string, never the `workspace/symbol` candidate. **Why:** one provenance means one rule to implement and test, and it keeps `target` consistent with every caller entry's identity fields.
 - **Q:** Does `seam_enforcement_test.go`'s `minPackageDirs` need bumping too? **A:** [auto-pick] No. **Why:** its own comment records that the floor is deliberately one below the real count, so adding a package keeps it satisfied; only its stale comment enumerations need updating.
 - **Q:** Where do the Go test fixtures live? **A:** [auto-pick] Repo-root `testdata/impactfixture/`. **Why:** `layering_test.go` walks every `.go` file under `internal/quarryengine/` with no `testdata` exemption, so an in-package fixture directory fails the guard outright.
+- **Q:** Does `definition` get one degradation rule or two, given the caller side has a non-error "file-scope" outcome? **A:** [auto-pick] Three explicit outcomes — resolved / parsed-but-no-enclosing-symbol (no `error`) / parse-or-language failure (`error` present). **Why:** `toc.Kind` is function/method/type only, so a package-level `var` or `const` target genuinely lands in the middle case, and folding it into the error case would report a correct answer as a failure.
+- **Q:** What are the engine and facade type names? **A:** [auto-pick] `impact.Result`/`Target`/`Definition`/`Caller`/`Range`, aliased as `ImpactResult`/`ImpactTarget`/`ImpactDefinition`/`ImpactCaller`/`ImpactRange`. **Why:** `facade_test.go`'s enumerated blocks need exact identifiers, and the `TOC`-prefix convention already sets the pattern; `Target` matches the JSON key and avoids reading as a second `toc.Symbol`.
+- **Q:** Is the tree-sitter parse loop bounded by `--timeout`? **A:** [auto-pick] No — the loop checks `ctx.Done()` between files, and `--timeout` keeps its documented per-LSP-phase meaning. **Why:** `toc.TOCFile` takes no `ctx`, so a real deadline would mean changing a shared engine signature; a between-files check is the honest bound actually available, and silently widening `--timeout` would make its existing help text false.
+- **Q:** Which overlap case justifies the greatest-`Start` tie-break? **A:** [auto-pick] Python/C# class↔method nesting, not grouped Go type declarations. **Why:** `goGroupedTypeSymbol` ranges each spec from the spec itself, so grouped specs are siblings; only a class Symbol genuinely spans its method Symbols, which is also why the fixture set needs a Python case and not only Go ones.
+- **Q:** How is the parse cache asserted? **A:** [auto-pick] A counting seam, exactly one parse per distinct file. **Why:** identical results are consistent with N parses, so the identical-result proxy cannot prove the claim it was offered for.
+- **Q:** Round 5 approved but carried demoted findings, so the convergence gate did not fire — run round 6? **A:** [operator] No: fix all six findings and proceed to Handoff. **Why:** operator override of the gate, taken with severity trending monotonically down — 2 BLOCKING in round 2, none in rounds 3-5, with the last rounds producing only demotions and contract precision. Recorded here because it is a deliberate deviation from the gate, not a gate that passed.
 - **Q:** Absolute or caller-relative file paths in the output? **A:** [auto-pick] Absolute, matching `refs`/`definition`/`assert-no-callers`. **Why:** `toc dir`'s relative `path` exists so entries round-trip into `toc file`; `impact` has no such round-trip and consistency with the LSP-backed verbs wins.
