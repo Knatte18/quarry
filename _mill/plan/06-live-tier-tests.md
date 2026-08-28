@@ -85,6 +85,8 @@ It is one batch because both tests are the same shape — spawn a real gopls aga
 - **Edits:**
   - `internal/quarryengine/query/verify.go`
   - `internal/quarryengine/query/verify_test.go`
+  - `internal/quarryengine/query/callers.go`
+  - `internal/quarryengine/query/callers_test.go`
   - `docs/implementation-widening-spike.md`
 - **Creates:**
   - `internal/cli/assertnocallers_lsp_test.go`
