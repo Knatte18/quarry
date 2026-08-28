@@ -447,7 +447,6 @@ _Full union of every `Creates:` / `Edits:` / `Moves:` **target** path across eve
 - `internal/cli/tocconfig_test.go`
 - `internal/quarryengine/cgoguard.go`
 - `internal/quarryengine/cgoguard_nocgo.go`
-- `internal/quarryengine/cgoguard_test.go`
 - `internal/quarryengine/doc.go`
 - `internal/quarryengine/errors.go`
 - `internal/quarryengine/layering_test.go`

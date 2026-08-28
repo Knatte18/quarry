@@ -71,17 +71,27 @@ and it is the first `internal/quarryengine/...` package `go test ./...` reaches.
 - **Creates:**
   - `internal/quarryengine/cgoguard.go`
   - `internal/quarryengine/cgoguard_nocgo.go`
-  - `internal/quarryengine/cgoguard_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** add a build-tagged pair declaring one unexported package-level constant,
-  `cgoEnabled`. `cgoguard.go` carries `//go:build cgo` and sets it to `true`; `cgoguard_nocgo.go`
-  carries `//go:build !cgo` and sets it to `false`. Both files declare `package quarryengine` and
-  neither imports anything.
-  Add `TestCGOEnabled_BuildLinksC` in `cgoguard_test.go`, which calls `t.Fatal` with a message naming
-  `CGO_ENABLED=1` and the need for a C toolchain when `cgoEnabled` is false. The test must fail, never
-  skip — a skipped guard is exactly the green-run-against-an-unbuildable-binary outcome this exists to
-  prevent.
+- **Requirements:** make a `CGO_ENABLED=0` build fail at **compile time**, not only under `go test`.
+  `cgoguard_nocgo.go` carries `//go:build !cgo`, declares `package quarryengine`, imports nothing, and
+  contains a single package-level `var _ = <undeclared identifier>` whose identifier *is* the message:
+  `quarry_requires_CGO_ENABLED_1_with_a_C_toolchain`. The compiler then reports
+  `undefined: quarry_requires_CGO_ENABLED_1_with_a_C_toolchain` and stops, which is the readable
+  sentence this guard exists to produce.
+  `cgoguard.go` carries `//go:build cgo` and holds only the explanatory comment, so the pair reads as
+  a matched set and the `cgo` build carries no cost at all.
+  Verified before this plan was approved, in a throwaway module: under `CGO_ENABLED=0` both
+  `go build ./...` and `go vet ./...` fail with exactly that `undefined:` line, and under
+  `CGO_ENABLED=1` both succeed. Reproduce that check after writing the files.
+  **A `_test.go` assertion is deliberately not the mechanism.** A test only runs under `go test`, so a
+  `CGO_ENABLED=0` `go build ./...`, `go vet ./...` — which is this task's own top-level `verify`
+  command — or `go run` would sail past it and hit the raw linker error the guard is meant to replace.
+  The failure has to be a compile error to reach every one of those. Say that in the file's header
+  comment, since the undeclared identifier looks like a mistake until the reason is stated, and a
+  well-meaning cleanup that "fixes the build error" removes the guard entirely.
+  Do not add a `cgoEnabled` constant, and do not add a test file: under `!cgo` the package no longer
+  compiles, so any test guarding the same condition is unreachable exactly when it would matter.
   Both new production files must sit in the engine root package so they still compile when
   `CGO_ENABLED=0` makes every tree-sitter-importing package unbuildable. State that reasoning in
   `cgoguard.go`'s own file header comment, so the placement is not later "tidied" into the
@@ -241,12 +251,13 @@ and it is the first `internal/quarryengine/...` package `go test ./...` reaches.
 ## Batch Tests
 
 `verify: go test ./internal/quarryengine ./internal/quarryengine/treesitter ./internal/quarryengine/registry`
-covers exactly the three packages this batch touches: the engine root (the CGO guard test plus the
-layering and seam guards that walk the new package directory), the new `treesitter` package, and
+covers exactly the three packages this batch touches: the engine root (the layering and seam guards
+that walk the new package directory — the CGO guard is a compile error, not a test, so it is enforced
+by the build this command already performs rather than by an assertion), the new `treesitter` package, and
 `registry` with its new extension map. Nothing outside those three packages changes, so a wider run
 would only re-verify untouched code.
 
-New test files: `internal/quarryengine/cgoguard_test.go`,
+New test files:
 `internal/quarryengine/treesitter/treesitter_test.go`,
 `internal/quarryengine/registry/extension_test.go`. Modified:
 `internal/quarryengine/layering_test.go`.

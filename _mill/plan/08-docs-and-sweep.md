@@ -278,11 +278,20 @@ current claim about quarry. Historical research documents are not updated when t
   - `internal/quarryengine/layering_test.go`
   - `internal/quarryengine/seam_enforcement_test.go`
   - `docs/scout-vs-grep.md`
-- **Edits:** none
+- **Edits:**
+  - `quarry/facade_test.go`
+  - `internal/quarryengine/layering_test.go`
+  - `internal/quarryengine/seam_enforcement_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** verify the sweep invariant stated in this batch's scope actually holds, and report
+- **Requirements:** this card's write scope is **conditional**, which is why its `Edits:` list reads
+  differently from every other card's. The expected outcome is that it writes nothing: the sweep
+  confirms the invariant already holds. The three files listed above are the ones it is *authorised*
+  to correct if it does not — they belong to batches already landed and therefore unreachable by
+  amendment (see the routing rule below). Editing none of them is the normal result, not a skipped
+  step. Every other file the sweep touches is owned by a card in this batch and is corrected there.
+  Verify the sweep invariant stated in this batch's scope actually holds, and report
   the result. Where a stale site is found, route it by *when* its owner runs:
   - owned by an earlier card **in this batch** (47-53, none of which has landed yet at the point this
     card runs last): amend that card and let it carry the fix in its own commit;
