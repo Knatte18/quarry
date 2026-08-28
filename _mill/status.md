@@ -6,6 +6,7 @@ slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Improve gopls query precision (build tags + scoping)
 task_description: |
   Improve gopls query precision (build tags + scoping)
@@ -40,17 +41,25 @@ implementing  '2026-08-28T05:13:02Z'
 ```yaml
 batches:
   - name: lsp-implementation-and-spike
-    state: pending
+    state: running
+    implementer_session: bebd2108-1868-41a6-9edd-19b895196de4
+    start_sha: ff029064d2a00082ed3335a585ef6ac217859923
+    verify_baseline_failures: []
   - name: registry-build-tag-template
     state: pending
+    verify_baseline_failures: []
   - name: initialization-options-plumbing
     state: pending
+    verify_baseline_failures: []
   - name: callers-verification-entry-point
     state: pending
+    verify_baseline_failures: []
   - name: cli-surface
     state: pending
+    verify_baseline_failures: []
   - name: live-tier-tests
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-followups
     state: pending
 ```
