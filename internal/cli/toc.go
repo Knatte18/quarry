@@ -66,7 +66,39 @@ supported set — never the servers.yaml-backed registry key --lang means on ref
 Passing 2 or more positional arguments switches to batch mode: each path is looked up
 independently and the results are reported as one array under "results", each entry keyed by
 "path" rather than by symbol name, with a per-entry "status" of "found", "not_found", or "error".
-The process exit code is set to the worst status present across the batch.`,
+The process exit code is set to the worst status present across the batch.
+
+Recommended two-phase discovery flow for an unfamiliar file, with its measured cost on a real
+1186-line file holding 40 functions and methods:
+
+  1. quarry toc file --doc-sentences 0 <path> — the map: every symbol's name, signature, and line
+     ranges, with no docstring text at all. 8.4 KB for that file.
+  2. Read "start" through "sigend" for the few candidates that look relevant, directly from the
+     source file — roughly 6 lines each.
+  3. Read "start" through "end" for the one that matched, directly from the source file — roughly
+     16 lines.
+
+Against reading the whole 1186-line file.
+
+The decisive point is not the byte count: the prose in steps 2 and 3 is read from the source file
+itself, never from quarry's rendering of it. The agent never has to trust quarry's "//" and "///"
+stripping, its C# XML tag removal, or its sentence-splitting rule — it sees the actual bytes.
+--doc-sentences 0 is therefore the recommended discovery mode, not a frugality mode; treating it as
+merely a way to save bytes makes it easy to skip.
+
+"start" never moves with --doc-sentences, so the ranges from step 1 stay valid for the read in
+steps 2 and 3 regardless of how much docstring text was requested there.
+
+Known imprecision: in a single-line function or method, the signature and the body share one line,
+so "start" through "sigend" includes the body — no line-based range can separate them there.
+
+--doc-sentences <N|all> controls how much of each symbol's docstring reaches "docstring" in the
+output: 0 omits the key entirely (the discovery mode above); N keeps the first N sentences; "all"
+keeps the docstring unchanged. The effective value is resolved highest-precedence-first: the
+--doc-sentences flag on this command; then $QUARRY_TOC_CONFIG, an absolute path to a config file;
+then a ".quarry.yaml" in the target file's own directory, holding a "toc" mapping with a
+"doc_sentences" key — looked up in that directory alone, with no upward search; then the built-in
+default of 1.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
