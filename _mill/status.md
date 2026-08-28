@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -45,6 +45,7 @@ approved-docs-and-followups  '2026-08-28T06:16:23Z'
 holistic-reviewing  '2026-08-28T06:16:50Z'
 holistic-approved  '2026-08-28T06:20:38Z'
 done  '2026-08-28T06:21:00Z'
+pr-pending  '2026-08-28T06:22:33Z'
 ```
 
 ## Batches
