@@ -69,6 +69,7 @@ func refsCommand() *cobra.Command {
 	var timeout time.Duration
 	var inFile string
 	var within string
+	var buildTags string
 
 	refs := &cobra.Command{
 		Use:   "refs <symbol|file:line:col>",
@@ -169,6 +170,8 @@ scoped to one package comes back both complete and precise:
 				return parseQuery(cwd, arg)
 			}
 
+			buildTagsResolved := resolveBuildTags(buildTags)
+
 			if len(args) == 1 {
 				query, err := buildQuery(args[0])
 				if err != nil {
@@ -176,7 +179,7 @@ scoped to one package comes back both complete and precise:
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, stateDir, lang, query, timeout)
+				opts := buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved)
 
 				results, err := quarry.References(ctx, opts)
 				if err == nil && within != "" {
@@ -191,7 +194,7 @@ scoped to one package comes back both complete and precise:
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := quarry.References(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout))
+				results, err := quarry.References(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -206,6 +209,7 @@ scoped to one package comes back both complete and precise:
 	refs.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references)")
 	refs.Flags().StringVar(&inFile, "in-file", "", "resolve each positional argument as a bare symbol name within this one file, instead of a project-wide workspace/symbol search")
 	refs.Flags().StringVar(&within, "within", "", "restrict results to references whose file lies within this directory (relative to --target-dir, or absolute) — see the interface-method conflation note above")
+	refs.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
 
 	return refs
 }
@@ -217,6 +221,7 @@ func definitionCommand() *cobra.Command {
 	var timeout time.Duration
 	var inFile string
 	var within string
+	var buildTags string
 
 	definition := &cobra.Command{
 		Use:   "definition <symbol|file:line:col>",
@@ -306,6 +311,8 @@ structurally-identical interfaces in different packages).`,
 				return parseQuery(cwd, arg)
 			}
 
+			buildTagsResolved := resolveBuildTags(buildTags)
+
 			if len(args) == 1 {
 				query, err := buildQuery(args[0])
 				if err != nil {
@@ -313,7 +320,7 @@ structurally-identical interfaces in different packages).`,
 					return nil
 				}
 
-				opts := buildOptions(registry, dir, stateDir, lang, query, timeout)
+				opts := buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved)
 
 				results, err := quarry.Definition(ctx, opts)
 				if err == nil && within != "" {
@@ -328,7 +335,7 @@ structurally-identical interfaces in different packages).`,
 				if err != nil {
 					return statusError, map[string]any{"error": err.Error()}
 				}
-				results, err := quarry.Definition(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout))
+				results, err := quarry.Definition(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved))
 				if err == nil && within != "" {
 					results = filterWithin(results, within, dir)
 				}
@@ -343,6 +350,7 @@ structurally-identical interfaces in different packages).`,
 	definition.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, definition)")
 	definition.Flags().StringVar(&inFile, "in-file", "", "resolve each positional argument as a bare symbol name within this one file, instead of a project-wide workspace/symbol search")
 	definition.Flags().StringVar(&within, "within", "", "restrict results to definitions whose file lies within this directory (relative to --target-dir, or absolute)")
+	definition.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
 
 	return definition
 }
@@ -352,6 +360,7 @@ func symbolCommand() *cobra.Command {
 	var targetDir string
 	var lang string
 	var timeout time.Duration
+	var buildTags string
 
 	symbol := &cobra.Command{
 		Use:   "symbol <query>",
@@ -405,8 +414,10 @@ matches into an ambiguity failure. Example:
 				return nil
 			}
 
+			buildTagsResolved := resolveBuildTags(buildTags)
+
 			if len(args) == 1 {
-				opts := buildOptions(registry, dir, stateDir, lang, symbolQuery(args[0]), timeout)
+				opts := buildOptions(registry, dir, stateDir, lang, symbolQuery(args[0]), timeout, buildTagsResolved)
 
 				results, err := quarry.Symbol(ctx, opts)
 				if err != nil {
@@ -429,7 +440,7 @@ matches into an ambiguity failure. Example:
 			// arguments as literal search strings, not positions, consistent
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
-				results, err := quarry.Symbol(ctx, buildOptions(registry, dir, stateDir, lang, quarry.Query{Symbol: symbol}, timeout))
+				results, err := quarry.Symbol(ctx, buildOptions(registry, dir, stateDir, lang, quarry.Query{Symbol: symbol}, timeout, buildTagsResolved))
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -439,6 +450,7 @@ matches into an ambiguity failure. Example:
 	symbol.Flags().StringVar(&targetDir, "target-dir", "", "project directory to detect the language in and root the server at (default: cwd)")
 	symbol.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	symbol.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for the workspace/symbol request phase")
+	symbol.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
 
 	return symbol
 }
@@ -488,8 +500,8 @@ func resolveContext(dir, configFlag, stateDirFlag string) (quarry.Registry, stri
 }
 
 // buildOptions constructs a quarry.Options value, ensuring all construction
-// sites thread StateDir consistently.
-func buildOptions(registry quarry.Registry, targetDir string, stateDir string, lang string, query quarry.Query, timeout time.Duration) quarry.Options {
+// sites thread StateDir and BuildTags consistently.
+func buildOptions(registry quarry.Registry, targetDir string, stateDir string, lang string, query quarry.Query, timeout time.Duration, buildTags []string) quarry.Options {
 	return quarry.Options{
 		Registry:  registry,
 		TargetDir: targetDir,
@@ -497,6 +509,7 @@ func buildOptions(registry quarry.Registry, targetDir string, stateDir string, l
 		Lang:      lang,
 		Query:     query,
 		Timeout:   timeout,
+		BuildTags: buildTags,
 	}
 }
 
@@ -513,6 +526,7 @@ func assertNoCallersCommand() *cobra.Command {
 	var timeout time.Duration
 	var except []string
 	var within string
+	var buildTags string
 
 	cmd := &cobra.Command{
 		Use:   "assert-no-callers <symbol|file:line:col>",
@@ -592,7 +606,7 @@ involved — only interface methods are at risk of this conflation.`,
 				return nil
 			}
 
-			opts := buildOptions(registry, dir, stateDir, lang, query, timeout)
+			opts := buildOptions(registry, dir, stateDir, lang, query, timeout, resolveBuildTags(buildTags))
 
 			// Resolve the declaration site(s) to exclude via Definition,
 			// regardless of whether query is a bare symbol name or an explicit
@@ -651,6 +665,7 @@ involved — only interface methods are at risk of this conflation.`,
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for each LSP request phase (initialize, resolve, references/definition)")
 	cmd.Flags().StringArrayVar(&except, "except", nil, "file path allowed to reference the symbol without failing the check (repeatable)")
 	cmd.Flags().StringVar(&within, "within", "", "restrict the caller search to references whose file lies within this directory (relative to --target-dir, or absolute) — required for a correct check on an interface method, see above")
+	cmd.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
 
 	return cmd
 }

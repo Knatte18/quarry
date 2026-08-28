@@ -581,8 +581,9 @@ func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	registry := quarry.BuiltinRegistry()
 	query := quarry.Query{Symbol: "Foo"}
 	stateDir := "/state/dir"
+	buildTags := []string{"a", "b"}
 
-	got := buildOptions(registry, "/target", stateDir, "go", query, 5*time.Second)
+	got := buildOptions(registry, "/target", stateDir, "go", query, 5*time.Second, buildTags)
 
 	if got.TargetDir != "/target" {
 		t.Errorf("buildOptions(...).TargetDir = %q; want %q", got.TargetDir, "/target")

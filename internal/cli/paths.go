@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/Knatte18/quarry/quarry"
 )
 
 // userConfigDir is the seam resolveConfigPath calls through instead of os.UserConfigDir()
@@ -43,6 +45,23 @@ func resolveConfigPath(flagValue string) (string, error) {
 		return "", fmt.Errorf("cli: resolve user config dir: %w", err)
 	}
 	return filepath.Join(dir, "quarry", "servers.yaml"), nil
+}
+
+// resolveBuildTags resolves the normalized build-tag set, in precedence order: flagValue (the
+// --build-tags flag), then $QUARRY_BUILD_TAGS, then empty. Whichever raw comma-separated string
+// wins is passed to quarry.NormalizeBuildTags, so a raw value that normalizes away entirely —
+// "", ",", " , " — yields nil from either source, which every downstream consumer (the
+// initializationOptions render, the tags-<hex> state-directory segment, and nativeArgv) treats as
+// "no build tags", per the empty-tag-set-is-a-uniform-no-op Shared Decision.
+// It shares resolveConfigPath's and resolveStateDir's flag-then-environment-then-default
+// resolution shape, which is why it lives beside them rather than in cli.go, even though it is
+// the one function in this file that imports beyond the standard library.
+func resolveBuildTags(flagValue string) []string {
+	raw := flagValue
+	if raw == "" {
+		raw = os.Getenv("QUARRY_BUILD_TAGS")
+	}
+	return quarry.NormalizeBuildTags(raw)
 }
 
 // workspaceKey derives a stable, human-legible directory name for targetDir: the target

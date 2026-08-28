@@ -93,6 +93,77 @@ func TestResolveConfigPath_UserConfigDirError(t *testing.T) {
 	}
 }
 
+// TestResolveBuildTags_Precedence covers the flag-then-environment-then-default resolution: the
+// flag value wins over the environment variable, the environment variable is used when the flag
+// is empty, and a value that normalizes away entirely -- "", ",", " , " -- yields nil from either
+// source.
+func TestResolveBuildTags_Precedence(t *testing.T) {
+	tests := []struct {
+		name      string
+		flagValue string
+		envValue  string
+		want      []string
+	}{
+		{
+			name:      "flag beats env",
+			flagValue: "b,a",
+			envValue:  "c",
+			want:      []string{"a", "b"},
+		},
+		{
+			name:      "env used when flag empty",
+			flagValue: "",
+			envValue:  "b,a",
+			want:      []string{"a", "b"},
+		},
+		{
+			name:      "neither set yields nil",
+			flagValue: "",
+			envValue:  "",
+			want:      nil,
+		},
+		{
+			name:      "lone comma flag yields nil",
+			flagValue: ",",
+			envValue:  "",
+			want:      nil,
+		},
+		{
+			name:      "lone comma env yields nil",
+			flagValue: "",
+			envValue:  ",",
+			want:      nil,
+		},
+		{
+			name:      "whitespace-padded comma flag yields nil",
+			flagValue: " , ",
+			envValue:  "",
+			want:      nil,
+		},
+		{
+			name:      "whitespace-padded comma env yields nil",
+			flagValue: "",
+			envValue:  " , ",
+			want:      nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("QUARRY_BUILD_TAGS", tt.envValue)
+
+			got := resolveBuildTags(tt.flagValue)
+			if len(got) != len(tt.want) {
+				t.Fatalf("resolveBuildTags(%q) = %v; want %v", tt.flagValue, got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("resolveBuildTags(%q)[%d] = %q; want %q", tt.flagValue, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestResolveStateDir_Precedence(t *testing.T) {
 	const targetDir = "/some/project/dir"
 
