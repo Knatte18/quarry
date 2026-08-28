@@ -69,12 +69,12 @@ func symbolFromClient(ctx context.Context, client *lsp.Client, lang string, entr
 // Symbol resolves opts.Query.Symbol via workspace/symbol against the language server for
 // opts.TargetDir and returns every candidate match.
 func Symbol(ctx context.Context, opts Options) ([]SymbolMatch, error) {
-	lang, entry, err := registry.DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
+	lang, entry, initOptions, err := detectAndRender(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	client, kind, err := acquireConnection(ctx, lang, entry, opts)
+	client, kind, err := acquireConnection(ctx, lang, entry, opts, initOptions)
 	if err != nil {
 		// No deferred teardown needed here: acquireConnection already tears
 		// down any partial connection itself on its own error path, exactly

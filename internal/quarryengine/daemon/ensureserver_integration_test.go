@@ -69,7 +69,7 @@ func TestEnsureNative_Integration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, err := ensureNative(ctx, "go", registry.BuiltinRegistry()["go"], repoRoot(t), 30*time.Second)
+	client, err := ensureNative(ctx, "go", registry.BuiltinRegistry()["go"], repoRoot(t), 30*time.Second, nil)
 	if err != nil {
 		t.Fatalf("ensureNative() returned unexpected error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestEnsureNative_Integration_SharedDaemonWireCompatibility(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			client, err := ensureNative(ctx, "go", entry, root, 30*time.Second)
+			client, err := ensureNative(ctx, "go", entry, root, 30*time.Second, nil)
 			if err != nil {
 				results[i] = result{err: err}
 				return
@@ -164,7 +164,7 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	client, kind, err := EnsureServer(ctx, "go", registry.BuiltinRegistry()["go"], root, worktreeRoot, 30*time.Second)
+	client, kind, err := EnsureServer(ctx, "go", registry.BuiltinRegistry()["go"], root, worktreeRoot, 30*time.Second, nil)
 	if err != nil {
 		t.Fatalf("EnsureServer() returned unexpected error: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestEnsureServer_Integration_SupervisedDispatch(t *testing.T) {
 
 	// A second call against the same anchorRoot/lang must reuse the
 	// existing daemon rather than spawning a second one.
-	if _, _, err := EnsureServer(ctx, "go", registry.BuiltinRegistry()["go"], root, worktreeRoot, 30*time.Second); err != nil {
+	if _, _, err := EnsureServer(ctx, "go", registry.BuiltinRegistry()["go"], root, worktreeRoot, 30*time.Second, nil); err != nil {
 		t.Fatalf("EnsureServer() second call returned unexpected error: %v", err)
 	}
 

@@ -196,7 +196,7 @@ func TestFinalizeConnection_SuccessReturnsNil(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := finalizeConnection(ctx, client, "file:///tmp/example", 5*time.Second); err != nil {
+	if err := finalizeConnection(ctx, client, "file:///tmp/example", 5*time.Second, nil); err != nil {
 		t.Fatalf("finalizeConnection() returned unexpected error: %v", err)
 	}
 	<-done
@@ -234,7 +234,7 @@ func TestFinalizeConnection_InitializeErrorKillsClient(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := finalizeConnection(ctx, client, "file:///tmp/example", 5*time.Second)
+	err := finalizeConnection(ctx, client, "file:///tmp/example", 5*time.Second, nil)
 	<-done
 	if err == nil {
 		t.Fatal("finalizeConnection() returned nil error; want a non-nil error from the failed initialize handshake")
@@ -287,7 +287,7 @@ func TestFinalizeConnection_ProbeTimeoutKillsClient(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := finalizeConnection(ctx, client, "file:///tmp/example", 200*time.Millisecond)
+	err := finalizeConnection(ctx, client, "file:///tmp/example", 200*time.Millisecond, nil)
 	<-done
 	if err == nil {
 		t.Fatal("finalizeConnection() returned nil error; want a probe-timeout error")
@@ -305,7 +305,7 @@ func TestFinalizeConnection_ProbeTimeoutKillsClient(t *testing.T) {
 // human's edit-pause-edit rhythm, not an agent's think-time gaps between scout calls (see
 // daemonIdleTimeout's own doc comment for the benchmark this responds to).
 func TestNativeArgv_IncludesExtendedIdleTimeout(t *testing.T) {
-	argv := nativeArgv("/path/to/gopls", nil)
+	argv := nativeArgv("/path/to/gopls", nil, false)
 
 	wantTimeoutFlag := fmt.Sprintf("-remote.listen.timeout=%s", daemonIdleTimeout)
 	found := false
@@ -323,11 +323,51 @@ func TestNativeArgv_IncludesExtendedIdleTimeout(t *testing.T) {
 	}
 }
 
+// TestNativeArgv_PrivateFalseMatchesTodaysArgv asserts that private == false produces today's
+// argv byte for byte — the back-compat assertion the plan's
+// empty-tag-set-is-a-uniform-no-op Shared Decision requires, written first per that decision.
+func TestNativeArgv_PrivateFalseMatchesTodaysArgv(t *testing.T) {
+	argv := nativeArgv("/path/to/gopls", []string{"-v"}, false)
+
+	want := []string{"/path/to/gopls", "-v", "-remote=auto", fmt.Sprintf("-remote.listen.timeout=%s", daemonIdleTimeout)}
+	if len(argv) != len(want) {
+		t.Fatalf("nativeArgv() = %v; want %v", argv, want)
+	}
+	for i := range want {
+		if argv[i] != want[i] {
+			t.Errorf("nativeArgv()[%d] = %q; want %q", i, argv[i], want[i])
+		}
+	}
+}
+
+// TestNativeArgv_PrivateTrueOmitsRemoteFlags asserts that private == true produces an argv
+// containing neither -remote=auto nor any -remote.listen.timeout flag, while still preserving
+// binPath first and extraArgs in order — the private-spawn path exists so a tagged query never
+// joins the shared -remote=auto daemon (see nativeArgv's own doc comment for why).
+func TestNativeArgv_PrivateTrueOmitsRemoteFlags(t *testing.T) {
+	argv := nativeArgv("/path/to/gopls", []string{"-v"}, true)
+
+	want := []string{"/path/to/gopls", "-v"}
+	if len(argv) != len(want) {
+		t.Fatalf("nativeArgv() = %v; want %v", argv, want)
+	}
+	for i := range want {
+		if argv[i] != want[i] {
+			t.Errorf("nativeArgv()[%d] = %q; want %q", i, argv[i], want[i])
+		}
+	}
+	for _, arg := range argv {
+		if arg == "-remote=auto" || strings.HasPrefix(arg, "-remote.listen.timeout=") {
+			t.Errorf("nativeArgv() = %v; want no -remote=auto or -remote.listen.timeout flag when private is true", argv)
+		}
+	}
+}
+
 // TestNativeArgv_PreservesBinPathAndExtraArgs asserts nativeArgv keeps the resolved binary path
 // first and any entry.Command[1:] extra args between it and the -remote flags, matching
 // ensureNative's existing argv-composition contract (toolchain-manager-authority decision).
 func TestNativeArgv_PreservesBinPathAndExtraArgs(t *testing.T) {
-	argv := nativeArgv("/path/to/gopls", []string{"-v"})
+	argv := nativeArgv("/path/to/gopls", []string{"-v"}, false)
 
 	if len(argv) < 2 || argv[0] != "/path/to/gopls" || argv[1] != "-v" {
 		t.Errorf("nativeArgv() = %v; want binPath first, then extraArgs, then -remote flags", argv)
@@ -508,7 +548,7 @@ func TestEnsureServer_SupervisedFailsForNonToolchainReasonFallsBackToNative(t *t
 	// never win the pre-held lock, so it returns quarryengine.ErrServerSpawnTimeout well
 	// within this deadline, and the fallback's ensureNative fails at
 	// exec.LookPath before spawning anything either.
-	client, kind, err := EnsureServer(ctx, "go", entry, t.TempDir(), worktreeRoot, 300*time.Millisecond)
+	client, kind, err := EnsureServer(ctx, "go", entry, t.TempDir(), worktreeRoot, 300*time.Millisecond, nil)
 	if client != nil {
 		t.Errorf("EnsureServer() client = %v; want nil", client)
 	}

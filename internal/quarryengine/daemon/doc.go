@@ -4,43 +4,55 @@
 // # The EnsureServer seam
 //
 // ensureserver.go implements EnsureServer(ctx, lang, entry, targetDir,
-// stateDir, timeout) (*lsp.Client, ConnKind, error): given a registry
-// entry whose HasNativeDaemon field is true, it resolves, spawns or dials,
-// and hands back an already-initialized, already-probed connection ready
-// for immediate use. entry.HasNativeDaemon is the gate that decides whether
-// a language ever calls into this machinery at all — in V1 that is Go
-// alone. Python, C#, TypeScript, and Rust all leave HasNativeDaemon at its
-// zero value and never call EnsureServer; their callers keep using
-// lsp.NewClient + a manual client.Initialize + Close()/Kill() in query's
-// acquireConnection (refs.go), byte-for-byte the same code path this engine
-// has always run, completely untouched by V1.
+// stateDir, timeout, initOptions) (*lsp.Client, ConnKind, error): given a
+// registry entry whose HasNativeDaemon field is true, it resolves, spawns
+// or dials, and hands back an already-initialized, already-probed
+// connection ready for immediate use. entry.HasNativeDaemon is the gate
+// that decides whether a language ever calls into this machinery at all —
+// in V1 that is Go alone. Python, C#, TypeScript, and Rust all leave
+// HasNativeDaemon at its zero value and never call EnsureServer; their
+// callers keep using lsp.NewClient + a manual client.Initialize +
+// Close()/Kill() in query's acquireConnection (refs.go), byte-for-byte the
+// same code path this engine has always run, completely untouched by V1.
+// initOptions is the already-rendered initializationOptions map
+// (registry.RenderInitializationOptions's result: nil for an untagged
+// query, non-nil for a tagged one); EnsureServer threads it to
+// client.Initialize on every path and, on the native strategy, also uses
+// its non-nilness to decide whether to spawn a private gopls (see
+// ensureNative's and nativeArgv's doc comments).
 //
 // Two strategies implement the seam: ensureNative (native, Go's production
-// path — spawn gopls -remote=auto, a disposable local proxy subprocess;
-// gopls itself dedups and owns the real shared daemon behind it, kept warm
-// via an explicit -remote.listen.timeout override — see daemonIdleTimeout
-// in ensureserver.go — sized for an agent's own reasoning gaps between
-// calls, not gopls's 1-minute human-editing-rhythm default) and
-// ensureSupervised (supervised — quarry owns a state file, an advisory
-// spawn-race lock, a deterministic socket path, and detached-spawn/restart
-// logic for a language server with no shared-daemon mode of its own).
-// EnsureServer dispatches Go to ensureSupervised as its live V1 strategy: it
-// resolves the toolchain once, then attempts supervised, falling back to
-// ensureNative on any supervised error (a toolchain-resolution failure
-// itself never reaches the fallback, since it is returned before
-// ensureSupervised is ever attempted). ensureNative remains fully built,
-// unit-tested, and integration-tested as this fallback — its own dedicated
-// integration test still drives it directly, proving the -remote=auto
-// proxy path independently of the supervised dispatch above it.
+// path — for an untagged query, spawn gopls -remote=auto, a disposable
+// local proxy subprocess; gopls itself dedups and owns the real shared
+// daemon behind it, kept warm via an explicit -remote.listen.timeout
+// override — see daemonIdleTimeout in ensureserver.go — sized for an
+// agent's own reasoning gaps between calls, not gopls's 1-minute
+// human-editing-rhythm default) and ensureSupervised (supervised — quarry
+// owns a state file, an advisory spawn-race lock, a deterministic socket
+// path, and detached-spawn/restart logic for a language server with no
+// shared-daemon mode of its own). EnsureServer dispatches Go to
+// ensureSupervised as its live V1 strategy: it resolves the toolchain once,
+// then attempts supervised, falling back to ensureNative on any supervised
+// error (a toolchain-resolution failure itself never reaches the fallback,
+// since it is returned before ensureSupervised is ever attempted).
+// ensureNative remains fully built, unit-tested, and integration-tested as
+// this fallback — its own dedicated integration test still drives it
+// directly, proving the -remote=auto proxy path independently of the
+// supervised dispatch above it.
 //
 // Connection teardown differs by ConnKind, and getting this wrong is a
 // protocol-correctness bug, not a style choice:
 //
 //   - ConnKindNative: safe to Close()/Kill(), exactly like the legacy path.
-//     What ensureNative hands back is quarry's own disposable -remote=auto
-//     proxy subprocess for this one call, not the shared daemon behind it —
-//     closing it ends only this session, never gopls's real shared
-//     instance.
+//     For an untagged query, what ensureNative hands back is quarry's own
+//     disposable -remote=auto proxy subprocess for this one call, not the
+//     shared daemon behind it — closing it ends only this session, never
+//     gopls's real shared instance. For a tagged query, ensureNative spawns
+//     a private, unshared gopls instead (no -remote=auto at all), so there
+//     is no shared daemon behind it in the first place — closing it ends
+//     that private instance outright, which is still the correct, safe
+//     teardown; it is simply not "ending only this session" in the
+//     untagged case's sense.
 //   - ConnKindSupervised: never Close() or Kill() it. The connection is a
 //     dial into a daemon quarry spawned to outlive this call — the entire
 //     point of the supervised strategy — so the LSP graceful-shutdown

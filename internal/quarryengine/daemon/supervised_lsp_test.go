@@ -39,7 +39,7 @@ func TestEnsureSupervised_StaleSocketCleanupAllowsRebind(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second)
+	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second, nil)
 	if err != nil {
 		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestEnsureSupervised_DaemonLogsToOwnFileNotCallersStderr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second)
+	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, worktreeRoot, worktreeRoot, 30*time.Second, nil)
 	if err != nil {
 		t.Fatalf("ensureSupervised() returned unexpected error: %v", err)
 	}

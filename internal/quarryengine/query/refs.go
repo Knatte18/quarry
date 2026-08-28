@@ -1,5 +1,5 @@
-// Package query implements References, Definition, and Symbol, the engine's public orchestration
-// entry points and the sole packages internal/cli calls into.
+// Package query implements References, Definition, Symbol, and Callers, the engine's public
+// orchestration entry points and the sole packages internal/cli calls into.
 //
 // workspace/symbol is the name → position resolver: given a bare symbol name (no explicit
 // position), References/Definition issue workspace/symbol (via resolvePosition, refs.go) and
@@ -26,9 +26,11 @@
 // generalized LSP client (the lsp package) together: given a target directory and a query (a symbol
 // name or an explicit file:line:col position), it launches the right language server, resolves the
 // query to a position if needed, and returns the reference list.
-// It also defines the shared lookup pipeline (acquireConnection, teardownConnection, lookup) that
-// References wraps and that Definition wraps too — both differ only in which single
-// LSP call they make once a position is resolved.
+// It also defines acquireConnection and teardownConnection, the connection-lifecycle halves of the
+// pipeline, plus two entry points built over them: lookup, the thin single-LSP-call wrapper
+// References and Definition share, and runOnConnection, the reusable multi-call connection scope
+// callers.go's Callers drives to issue several LSP calls — definition, implementation, references,
+// then one definition per candidate reference — sequentially on the one connection it acquires.
 // This is the external interface the CLI layer (internal/cli) calls.
 package query
 
@@ -77,10 +79,41 @@ type Options struct {
 	// per-language daemon.json, daemon.lock, and daemon.sock live.
 	// It is required and must be a usable absolute path.
 	// Populating it is entirely the caller's obligation.
+	//
+	// Because the supervised daemon is partitioned by StateDir alone, a
+	// caller that varies BuildTags while holding StateDir fixed has two tag
+	// sets served by one daemon and will get the other tag set's answers.
+	// internal/cli discharges this by appending a "tags-<hex>" segment to
+	// the resolved leaf; a facade or SDK caller must supply a distinct
+	// StateDir per distinct BuildTags value itself — the engine deliberately
+	// does not re-key the directory on the caller's behalf.
 	StateDir string
 	Lang     string
 	Query    Query
 	Timeout  time.Duration
+	// BuildTags is the normalized build-tag set to scope this query's
+	// language server to. The engine re-normalizes it defensively on entry
+	// (via registry.NormalizeBuildTags, in detectAndRender) rather than
+	// trusting the caller's normalization, because Options is public through
+	// the facade and an unnormalized value would otherwise fail silently —
+	// unlike StateDir, whose misuse fails loudly (the wrong daemon answers,
+	// or a stale one is reused) and which stays entirely the caller's
+	// obligation.
+	//
+	// BuildTags carries the same "populating it is entirely the caller's
+	// obligation" contract StateDir already does, for the same reason
+	// stated on StateDir above: a caller that varies BuildTags without also
+	// varying StateDir gets served by whichever daemon StateDir already
+	// points at, tag set mismatch and all.
+	BuildTags []string
+	// SkipVerification, when true, makes Callers elide its verification
+	// phases and return every raw reference unfiltered — today's
+	// two-call behaviour, on one connection instead of two.
+	// This field is negative polarity on purpose: Options is re-exported
+	// verbatim as the public quarry.Options, so the zero value must mean
+	// "verify" and a non-CLI caller must have to opt into the noisier,
+	// unverified behaviour explicitly rather than opt into safety.
+	SkipVerification bool
 }
 
 // References resolves a query and returns every reference to it, sorted by file:line:character.
@@ -90,10 +123,36 @@ func References(ctx context.Context, opts Options) ([]Reference, error) {
 	})
 }
 
-// acquireConnection obtains a ready-to-use LSP client and its teardown kind.
-func acquireConnection(ctx context.Context, lang string, entry registry.Entry, opts Options) (*lsp.Client, daemon.ConnKind, error) {
+// detectAndRender detects opts.TargetDir's language and renders its
+// initializationOptions map for opts.BuildTags, defensively re-normalizing
+// the tag set (see Options.BuildTags's doc comment for why) rather than
+// trusting the caller already did. Both a detection failure and
+// registry.RenderInitializationOptions's quarryengine.ErrBuildTagsUnsupported
+// come back through the returned error unchanged, so a caller of this
+// function need not distinguish the two failure modes to propagate them
+// correctly.
+func detectAndRender(opts Options) (string, registry.Entry, map[string]any, error) {
+	lang, entry, err := registry.DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
+	if err != nil {
+		return "", registry.Entry{}, nil, err
+	}
+
+	tags := registry.NormalizeBuildTags(opts.BuildTags...)
+	initOptions, err := registry.RenderInitializationOptions(lang, entry, tags)
+	if err != nil {
+		return "", registry.Entry{}, nil, err
+	}
+
+	return lang, entry, initOptions, nil
+}
+
+// acquireConnection obtains a ready-to-use LSP client and its teardown kind. initOptions is the
+// already-rendered initializationOptions map (detectAndRender's result, nil for an untagged
+// query) — threaded to daemon.EnsureServer on the native-daemon path and to the legacy path's own
+// client.Initialize call below, unchanged either way.
+func acquireConnection(ctx context.Context, lang string, entry registry.Entry, opts Options, initOptions map[string]any) (*lsp.Client, daemon.ConnKind, error) {
 	if entry.HasNativeDaemon {
-		return daemon.EnsureServer(ctx, lang, entry, opts.TargetDir, opts.StateDir, opts.Timeout)
+		return daemon.EnsureServer(ctx, lang, entry, opts.TargetDir, opts.StateDir, opts.Timeout, initOptions)
 	}
 
 	client, err := lsp.NewClient(entry.Command)
@@ -113,7 +172,7 @@ func acquireConnection(ctx context.Context, lang string, entry registry.Entry, o
 
 	initCtx, initCancel := context.WithTimeout(ctx, opts.Timeout)
 	defer initCancel()
-	if err := client.Initialize(initCtx, rootURI); err != nil {
+	if err := client.Initialize(initCtx, rootURI, initOptions); err != nil {
 		// Mirror the existing timedOut-branching teardown logic exactly,
 		// just localized to this one failure instead of spanning the whole
 		// call: a timed-out server could re-block on the graceful shutdown
@@ -156,38 +215,34 @@ func teardownConnection(client *lsp.Client, kind daemon.ConnKind, timedOut bool)
 	}
 }
 
-// lookup is the shared pipeline every public lookup entry point (References
-// here; Definition) runs: detect the language, acquire a
-// connection, resolve the query to a position, issue exactly one LSP call
-// at that position, and convert the results. lspCall is the one step that
-// varies between callers — everything else is identical regardless of which
-// LSP method is ultimately invoked.
+// runOnConnection performs the connection-acquisition portion of the lookup pipeline every
+// multi-call entry point shares: detectAndRender, acquireConnection, a deferred teardownConnection
+// closing over a timedOut local, and resolvePosition. Once a position is resolved, it calls fn with
+// the resolved client, the file URI, the position, and a pointer to that same timedOut local, so fn
+// can issue as many further LSP calls on this one connection as its pipeline needs, sequentially,
+// before the deferred teardown runs.
 //
-// The steps: (1) detect the language and its registry.Entry; (2) acquire a
-// connection via acquireConnection; (3) resolve the query to an LSP
-// position — Query.Pos converted directly if set, otherwise a
-// workspace/symbol lookup for Query.Symbol; (4) issue lspCall at that
-// position; (5) map and sort the results. Every LSP phase from step (3)
-// onward is bounded by a fresh context.WithTimeout(ctx, opts.Timeout)
-// deadline; a phase that times out returns ErrServerTimeout and tears the
-// connection down via teardownConnection's timedOut branch rather than its
-// normal-completion branch.
-func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position) ([]lsp.Location, error)) ([]Reference, error) {
-	lang, entry, err := registry.DetectLanguage(opts.TargetDir, opts.Registry, opts.Lang)
+// timedOut is captured by reference — fn receives a pointer to it — because a phase fn runs after
+// this function's defer is registered can still set it to true; this mirrors the invariant lookup
+// (below) relied on directly before this call was factored out. teardownConnection's
+// ConnKindSupervised branch must keep returning with no shutdown handshake and no kill regardless of
+// what fn does to *timedOut, since a supervised daemon connection outlives this call by design.
+func runOnConnection(ctx context.Context, opts Options, fn func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position, timedOut *bool) error) error {
+	lang, entry, initOptions, err := detectAndRender(opts)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	client, kind, err := acquireConnection(ctx, lang, entry, opts)
+	client, kind, err := acquireConnection(ctx, lang, entry, opts, initOptions)
 	if err != nil {
 		// No deferred teardown needed here: acquireConnection already tears
 		// down any partial connection itself on its own error path.
-		return nil, err
+		return err
 	}
 
-	// timedOut is captured by reference via the closure below, since
-	// resolvePosition/lspCall may still set it to true after the defer is
-	// registered.
+	// timedOut is captured by reference via the pointer fn receives, since
+	// resolvePosition below or any phase fn itself runs may still set it to
+	// true after this defer is registered.
 	timedOut := false
 	defer func() {
 		teardownConnection(client, kind, timedOut)
@@ -198,16 +253,34 @@ func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context,
 		if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
 			timedOut = true
 		}
-		return nil, err
+		return err
 	}
 
-	callCtx, callCancel := context.WithTimeout(ctx, opts.Timeout)
-	defer callCancel()
-	locations, err := lspCall(callCtx, client, fileURI, lspPos)
-	if err != nil {
-		if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
-			timedOut = true
+	return fn(ctx, client, fileURI, lspPos, &timedOut)
+}
+
+// lookup is the thin single-LSP-call wrapper both References and Definition run over
+// runOnConnection: once runOnConnection resolves a position, lookup's fn issues exactly one LSP
+// call (lspCall, the one step that varies between callers) under a fresh
+// context.WithTimeout(ctx, opts.Timeout) deadline, sets *timedOut when the call's error satisfies
+// errors.Is(err, quarryengine.ErrServerTimeoutSentinel), and stores the resulting locations for
+// conversion with toSortedReferences once runOnConnection returns.
+func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position) ([]lsp.Location, error)) ([]Reference, error) {
+	var locations []lsp.Location
+	err := runOnConnection(ctx, opts, func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position, timedOut *bool) error {
+		callCtx, callCancel := context.WithTimeout(ctx, opts.Timeout)
+		defer callCancel()
+		locs, err := lspCall(callCtx, client, fileURI, pos)
+		if err != nil {
+			if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
+				*timedOut = true
+			}
+			return err
 		}
+		locations = locs
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 

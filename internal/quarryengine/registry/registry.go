@@ -43,20 +43,24 @@ import "fmt"
 // strategy (native or supervised) at all;
 // the zero value (false) means the language never goes through `EnsureServer` and keeps today's
 // cold-spawn-per-call behavior unchanged.
-// Both fields are optional and Go-only in V1: every entry except "go" leaves them at their zero
-// values.
+// InitializationOptions is a per-language, build-tag-only template for the `initialize` request's
+// `initializationOptions` map: its string values may carry the `{{tags}}` placeholder, which
+// RenderInitializationOptions (initoptions.go) replaces with the comma-joined normalized tag set.
+// It is optional and Go-only in V1, exactly like PinnedVersion and HasNativeDaemon: every entry
+// except "go" leaves it at its nil zero value.
 //
 // The yaml struct tags let LoadRegistry (load.go) decode a servers.yaml entry directly into this
 // type: without them, yaml.v3's default field matching would require a YAML key of "installhint"
 // (the lowercased Go field name with no separator) rather than the template's snake_case
 // "install_hint".
 type Entry struct {
-	Markers         []string `yaml:"markers"`
-	Match           string   `yaml:"match"`
-	Command         []string `yaml:"command"`
-	InstallHint     string   `yaml:"install_hint"`
-	PinnedVersion   string   `yaml:"pinned_version"`
-	HasNativeDaemon bool     `yaml:"has_native_daemon"`
+	Markers               []string       `yaml:"markers"`
+	Match                 string         `yaml:"match"`
+	Command               []string       `yaml:"command"`
+	InstallHint           string         `yaml:"install_hint"`
+	PinnedVersion         string         `yaml:"pinned_version"`
+	HasNativeDaemon       bool           `yaml:"has_native_daemon"`
+	InitializationOptions map[string]any `yaml:"initialization_options"`
 }
 
 // Registry maps a canonical language name ("go", "python", "csharp", "typescript", "rust") to its
@@ -87,6 +91,9 @@ func builtins() Registry {
 			InstallHint:     "go install golang.org/x/tools/gopls@latest",
 			PinnedVersion:   "v0.23.0",
 			HasNativeDaemon: true,
+			InitializationOptions: map[string]any{
+				"buildFlags": []any{"-tags={{tags}}"},
+			},
 		},
 		"python": {
 			Markers:     []string{"pyproject.toml", "setup.py", "setup.cfg"},

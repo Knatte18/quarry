@@ -244,7 +244,7 @@ func TestResolvePosition_InFileSingleMatchReturnsSelectionRangeStart(t *testing.
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -304,7 +304,7 @@ func TestResolvePosition_InFileZeroMatchesYieldsErrSymbolNotFound(t *testing.T) 
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -412,7 +412,7 @@ func TestResolvePosition_InFileMultipleMatchesYieldsErrAmbiguousSymbol(t *testin
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 
@@ -473,7 +473,7 @@ func TestResolvePosition_InFileUnsupportedDocumentSymbolNeverSendsRequest(t *tes
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-initDone

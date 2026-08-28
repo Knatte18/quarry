@@ -166,3 +166,32 @@ func (e *ErrServerSpawnTimeout) Error() string {
 func (e *ErrServerSpawnTimeout) Is(target error) bool {
 	return target == ErrServerSpawnTimeoutSentinel
 }
+
+// ErrBuildTagsUnsupportedSentinel is the package-level sentinel *ErrBuildTagsUnsupported.Is compares
+// against, mirroring ErrServerNotFoundSentinel.
+var ErrBuildTagsUnsupportedSentinel = errors.New("quarry: build tags unsupported")
+
+// ErrBuildTagsUnsupported reports that a non-empty --build-tags set was requested for Language, but
+// that language's registry entry has no {{tags}} placeholder in its initialization_options to render
+// the tags into.
+// This error is raised inside the engine's own detect step, before any language server is spawned,
+// so a --build-tags flag never reaches the point of launching a process it cannot honor.
+// internal/cli maps it to the standard error envelope with exit 1 like every other typed engine
+// error.
+type ErrBuildTagsUnsupported struct {
+	Language string
+}
+
+// Error implements error, naming the language and the missing placeholder — not the missing field —
+// so an operator whose servers.yaml overlay whole-replaced the entry and dropped the placeholder is
+// told exactly what to put back.
+func (e *ErrBuildTagsUnsupported) Error() string {
+	return fmt.Sprintf("quarry: --build-tags is not supported for language %q (its registry entry's initialization_options has no {{tags}} placeholder)", e.Language)
+}
+
+// Is reports whether target is ErrBuildTagsUnsupportedSentinel, letting errors.Is(err,
+// ErrBuildTagsUnsupportedSentinel) match any *ErrBuildTagsUnsupported value regardless of its field
+// contents.
+func (e *ErrBuildTagsUnsupported) Is(target error) bool {
+	return target == ErrBuildTagsUnsupportedSentinel
+}
