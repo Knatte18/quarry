@@ -204,3 +204,82 @@ func TestLoadRegistry_PathIsDirectoryReturnsError(t *testing.T) {
 		t.Fatalf("LoadRegistry(%q) (a directory) returned nil error; want an error", dir)
 	}
 }
+
+// TestLoadRegistry_DecodesInitializationOptionsBlock proves an initialization_options block decodes
+// without tripping the decoder's KnownFields(true) setting.
+func TestLoadRegistry_DecodesInitializationOptionsBlock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "servers.yaml")
+	writeServersYAML(t, path, `
+go:
+  markers: [go.mod]
+  match: any
+  command: [gopls]
+  install_hint: "go install gopls"
+  initialization_options:
+    buildFlags: ["-tags={{tags}}"]
+`)
+
+	got, err := LoadRegistry(path)
+	if err != nil {
+		t.Fatalf("LoadRegistry(initialization_options) returned unexpected error: %v", err)
+	}
+	goEntry, ok := got["go"]
+	if !ok {
+		t.Fatal(`LoadRegistry(initialization_options) missing language "go"`)
+	}
+	if goEntry.InitializationOptions == nil {
+		t.Fatal(`LoadRegistry(initialization_options)["go"].InitializationOptions = nil; want a decoded template`)
+	}
+}
+
+// TestLoadRegistry_EntryOmittingInitializationOptionsValidates proves an entry omitting the
+// initialization_options key still validates -- the field is optional.
+func TestLoadRegistry_EntryOmittingInitializationOptionsValidates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "servers.yaml")
+	writeServersYAML(t, path, `
+go:
+  markers: [go.mod]
+  match: any
+  command: [gopls]
+  install_hint: "go install gopls"
+`)
+
+	got, err := LoadRegistry(path)
+	if err != nil {
+		t.Fatalf("LoadRegistry(no initialization_options) returned unexpected error: %v", err)
+	}
+	goEntry, ok := got["go"]
+	if !ok {
+		t.Fatal(`LoadRegistry(no initialization_options) missing language "go"`)
+	}
+	if goEntry.InitializationOptions != nil {
+		t.Errorf(`LoadRegistry(no initialization_options)["go"].InitializationOptions = %v; want nil`, goEntry.InitializationOptions)
+	}
+}
+
+// TestLoadRegistry_OverlayWholeReplacingGoDropsInitializationOptions proves the overlay hazard the
+// ErrBuildTagsUnsupported hard error exists for: an overlay "go:" block that whole-replaces the
+// built-in and omits initialization_options yields an entry whose InitializationOptions is nil, even
+// though the built-in "go" entry itself carries a template.
+func TestLoadRegistry_OverlayWholeReplacingGoDropsInitializationOptions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "servers.yaml")
+	writeServersYAML(t, path, `
+go:
+  markers: [go.mod, go.work]
+  match: any
+  command: [gopls, serve]
+  install_hint: "brew install gopls"
+`)
+
+	got, err := LoadRegistry(path)
+	if err != nil {
+		t.Fatalf("LoadRegistry(overlay drops initialization_options) returned unexpected error: %v", err)
+	}
+	goEntry, ok := got["go"]
+	if !ok {
+		t.Fatal(`LoadRegistry(overlay drops initialization_options) missing language "go"`)
+	}
+	if goEntry.InitializationOptions != nil {
+		t.Errorf(`LoadRegistry(overlay drops initialization_options)["go"].InitializationOptions = %v; want nil (whole-replace, not merged with the built-in template)`, goEntry.InitializationOptions)
+	}
+}
