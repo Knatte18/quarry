@@ -942,10 +942,10 @@ func TestAssertNoCallersFilterOrdering(t *testing.T) {
 	}
 }
 
-// TestBuildTagsFlag_RegisteredOnAllFourVerbs verifies every verb accepts --build-tags, and that
+// TestBuildTagsFlag_RegisteredOnAllFiveVerbs verifies every verb accepts --build-tags, and that
 // assert-no-callers additionally accepts --no-verify, by looking the flags up on the built
 // command tree rather than by executing a query.
-func TestBuildTagsFlag_RegisteredOnAllFourVerbs(t *testing.T) {
+func TestBuildTagsFlag_RegisteredOnAllFiveVerbs(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -956,6 +956,7 @@ func TestBuildTagsFlag_RegisteredOnAllFourVerbs(t *testing.T) {
 		{"definition", definitionCommand()},
 		{"symbol", symbolCommand()},
 		{"assert-no-callers", assertNoCallersCommand()},
+		{"impact", impactCommand()},
 	}
 
 	for _, tt := range tests {
