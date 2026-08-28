@@ -36,7 +36,7 @@ batches:
     name: docs-and-live-tier
     file: 04-docs-and-live-tier.md
     depends-on: [3]
-    verify: go build ./... && go vet -tags lsp ./internal/cli/ && go test ./internal/quarryengine/ ./internal/cli/...
+    verify: go build ./... && go test ./internal/quarryengine/ && go test -tags lsp ./internal/cli/
 ```
 
 ## Shared Decisions
@@ -103,7 +103,8 @@ batches:
 ### Decision: doc-site-ownership-by-touching-batch
 
 - **Decision:** the rule is "update every comment, doc block, or hand-enumerated test table that lists the engine package set or the verb set".
-  Each site is owned by the batch that already edits that file, so no file is edited by two batches: `internal/quarryengine/layering_test.go` by batch 1; `quarry/facade.go` and `quarry/facade_test.go` by batch 2; `internal/cli/cli.go` and `internal/cli/cli_test.go` by batch 3; `README.md`, `internal/quarryengine/doc.go`, and `internal/quarryengine/seam_enforcement_test.go` by batch 4.
+  Each site is owned by the batch that already edits that file, so no file is edited by two batches: `internal/quarryengine/layering_test.go` by batch 1; `quarry/facade.go` and `quarry/facade_test.go` by batch 2; `internal/cli/cli.go`, `internal/cli/toc.go`, and `internal/cli/cli_test.go` by batch 3; `README.md`, `internal/quarryengine/doc.go`, and `internal/quarryengine/seam_enforcement_test.go` by batch 4.
+  `internal/cli/toc.go` is on that list for a reason worth stating, since it is the site a verb-set grep would never surface: its header comment justifies `toc`'s bypass of `resolveContext`/`buildOptions` by enumerating the language-server-backed verbs as "(refs/definition/symbol/assert-no-callers)", and `impact` uses both helpers, so the enumeration goes stale the moment the verb lands even though the file's own behaviour is untouched.
   The phrase "seven-package DAG" occurs in exactly three files — `internal/quarryengine/doc.go` line 50, `quarry/facade.go`'s header line 3, and `internal/quarryengine/seam_enforcement_test.go`'s header line 10 — but grepping only for that phrase is what originally missed sites that carry no such phrase, so batch 4 closes with a doc-audit sweep over the whole rule, not the phrase.
 - **Rationale:** one file per batch keeps the DAG chain conflict-free and puts each doc edit next to the code change that made it stale.
 - **Applies to:** all batches
@@ -150,6 +151,7 @@ batches:
 - `internal/cli/impact.go`
 - `internal/cli/impact_lsp_test.go`
 - `internal/cli/impact_test.go`
+- `internal/cli/toc.go`
 - `internal/quarryengine/doc.go`
 - `internal/quarryengine/impact/enclosing.go`
 - `internal/quarryengine/impact/enclosing_test.go`

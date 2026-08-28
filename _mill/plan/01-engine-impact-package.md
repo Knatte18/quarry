@@ -198,6 +198,7 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   - `internal/quarryengine/query/callers.go`
   - `internal/quarryengine/query/refs.go`
   - `internal/quarryengine/toc/types.go`
+  - `internal/quarryengine/toc/toc.go`
   - `internal/quarryengine/impact/types.go`
   - `internal/quarryengine/impact/enclosing.go`
   - `internal/cli/cli.go`
@@ -250,8 +251,14 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   Emit one entry per call site: two calls to the target inside one enclosing function produce two
   entries with identical enclosing ranges.
 
-  Cancellation: immediately before resolving a reference whose file is not already cached, return
-  `ctx.Err()` if it is non-nil.
+  Cancellation: in the caller loop, immediately before resolving a reference whose file is not
+  already cached, return `ctx.Err()` if it is non-nil.
+  The definition-side lookup is deliberately **not** cancellation-checked: it is a single parse of
+  one file, performed once before the loop, whereas the loop's cost grows with the caller file
+  count — which is the unbounded quantity the `parse-loop-cancellation-and-timeout-scope` Shared
+  Decision scopes the check to.
+  Adding a second check there would guard a bounded cost while implying a granularity the backend
+  cannot deliver.
   Do not attempt to interrupt a parse already in flight, and do not thread a deadline into
   `toc.TOCFile`.
 
@@ -275,6 +282,9 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   - `internal/quarryengine/impact/enclosing.go`
   - `internal/quarryengine/toc/toc_test.go`
   - `internal/cli/assertnocallers_lsp_test.go`
+  - `testdata/impactfixture/billing/invoice.go`
+  - `testdata/impactfixture/pyfixture/shapes.py`
+  - `testdata/impactfixture/tsfixture/client.ts`
 - **Edits:** none
 - **Creates:**
   - `internal/quarryengine/impact/enclosing_test.go`
@@ -344,8 +354,12 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   Cover a caller file whose language has no registered strategy: the entry is still emitted with its
   call-site line, carries a per-entry `error`, has no enclosing range, and the call itself succeeds.
 
-  Cover cancellation: a context already cancelled before the first cache-miss parse makes
-  `buildResult` return that error rather than a partial result.
+  Cover cancellation: with a non-empty declaration set, a context already cancelled on entry makes
+  `buildResult` return that error rather than a partial result — and it does so at the first
+  *caller* cache-miss parse, not at the definition-side lookup, which card 5 deliberately leaves
+  unchecked. Assert that ordering explicitly (the injected parse counter shows the definition-side
+  file was parsed before the error surfaced), so the test pins the documented scope rather than
+  merely observing that some error came back.
 - **Commit:** `test(impact): cover result assembly, degradation shapes, and cancellation`
 
 ## Batch Tests

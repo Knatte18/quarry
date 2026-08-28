@@ -13,9 +13,9 @@ depends-on: [2]
 
 This batch delivers the user-facing verb: a new `internal/cli/impact.go` holding
 `impactCommand()` and the three small `impact`-typed helpers the result type forces, the
-registration of that command on the cobra tree, the CLI-level tests, and the correction of the
-hand-enumerated four-verb build-tags table that would otherwise leave the new verb's flag
-registration untested.
+registration of that command on the cobra tree, the two CLI-package doc sites that enumerate the
+verb set, the CLI-level tests, and the correction of the hand-enumerated four-verb build-tags table
+that would otherwise leave the new verb's flag registration untested.
 It is one batch because the command, its registration, and the table that mechanically enforces its
 flag set are a single reviewable unit — the table's second loop is what turns the Scope "Out" claim
 that `impact` gains no `--no-verify` flag from prose into a check.
@@ -53,9 +53,17 @@ end-to-end claim is proved by the live-tier test in batch 4.
   sequence, the same per-command local `buildQuery` closure dispatching to `inFileQuery` when
   `--in-file` is set and `parseQuery` otherwise, `Args: cobra.MinimumNArgs(1)`, a single-argument
   path, and a batch path through the existing `runBatch`, symbol-keyed.
-  Register exactly six flags, matching `refsCommand`'s set and its help strings: `--target-dir`,
-  `--lang`, `--timeout` (default `30*time.Second`, described as before as the deadline for each LSP
-  request phase), `--in-file`, `--within`, and `--build-tags`.
+  Register exactly six flags, matching `refsCommand`'s set: `--target-dir`, `--lang`, `--timeout`
+  (default `30*time.Second`), `--in-file`, `--within`, and `--build-tags`.
+  Copy `refsCommand`'s help strings for five of them, but **not** for `--timeout`: copy
+  `assertNoCallersCommand`'s wording for that one — "deadline for each LSP request phase
+  (initialize, resolve, references/definition)".
+  `refsCommand`'s narrower "(initialize, resolve, references)" would be false here, because
+  `impact` goes through `query.Callers`, which also runs a definition phase, an implementation
+  phase, and a per-reference verification phase — the same phase set `assert-no-callers` already
+  describes with the wider wording.
+  The help string must not name the tree-sitter parse phase either, since `--timeout` deliberately
+  does not cover it.
   Register no `--no-verify` flag and never set `SkipVerification` — that flag is
   `assert-no-callers`-only.
 
@@ -112,19 +120,24 @@ end-to-end claim is proved by the live-tier test in batch 4.
   Import nothing under `internal/quarryengine`: reach the engine only through the facade.
 - **Commit:** `feat(cli): add the impact verb and its result-typed emit/classify helpers`
 
-### Card 11: Register impact on the command tree and update the package doc
+### Card 11: Register impact on the command tree and update the CLI package doc sites
 
 - **Context:**
   - `internal/cli/impact.go`
 - **Edits:**
   - `internal/cli/cli.go`
+  - `internal/cli/toc.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
   Add `cmd.AddCommand(impactCommand())` to `Command()`, placed after the `assert-no-callers`
-  registration and before the `toc` group, so the verb ordering in `--help` matches the README's
-  list.
+  registration and before the `toc` group.
+  The reason is source-order readability — grouping the new LSP-backed verb with the other four,
+  ahead of the tree-sitter-backed group — and nothing more.
+  Do not claim this controls `--help` output: cobra's `EnableCommandSorting` defaults to true and is
+  never disabled anywhere in this repo, so `--help` lists subcommands alphabetically regardless of
+  registration order.
 
   Then make three distinct edits to this file's package doc comment, which enumerates the verb set
   three separate times — the verb list, the per-verb batch identity key, and the batch status
@@ -151,10 +164,20 @@ end-to-end claim is proved by the live-tier test in batch 4.
   `impact`'s single-argument call has the full 0/1/2 outcome set, so the exit-code contract
   paragraph's existing carve-outs for `symbol` and `toc` need no new exception.
 
-  Change nothing else in this file — the four existing commands, `resolveContext`, `buildOptions`,
-  `runBatch`, `filterWithin`, `isWithinDir`, `emitLookupResult`, and `classifyLookupError` are all
-  reused unchanged, and this task adds nothing parallel to them.
-- **Commit:** `feat(cli): register the impact verb on the command tree`
+  Change nothing else in `internal/cli/cli.go` — the four existing commands, `resolveContext`,
+  `buildOptions`, `runBatch`, `filterWithin`, `isWithinDir`, `emitLookupResult`, and
+  `classifyLookupError` are all reused unchanged, and this task adds nothing parallel to them.
+
+  Finally, a fourth doc edit, in a **second** file: `internal/cli/toc.go`'s header comment justifies
+  `toc`'s deliberate bypass of `resolveContext` and `buildOptions` by enumerating the verbs those
+  helpers exist for — "(refs/definition/symbol/assert-no-callers)".
+  `impactCommand` uses both helpers, so add `impact` to that enumeration.
+  Change nothing else in that file: its behaviour, its bypass, and the justification's reasoning are
+  all untouched by this task — only the verb list inside the justification is stale.
+  This is the doc site a verb-set grep is least likely to surface, since the file is named for a
+  different verb group entirely and its comment reads as being about `toc` rather than about the
+  LSP-backed verbs.
+- **Commit:** `feat(cli): register the impact verb and refresh the CLI package doc sites`
 
 ### Card 12: CLI-level tests for the impact verb
 
@@ -247,6 +270,9 @@ the new command is otherwise only exercised through the package's own tests.
 
 New test file: `internal/cli/impact_test.go` (card 12).
 Edited test file: `internal/cli/cli_test.go` (card 13).
+Card 11's second edit target, `internal/cli/toc.go`, is a comment-only change with no behavioural
+surface; the package's existing `toc` tests cover that file's behaviour and must stay green, which
+this same `verify:` already confirms.
 
 What this scope deliberately does **not** prove: that a real language server resolves a symbol and
 that each caller's `enclosing_range.start_line` lands on the caller's docstring line rather than its
