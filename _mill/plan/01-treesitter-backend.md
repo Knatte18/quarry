@@ -131,6 +131,7 @@ and it is the first `internal/quarryengine/...` package `go test ./...` reaches.
 
 - **Context:**
   - `internal/quarryengine/treesitter/treesitter.go`
+  - `internal/quarryengine/errors.go`
   - `internal/quarryengine/registry/registry_test.go`
 - **Edits:** none
 - **Creates:**

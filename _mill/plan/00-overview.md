@@ -358,7 +358,11 @@ Batch-local decisions live in each batch file._
   The help text also states the single-line-function imprecision from the `sigend` decision above.
 - **Rationale:** without this in the help text, no agent finds the cheap path — the verb ships with
   its most valuable usage undiscoverable.
-- **Applies to:** facade-and-cli, docs-and-sweep
+- **Applies to:** doc-sentences-config, docs-and-sweep
+
+  The flow lands in batch 7 card 44, not in batch 6: card 36 writes the rest of `toc file`'s `Long`
+  but explicitly defers the two-phase flow, because every step of it names `--doc-sentences`, and that
+  flag does not exist until batch 7.
 
 ### Decision: container-reachable, never body-reachable
 

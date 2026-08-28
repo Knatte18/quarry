@@ -72,8 +72,19 @@ Batch-local decisions, established by dumping real parse trees from the pinned g
   which is exactly the cross-language trap the flag exists to prevent.
   `Docstring` is the first statement of `decl`'s `body` block when that statement is an
   `expression_statement` whose only named child is a `string`: take that string's `string_content`
-  child's text, then `strings.TrimSpace` it. A body whose first statement is anything else has no
-  docstring.
+  child's text, then normalise it exactly the way the Go and C# docstrings are normalised — **trim
+  each line, join the lines with `\n`, and trim the whole result** — rather than a single
+  `strings.TrimSpace` over the raw text. A PEP 257 docstring is indented to its `def`, so a whole-text
+  trim alone would leave every line but the first carrying that indentation, while Go's `//` and C#'s
+  `///` stripping removes it; the shared "docstrings keep the prose and drop the syntax" decision
+  requires all three languages to produce the same shape.
+  Implement it by calling `StripLineComment(text, "")`: with an empty prefix that function is exactly
+  the per-line trim-join-trim rule and nothing else, so the normalisation is literally the same code
+  the other two strategies run rather than a parallel reimplementation. Say that in the doc comment,
+  since an empty-prefix call reads as odd until the reason is stated, and note the deliberate
+  consequence: indentation inside a docstring's code example is not preserved, for Python no more and
+  no less than for Go.
+  A body whose first statement is anything else has no docstring.
   **The range needs no docstring adjustment.** `Start` is `outer`'s first line and `End` is `outer`'s
   last line, because the docstring is already inside the definition node's own span. State that in the
   method's doc comment: it is the one place Python's rule differs from Go's and C#'s, and a reader
@@ -99,11 +110,13 @@ Batch-local decisions, established by dumping real parse trees from the pinned g
   synthesize a name from the filename or the parent directory: the field reports what the file
   itself declares, and a synthesized value would be indistinguishable from a declared one.
   `Header` prefers the module docstring: the first `expression_statement` child of the `module` root
-  whose only named child is a `string`, read through its `string_content` child and trimmed. This is
-  the same node shape as a function docstring, one level up.
+  whose only named child is a `string`, read through its `string_content` child and normalised with
+  the same `StripLineComment(text, "")` call card 22 uses, so a module docstring and a function
+  docstring come out shaped identically. This is the same node shape as a function docstring, one
+  level up.
   When the module has no docstring, fall back to the leading `comment` blocks: walk `LeadingBlocks`,
-  strip each with `StripLineComment(raw, "#")`, and return the first block for which
-  `IsDirectiveBlock("python", blockStartLine, stripped)` is false. That fallback is what makes the
+  strip each with `StripLineComment(b.Raw, "#")`, and return the first block for which
+  `IsDirectiveBlock("python", b.StartLine, stripped)` is false. That fallback is what makes the
   shebang and PEP 263 coding-line cases of `IsDirectiveBlock` reachable, and it means a file with a
   shebang and a module docstring returns the docstring rather than the shebang.
   `Header` returns the text untruncated; `FirstParagraph` is applied by the entry points.
@@ -227,7 +240,7 @@ Batch-local decisions, established by dumping real parse trees from the pinned g
   before the `=>`). A nil body yields `0`, so a bodyless declaration omits the key.
   Read the flag off the body node's `Kind()` rather than off the declaration's, and give it its own
   named helper so the branch is stated once for every C# kind.
-  `Docstring` is `StripXMLDocTags(StripLineComment(raw, "///"))` over `CommentBlockAbove`'s raw text,
+  `Docstring` is `StripXMLDocTags(StripComment(raw, "///"))` over `CommentBlockAbove`'s raw text,
   in that order — strip the line prefix first, then the tags, since the tags are inside the prose the
   prefix strip exposes. `Start` is the comment block's first line when a block was found and the
   declaration's first line otherwise; `End` is the declaration's last line.
@@ -253,10 +266,10 @@ Batch-local decisions, established by dumping real parse trees from the pinned g
   When a file declares more than one braced namespace at the root, take the first in source order and
   say in the doc comment that this is a deliberate simplification: the field is one per file, so a
   multi-namespace file gets the first one rather than a synthesized list.
-  `Header` walks `LeadingBlocks`, strips each block with `StripLineComment(raw, "///")` followed by
-  `StripLineComment(result, "//")` so both the XML-doc and the plain comment forms are handled, then
+  `Header` walks `LeadingBlocks`, strips each block with `StripComment(b.Raw, "///")` followed by
+  `StripComment(result, "//")` so both the XML-doc and the plain comment forms are handled, then
   applies `StripXMLDocTags`, and returns the first block for which
-  `IsDirectiveBlock("csharp", blockStartLine, stripped)` is false. An auto-generated block is
+  `IsDirectiveBlock("csharp", b.StartLine, stripped)` is false. An auto-generated block is
   therefore skipped as a header and the next block is taken.
   `Header` returns the text untruncated; `FirstParagraph` is applied by the entry points.
   `Generated` reads the raw text of the first leading block and delegates to

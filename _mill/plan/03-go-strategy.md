@@ -83,10 +83,22 @@ than assumed:
     node has no adjacent comment. The strict-adjacency stop is what keeps a trailing comment on the
     previous declaration from being misattributed to this one; say so in the doc comment, and note
     that the file-header rule deliberately differs by tolerating one blank line.
-  - `LeadingBlocks(root *ts.Node, src []byte) []*ts.Node` — the root's leading `comment` children
-    grouped into blocks by the same blank-line rule, returned in source order as the first node of
-    each block, stopping at the first non-comment child of the root. This is what the header rule
-    iterates to skip directive blocks.
+  - `LeadingBlocks(root *ts.Node, src []byte) []CommentBlock` — the root's leading `comment` children
+    grouped into blocks by the same blank-line rule, returned in source order, stopping at the first
+    non-comment child of the root. This is what the header rule iterates to skip directive blocks.
+    Declare the small struct it returns in this same file:
+    `type CommentBlock struct { First *ts.Node; Raw string; StartLine int }` — the block's topmost
+    comment node, the raw joined source of every comment line in the block, and that block's 1-based
+    starting line.
+    **The block text is part of this helper's contract, not the callers'.** Every header rule in the
+    plan (`golang.go`, `python.go`, `csharp.go`) needs the joined block text to strip and the block's
+    start line to pass to `IsDirectiveBlock`, and neither is derivable from a first node alone:
+    `CommentBlockAbove` only walks *upward* from a declaration, so a caller handed bare nodes would
+    have to reinvent the downward sibling walk three times over — which card 4's "no new shared
+    helper per strategy" rule exists to prevent. `Raw` is joined exactly the way
+    `CommentBlockAbove`'s `raw` is, so one `StripLineComment` call behaves identically on both.
+    `StartLine` is `First.StartPosition().Row + 1`; it is returned rather than recomputed at each
+    call site so the 0-based-to-1-based conversion lives in one place.
   Every helper takes `src` explicitly rather than closing over it, and none of them retains a node
   beyond its own return — the tree is closed by `treesitter.WithTree` as soon as extraction ends.
 - **Commit:** `feat(toc): add the shared tree-sitter node helpers`
@@ -116,7 +128,7 @@ than assumed:
     `*` when it is a `pointer_type`, so a `*T` receiver yields `T`; the body-bearing child is
     `ChildByFieldName("body")`.
   - `type_declaration` — handled by card 19.
-  For each symbol, `Docstring` is `StripLineComment(raw, "//")` over `CommentBlockAbove`'s raw text,
+  For each symbol, `Docstring` is `StripComment(raw, "//")` over `CommentBlockAbove`'s raw text,
   and `Start` is the comment block's first line when a block was found and the declaration's own
   first line otherwise; `End` is always the declaration's last line. Emit the **full** docstring —
   sentence trimming happens in the entry point.
@@ -196,8 +208,8 @@ than assumed:
   `Package` returns the text of the `package_clause` child's `package_identifier`, or `""` when the
   root has no `package_clause` — which is what a file broken badly enough to lose its package clause
   under a `partial` parse looks like.
-  `Header` walks `LeadingBlocks` in order, strips each block with `StripLineComment(raw, "//")`, and
-  returns the first block for which `IsDirectiveBlock("go", blockStartLine, stripped)` is false. When
+  `Header` walks `LeadingBlocks` in order, strips each block with `StripComment(b.Raw, "//")`, and
+  returns the first block for which `IsDirectiveBlock("go", b.StartLine, stripped)` is false. When
   every leading block is a directive block, or the file has no leading comment, it returns `""`.
   This rule deliberately differs from docstring association in two ways, both of which must be stated
   in the method's doc comment: it takes the **first** non-directive block rather than the block

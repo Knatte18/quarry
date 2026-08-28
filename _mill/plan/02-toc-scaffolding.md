@@ -22,9 +22,9 @@ Every function in this batch is text-in / value-out with no I/O and no tree-sitt
 signature except through the `Strategy` interface, which is why the tests here are written first.
 
 The external interface batches 3–5 consume: the `Symbol`, `FileTOC`, `DirEntry`, and `DirTOC` types;
-the `Strategy` interface with `Register` / `StrategyFor` / `Implemented`; `StripLineComment`,
-`StripXMLDocTags`, `FirstParagraph`, `FirstSentences`, `IsDirectiveBlock`, `TestFileByName`, and
-`GeneratedByBanner`.
+the `Strategy` interface with `Register` / `StrategyFor` / `Implemented`; `StripComment`,
+`StripLineComment`, `StripXMLDocTags`, `FirstParagraph`, `FirstSentences`, `IsDirectiveBlock`,
+`TestFileByName`, and `GeneratedByBanner`.
 
 ## Cards
 
@@ -168,6 +168,24 @@ the `Strategy` interface with `Register` / `StrategyFor` / `Implemented`; `Strip
     whitespace, removes one leading `prefix` (`//` for Go, `///` for C#) when present, trims the
     result, rejoins with `\n`, and trims the whole. A line that is exactly the bare prefix becomes an
     empty line, which is what makes the truncation rule below work uniformly across comment forms.
+    An **empty** `prefix` is a supported call: the function then performs the per-line trim, join and
+    whole trim with no prefix removal. That is the exact normalisation a Python docstring needs — it
+    has no line delimiter to strip but is indented to its `def` — so the Python strategy calls it that
+    way rather than reimplementing the rule. Document the empty-prefix case in the doc comment, so it
+    is a stated contract rather than an accident of the implementation.
+  - `StripComment(text, prefix string) string` — the delimiter-stripping entry point the Go and C#
+    strategies call, dispatching on the comment **form**: when `text`'s first non-whitespace
+    characters are `/*`, it removes the opening `/*` (and a `/**` variant's extra `*`), the closing
+    `*/`, and one leading `*` from each intermediate line, then applies the same per-line trim, join
+    and whole trim `StripLineComment` applies; otherwise it delegates to `StripLineComment(text,
+    prefix)` unchanged.
+    This exists because tree-sitter emits `/* ... */` as a `comment` node exactly like `//`, so a
+    block-form Go file header or C# doc comment reaches the strip path with its delimiters intact. A
+    prefix-only rule leaves `/*` and `*/` sitting in the emitted `docstring` and `header`. Say that in
+    the doc comment.
+    Scope limit, also to be stated there: only Go and C# have a block comment form among the
+    implemented languages, and only the delimiters are removed — no reflowing, no de-indentation
+    beyond the shared per-line trim.
   - `StripXMLDocTags(text string) string` — removes XML doc-comment tags such as `<summary>`,
     `</summary>`, and `<param name="x">` while keeping their text content, then collapses the runs of
     blank lines the removal leaves behind and trims the result. Implement the tag match with a
@@ -300,7 +318,16 @@ the `Strategy` interface with `Register` / `StrategyFor` / `Implemented`; `Strip
 - **Requirements:** table-driven tests, written before the implementations they cover are considered
   done, over every rule in cards 11–14.
   `comments_test.go` covers: `StripLineComment` for a Go `//` block and a C# `///` block, including a
-  bare-prefix line collapsing to an empty line; `StripXMLDocTags` for a `<summary>` block and for a
+  bare-prefix line collapsing to an empty line, plus the **empty-prefix** call over an indented
+  multi-line Python-docstring-shaped string, asserting every line loses its indentation and no `#` or
+  `/` is removed.
+  `StripComment` for: a `//` block, asserting it matches `StripLineComment`'s output exactly; a Go
+  `/* ... */` block whose intermediate lines carry no leading `*`; a `/**` … `*/` block whose
+  intermediate lines each start with `*`, asserting both the delimiters and the per-line `*` are
+  removed; and a single-line `/* one liner */`. The block-form cases are the ones that fail if the
+  dispatch is dropped, and they are why the function exists rather than the strategies calling
+  `StripLineComment` directly.
+  Also `StripXMLDocTags` for a `<summary>` block and for a
   `<param name="x">` element, asserting the tags are removed and their text kept;
   `FirstParagraph` for a Go `//` block with a bare `//` separator line, a C# `///` block with a bare
   `///` separator line, a Python module docstring with a blank line, and a header with no blank line
@@ -352,6 +379,11 @@ the `Strategy` interface with `Register` / `StrategyFor` / `Implemented`; `Strip
   belongs in the comment.
   Update `layering_test.go`'s `layeringTable` doc comment, which enumerates the allowed directions in
   prose, to include the two new packages.
+  Update the import-path constant block's own comment as well. Batch 1 card 7 raised its stated count
+  to seven when it added `treesitterPkg`; `tocPkg` makes it eight, and this card owns that second
+  bump. Both comment updates belong here for the same reason the `minPackageDirs` bump does: this is
+  the card that adds the eighth path, so leaving either count to batch 8 would mean shipping a batch
+  whose own guard file contradicts itself.
   Make no other change to either guard: do not widen a banned list, do not add an exemption, and do
   not relax a walk.
 - **Commit:** `test(quarryengine): add toc layering rows and raise the package-dir floor`

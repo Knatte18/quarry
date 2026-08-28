@@ -32,7 +32,7 @@ machinery.
   - `internal/quarryengine/toc/toc.go`
   - `internal/quarryengine/toc/types.go`
   - `internal/quarryengine/errors.go`
-  - `internal/quarryengine/registry/registry.go`
+  - `internal/quarryengine/registry/extension.go`
 - **Edits:**
   - `quarry/facade.go`
 - **Creates:** none
@@ -173,6 +173,13 @@ machinery.
     `quarry toc file internal/cli/exec.go` from the same working directory. `DirEntry.Name` is
     `json:"-"` precisely so this composition has to happen here; add the `path` key while building
     each entry's map.
+    Spell out the correlation step, because the re-marshal card 36 mandates destroys the base names
+    on the way through: `Name` is `json:"-"`, so after `encoding/json` has turned the result into a
+    `map[string]any` the decoded `files` array no longer carries it. Zip that array back to
+    `result.Files` **by index** — the marshal preserves slice order, so element `i` of the decoded
+    array is `result.Files[i]` — and inject `path` from the typed entry while walking the pair. Assert
+    the two lengths match before the loop and fail loudly if they do not, rather than indexing into a
+    shorter slice.
   For `--lang` naming a designed-but-unimplemented language, `toc dir` returns `ok:true` and exit 0
   with every matching file listed carrying its per-file `error` — the flag selects which files to
   list, and an unimplemented language is a reported limitation rather than a failure of the listing.

@@ -218,9 +218,10 @@ current claim about quarry. Historical research documents are not updated when t
   covers, and those enumerations are now short by two. Update each to name every package the walk
   actually visits.
   In the layering guard, also check the `layeringTable` doc comment and the import-path constant
-  block's comment: batches 1 and 2 updated both, so confirm they are consistent with the final table
-  rather than editing them again. Verifying and leaving them alone is the correct outcome if they are
-  already right.
+  block's comment. Batch 2 card 16 owns both — it is the card that adds the eighth import path — so
+  the expected finding here is that they already name eight paths and both new packages. Verify;
+  edit only if the expectation does not hold. Do not assume they are stale, and do not restate a
+  count this card has no authority over.
   Change no assertion, no constant, and no table row in this card — batches 1 and 2 own those, and
   the numbers they set are correct. This card is prose only, and a diff that touches a `const` or a
   `pathSet` call is a mistake.
@@ -277,7 +278,7 @@ current claim about quarry. Historical research documents are not updated when t
   specification:
 
   ```
-  grep -rnE 'five-package|four verbs|29 identifiers|eight blank-identifier|LSP-backed|minPackageDirs|The six internal|import all four|seven re-exported' \
+  grep -rnE 'five-package|four verbs|29 identifiers|eight blank-identifier|LSP-backed|minPackageDirs|The six internal|imports? all four|seven re-exported' \
     --include='*.go' --include='*.md' . | grep -v '^\./_mill/' | grep -v '^\./\.scratch/'
 
   grep -rnE 'lsp, registry|registry, daemon|root leaf' \
@@ -286,6 +287,12 @@ current claim about quarry. Historical research documents are not updated when t
 
   The second search exists because package-set enumerations use no count word and the first search
   cannot reach them.
+  Note that the first alternation deliberately reads `imports? all four`, not `import all four`: the
+  two sites it must reach are `internal/quarryengine/doc.go`'s `query` bullet ("It **imports** all
+  four packages above", which card 49 rewrites) and `layering_test.go`'s `layeringTable` doc comment
+  ("query's production files **import** all four", which batch 2 card 16 rewrites). A bare `import all four` matches only
+  the second and hides the one this batch is chartered to fix — verified by running both forms
+  against the tree before this plan was approved.
   Then check the three clauses no grep reaches, by reading rather than searching: that no prose still
   claims quarry is LSP-only or does not parse source itself; that no prose still claims a batch entry
   is keyed on a symbol; and that no prose still implies quarry builds without a C toolchain.
