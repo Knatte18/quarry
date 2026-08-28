@@ -74,6 +74,36 @@ const pythonFixtureUnderGoLang = `def greet(name):
 
 const rustFixture = "fn greet() -> &'static str {\n    \"hello\"\n}\n"
 
+// twoSentenceDocFixture holds a symbol with a two-sentence docstring, for exercising
+// --doc-sentences.
+const twoSentenceDocFixture = `package fixture
+
+// Greet returns a greeting for name. It never returns an error.
+func Greet(name string) string {
+	return "hello " + name
+}
+`
+
+// abbreviationDocFixture holds a symbol whose single-sentence docstring contains "e.g.", which
+// must not be treated as a sentence boundary.
+const abbreviationDocFixture = `package fixture
+
+// Greet handles e.g. formal and informal names.
+func Greet(name string) string {
+	return "hello " + name
+}
+`
+
+// backtickDocFixture holds a symbol whose single-sentence docstring contains a backtick-quoted
+// dotted identifier, whose internal "." must not be treated as a sentence boundary.
+const backtickDocFixture = `package fixture
+
+// Greet uses ` + "`pkg.Sub.Method`" + ` internally.
+func Greet(name string) string {
+	return "hello " + name
+}
+`
+
 // TestRunCLI_Toc_BareShowsHelp verifies bare "quarry toc" prints help and exits 0, GroupRunE's
 // bare-invocation contract.
 func TestRunCLI_Toc_BareShowsHelp(t *testing.T) {
@@ -628,4 +658,249 @@ func findBatchEntry(t *testing.T, results []any, path string) map[string]any {
 	}
 	t.Fatalf("no batch entry found with path %q in %v", path, results)
 	return nil
+}
+
+// firstSymbol returns env["symbols"][0] as a map, failing the test if the shape does not match.
+func firstSymbol(t *testing.T, env map[string]any) map[string]any {
+	t.Helper()
+	symbols, ok := env["symbols"].([]any)
+	if !ok || len(symbols) == 0 {
+		t.Fatalf("symbols = %v; want a non-empty array", env["symbols"])
+	}
+	sym, ok := symbols[0].(map[string]any)
+	if !ok {
+		t.Fatalf("symbols[0] = %v; want a JSON object", symbols[0])
+	}
+	return sym
+}
+
+// TestRunCLI_TocFile_DocSentencesZeroOmitsDocstringKey verifies --doc-sentences 0 omits the
+// "docstring" key entirely from every symbol object, not present and empty — asserted against the
+// decoded map since an empty string and a missing key are indistinguishable once decoded into a
+// struct.
+func TestRunCLI_TocFile_DocSentencesZeroOmitsDocstringKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", twoSentenceDocFixture)
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go", "--doc-sentences", "0")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go --doc-sentences 0) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	sym := firstSymbol(t, env)
+	if _, present := sym["docstring"]; present {
+		t.Errorf("symbols[0] carries a \"docstring\" key = %v; want it omitted under --doc-sentences 0", sym["docstring"])
+	}
+}
+
+// TestRunCLI_TocFile_NoFlagDefaultsToOneSentence verifies the default (no flag) keeps exactly the
+// first sentence of a two-sentence docstring.
+func TestRunCLI_TocFile_NoFlagDefaultsToOneSentence(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", twoSentenceDocFixture)
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	sym := firstSymbol(t, env)
+	want := "Greet returns a greeting for name."
+	if sym["docstring"] != want {
+		t.Errorf("symbols[0].docstring = %q; want %q", sym["docstring"], want)
+	}
+}
+
+// TestRunCLI_TocFile_DocSentencesAllKeepsWholeDocstring verifies --doc-sentences all keeps the
+// docstring unchanged.
+func TestRunCLI_TocFile_DocSentencesAllKeepsWholeDocstring(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", twoSentenceDocFixture)
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go", "--doc-sentences", "all")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go --doc-sentences all) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	sym := firstSymbol(t, env)
+	want := "Greet returns a greeting for name. It never returns an error."
+	if sym["docstring"] != want {
+		t.Errorf("symbols[0].docstring = %q; want %q", sym["docstring"], want)
+	}
+}
+
+// TestRunCLI_TocFile_DocSentencesLargerThanCountReturnsWholeDocstring verifies an N larger than
+// the sentence count returns the whole docstring, exit 0, no error.
+func TestRunCLI_TocFile_DocSentencesLargerThanCountReturnsWholeDocstring(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", twoSentenceDocFixture)
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go", "--doc-sentences", "9")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go --doc-sentences 9) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	sym := firstSymbol(t, env)
+	want := "Greet returns a greeting for name. It never returns an error."
+	if sym["docstring"] != want {
+		t.Errorf("symbols[0].docstring = %q; want %q", sym["docstring"], want)
+	}
+}
+
+// TestRunCLI_TocFile_AbbreviationNotSplit verifies a docstring containing "e.g." is not split
+// there under the default --doc-sentences.
+func TestRunCLI_TocFile_AbbreviationNotSplit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", abbreviationDocFixture)
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	sym := firstSymbol(t, env)
+	want := "Greet handles e.g. formal and informal names."
+	if sym["docstring"] != want {
+		t.Errorf("symbols[0].docstring = %q; want %q (not split at \"e.g.\")", sym["docstring"], want)
+	}
+}
+
+// TestRunCLI_TocFile_BacktickDottedIdentifierNotSplit verifies a docstring containing a
+// backtick-quoted dotted identifier is not split inside the backticks.
+func TestRunCLI_TocFile_BacktickDottedIdentifierNotSplit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", backtickDocFixture)
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	sym := firstSymbol(t, env)
+	want := "Greet uses `pkg.Sub.Method` internally."
+	if sym["docstring"] != want {
+		t.Errorf("symbols[0].docstring = %q; want %q (not split inside backticks)", sym["docstring"], want)
+	}
+}
+
+// TestRunCLI_TocFile_DocSentencesInvalidValues verifies --doc-sentences -1 and --doc-sentences
+// sentence both produce an output.Err, exit 1, naming both valid forms.
+func TestRunCLI_TocFile_DocSentencesInvalidValues(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"-1", "sentence"} {
+		value := value
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeTOCFixture(t, dir, "foo.go", goFixture)
+
+			exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go", "--doc-sentences", value)
+			if exitCode == 0 {
+				t.Fatalf("RunCLIIn(toc file foo.go --doc-sentences %s) = 0; want non-zero exit", value)
+			}
+			if ok, _ := env["ok"].(bool); ok {
+				t.Errorf("RunCLIIn(toc file foo.go --doc-sentences %s) ok = true; want false", value)
+			}
+			errMsg, _ := env["error"].(string)
+			if !strings.Contains(errMsg, "all") || !strings.Contains(errMsg, "non-negative") {
+				t.Errorf("RunCLIIn(toc file foo.go --doc-sentences %s) error = %q; want it to name both valid forms", value, errMsg)
+			}
+		})
+	}
+}
+
+// TestRunCLI_TocFile_DocSentencesZeroBatchModeOmitsEveryEntry verifies --doc-sentences 0 combined
+// with batch mode omits "docstring" from every entry's symbols, with the exit code unaffected.
+func TestRunCLI_TocFile_DocSentencesZeroBatchModeOmitsEveryEntry(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "a.go", twoSentenceDocFixture)
+	writeTOCFixture(t, dir, "b.go", goFixture)
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "a.go", "b.go", "--doc-sentences", "0")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file a.go b.go --doc-sentences 0) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	results, _ := env["results"].([]any)
+	if len(results) != 2 {
+		t.Fatalf("results = %v; want exactly 2 entries", env["results"])
+	}
+	for _, raw := range results {
+		entry, _ := raw.(map[string]any)
+		symbols, _ := entry["symbols"].([]any)
+		for _, rawSym := range symbols {
+			sym, _ := rawSym.(map[string]any)
+			if _, present := sym["docstring"]; present {
+				t.Errorf("entry %v symbol %v carries a \"docstring\" key; want it omitted under --doc-sentences 0", entry["path"], sym)
+			}
+		}
+	}
+}
+
+// TestRunCLI_TocFile_QuarryYAMLReachesTheEngine verifies a .quarry.yaml beside the fixture holding
+// doc_sentences: all, with no flag, produces the whole docstring — proving the chain reaches the
+// engine and not merely the resolver.
+func TestRunCLI_TocFile_QuarryYAMLReachesTheEngine(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", twoSentenceDocFixture)
+	writeTOCFixture(t, dir, ".quarry.yaml", "toc:\n  doc_sentences: all\n")
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "file", "foo.go")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	sym := firstSymbol(t, env)
+	want := "Greet returns a greeting for name. It never returns an error."
+	if sym["docstring"] != want {
+		t.Errorf("symbols[0].docstring = %q; want %q (the .quarry.yaml's doc_sentences: all)", sym["docstring"], want)
+	}
+}
+
+// TestRunCLI_TocFile_RangesStayFixedAcrossDocSentences verifies "start", "sigend", and "end" are
+// byte-identical across --doc-sentences 0, no flag, and --doc-sentences all for the same fixture —
+// the ranges never move with the emitted text, the property the two-phase flow depends on.
+func TestRunCLI_TocFile_RangesStayFixedAcrossDocSentences(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", twoSentenceDocFixture)
+
+	_, zeroEnv := runTOCCLI(t, dir, "toc", "file", "foo.go", "--doc-sentences", "0")
+	_, defaultEnv := runTOCCLI(t, dir, "toc", "file", "foo.go")
+	_, allEnv := runTOCCLI(t, dir, "toc", "file", "foo.go", "--doc-sentences", "all")
+
+	zeroSym := firstSymbol(t, zeroEnv)
+	defaultSym := firstSymbol(t, defaultEnv)
+	allSym := firstSymbol(t, allEnv)
+
+	for _, key := range []string{"start", "sigend", "end"} {
+		z, d, a := zeroSym[key], defaultSym[key], allSym[key]
+		if z != d || d != a {
+			t.Errorf("%s differs across --doc-sentences values: 0=%v, default=%v, all=%v", key, z, d, a)
+		}
+	}
+}
+
+// TestRunCLI_TocDir_NoDocSentencesFlag verifies "toc dir" has no --doc-sentences flag, mirroring
+// TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol's assertion of the equivalent
+// asymmetry for the existing verbs.
+func TestRunCLI_TocDir_NoDocSentencesFlag(t *testing.T) {
+	t.Parallel()
+
+	if tocDirCommand().Flags().Lookup("doc-sentences") != nil {
+		t.Error("tocDirCommand() has --doc-sentences registered; want it unregistered — \"toc dir\" emits headers only, never docstrings")
+	}
+	if tocFileCommand().Flags().Lookup("doc-sentences") == nil {
+		t.Error("tocFileCommand() has no --doc-sentences registered; want it present")
+	}
 }
