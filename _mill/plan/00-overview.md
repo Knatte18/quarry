@@ -60,6 +60,12 @@ batches:
   On a caller entry, `file` and `call_site_line` are always present, and `call_site_character`/`enclosing_range`/`error` are `omitempty`.
   On `Range`, `start_line` and `end_line` are always present (the object is omitted wholesale otherwise) and `sigend_line` is `omitempty`.
 - **Rationale:** `structToFields` already honours every `omitempty` rule in one place, and pinning the key set by struct tags is the same discipline `toc/types.go`'s header comment records.
+- **Rationale for the two range shapes:** `definition` carries its three range fields flat while a caller entry nests the identical triple under `enclosing_range`.
+  The asymmetry is deliberate and load-bearing, not an oversight.
+  On a caller entry the range is present-or-absent **as a unit**, and its absence is a meaningful, documented signal ("file-scope reference — no enclosing declaration") that must be distinguishable while `file` and `call_site_line` stay present;
+  a pointer to a nested object expresses that one invariant in one place, whereas three flat `omitempty` line fields would scatter it across three tags and make a legitimately-absent range indistinguishable from three independently-zero numbers.
+  On `definition` the three fields are individually omittable by design — outcomes 2 and 3 of the `three-outcome-degradation-rule` drop them while `file` and `line` remain — so there is no unit to nest, and nesting would add a level that is empty in exactly the cases the flat form already covers.
+  This is also the shape `discussion.md`'s `json-key-set` decision fixes verbatim, so changing `definition` to a nested object would contradict a documented design decision rather than merely restyle the output.
 - **Applies to:** engine-impact-package, cli-impact-verb
 
 ### Decision: identity-object-is-keyed-target-not-symbol

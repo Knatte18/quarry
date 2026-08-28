@@ -5,7 +5,7 @@ task: "Add `impact` verb for caller-context lookup"
 batch: "docs-and-live-tier"
 number: 4
 cards: 4
-verify: go build ./... && go vet -tags lsp ./internal/cli/ && go test ./internal/quarryengine/ ./internal/cli/...
+verify: go build ./... && go test ./internal/quarryengine/ && go test -tags lsp ./internal/cli/
 depends-on: [3]
 ```
 
@@ -19,10 +19,17 @@ and because the live-tier test is the single place the docstring-inclusive range
 proved.
 
 Batch-local decision beyond `## Shared Decisions`: the live-tier test is guarded by a `lsp` build tag
-and skipped when gopls is absent, so it is not part of the default verify.
-This batch's `verify:` therefore adds `go vet -tags lsp ./internal/cli/` — a type-check of the tagged
-tier that costs nothing and prevents a tagged file that does not even compile from being committed,
-which is the realistic failure mode for a test the default tier never builds.
+and by an `exec.LookPath("gopls")` skip, so no gate anywhere else in the pipeline ever builds or runs
+it — `pipeline.done_gate` is an untagged `go test ./...`, and every other batch's `verify:` is
+untagged too.
+This batch's `verify:` therefore **runs** the tagged tier itself, via `go test -tags lsp
+./internal/cli/`, rather than merely type-checking it.
+A `-tags lsp` run is a strict superset of the untagged one for that package — build tags only add
+files — so it replaces the plain `./internal/cli/...` run rather than sitting alongside it.
+The `exec.LookPath("gopls")` skip keeps it green on a machine without gopls (which is the case in
+this worktree today, so the assertions will skip here and prove themselves on a machine that has
+it); what the gate buys unconditionally is that the tagged file must compile, which no other gate in
+the pipeline checks at all.
 
 ## Cards
 
@@ -38,8 +45,8 @@ which is the realistic failure mode for a test the default tier never builds.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Four distinct edits, not two. Each is a separate enumeration of the package set and all four go
-  stale without this card.
+  Five distinct edits, not two. Each is a separate enumeration of the package set or of the
+  questions the engine answers, and all five go stale without this card.
 
   First, the "# The package layout" section's opening line calls the engine "a seven-package DAG";
   correct it to eight.
@@ -58,8 +65,9 @@ which is the realistic failure mode for a test the default tier never builds.
   declaration ranges for the `impact` verb, and state its allowed imports — the root, `query`, and
   `toc`. Place it after the `query` bullet, since it sits above `query` in the DAG.
 
-  Also add `impact` to the opening paragraph's list of questions the engine answers, alongside the
+  Fifth, add `impact` to the opening paragraph's list of questions the engine answers, alongside the
   existing refs/definition/symbol/toc phrasing.
+
   Do not add a "what this engine deliberately does not do" entry for transitive impact: that is a
   CLI-facing scope decision recorded in the verb's own help, not an engine capability the engine
   declines to have.
@@ -75,21 +83,34 @@ which is the realistic failure mode for a test the default tier never builds.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Comment-only edits: this file's `minPackageDirs` constant needs **no** bump.
-  Its own comment records that the floor is deliberately kept one below the real count — 8, while
-  the two-tree walk actually visits 9 — so adding a package keeps the assertion satisfied.
-  Changing the constant would silently convert a deliberate slack into a tight coupling.
+  Comment-only edits: this file's `minPackageDirs` constant needs **no** bump, and must not be
+  changed.
+  Its floor of 8 is already below the directory count the two-tree walk visits today (nine, once
+  `quarry/` is counted), and batch 1's new package only widens that gap to two, so the assertion
+  stays satisfied without any change.
+  Leaving the constant alone is also what `discussion.md` decides explicitly: raising it would
+  convert a deliberate slack into a tight coupling that every future package addition has to
+  service.
 
   Update the header comment's package enumeration, which lists "the root leaf, lsp, registry,
   daemon, daemon/daemontest, query, treesitter, and toc", to include the new package.
 
   Correct the header comment's "seven-package DAG" phrase to "eight-package DAG". This is the third
-  and last occurrence of that phrase in the repo; the other two were corrected in batches 2 and 4's
-  card 14.
+  and last occurrence of that phrase in the repo; batch 2's card 8 corrected the one in the facade
+  header, and card 14 above corrected the one in the engine package doc.
 
-  Update the `minPackageDirs` comment's own directory enumeration to name the new package, while
-  keeping its "deliberately kept one below the real count" reasoning intact and correcting the two
-  counts it cites so they stay consistent with the new directory total.
+  Update the `minPackageDirs` comment's own directory enumeration to name the new package, and
+  restate its slack **without a count**: the floor is deliberately kept below the real count, full
+  stop.
+  Do not preserve the "kept one below" phrasing and do not re-derive a new gap figure.
+  The reason is arithmetic: the comment currently reads "…and toc is eight, quarry/ makes nine —
+  …its floor is deliberately kept one below the real count (8, not 9)", but after batch 1 the
+  two-tree walk visits nine engine directories plus `quarry/`, so the floor of 8 is two below, not
+  one.
+  Keeping the phrasing and correcting the cited counts are mutually exclusive; naming a specific gap
+  at all is what made this comment go stale in the first place, so the fix is to stop naming one.
+  Correct the enumeration's own two totals (nine engine directories, ten across both trees) since
+  those are statements of fact about the walk, not about the slack.
 
   `TestEngineSeamInvariant_BannedImports`' own doc comment carries no enumeration and needs no edit.
   Change no logic in this file.
@@ -120,6 +141,17 @@ which is the realistic failure mode for a test the default tier never builds.
 
   Do not restate the JSON shape here — the verb's own `--help` and the plan's Shared Decisions own
   it, and a second copy in the README would go stale independently.
+
+  Finally, perform the doc-audit sweep as the last step of this card, once cards 14 and 15 have
+  landed and this card's own edit is made.
+  Re-read every site the `doc-site-ownership-by-touching-batch` Shared Decision names — across all
+  four batches, not just this one — and confirm each now includes the new package or the new verb.
+  The sweep is over that rule, not over the phrase "seven-package DAG": grepping only for the phrase
+  is what originally missed two of the sites, so a phrase grep is a cross-check, never the sweep
+  itself.
+  Record the sweep's outcome in this card's commit body, naming each site checked.
+  If the sweep finds a stale site that no card covers, fix it here and say so in the commit body
+  rather than leaving it for a later task.
 - **Commit:** `docs(readme): add the impact verb and fix the stale verb-count sentence`
 
 ### Card 17: Live-tier end-to-end test
@@ -167,24 +199,29 @@ which is the realistic failure mode for a test the default tier never builds.
 
 ## Batch Tests
 
-`verify: go build ./... && go vet -tags lsp ./internal/cli/ && go test ./internal/quarryengine/ ./internal/cli/...`
+`verify: go build ./... && go test ./internal/quarryengine/ && go test -tags lsp ./internal/cli/`
 has three parts, each earning its place.
-`go build ./...` is the compile gate.
-`go vet -tags lsp ./internal/cli/` type-checks the `lsp`-tagged tier this batch creates — that tier is
-never built by the default `go test` run, so without this the new tagged file could be committed in a
-state that does not compile, which is exactly the failure mode a tag-gated test invites.
-`go test ./internal/quarryengine/ ./internal/cli/...` runs the two packages this batch edits test
-files in: the engine root package, whose `seam_enforcement_test.go` card 15 edits, and the CLI
-package, whose behaviour cards 16 and 17 describe.
-The engine-root pattern is deliberately not `./internal/quarryengine/...` here: this batch touches no
-subpackage, and the root package is where both guards live.
 
-New test file: `internal/cli/impact_lsp_test.go` (card 17), which runs only under the `lsp` tag on a
-machine with gopls and is not part of the default verify.
+`go build ./...` is the compile gate over the whole module.
+
+`go test ./internal/quarryengine/` runs the engine **root** package, where card 15's edited
+`internal/quarryengine/seam_enforcement_test.go` lives alongside the layering guard.
+The pattern is deliberately not `./internal/quarryengine/...`: this batch touches no engine
+subpackage, and both guards live in the root package.
+
+`go test -tags lsp ./internal/cli/` runs the CLI package **including** the `lsp`-tagged tier card 17
+creates. This is the only gate anywhere in the pipeline that builds or runs that tier — every other
+batch's `verify:` and `pipeline.done_gate` are untagged — so without it the new tagged file could be
+committed in a state that does not even compile, the realistic failure mode a tag-gated test invites.
+Because build tags only add files, this run is a strict superset of the untagged
+`./internal/cli/...` run and replaces it rather than sitting alongside it.
+On a machine without gopls the live assertions skip via `exec.LookPath`, leaving the compile check as
+the unconditional benefit; on a machine with gopls the brief's central claim is actually proved.
+
+New test file: `internal/cli/impact_lsp_test.go` (card 17), in the CLI package under the `lsp` tag.
 Edited test file: `internal/quarryengine/seam_enforcement_test.go` (card 15), comments only.
+Card 16 edits `README.md`, a documentation file with no runnable surface — it is covered by the
+doc-audit sweep below rather than by any test.
 
-Doc-audit sweep, performed by the implementer as part of card 16 and reported in its commit body:
-after the three doc cards land, re-read every site the `doc-site-ownership-by-touching-batch` Shared
-Decision names and confirm each now includes the new package or the new verb.
-The sweep is over that rule, not over the phrase "seven-package DAG" — grepping only for the phrase
-is what originally missed two of the sites.
+The doc-audit sweep is card 16's own last requirement, not a free-floating instruction here: see that
+card's `Requirements:` for what it covers and where its outcome is recorded.

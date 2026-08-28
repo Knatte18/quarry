@@ -38,6 +38,8 @@ end-to-end claim is proved by the live-tier test in batch 4.
   - `internal/cli/cli.go`
   - `internal/cli/toc.go`
   - `internal/cli/paths.go`
+  - `internal/cli/cwdcontext.go`
+  - `internal/cli/exec.go`
   - `internal/output/output.go`
   - `quarry/facade.go`
 - **Edits:** none
@@ -77,7 +79,14 @@ end-to-end claim is proved by the live-tier test in batch 4.
   every other error go to `output.Err`'s exit 1.
   On success, marshal the result through the existing `structToFields` helper, add
   `"resolution": "complete"` to the returned map, and emit it through `output.Ok`.
-  A `structToFields` failure is itself an `output.Err` exit 1.
+  A `structToFields` failure is itself an `output.Err` exit 1 — but not with that helper's own
+  message verbatim.
+  `structToFields` wraps both of its failure modes with a literal `toc: ` prefix, because it was
+  written for the `toc` verbs, and the reuse decision keeps it unchanged.
+  So `emitImpactResult` must re-word the failure before emitting it — prefix it as an `impact`
+  marshalling failure — otherwise this verb's error envelope names a verb the caller never invoked.
+  `classifyImpactError` re-words it identically, so the single-argument and batch shapes carry the
+  same message.
 
   Add `classifyImpactError(err error, result quarry.ImpactResult) (batchStatus, map[string]any)`,
   the batch-mode counterpart, preserving `classifyLookupError`'s same three-way routing and order:
@@ -117,14 +126,28 @@ end-to-end claim is proved by the live-tier test in batch 4.
   registration and before the `toc` group, so the verb ordering in `--help` matches the README's
   list.
 
-  Update this file's package doc comment, which enumerates every verb and the per-verb batch
-  identity key.
-  Add `impact` to the verb enumeration in the opening `Package cli builds quarry's own command
-  tree` paragraph, describing it as the caller set for a symbol with each caller's enclosing
+  Then make three distinct edits to this file's package doc comment, which enumerates the verb set
+  three separate times — the verb list, the per-verb batch identity key, and the batch status
+  vocabulary.
+
+  First, add `impact` to the verb enumeration in the opening `Package cli builds quarry's own
+  command tree` paragraph, describing it as the caller set for a symbol with each caller's enclosing
   declaration range.
-  Add `impact` to the batch-mode identity-key sentence's symbol-keyed group, alongside
+
+  Second, add `impact` to the batch-mode identity-key sentence's symbol-keyed group, alongside
   `refs`/`definition`/`symbol`/`assert-no-callers`, leaving the `toc` verbs' path-keyed group
   unchanged.
+
+  Third, correct the batch status-vocabulary sentence in the same package doc comment.
+  It currently scopes the `"ambiguous"` status to "refs/definition only; toc never produces it".
+  `classifyImpactError` makes `impact` a third producer of that status, so the parenthetical is
+  false the moment this verb lands.
+  Restate it to name `impact` alongside `refs` and `definition`, keeping the existing clause that
+  `toc` never produces it and the reason given for that.
+  This third doc edit falls under the same `doc-site-ownership-by-touching-batch` Shared Decision
+  that assigns this file to this batch — it is a hand-enumerated statement about the verb set,
+  exactly the category that rule covers, and it carries no "seven-package DAG" phrase to grep for.
+
   `impact`'s single-argument call has the full 0/1/2 outcome set, so the exit-code contract
   paragraph's existing carve-outs for `symbol` and `toc` need no new exception.
 

@@ -38,6 +38,7 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   - `testdata/clockfixture/go.mod`
   - `testdata/clockfixture/builder/poll.go`
   - `internal/quarryengine/toc/python.go`
+  - `internal/quarryengine/toc/types.go`
 - **Edits:** none
 - **Creates:**
   - `testdata/impactfixture/go.mod`
@@ -199,6 +200,7 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   - `internal/quarryengine/toc/types.go`
   - `internal/quarryengine/impact/types.go`
   - `internal/quarryengine/impact/enclosing.go`
+  - `internal/cli/cli.go`
 - **Edits:** none
 - **Creates:**
   - `internal/quarryengine/impact/impact.go`
@@ -220,6 +222,7 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   site(s) from the reported callers — the same set-membership rule `internal/cli`'s
   `filterUnexpectedCallers` applies for `assert-no-callers`, re-implemented here because the seam
   guard bans the engine from importing any `internal/*cli` package.
+  Read `internal/cli/cli.go` for that rule's exact shape and re-implement it; do not import it.
   Exclude only that set: a recursive call inside the target's own body is an ordinary caller whose
   enclosing symbol is the target itself, and must be kept.
 
