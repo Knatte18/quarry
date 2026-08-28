@@ -90,3 +90,30 @@ func parseDocSentences(raw string) (int, error) {
 	}
 	return n, nil
 }
+
+// resolveDocSentences resolves the effective DocSentences value for one "toc file" argument,
+// highest precedence first:
+//
+//  1. a non-empty flagValue — parsed through parseDocSentences;
+//  2. the toc config file at resolveTOCConfigPath(targetDir), loaded through loadTOCConfig; when
+//     it supplied a value, parsed through parseDocSentences;
+//  3. the built-in default, 1.
+//
+// This reads as three steps rather than the design's four-tier chain because tiers 2 and 3 of
+// that chain — $QUARRY_TOC_CONFIG and the target directory's own .quarry.yaml — are both already
+// resolved inside resolveTOCConfigPath; the two descriptions are not disagreeing.
+func resolveDocSentences(flagValue, targetDir string) (int, error) {
+	if flagValue != "" {
+		return parseDocSentences(flagValue)
+	}
+
+	raw, err := loadTOCConfig(resolveTOCConfigPath(targetDir))
+	if err != nil {
+		return 0, err
+	}
+	if raw != nil {
+		return parseDocSentences(*raw)
+	}
+
+	return 1, nil
+}

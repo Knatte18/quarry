@@ -43,6 +43,7 @@ func tocCommand() *cobra.Command {
 // tocFileCommand builds the "toc file" subcommand.
 func tocFileCommand() *cobra.Command {
 	var lang string
+	var docSentences string
 
 	cmd := &cobra.Command{
 		Use:   "file <path>",
@@ -82,14 +83,28 @@ The process exit code is set to the worst status present across the batch.`,
 				return nil
 			}
 
+			// The flag tier is hoisted here, parsed once before the
+			// single-argument branch and the batch branch diverge: a
+			// non-empty flag value short-circuits the per-argument config
+			// file work entirely, which is what keeps the common case from
+			// re-reading a config file once per argument. An invalid flag
+			// value therefore fails once, up front, before any argument is
+			// processed.
+			if docSentences != "" {
+				if _, err := parseDocSentences(docSentences); err != nil {
+					SetExit(ctx, output.Err(out, err.Error()))
+					return nil
+				}
+			}
+
 			if len(args) > 1 {
 				runPathBatch(ctx, out, args, func(arg string) (batchStatus, map[string]any) {
-					return tocFileOne(cwd, arg, lang)
+					return tocFileOne(cwd, arg, lang, docSentences)
 				})
 				return nil
 			}
 
-			status, fields := tocFileOne(cwd, args[0], lang)
+			status, fields := tocFileOne(cwd, args[0], lang, docSentences)
 			if status != statusFound {
 				msg, _ := fields["error"].(string)
 				SetExit(ctx, output.Err(out, msg))
@@ -101,6 +116,10 @@ The process exit code is set to the worst status present across the batch.`,
 	}
 
 	cmd.Flags().StringVar(&lang, "lang", "", "override language detection with this language name (validated against toc's own supported set)")
+	// --doc-sentences is registered on "toc file" only: "toc dir" emits
+	// headers and never docstrings, so the setting has nothing to affect
+	// there.
+	cmd.Flags().StringVar(&docSentences, "doc-sentences", "", "number of leading docstring sentences to emit, or \"all\" (default: 1, or the resolved config value)")
 	return cmd
 }
 
@@ -201,16 +220,18 @@ func resolveTOCPath(cwd, arg string) string {
 }
 
 // tocFileOne resolves arg (a "toc file" positional argument) against cwd, validates it names an
-// existing, non-directory path, calls quarry.TOCFile with the fixed opts every "toc file" call
-// uses today, and returns the batch outcome.
+// existing, non-directory path, resolves the effective DocSentences value against arg's own
+// parent directory, calls quarry.TOCFile, and returns the batch outcome.
 //
 // Both the single-argument RunE above and runPathBatch's per-argument closure call this function,
 // so the two call paths cannot drift apart.
 //
-// TODO: batch 7 replaces the literal DocSentences: 1 below with the resolved --doc-sentences
-// flag-and-config value; this literal is the built-in default, so "toc file" ships complete and
-// correct at that default in the meantime.
-func tocFileOne(cwd, arg, lang string) (batchStatus, map[string]any) {
+// Resolution is per argument, not per invocation: the setting is per-directory and a batch may
+// span directories, so each argument resolves the config-file tier against its own parent
+// directory. When docSentences is non-empty, resolveDocSentences short-circuits before touching
+// any config file — the caller has already validated the flag once, up front, before any
+// argument was processed.
+func tocFileOne(cwd, arg, lang, docSentences string) (batchStatus, map[string]any) {
 	abs := resolveTOCPath(cwd, arg)
 
 	info, err := os.Stat(abs)
@@ -224,7 +245,13 @@ func tocFileOne(cwd, arg, lang string) (batchStatus, map[string]any) {
 		return statusError, map[string]any{"error": fmt.Sprintf("toc: %s is a directory; use %q for a directory listing", arg, "quarry toc dir")}
 	}
 
-	result, err := quarry.TOCFile(abs, lang, quarry.TOCOptions{DocSentences: 1})
+	targetDir := filepath.Dir(abs)
+	resolvedDocSentences, err := resolveDocSentences(docSentences, targetDir)
+	if err != nil {
+		return statusError, map[string]any{"error": err.Error()}
+	}
+
+	result, err := quarry.TOCFile(abs, lang, quarry.TOCOptions{DocSentences: resolvedDocSentences})
 	if err != nil {
 		status, msg := classifyTOCError(err)
 		return status, map[string]any{"error": msg}
