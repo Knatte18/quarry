@@ -7,7 +7,8 @@
 // Package cli builds quarry's own command tree, exposing "refs" (every reference to a symbol or
 // position), "definition" (a symbol or position's definition), "symbol" (a workspace/symbol name
 // search), "assert-no-callers" (a CI-shaped gate: fail if a symbol has any caller outside its
-// declaration and an allowed list), and the "toc" group — "toc file" and "toc dir" (a source
+// declaration and an allowed list), "impact" (the caller set for a symbol, each caller paired with
+// its own enclosing declaration range), and the "toc" group — "toc file" and "toc dir" (a source
 // file's or a directory's table of contents, tree-sitter-backed rather than LSP-backed) — across
 // the languages the quarry engine package supports.
 //
@@ -27,10 +28,10 @@
 // "results" array, each entry carrying a per-entry status. The results array, the
 // status vocabulary, and the worst-status exit-code ranking are shared by every verb;
 // only the entry's identity key differs by shape. refs/definition/symbol/
-// assert-no-callers key each entry on "symbol", the resolved name or position; toc
+// assert-no-callers/impact key each entry on "symbol", the resolved name or position; toc
 // file/toc dir key each entry on "path" instead, since a toc lookup addresses a
 // filesystem path, not a symbol. The status vocabulary is "found", "not_found",
-// "ambiguous" (refs/definition only; toc never produces it, matching its
+// "ambiguous" (refs/definition/impact only; toc never produces it, matching its
 // single-argument shape above), or "error" (a genuine infrastructure failure,
 // distinct from a confirmed-absent "not_found") — and the process exit code is set to
 // the worst status present across the whole batch, ranked found(0) < not_found(1) <
@@ -67,6 +68,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(definitionCommand())
 	cmd.AddCommand(symbolCommand())
 	cmd.AddCommand(assertNoCallersCommand())
+	cmd.AddCommand(impactCommand())
 	cmd.AddCommand(tocCommand())
 	return cmd
 }
