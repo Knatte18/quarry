@@ -32,7 +32,7 @@ func TestResolveContext_ConfigPrecedence(t *testing.T) {
 	t.Setenv("QUARRY_CONFIG", envConfig)
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	registry, _, _, err := resolveContext(dir, flagConfig, "")
+	registry, _, _, err := resolveContext(dir, flagConfig, "", nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -53,7 +53,7 @@ func TestResolveContext_ConfigEnvBeatsDefault(t *testing.T) {
 	t.Setenv("QUARRY_CONFIG", envConfig)
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	registry, _, _, err := resolveContext(dir, "", "")
+	registry, _, _, err := resolveContext(dir, "", "", nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -70,7 +70,7 @@ func TestResolveContext_ConfigFileWholeReplacesBuiltinEntry(t *testing.T) {
 
 	configPath := writeServersYAML(t, filepath.Join(t.TempDir(), "servers.yaml"), "overridden-gopls")
 
-	registry, _, _, err := resolveContext(dir, configPath, "")
+	registry, _, _, err := resolveContext(dir, configPath, "", nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -97,7 +97,7 @@ func TestResolveContext_AbsentFileAtEveryTierReturnsBuiltinRegistry(t *testing.T
 	withIsolatedPathSeams(t)
 	dir := t.TempDir()
 
-	registry, _, _, err := resolveContext(dir, "", "")
+	registry, _, _, err := resolveContext(dir, "", "", nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -119,7 +119,7 @@ func TestResolveContext_MalformedFileReturnsError(t *testing.T) {
 		t.Fatalf("WriteFile(%q) error = %v", malformed, err)
 	}
 
-	_, _, _, err := resolveContext(dir, malformed, "")
+	_, _, _, err := resolveContext(dir, malformed, "", nil)
 	if err == nil {
 		t.Fatal("resolveContext(...) error = nil; want non-nil for a malformed servers.yaml")
 	}
@@ -134,7 +134,7 @@ func TestResolveContext_StateDirPrecedence(t *testing.T) {
 	flagStateDir := t.TempDir()
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	_, _, stateDir, err := resolveContext(dir, "", flagStateDir)
+	_, _, stateDir, err := resolveContext(dir, "", flagStateDir, nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -152,12 +152,40 @@ func TestResolveContext_StateDirEnvBeatsDefault(t *testing.T) {
 	envStateDir := t.TempDir()
 	t.Setenv("QUARRY_STATE_DIR", envStateDir)
 
-	_, _, stateDir, err := resolveContext(dir, "", "")
+	_, _, stateDir, err := resolveContext(dir, "", "", nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
 	if stateDir != envStateDir {
 		t.Errorf("resolveContext(...) stateDir = %q; want $QUARRY_STATE_DIR's value %q, not a directory under %q", stateDir, envStateDir, tempCacheDir)
+	}
+}
+
+// TestResolveContext_NonEmptyBuildTagsChangesOnlyStateDir verifies a non-empty build-tag set
+// changes the returned state directory while leaving the returned registry and absolute target
+// directory unchanged.
+func TestResolveContext_NonEmptyBuildTagsChangesOnlyStateDir(t *testing.T) {
+	withIsolatedPathSeams(t)
+	dir := t.TempDir()
+
+	untaggedRegistry, untaggedTargetDir, untaggedStateDir, err := resolveContext(dir, "", "", nil)
+	if err != nil {
+		t.Fatalf("resolveContext(..., nil) error = %v; want nil", err)
+	}
+
+	taggedRegistry, taggedTargetDir, taggedStateDir, err := resolveContext(dir, "", "", []string{"integration"})
+	if err != nil {
+		t.Fatalf("resolveContext(..., [integration]) error = %v; want nil", err)
+	}
+
+	if taggedStateDir == untaggedStateDir {
+		t.Errorf("resolveContext(..., [integration]) stateDir = %q; want distinct from the untagged stateDir %q", taggedStateDir, untaggedStateDir)
+	}
+	if taggedTargetDir != untaggedTargetDir {
+		t.Errorf("resolveContext(..., [integration]) targetDir = %q; want unchanged from the untagged targetDir %q", taggedTargetDir, untaggedTargetDir)
+	}
+	if taggedRegistry["go"].Command[0] != untaggedRegistry["go"].Command[0] {
+		t.Errorf("resolveContext(..., [integration]) registry[\"go\"] = %+v; want unchanged from the untagged registry %+v", taggedRegistry["go"], untaggedRegistry["go"])
 	}
 }
 
@@ -169,7 +197,7 @@ func TestResolveContext_TargetDirIsAbsoluteFormOfDirArgument(t *testing.T) {
 
 	t.Setenv("QUARRY_STATE_DIR", t.TempDir())
 
-	_, targetDir, _, err := resolveContext(dir, "", "")
+	_, targetDir, _, err := resolveContext(dir, "", "", nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}
@@ -190,7 +218,7 @@ func TestResolveContext_StateDirCarriesNoLyxOrScoutSegment(t *testing.T) {
 	withIsolatedPathSeams(t)
 	dir := t.TempDir()
 
-	_, _, stateDir, err := resolveContext(dir, "", "")
+	_, _, stateDir, err := resolveContext(dir, "", "", nil)
 	if err != nil {
 		t.Fatalf("resolveContext(...) error = %v; want nil", err)
 	}

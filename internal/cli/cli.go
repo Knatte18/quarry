@@ -151,7 +151,8 @@ scoped to one package comes back both complete and precise:
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
+			buildTagsResolved := resolveBuildTags(buildTags)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -169,8 +170,6 @@ scoped to one package comes back both complete and precise:
 				}
 				return parseQuery(cwd, arg)
 			}
-
-			buildTagsResolved := resolveBuildTags(buildTags)
 
 			if len(args) == 1 {
 				query, err := buildQuery(args[0])
@@ -292,7 +291,8 @@ structurally-identical interfaces in different packages).`,
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
+			buildTagsResolved := resolveBuildTags(buildTags)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -310,8 +310,6 @@ structurally-identical interfaces in different packages).`,
 				}
 				return parseQuery(cwd, arg)
 			}
-
-			buildTagsResolved := resolveBuildTags(buildTags)
 
 			if len(args) == 1 {
 				query, err := buildQuery(args[0])
@@ -408,13 +406,12 @@ matches into an ambiguity failure. Example:
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
+			buildTagsResolved := resolveBuildTags(buildTags)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-
-			buildTagsResolved := resolveBuildTags(buildTags)
 
 			if len(args) == 1 {
 				opts := buildOptions(registry, dir, stateDir, lang, symbolQuery(args[0]), timeout, buildTagsResolved)
@@ -468,10 +465,14 @@ matches into an ambiguity failure. Example:
 // through to resolveConfigPath and resolveStateDir so their own $QUARRY_CONFIG/$QUARRY_STATE_DIR
 // and user-directory-default precedence tiers apply unchanged.
 //
+// buildTags is the already-resolved (resolveBuildTags-normalized) build-tag set, threaded
+// straight through to resolveStateDir so the returned state directory carries its "tags-<hex>"
+// segment whenever buildTags is non-empty.
+//
 // The returned error carries a resolveConfigPath, quarry.LoadRegistry, or resolveStateDir failure
 // unchanged — a malformed servers.yaml, or a userConfigDir/userCacheDir failure, still fails the
 // lookup rather than degrading silently.
-func resolveContext(dir, configFlag, stateDirFlag string) (quarry.Registry, string, string, error) {
+func resolveContext(dir, configFlag, stateDirFlag string, buildTags []string) (quarry.Registry, string, string, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		// Preserve the pre-refactor fallback exactly: when filepath.Abs itself
@@ -491,7 +492,7 @@ func resolveContext(dir, configFlag, stateDirFlag string) (quarry.Registry, stri
 		return nil, "", "", err
 	}
 
-	stateDir, err := resolveStateDir(stateDirFlag, abs)
+	stateDir, err := resolveStateDir(stateDirFlag, abs, buildTags)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -594,7 +595,8 @@ involved — only interface methods are at risk of this conflation.`,
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag)
+			buildTagsResolved := resolveBuildTags(buildTags)
+			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -606,7 +608,7 @@ involved — only interface methods are at risk of this conflation.`,
 				return nil
 			}
 
-			opts := buildOptions(registry, dir, stateDir, lang, query, timeout, resolveBuildTags(buildTags))
+			opts := buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved)
 
 			// Resolve the declaration site(s) to exclude via Definition,
 			// regardless of whether query is a bare symbol name or an explicit

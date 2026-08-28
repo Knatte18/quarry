@@ -164,6 +164,10 @@ func TestResolveBuildTags_Precedence(t *testing.T) {
 	}
 }
 
+// TestResolveStateDir_Precedence covers the three precedence tiers with an empty build-tag set —
+// the back-compat assertion the empty-tag-set-is-a-uniform-no-op Shared Decision requires,
+// written first: this table pins that today's resolved state directories, at all three tiers, are
+// byte-for-byte unchanged from resolveStateDir's pre-build-tags behaviour.
 func TestResolveStateDir_Precedence(t *testing.T) {
 	const targetDir = "/some/project/dir"
 
@@ -199,15 +203,94 @@ func TestResolveStateDir_Precedence(t *testing.T) {
 			tempCacheDir := withTempUserCacheDir(t)
 			t.Setenv("QUARRY_STATE_DIR", tt.envValue)
 
-			got, err := resolveStateDir(tt.flagValue, targetDir)
+			got, err := resolveStateDir(tt.flagValue, targetDir, nil)
 			if err != nil {
-				t.Fatalf("resolveStateDir(%q, %q) error = %v; want nil", tt.flagValue, targetDir, err)
+				t.Fatalf("resolveStateDir(%q, %q, nil) error = %v; want nil", tt.flagValue, targetDir, err)
 			}
 			want := tt.wantFn(tempCacheDir)
 			if got != want {
-				t.Errorf("resolveStateDir(%q, %q) = %q; want %q", tt.flagValue, targetDir, got, want)
+				t.Errorf("resolveStateDir(%q, %q, nil) = %q; want %q", tt.flagValue, targetDir, got, want)
 			}
 		})
+	}
+}
+
+// TestResolveStateDir_NonEmptyBuildTagsAppendsDistinctSegmentAtEveryTier verifies a non-empty
+// build-tag set appends a distinct "tags-<hex>" segment onto the resolved leaf at all three
+// precedence tiers, explicit --state-dir and $QUARRY_STATE_DIR included -- the two tiers that
+// bypass workspaceKey entirely and would otherwise silently collide two different tag sets onto
+// one socket.
+func TestResolveStateDir_NonEmptyBuildTagsAppendsDistinctSegmentAtEveryTier(t *testing.T) {
+	const targetDir = "/some/project/dir"
+	buildTags := []string{"a", "b"}
+
+	tests := []struct {
+		name      string
+		flagValue string
+		envValue  string
+	}{
+		{name: "flag tier", flagValue: "/flag/state", envValue: "/env/state"},
+		{name: "env tier", flagValue: "", envValue: "/env/state"},
+		{name: "default tier", flagValue: "", envValue: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withTempUserCacheDir(t)
+			t.Setenv("QUARRY_STATE_DIR", tt.envValue)
+
+			withoutTags, err := resolveStateDir(tt.flagValue, targetDir, nil)
+			if err != nil {
+				t.Fatalf("resolveStateDir(%q, %q, nil) error = %v; want nil", tt.flagValue, targetDir, err)
+			}
+			withTags, err := resolveStateDir(tt.flagValue, targetDir, buildTags)
+			if err != nil {
+				t.Fatalf("resolveStateDir(%q, %q, %v) error = %v; want nil", tt.flagValue, targetDir, buildTags, err)
+			}
+
+			if withTags == withoutTags {
+				t.Fatalf("resolveStateDir(%q, %q, %v) = %q; want a path distinct from the empty-tag-set path %q", tt.flagValue, targetDir, buildTags, withTags, withoutTags)
+			}
+
+			wantLeaf := filepath.Join(withoutTags, buildTagsSegment(buildTags))
+			if withTags != wantLeaf {
+				t.Errorf("resolveStateDir(%q, %q, %v) = %q; want %q", tt.flagValue, targetDir, buildTags, withTags, wantLeaf)
+			}
+
+			segment := filepath.Base(withTags)
+			if !strings.HasPrefix(segment, "tags-") {
+				t.Fatalf("resolveStateDir(%q, %q, %v) appended segment %q; want a \"tags-\" prefix", tt.flagValue, targetDir, buildTags, segment)
+			}
+			hexPart := strings.TrimPrefix(segment, "tags-")
+			if len(hexPart) != 12 {
+				t.Errorf("resolveStateDir(%q, %q, %v) appended segment %q; want exactly 12 hex characters after \"tags-\", got %d", tt.flagValue, targetDir, buildTags, segment, len(hexPart))
+			}
+			for _, r := range hexPart {
+				if !strings.ContainsRune("0123456789abcdef", r) {
+					t.Errorf("resolveStateDir(%q, %q, %v) appended segment %q; %q is not a lowercase hex character", tt.flagValue, targetDir, buildTags, segment, r)
+					break
+				}
+			}
+		})
+	}
+}
+
+// TestResolveStateDir_BuildTagsOrderIndependent verifies two build-tag sets differing only in
+// input order resolve to the same state directory once normalized.
+func TestResolveStateDir_BuildTagsOrderIndependent(t *testing.T) {
+	withTempUserCacheDir(t)
+	t.Setenv("QUARRY_STATE_DIR", "")
+	const targetDir = "/some/project/dir"
+
+	ab, err := resolveStateDir("", targetDir, []string{"a", "b"})
+	if err != nil {
+		t.Fatalf("resolveStateDir(\"\", %q, [a b]) error = %v; want nil", targetDir, err)
+	}
+	ba, err := resolveStateDir("", targetDir, []string{"b", "a"})
+	if err != nil {
+		t.Fatalf("resolveStateDir(\"\", %q, [b a]) error = %v; want nil", targetDir, err)
+	}
+	if ab != ba {
+		t.Errorf("resolveStateDir(..., [a b]) = %q; resolveStateDir(..., [b a]) = %q; want identical paths once normalized", ab, ba)
 	}
 }
 
@@ -220,7 +303,7 @@ func TestResolveStateDir_UserCacheDirError(t *testing.T) {
 	userCacheDir = func() (string, error) { return "", wantErr }
 	t.Cleanup(func() { userCacheDir = original })
 
-	_, err := resolveStateDir("", "/some/project")
+	_, err := resolveStateDir("", "/some/project", nil)
 	if err == nil {
 		t.Fatal("resolveStateDir(\"\", ...) error = nil; want non-nil when userCacheDir() errors")
 	}
@@ -273,7 +356,7 @@ func TestResolveStateDir_SocketPathStaysUnderSockaddrUnLimit(t *testing.T) {
 	// discarding everything else about the path's shape.
 	targetDir := filepath.Join("/home", "developer", "workspaces", "engineering", "monorepo-checkouts", "backend-service")
 
-	stateDir, err := resolveStateDir("", targetDir)
+	stateDir, err := resolveStateDir("", targetDir, nil)
 	if err != nil {
 		t.Fatalf("resolveStateDir(\"\", %q) error = %v; want nil", targetDir, err)
 	}
