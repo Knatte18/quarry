@@ -59,6 +59,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(definitionCommand())
 	cmd.AddCommand(symbolCommand())
 	cmd.AddCommand(assertNoCallersCommand())
+	cmd.AddCommand(tocCommand())
 	return cmd
 }
 
