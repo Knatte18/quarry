@@ -52,7 +52,11 @@ const (
 
 // EnsureServer resolves, spawns or dials, and initializes a language server connection,
 // returning it ready for use alongside the ConnKind needed for correct teardown.
-func EnsureServer(ctx context.Context, lang string, entry registry.Entry, targetDir string, stateDir string, timeout time.Duration) (*lsp.Client, ConnKind, error) {
+// initOptions is the already-rendered initializationOptions map (nil for an untagged query, or
+// registry.RenderInitializationOptions's non-nil result for a tagged one) — this function has no
+// opinion on what it contains, it only threads it down to client.Initialize and, on the native
+// path, uses its non-nilness to decide whether to spawn a private gopls (see nativeArgv).
+func EnsureServer(ctx context.Context, lang string, entry registry.Entry, targetDir string, stateDir string, timeout time.Duration, initOptions map[string]any) (*lsp.Client, ConnKind, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {
 		return nil, ConnKindNative, fmt.Errorf("quarry: resolve go toolchain for %q: %w", lang, err)
@@ -64,12 +68,12 @@ func EnsureServer(ctx context.Context, lang string, entry registry.Entry, target
 	// binPath-plus-extraArgs composition nativeArgv applies for the native
 	// strategy's own argv.
 	command := append([]string{binPath}, entry.Command[1:]...)
-	client, err := ensureSupervised(ctx, command, lang, targetDir, stateDir, timeout)
+	client, err := ensureSupervised(ctx, command, lang, targetDir, stateDir, timeout, initOptions)
 	if err == nil {
 		return client, ConnKindSupervised, nil
 	}
 
-	client, err = ensureNative(ctx, lang, entry, targetDir, timeout)
+	client, err = ensureNative(ctx, lang, entry, targetDir, timeout, initOptions)
 	return client, ConnKindNative, err
 }
 
@@ -88,10 +92,10 @@ func EnsureServer(ctx context.Context, lang string, entry registry.Entry, target
 // to restart based on its own state-file staleness check, before ever
 // calling finalizeConnection) implement that above this function, not
 // inside it.
-func finalizeConnection(ctx context.Context, client *lsp.Client, rootURI string, timeout time.Duration) error {
+func finalizeConnection(ctx context.Context, client *lsp.Client, rootURI string, timeout time.Duration, initOptions map[string]any) error {
 	initCtx, initCancel := context.WithTimeout(ctx, timeout)
 	defer initCancel()
-	if err := client.Initialize(initCtx, rootURI); err != nil {
+	if err := client.Initialize(initCtx, rootURI, initOptions); err != nil {
 		client.Kill()
 		return err
 	}
@@ -140,10 +144,26 @@ const daemonIdleTimeout = 10 * time.Minute
 
 // nativeArgv builds the gopls invocation for the native strategy: the
 // toolchain-resolved binary, any fixed extra args the registry entry
-// carries, and the -remote=auto proxy flags (including the idle-timeout
-// override above). Split out from ensureNative so the argv shape itself is
-// unit-testable without spawning a process.
-func nativeArgv(binPath string, extraArgs []string) []string {
+// carries, and — when private is false — the -remote=auto proxy flags
+// (including the idle-timeout override above). Split out from ensureNative
+// so the argv shape itself is unit-testable without spawning a process.
+//
+// When private is true, neither -remote=auto nor -remote.listen.timeout is
+// appended, so gopls runs as an unshared process rather than joining its
+// own auto-daemon. This exists because the "tags-<hex>" state-directory
+// segment (internal/cli's per-tag-set partitioning) only partitions the
+// supervised strategy, whose socket path is derived from the state
+// directory: gopls itself, not quarry, picks the shared -remote=auto
+// daemon's address, and that address is not a function of the state
+// directory at all. On the native path, two callers with two different tag
+// sets but no -remote=auto flag would otherwise land in the same shared
+// daemon and get whichever tag set it was already initialized with. ensureNative
+// derives private as initOptions != nil, so this only changes behavior for
+// a tagged query. This is not a windows-only concern: native is the
+// fallback strategy on every platform (supervised is preferred whenever it
+// succeeds) and the only strategy on windows, so an unpartitioned shared
+// daemon would silently mix tag sets on every platform, not just windows.
+func nativeArgv(binPath string, extraArgs []string, private bool) []string {
 	// binPath (the toolchain-resolved binary), not entry.Command[0] (the
 	// literal string "gopls"), is what gets launched — extraArgs is
 	// entry.Command[1:] (empty for Go's current registry entry, but
@@ -151,6 +171,9 @@ func nativeArgv(binPath string, extraArgs []string) []string {
 	// extra fixed args), per toolchain-manager-authority's exact
 	// argv-composition decision.
 	argv := append([]string{binPath}, extraArgs...)
+	if private {
+		return argv
+	}
 	return append(argv, "-remote=auto", fmt.Sprintf("-remote.listen.timeout=%s", daemonIdleTimeout))
 }
 
@@ -162,13 +185,19 @@ func nativeArgv(binPath string, extraArgs []string) []string {
 // supervisory authority over the shared daemon under native, so a single
 // reported-and-torn-down failure is the correct behavior, not a retry
 // loop.
-func ensureNative(ctx context.Context, lang string, entry registry.Entry, targetDir string, timeout time.Duration) (*lsp.Client, error) {
+//
+// initOptions is passed straight through to finalizeConnection, and its
+// non-nilness also decides nativeArgv's private argument: per the plan's
+// rendered-options-non-nil-means-tagged Shared Decision, a non-nil
+// initOptions means and only means "the caller passed a non-empty build-tag
+// set," so no separate tag parameter travels alongside it here.
+func ensureNative(ctx context.Context, lang string, entry registry.Entry, targetDir string, timeout time.Duration, initOptions map[string]any) (*lsp.Client, error) {
 	binPath, err := resolveGoToolchain(ctx, entry.PinnedVersion)
 	if err != nil {
 		return nil, fmt.Errorf("quarry: resolve go toolchain for %q: %w", lang, err)
 	}
 
-	argv := nativeArgv(binPath, entry.Command[1:])
+	argv := nativeArgv(binPath, entry.Command[1:], initOptions != nil)
 
 	client, err := lsp.NewClient(argv)
 	if err != nil {
@@ -187,7 +216,7 @@ func ensureNative(ctx context.Context, lang string, entry registry.Entry, target
 
 	// finalizeConnection already kills client on its own failure path — a
 	// second kill() here would be idempotent but pointless noise.
-	if err := finalizeConnection(ctx, client, rootURI, timeout); err != nil {
+	if err := finalizeConnection(ctx, client, rootURI, timeout, initOptions); err != nil {
 		return nil, err
 	}
 
@@ -296,7 +325,7 @@ func reconnectUnderLock(ctx context.Context, network, address string, dial func(
 // entry dispatches here as its live V1 strategy (via EnsureServer), that
 // escalation is what keeps a single wedged daemon from stranding every
 // caller in this worktree indefinitely.
-func ensureSupervised(ctx context.Context, command []string, lang, targetDir string, stateDir string, timeout time.Duration) (*lsp.Client, error) {
+func ensureSupervised(ctx context.Context, command []string, lang, targetDir string, stateDir string, timeout time.Duration, initOptions map[string]any) (*lsp.Client, error) {
 	statePath := DaemonStateFile(stateDir, lang)
 	lockPath := DaemonLock(stateDir, lang)
 	// The daemon's socket path is a deterministic function of
@@ -337,7 +366,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			if network, address, ok := strings.Cut(state.Address, ";"); ok {
 				if client, dialErr := lsp.NewClientDial(ctx, network, address); dialErr == nil {
 					client.Lang = lang
-					if finalizeErr := finalizeConnection(ctx, client, rootURI, timeout); finalizeErr == nil {
+					if finalizeErr := finalizeConnection(ctx, client, rootURI, timeout, initOptions); finalizeErr == nil {
 						return client, nil
 					}
 					// Initialize/probe failed against a state that read as
@@ -396,7 +425,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 			if escalationFound {
 				if network, address, ok := strings.Cut(escalationState.Address, ";"); ok {
 					reconnected, healthy, err = reconnectUnderLock(ctx, network, address, lsp.NewClientDial, func(ctx context.Context, client *lsp.Client) error {
-						return finalizeConnection(ctx, client, rootURI, timeout)
+						return finalizeConnection(ctx, client, rootURI, timeout, initOptions)
 					})
 					if err != nil {
 						fileLock.Release()
@@ -569,7 +598,7 @@ func ensureSupervised(ctx context.Context, command []string, lang, targetDir str
 		client.Lang = lang
 
 		// Step 7.
-		if err := finalizeConnection(ctx, client, rootURI, timeout); err != nil {
+		if err := finalizeConnection(ctx, client, rootURI, timeout, initOptions); err != nil {
 			return nil, err
 		}
 		return client, nil
