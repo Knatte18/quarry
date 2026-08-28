@@ -6,6 +6,7 @@ slug: impact-verb
 branch: impact-verb
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Add `impact` verb for caller-context lookup
 task_description: |
   Add `impact` verb for caller-context lookup
@@ -38,11 +39,17 @@ implementing  '2026-08-28T09:43:58Z'
 ```yaml
 batches:
   - name: engine-impact-package
-    state: pending
+    state: running
+    implementer_session: 3a1005f8-afb3-4596-8707-662b1f03a654
+    start_sha: d32395fceb34734d63b8ce9b112cbcb38be26e64
+    verify_baseline_failures: []
   - name: facade-reexports
     state: pending
+    verify_baseline_failures: []
   - name: cli-impact-verb
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-live-tier
     state: pending
+    verify_baseline_failures: []
 ```
