@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/impact"
 	"github.com/Knatte18/quarry/internal/quarryengine/query"
 	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 	"github.com/Knatte18/quarry/internal/quarryengine/toc"
@@ -66,9 +67,19 @@ var (
 	aliasCheckTOCDirResultFacade            TOCDirResult
 	aliasCheckTOCOptionsEngine              toc.Options
 	aliasCheckTOCOptionsFacade              TOCOptions
+	aliasCheckImpactResultEngine            impact.Result
+	aliasCheckImpactResultFacade            ImpactResult
+	aliasCheckImpactTargetEngine            impact.Target
+	aliasCheckImpactTargetFacade            ImpactTarget
+	aliasCheckImpactDefinitionEngine        impact.Definition
+	aliasCheckImpactDefinitionFacade        ImpactDefinition
+	aliasCheckImpactCallerEngine            impact.Caller
+	aliasCheckImpactCallerFacade            ImpactCaller
+	aliasCheckImpactRangeEngine             impact.Range
+	aliasCheckImpactRangeFacade             ImpactRange
 )
 
-// init performs the actual round-trip assignment for each of the twenty-one aliased types: engine
+// init performs the actual round-trip assignment for each of the twenty-six aliased types: engine
 // value into the facade-typed variable, then straight back into the engine-typed variable, with
 // no conversion on either side.
 func init() {
@@ -134,9 +145,24 @@ func init() {
 
 	aliasCheckTOCOptionsFacade = aliasCheckTOCOptionsEngine
 	aliasCheckTOCOptionsEngine = aliasCheckTOCOptionsFacade
+
+	aliasCheckImpactResultFacade = aliasCheckImpactResultEngine
+	aliasCheckImpactResultEngine = aliasCheckImpactResultFacade
+
+	aliasCheckImpactTargetFacade = aliasCheckImpactTargetEngine
+	aliasCheckImpactTargetEngine = aliasCheckImpactTargetFacade
+
+	aliasCheckImpactDefinitionFacade = aliasCheckImpactDefinitionEngine
+	aliasCheckImpactDefinitionEngine = aliasCheckImpactDefinitionFacade
+
+	aliasCheckImpactCallerFacade = aliasCheckImpactCallerEngine
+	aliasCheckImpactCallerEngine = aliasCheckImpactCallerFacade
+
+	aliasCheckImpactRangeFacade = aliasCheckImpactRangeEngine
+	aliasCheckImpactRangeEngine = aliasCheckImpactRangeFacade
 }
 
-// The fourteen blank-identifier assignments below reference every delegating function in
+// The fifteen blank-identifier assignments below reference every delegating function in
 // facade.go, each against the exact func type its engine counterpart demands: a signature drift
 // on either side fails the build.
 var (
@@ -154,6 +180,7 @@ var (
 	_ func(string, string) (TOCDirResult, error)                       = TOCDir
 	_ func() []string                                                  = TOCLanguages
 	_ func() []string                                                  = TOCImplemented
+	_ func(context.Context, Options) (ImpactResult, error)             = Impact
 )
 
 // TestFacadeSentinels_Identity verifies each of the nine re-exported sentinel error values is
