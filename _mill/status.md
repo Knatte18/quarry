@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-live-tier-tests
+phase: approved-docs-and-followups
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-callers-verification-entry-point  '2026-08-28T05:41:23Z'
 approved-cli-surface  '2026-08-28T05:50:14Z'
 self-resolved-verify-logic  '2026-08-28T06:04:06Z'
 approved-live-tier-tests  '2026-08-28T06:12:07Z'
+approved-docs-and-followups  '2026-08-28T06:16:23Z'
 ```
 
 ## Batches
@@ -84,7 +85,8 @@ batches:
     commit_sha: 1a4deb7f7902962957cf7314738c57520e531979
     verify_baseline_failures: []
   - name: docs-and-followups
-    state: running
+    state: approved
     implementer_session: afeb0f6b-08fe-4126-9200-3f55b90449cc
     start_sha: a610a9c2abd152691c96f02419c0395c4448a9a1
+    commit_sha: 2d388915596e79e6ccbdce22786bbe513ade222b
 ```
