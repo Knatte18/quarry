@@ -76,7 +76,9 @@ batches:
     commit_sha: 6633ba052100ae7c289c9203258cd7e4062b2179
     verify_baseline_failures: []
   - name: live-tier-tests
-    state: pending
+    state: running
+    implementer_session: 46bba1d5-5a59-46ce-ab70-c68ed99e74ec
+    start_sha: 26350a029233d45e3058c60e541024777ef43ce6
     verify_baseline_failures: []
   - name: docs-and-followups
     state: pending
