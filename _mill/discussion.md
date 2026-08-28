@@ -50,8 +50,9 @@ into this task.
 - Layering-table row for the new package (`internal/quarryengine/layering_test.go`) and the
   `minPackageDirs` bump the same file's guard requires.
 - Doc updates: `README.md` verb list, `internal/quarryengine/doc.go` (the package-DAG section, which
-  currently says "seven-package DAG"), and `internal/cli/cli.go`'s package doc comment (which
-  enumerates every verb and the exit-code contract).
+  currently says "seven-package DAG"), `quarry/facade.go`'s header comment (which repeats the same
+  "seven-package DAG" phrase), and `internal/cli/cli.go`'s package doc comment (which enumerates
+  every verb and the exit-code contract).
 
 **Out:**
 
@@ -354,8 +355,10 @@ into this task.
 - `toc` is deliberately not reached through `resolveContext`/`buildOptions` in the CLI (see
   `internal/cli/toc.go`'s header comment) because it needs no registry and no state dir. `impact`
   *does* need both — it makes LSP calls — so it uses the `refs` path, not the `toc` path.
-- `internal/quarryengine/doc.go` says "seven-package DAG" in two places and enumerates the packages;
-  both need updating.
+- The phrase "seven-package DAG" appears exactly once in `internal/quarryengine/doc.go` (line 50,
+  which also enumerates every package) and once more in `quarry/facade.go`'s header comment
+  (line 3). Both need updating to eight; the facade one is easy to miss because the doc-update
+  chore reads as a `doc.go`-only change.
 - `internal/cli/cli.go`'s package doc comment enumerates every verb and the batch-mode identity key
   per verb (`symbol`-keyed vs `path`-keyed). `impact` is symbol-keyed; add it there.
 
@@ -433,5 +436,5 @@ separately on a machine with gopls and is not part of the default verify.
 - **Q:** Zero callers — success or failure? **A:** [auto-pick] Success, exit 0, `"callers": []`. **Why:** "nothing depends on this" is the answer a DAG builder needs for a leaf node; exit 1 would conflate it with "symbol does not exist".
 - **Q:** `--depth` / transitive impact? **A:** [auto-pick] Out of scope for v1. **Why:** issue #5 explicitly defers it to keep output size and latency predictable; building a recursion guard "ready for later" is speculative.
 - **Q:** Human-readable rendering? **A:** [auto-pick] JSON only. **Why:** issue #5 states the JSON shape is the source of truth and any human rendering is a presentation layer on top.
-- **Q:** Which docs change? **A:** [auto-pick] `README.md`'s verb list, `internal/quarryengine/doc.go`'s package-DAG section (seven → eight packages), and `internal/cli/cli.go`'s package doc comment. **Why:** all three enumerate the verb or package set explicitly and would go stale; the repo's existing doc discipline treats that as a defect.
+- **Q:** Which docs change? **A:** [auto-pick] `README.md`'s verb list, `internal/quarryengine/doc.go`'s package-DAG section (seven → eight packages), `quarry/facade.go`'s header comment (same phrase), and `internal/cli/cli.go`'s package doc comment. **Why:** all four enumerate the verb or package set explicitly and would go stale; the repo's existing doc discipline treats that as a defect.
 - **Q:** Absolute or caller-relative file paths in the output? **A:** [auto-pick] Absolute, matching `refs`/`definition`/`assert-no-callers`. **Why:** `toc dir`'s relative `path` exists so entries round-trip into `toc file`; `impact` has no such round-trip and consistency with the LSP-backed verbs wins.

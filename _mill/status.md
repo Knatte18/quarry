@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: impact-verb
 branch: impact-verb
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-28T08:26:41Z'
+discussion-fix-r1  '2026-08-28T08:35:33Z'
 ```
