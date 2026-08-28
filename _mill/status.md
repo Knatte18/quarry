@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -32,4 +32,25 @@ plan-fix-r5  '2026-08-27T19:16:46Z'
 plan-review-r6  '2026-08-27T19:24:38Z'
 plan-fix-r6  '2026-08-28T05:12:13Z'
 planned  '2026-08-28T05:12:22Z'
+implementing  '2026-08-28T05:13:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: lsp-implementation-and-spike
+    state: pending
+  - name: registry-build-tag-template
+    state: pending
+  - name: initialization-options-plumbing
+    state: pending
+  - name: callers-verification-entry-point
+    state: pending
+  - name: cli-surface
+    state: pending
+  - name: live-tier-tests
+    state: pending
+  - name: docs-and-followups
+    state: pending
 ```
