@@ -75,7 +75,9 @@ batches:
     commit_sha: 5fbe5ff30efb5eb3427408132e35ecc19e0ae297
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: facade-and-cli
-    state: pending
+    state: running
+    implementer_session: 471d9882-56c0-49fa-bce3-ecf51155d3bf
+    start_sha: f368847dafae0063bce2ec261f31477abdf0dd0d
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: doc-sentences-config
     state: pending
