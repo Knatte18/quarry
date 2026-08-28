@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-facade-reexports
+phase: approved-cli-impact-verb
 slug: impact-verb
 branch: impact-verb
 plan: _mill/plan
@@ -34,6 +34,7 @@ planned  '2026-08-28T09:43:37Z'
 implementing  '2026-08-28T09:43:58Z'
 approved-engine-impact-package  '2026-08-28T09:52:33Z'
 approved-facade-reexports  '2026-08-28T09:55:04Z'
+approved-cli-impact-verb  '2026-08-28T10:01:26Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: d4cfd117e4702fbe519f007cb5cc4aae484ec286
     verify_baseline_failures: []
   - name: cli-impact-verb
-    state: running
+    state: approved
     implementer_session: d0be90d9-ee71-40d7-8744-5def8eccb10a
     start_sha: 59a776bef7e242ea19aadf2f559c11aa3383829f
+    commit_sha: a748432f7274978119f7a8f827cf18f7532f3cfe
     verify_baseline_failures: []
   - name: docs-and-live-tier
     state: pending
