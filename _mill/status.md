@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: impact-verb
 branch: impact-verb
 plan: _mill/plan
@@ -30,4 +30,19 @@ plan-fix-r3  '2026-08-28T09:34:23Z'
 plan-review-r4  '2026-08-28T09:43:16Z'
 plan-fix-r4  '2026-08-28T09:43:27Z'
 planned  '2026-08-28T09:43:37Z'
+implementing  '2026-08-28T09:43:58Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: engine-impact-package
+    state: pending
+  - name: facade-reexports
+    state: pending
+  - name: cli-impact-verb
+    state: pending
+  - name: docs-and-live-tier
+    state: pending
 ```
