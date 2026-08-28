@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-treesitter-backend
+phase: approved-toc-scaffolding
 slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-review-r7  '2026-08-28T06:19:45Z'
 planned  '2026-08-28T06:20:05Z'
 implementing  '2026-08-28T06:20:35Z'
 approved-treesitter-backend  '2026-08-28T06:27:37Z'
+approved-toc-scaffolding  '2026-08-28T06:35:10Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     commit_sha: a7a3d9289201f3f4776fc433062e88927349cc49
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/treesitter [setup failed]"]
   - name: toc-scaffolding
-    state: running
+    state: approved
     implementer_session: 7ac2c536-be61-4a74-baec-c982562bbf8c
     start_sha: fe6384b3b08de73babe59df4c9db522591e6b068
+    commit_sha: de6a2a868ee86789376e02410dae1e598210324d
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: go-strategy
     state: pending
