@@ -616,6 +616,125 @@ func TestLSPClient_SupportsDocumentSymbol(t *testing.T) {
 	}
 }
 
+// TestLSPClient_SupportsImplementation asserts supportsImplementation() reflects whether the
+// server's initialize response advertised implementationProvider, mirroring
+// TestLSPClient_SupportsDocumentSymbol's coverage of supportsDocumentSymbol().
+func TestLSPClient_SupportsImplementation(t *testing.T) {
+	tests := []struct {
+		name         string
+		capabilities map[string]any
+		want         bool
+	}{
+		{
+			name:         "Advertised",
+			capabilities: map[string]any{"implementationProvider": true},
+			want:         true,
+		},
+		{
+			name:         "Omitted",
+			capabilities: map[string]any{},
+			want:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientTransport, serverTransport := newPipeTransportPair()
+			defer clientTransport.Close()
+			defer serverTransport.Close()
+
+			client := NewClientFromRW(clientTransport)
+			server := newFakeServer(serverTransport)
+
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				req, ok := server.readMessage(t)
+				if !ok {
+					return
+				}
+				if !server.respond(t, req.ID, map[string]any{"capabilities": tt.capabilities}) {
+					return
+				}
+				server.readMessage(t) // initialized notification
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+				t.Fatalf("initialize() returned unexpected error: %v", err)
+			}
+			<-done
+
+			if got := client.SupportsImplementation(); got != tt.want {
+				t.Errorf("supportsImplementation() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLSPClient_ImplementationParsesLocationArray drives textDocument/implementation against a fake
+// server scripted to respond with a Location[] result, asserting client.Implementation parses it via
+// the shared parseDefinitionResult decoder.
+func TestLSPClient_ImplementationParsesLocationArray(t *testing.T) {
+	clientTransport, serverTransport := newPipeTransportPair()
+	defer clientTransport.Close()
+	defer serverTransport.Close()
+
+	client := NewClientFromRW(clientTransport)
+	server := newFakeServer(serverTransport)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req, ok := server.readMessage(t)
+		if !ok {
+			return
+		}
+		if req.Method != "textDocument/implementation" {
+			t.Errorf("fakeServer: got request method %q; want %q", req.Method, "textDocument/implementation")
+			return
+		}
+		server.respond(t, req.ID, []map[string]any{
+			{
+				"uri": "file:///tmp/example/foo.go",
+				"range": map[string]any{
+					"start": map[string]any{"line": 4, "character": 6},
+					"end":   map[string]any{"line": 4, "character": 9},
+				},
+			},
+			{
+				"uri": "file:///tmp/example/bar.go",
+				"range": map[string]any{
+					"start": map[string]any{"line": 10, "character": 2},
+					"end":   map[string]any{"line": 10, "character": 5},
+				},
+			},
+		})
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	got, err := client.Implementation(ctx, "file:///tmp/example/foo.go", Position{Line: 4, Character: 6})
+	if err != nil {
+		t.Fatalf("implementation() returned unexpected error: %v", err)
+	}
+	<-done
+
+	want := []Location{
+		{URI: "file:///tmp/example/foo.go", Range: Range{Start: Position{Line: 4, Character: 6}, End: Position{Line: 4, Character: 9}}},
+		{URI: "file:///tmp/example/bar.go", Range: Range{Start: Position{Line: 10, Character: 2}, End: Position{Line: 10, Character: 5}}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("implementation() returned %d locations; want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("implementation()[%d] = %+v; want %+v", i, got[i], want[i])
+		}
+	}
+}
+
 // TestLSPClient_CallReturnsErrServerTimeoutOnExpiredContext asserts that a context whose deadline
 // has already passed causes call() (exercised here via references()) to return ErrServerTimeout
 // without ever blocking on a server response,
