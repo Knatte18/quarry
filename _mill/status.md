@@ -1,0 +1,18 @@
+# Status
+
+```yaml
+phase: discussing
+slug: impact-verb
+branch: impact-verb
+plan: null
+parent: main
+task: Add `impact` verb for caller-context lookup
+task_description: |
+  Add `impact` verb for caller-context lookup
+```
+
+## Timeline
+
+```text
+discussing  '2026-08-28T08:26:41Z'
+```
