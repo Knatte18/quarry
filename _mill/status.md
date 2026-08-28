@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-review-r3
 slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
@@ -21,4 +21,5 @@ plan-review-r1  '2026-08-27T19:22:00Z'
 plan-fix-r1  '2026-08-27T19:26:21Z'
 plan-review-r2  '2026-08-28T05:26:23Z'
 plan-fix-r2  '2026-08-28T05:29:55Z'
+plan-review-r3  '2026-08-28T05:43:18Z'
 ```
