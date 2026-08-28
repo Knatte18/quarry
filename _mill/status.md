@@ -55,7 +55,9 @@ batches:
     commit_sha: 1525a0b6b6a2ef8224cd3f5bc6d20e57c4dd2c0a
     verify_baseline_failures: []
   - name: initialization-options-plumbing
-    state: pending
+    state: running
+    implementer_session: 57e0f6ae-f9cd-4878-84d0-2f671474febd
+    start_sha: efaf30b467717e5cac035762c3fd0c7715fc2079
     verify_baseline_failures: []
   - name: callers-verification-entry-point
     state: pending
