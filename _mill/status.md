@@ -69,7 +69,9 @@ batches:
     commit_sha: 5f5b31137e1acc54a8c1a681f661d560eee31a71
     verify_baseline_failures: []
   - name: cli-surface
-    state: pending
+    state: running
+    implementer_session: f787200a-ca06-4f82-8ced-def0966015b0
+    start_sha: 344a2836ad853f7c9f2ef35cf17318a6746454ed
     verify_baseline_failures: []
   - name: live-tier-tests
     state: pending
