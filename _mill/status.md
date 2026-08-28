@@ -47,7 +47,9 @@ batches:
     commit_sha: a7a3d9289201f3f4776fc433062e88927349cc49
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/treesitter [setup failed]"]
   - name: toc-scaffolding
-    state: pending
+    state: running
+    implementer_session: 7ac2c536-be61-4a74-baec-c982562bbf8c
+    start_sha: fe6384b3b08de73babe59df4c9db522591e6b068
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: go-strategy
     state: pending
