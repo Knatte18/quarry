@@ -11,10 +11,11 @@ quarry exposes the following verbs, each with a batch-argument mode, and each pr
 - `definition <symbol|file:line:col>` — the symbol's definition site.
 - `symbol <query>` — workspace symbol search.
 - `assert-no-callers <symbol|file:line:col>` — an exit-code gate for delete/move safety, with `--except` and `--within` flags to scope the check.
+- `impact <symbol|file:line:col>` — every caller of the symbol, each with its enclosing declaration's full line range including the preceding docstring — "what do I have to rewrite", not merely "where is it mentioned".
 - `toc file <path>` — a table of contents for a single source file: its package/namespace, header, and every top-level function, method, and type declaration, tree-sitter-backed rather than LSP-backed.
 - `toc dir <path>` — the same, one entry per supported file directly inside a directory (no recursion), plus each file's test/generated status where the language has a reliable rule for either.
 
-All four verbs accept `--build-tags <a,b>` to scope the query to a Go build-tag set (see Configuration below); `--no-verify`, which opts out of `assert-no-callers`'s default-on declaration verification (see below), is `assert-no-callers`-only.
+`--build-tags <a,b>` (see Configuration below) is accepted by every LSP-backed verb — `refs`, `definition`, `symbol`, `assert-no-callers`, and `impact` — while the tree-sitter-backed `toc file`/`toc dir` do not take it; `--no-verify`, which opts out of `assert-no-callers`'s default-on declaration verification (see below), is `assert-no-callers`-only.
 
 ## Building and running
 

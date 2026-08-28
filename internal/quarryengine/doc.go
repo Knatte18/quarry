@@ -1,8 +1,10 @@
 // Package quarryengine finds every reference to a symbol name or an explicit
 // source position, shows a symbol's definition, searches workspace symbols
-// by name (`quarry refs|definition|symbol <symbol|file:line:col>`), and
-// extracts a file's or a directory's table of contents (`quarry toc
-// file|dir <path>`), in a target project, across whichever of five
+// by name (`quarry refs|definition|symbol <symbol|file:line:col>`), shows
+// every caller of a symbol paired with its enclosing declaration (`quarry
+// impact <symbol|file:line:col>`), and extracts a file's or a directory's
+// table of contents (`quarry toc file|dir <path>`), in a target project,
+// across whichever of five
 // languages (Go, Python, C#, TypeScript, Rust) the project is written in.
 // The first three questions are answered over one uniform LSP ("Language
 // Server Protocol") path that works for every supported language,
@@ -27,7 +29,7 @@
 // # The engine/CLI split
 //
 // The whole internal/quarryengine tree — this package and its lsp,
-// registry, daemon, query, treesitter, and toc subpackages — plus the
+// registry, daemon, query, treesitter, toc, and impact subpackages — plus the
 // quarry/ facade that re-exports them, is the engine half of an engine/CLI
 // seam: it returns typed Go results and typed errors and never imports
 // internal/output, cobra, or internal/cli — no io.Writer, no exit codes,
@@ -40,14 +42,14 @@
 // seam enforcement test (internal/quarryengine/seam_enforcement_test.go)
 // enforces the rule across both trees: it walks internal/quarryengine/
 // recursively — this package, lsp, registry, daemon, daemon/daemontest,
-// query, treesitter, and toc — plus quarry/, and fails if any non-test
+// query, treesitter, toc, and impact — plus quarry/, and fails if any non-test
 // file in either tree imports the CLI package, cobra, or the
 // output-envelope package. internal/cli is the sole place engine results
 // become JSON.
 //
 // # The package layout
 //
-// The engine is a seven-package DAG under internal/quarryengine, plus one
+// The engine is an eight-package DAG under internal/quarryengine, plus one
 // test-support-only package that sits outside the production DAG:
 //
 //   - quarryengine (this package; errors.go, position.go, log.go, doc.go)
@@ -84,6 +86,10 @@
 //     Definition, Symbol, and Callers, the entry points internal/cli calls
 //     for `quarry refs|definition|symbol|assert-no-callers`. It imports the
 //     root, lsp, registry, and daemon.
+//   - impact (impact.go, enclosing.go, types.go) composes query's verified
+//     caller set with toc's declaration ranges, answering "who calls this,
+//     and what declaration is each call site inside" for `quarry impact`.
+//     It sits above query in the DAG. It imports the root, query, and toc.
 //   - daemon/daemontest sits outside the production DAG: it exports test
 //     seams (WithFakeInstaller, WithTempUserCacheDir, StateFile,
 //     KillRecordedDaemon, and the ConnKindNative/ConnKindSupervised/

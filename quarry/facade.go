@@ -1,7 +1,8 @@
 // Package quarry is a stable, behaviour-free re-export of internal/quarryengine.
 // It exists so this module's import path (github.com/Knatte18/quarry/quarry) stays unchanged
-// while the engine itself lives at internal/quarryengine, split into the seven-package DAG
-// documented there: the root leaf package, lsp, registry, treesitter, daemon, toc, and query.
+// while the engine itself lives at internal/quarryengine, split into the eight-package DAG
+// documented there: the root leaf package, lsp, registry, treesitter, daemon, toc, query, and
+// impact.
 // This file adds nothing of its own — every declaration below is either a type alias, a
 // re-exported sentinel var bound to the identical error value, or a one-line delegating
 // function.
@@ -22,6 +23,7 @@ import (
 
 	"github.com/Knatte18/quarry/internal/quarryengine"
 	"github.com/Knatte18/quarry/internal/quarryengine/daemon"
+	"github.com/Knatte18/quarry/internal/quarryengine/impact"
 	"github.com/Knatte18/quarry/internal/quarryengine/query"
 	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 	"github.com/Knatte18/quarry/internal/quarryengine/toc"
@@ -218,4 +220,24 @@ func TOCLanguages() []string {
 // import internal/quarryengine/toc directly.
 func TOCImplemented() []string {
 	return toc.Implemented()
+}
+
+// ImpactResult is impact.Result, re-exported unchanged.
+type ImpactResult = impact.Result
+
+// ImpactTarget is impact.Target, re-exported unchanged.
+type ImpactTarget = impact.Target
+
+// ImpactDefinition is impact.Definition, re-exported unchanged.
+type ImpactDefinition = impact.Definition
+
+// ImpactCaller is impact.Caller, re-exported unchanged.
+type ImpactCaller = impact.Caller
+
+// ImpactRange is impact.Range, re-exported unchanged.
+type ImpactRange = impact.Range
+
+// Impact delegates to impact.Impact.
+func Impact(ctx context.Context, opts Options) (ImpactResult, error) {
+	return impact.Impact(ctx, opts)
 }

@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-// The eight internal/quarryengine/... import paths this guard reasons about.
+// The nine internal/quarryengine/... import paths this guard reasons about.
 const (
 	rootPkg       = "github.com/Knatte18/quarry/internal/quarryengine"
 	lspPkg        = rootPkg + "/lsp"
@@ -27,6 +27,7 @@ const (
 	queryPkg      = rootPkg + "/query"
 	treesitterPkg = rootPkg + "/treesitter"
 	tocPkg        = rootPkg + "/toc"
+	impactPkg     = rootPkg + "/impact"
 )
 
 // layeringRow names the set of internal/quarryengine/... import paths a file belonging to pkgDir
@@ -54,7 +55,8 @@ func pathSet(paths ...string) map[string]bool {
 // Decision: the root imports no subpackage; lsp and registry import the root only; daemon imports
 // root + registry + lsp; query's production files import all four; query's test files import
 // root + registry + lsp + daemontest, never daemon directly; daemontest imports daemon; treesitter
-// imports the root only; toc imports the root, registry, and treesitter.
+// imports the root only; toc imports the root, registry, and treesitter; impact imports the root,
+// query, and toc.
 var layeringTable = []layeringRow{
 	{pkgDir: "", isTestRow: false, allowed: pathSet()},
 	{pkgDir: "", isTestRow: true, allowed: pathSet()},
@@ -72,6 +74,8 @@ var layeringTable = []layeringRow{
 	{pkgDir: "treesitter", isTestRow: true, allowed: pathSet(rootPkg)},
 	{pkgDir: "toc", isTestRow: false, allowed: pathSet(rootPkg, registryPkg, treesitterPkg)},
 	{pkgDir: "toc", isTestRow: true, allowed: pathSet(rootPkg, registryPkg, treesitterPkg)},
+	{pkgDir: "impact", isTestRow: false, allowed: pathSet(rootPkg, queryPkg, tocPkg)},
+	{pkgDir: "impact", isTestRow: true, allowed: pathSet(rootPkg, queryPkg, tocPkg)},
 }
 
 // allowedFor looks up the layeringTable row for pkgDir and isTestRow, reporting ok = false if no
@@ -165,10 +169,10 @@ func TestLayeringInvariant_ImportDirections(t *testing.T) {
 
 	// This walk covers only the engine tree, so minPackageDirs here is the exact directory count:
 	// internal/quarryengine itself (root), lsp, registry, daemon, daemon/daemontest, query,
-	// treesitter, and toc is eight distinct package directories; a package added later and
+	// treesitter, toc, and impact is nine distinct package directories; a package added later and
 	// silently skipped by this walk must not let the guard go green by finding nothing to check
 	// against it.
-	const minPackageDirs = 8
+	const minPackageDirs = 9
 	if len(visitedDirs) < minPackageDirs {
 		t.Fatalf("walk visited %d distinct directories; want at least %d, proving the walk actually covers every layer of the DAG rather than silently skipping a package", len(visitedDirs), minPackageDirs)
 	}

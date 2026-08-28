@@ -4,8 +4,8 @@
 //
 // toc deliberately bypasses resolveContext and buildOptions. Those helpers load a servers.yaml-
 // backed registry.Registry and resolve a daemon state directory — both exist for the language-
-// server-backed verbs (refs/definition/symbol/assert-no-callers), which toc has no need of: it
-// needs no language server and no daemon state directory. Forcing toc through that machinery
+// server-backed verbs (refs/definition/symbol/assert-no-callers/impact), which toc has no need of:
+// it needs no language server and no daemon state directory. Forcing toc through that machinery
 // would make it fail on any machine where no servers.yaml resolves, for a dependency toc never
 // actually uses.
 
