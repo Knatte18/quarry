@@ -15,10 +15,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/quarry/internal/quarryengine"
+	"github.com/Knatte18/quarry/internal/quarryengine/registry"
+	"github.com/Knatte18/quarry/internal/quarryengine/treesitter"
 )
 
 // writeTempFile writes content to name inside a fresh t.TempDir() and returns the file's full path.
@@ -726,5 +729,41 @@ func TestTOCDir_LangOverrideOnUnimplementedLanguageListsWithErrorNoDirError(t *t
 	}
 	if got.Files[0].Error == "" {
 		t.Error("Error is empty; want it set for the unimplemented rust strategy")
+	}
+}
+
+// TestImplemented_MatchesRegisteredStrategies asserts Implemented() returns exactly the three
+// languages this task ships a concrete Strategy for, in sorted order — a guard against a strategy
+// silently failing to register itself, or a stray extra one leaking in from a test.
+func TestImplemented_MatchesRegisteredStrategies(t *testing.T) {
+	want := []string{"csharp", "go", "python"}
+	got := Implemented()
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Implemented() = %v; want %v", got, want)
+	}
+}
+
+// TestExtensionLanguages_AllHaveGrammars is the guard that matters: it fails the moment the
+// extension map and the wired grammar set disagree, which is how a sixth language would otherwise
+// get half-added — an extension resolving to a language name the backend cannot parse, surfacing as
+// a confusing runtime error rather than a build-time one.
+//
+// It also asserts every name Implemented() reports appears in registry.ExtensionLanguages(), so a
+// strategy can never be registered under a name no extension resolves to.
+func TestExtensionLanguages_AllHaveGrammars(t *testing.T) {
+	for _, lang := range registry.ExtensionLanguages() {
+		if !treesitter.Supported(lang) {
+			t.Errorf("registry.ExtensionLanguages() includes %q, but treesitter.Supported(%q) = false", lang, lang)
+		}
+	}
+
+	extensionLangs := make(map[string]bool)
+	for _, lang := range registry.ExtensionLanguages() {
+		extensionLangs[lang] = true
+	}
+	for _, lang := range Implemented() {
+		if !extensionLangs[lang] {
+			t.Errorf("Implemented() includes %q, which is not in registry.ExtensionLanguages()", lang)
+		}
 	}
 }
