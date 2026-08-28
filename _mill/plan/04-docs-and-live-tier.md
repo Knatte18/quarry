@@ -121,6 +121,7 @@ the pipeline checks at all.
 - **Context:**
   - `internal/cli/impact.go`
   - `internal/cli/cli.go`
+  - `internal/cli/toc.go`
 - **Edits:**
   - `README.md`
 - **Creates:** none
@@ -152,6 +153,11 @@ the pipeline checks at all.
   Record the sweep's outcome in this card's commit body, naming each site checked.
   If the sweep finds a stale site that no card covers, fix it here and say so in the commit body
   rather than leaving it for a later task.
+  One exception, already adjudicated: `toc file`'s Long help in `internal/cli/toc.go` describes
+  `--lang` by naming "refs/definition/symbol". Batch 3's card 11 records the decision to leave that
+  line alone — it is already non-exhaustive (it omits `assert-no-callers`) and so reads as examples
+  rather than an enumeration. Do not change it, and note in the commit body that the sweep saw it and
+  applied that decision.
 - **Commit:** `docs(readme): add the impact verb and fix the stale verb-count sentence`
 
 ### Card 17: Live-tier end-to-end test

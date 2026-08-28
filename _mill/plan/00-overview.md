@@ -3,7 +3,7 @@
 ```yaml
 task: "Add `impact` verb for caller-context lookup"
 slug: "impact-verb"
-approved: false
+approved: true
 started: "20260828-090600"
 parent: "main"
 root: ""

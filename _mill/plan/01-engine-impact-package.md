@@ -174,17 +174,23 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   a `KindType` symbol spans every `KindMethod` symbol inside it, and that a grouped Go type
   declaration is *not* an overlap case because each spec's range is computed from the spec itself.
 
-  Add the per-call parse cache. Declare an unexported struct type holding a parse function of type
-  `func(path string) (toc.FileTOC, error)` and a `map[string]` cache whose value records both the
-  successful result and any per-file error, keyed by the absolute path.
-  Give it a constructor taking the parse function, where a nil argument selects the production
-  parse — `toc.TOCFile(path, "", toc.Options{DocSentences: 0})`.
+  Add the per-call parse cache, with these exact identifier names — they are pinned here, not left
+  to the implementer, because card 5's `buildResult` signature and cards 6 and 7's tests all name
+  them:
+
+  - `parseFunc` — the named function type `func(path string) (toc.FileTOC, error)`.
+  - `fileCache` — the unexported struct type holding a `parseFunc` and a map keyed by absolute path
+    whose value records both the successful `toc.FileTOC` and any per-file error.
+  - `newFileCache(parse parseFunc) *fileCache` — the constructor. A nil `parse` argument selects the
+    production parse, `toc.TOCFile(path, "", toc.Options{DocSentences: 0})`.
+  - `(*fileCache).resolve(path string) (toc.FileTOC, error)` — returns the cached result-or-error for
+    a path, parsing exactly once per distinct path.
+  - `(*fileCache).cached(path string) bool` — reports whether a path has already been parsed. Card
+    5's cancellation check needs this to distinguish a cache hit from a cache miss.
+
   `DocSentences: 0` is deliberate: `impact` emits no docstring text, and per `toc.TOCFile`'s own
   contract `Start`, `SigEnd`, and `End` are never affected by that setting.
-  Give it a `resolve` method returning the cached result-or-error for a path, parsing exactly once
-  per distinct path, and a predicate reporting whether a path is already cached — the cancellation
-  check in card 5 needs to distinguish a cache hit from a cache miss.
-  The injectable parse function is the counting seam card 7's cache test asserts through; it exists
+  The injectable `parseFunc` is the counting seam cards 6 and 7 assert through; it exists
   for that reason and its doc comment must say so.
 
   The cache is per-instance and per-call only.
@@ -213,7 +219,8 @@ assembly seam testable with no filesystem and no LSP, exactly as `query`'s own
   options type of its own, and issues no LSP request `query.Callers` does not already issue.
 
   Add the assembly seam
-  `buildResult(ctx context.Context, callers, declaration []query.Reference, resolver <the card 4 cache type>) (Result, error)`.
+  `buildResult(ctx context.Context, callers, declaration []query.Reference, cache *fileCache) (Result, error)`,
+  using card 4's pinned `fileCache` type by name.
   It is separate from the entry point for the same reason `query`'s own `callersFromClient` seam is:
   the assembly is testable against a hand-built reference set with no LSP.
 

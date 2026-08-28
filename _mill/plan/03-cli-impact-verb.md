@@ -103,7 +103,9 @@ end-to-end claim is proved by the live-tier test in batch 4.
   only, never the tree-sitter parse phase.
 
   Add `emitImpactResult(ctx context.Context, out io.Writer, result quarry.ImpactResult, err error)`,
-  reproducing `emitLookupResult`'s error routing and its order, adding no branch of its own.
+  reproducing `emitLookupResult`'s error routing and its order.
+  "Reproduce, add nothing" scopes to the routing of the **incoming** `err` argument only — it does
+  not forbid the success-side marshal-failure path this card requires below.
   Note the branch count differs between the two helpers and the card is precise about which is
   which: `emitLookupResult` has **two** error paths — an `*quarry.ErrAmbiguousSymbol` matched via
   `errors.As` emits `candidates` through `output.Ok` and forces exit 2, and every other error
@@ -129,9 +131,14 @@ end-to-end claim is proved by the live-tier test in batch 4.
   `errors.As` → `statusAmbiguous` with `candidates`; `quarry.ErrSymbolNotFoundSentinel` via
   `errors.Is` → `statusNotFound` with no extra fields; anything else → `statusError` with an `error`
   field.
-  Add no fourth branch and do not reorder the three.
+  Add no fourth branch to that incoming-error routing and do not reorder the three.
   The nil-error branch yields `statusFound` carrying the marshalled result and the same
-  `"resolution": "complete"` marker each found entry gets today.
+  `"resolution": "complete"` marker each found entry gets today — **unless** `structToFields` itself
+  fails, in which case that branch returns `statusError` with the re-worded message under an `error`
+  key.
+  This is not a fourth error branch: it lives inside the nil-error branch and is the same
+  disposition `tocFileOne` already uses for exactly this failure, so batch mode's behaviour on a
+  marshal failure matches the existing verbs rather than being invented here.
 
   Add `filterImpactWithin(result quarry.ImpactResult, within, baseDir string) quarry.ImpactResult`,
   filtering the caller list only and leaving `target` and `definition` untouched.
@@ -203,8 +210,19 @@ end-to-end claim is proved by the live-tier test in batch 4.
   `toc`'s deliberate bypass of `resolveContext` and `buildOptions` by enumerating the verbs those
   helpers exist for — "(refs/definition/symbol/assert-no-callers)".
   `impactCommand` uses both helpers, so add `impact` to that enumeration.
+
+  That file carries a **second** verb enumeration, in `toc file`'s Long help: `--lang` is described
+  as "never the servers.yaml-backed registry key `--lang` means on refs/definition/symbol".
+  Leave that one unchanged. It is already non-exhaustive today — it omits `assert-no-callers`, which
+  has carried a `--lang` flag since it was added — so it reads as naming examples of the LSP-backed
+  verbs rather than enumerating them, and `impact` joining that set makes it no less accurate than
+  it already is.
+  This is a deliberate disposition, not an oversight: card 16's doc-audit sweep must not "fix" this
+  line, and this paragraph is what tells the sweep so.
+
   Change nothing else in that file: its behaviour, its bypass, and the justification's reasoning are
-  all untouched by this task — only the verb list inside the justification is stale.
+  all untouched by this task — only the verb list inside the header comment's justification is
+  stale.
   This is the doc site a verb-set grep is least likely to surface, since the file is named for a
   different verb group entirely and its comment reads as being about `toc` rather than about the
   LSP-backed verbs.
