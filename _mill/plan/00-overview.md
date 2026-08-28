@@ -146,6 +146,16 @@ Batch-local decisions live in each batch file._
   re-exported through `quarry/facade.go`, and classified in `internal/cli` with `errors.Is`.
   Every other toc failure mode is either a CLI-side `os.Stat` concern, a CLI-side flag/config
   validation error, or a wrapped `os` error with no sentinel of its own.
+  **What the classification produces**, so this is a behaviour rather than an unobservable branch:
+  `internal/cli` gets one `classifyTOCError(err error) (batchStatus, string)` helper (batch 6 card 36),
+  whose `errors.Is(err, quarry.ErrLanguageUnsupported)` branch returns a **distinct, stable message**
+  naming the path's language situation and the implemented set — not the engine's wrapped text — while
+  every other error falls through to `statusError` with the error's own message. Both entry points use
+  it: the single-argument path takes the message for `output.Err`, and the batch driver (card 38)
+  takes both halves. The status stays `statusError` in both cases, deliberately: `found`/`not_found`/
+  `ambiguous`/`error` is a closed vocabulary shared with the four existing verbs, and an unsupported
+  language is an error, not a fifth kind of outcome. The distinction the CLI must draw is in the
+  message, and drawing it through `errors.Is` rather than string matching is the point.
 - **Rationale:** "the extension maps to no language, or to a language designed but not yet
   implemented" is the one failure the CLI must distinguish structurally; everything else it can report
   verbatim.

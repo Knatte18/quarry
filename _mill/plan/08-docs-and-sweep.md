@@ -188,7 +188,8 @@ current claim about quarry. Historical research documents are not updated when t
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** three stale-prose sites in this file, all in or beside the package doc comment.
+- **Requirements:** four stale-prose sites in this file, three in or beside the package doc comment
+  and one on a type declaration further down.
   - The package doc says the package exposes four verbs and enumerates them. Add the toc group with a
     one-clause description, and correct the count — or restate it without a count.
   - The package doc's batch-mode paragraph says a batch returns "one JSON entry per symbol under a
@@ -199,6 +200,11 @@ current claim about quarry. Historical research documents are not updated when t
   - The root cobra command's `Short` reads as a capability enumeration and currently leaves
     `quarry --help` describing a tool without toc. Rewrite it to cover what quarry does now. Keep it
     to one line: it is the first thing a user sees.
+  - `batchStatus`'s own doc comment reads "the per-symbol outcome in batch mode". Batch 6 card 38
+    reuses that type unchanged for path-keyed entries, so the comment now describes half its uses.
+    Restate it as the per-entry outcome, covering both the symbol-addressed and the path-addressed
+    verbs. This one is easy to miss because it sits well below the package doc, and it falls squarely
+    under this batch's own invariant that no prose may claim a batch entry is keyed on a symbol.
   Change no code in this card. The `AddCommand` call landed in batch 6; this is prose only.
 - **Commit:** `docs(cli): update the package doc, batch contract and root summary`
 
@@ -217,6 +223,11 @@ current claim about quarry. Historical research documents are not updated when t
 - **Requirements:** both guard files open with a header comment enumerating the packages their walk
   covers, and those enumerations are now short by two. Update each to name every package the walk
   actually visits.
+  The seam guard's header carries a second stale claim in the same sentence: it says the repackage
+  move split the flat package into "the five-package DAG under internal/quarryengine plus the quarry/
+  facade". That count is now seven, and **this card owns it** — no other card touches that file's
+  header. Fix the count and the enumeration together; leaving the count for card 54's sweep to find
+  would leave a hit with no assigned fixer.
   In the layering guard, also check the `layeringTable` doc comment and the import-path constant
   block's comment. Batch 2 card 16 owns both — it is the card that adds the eighth import path — so
   the expected finding here is that they already name eight paths and both new packages. Verify;
@@ -272,8 +283,14 @@ current claim about quarry. Historical research documents are not updated when t
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** verify the sweep invariant stated in this batch's scope actually holds, and report
-  the result. This card writes nothing; if it finds a stale site, the fix belongs in whichever earlier
-  card owns that file, and that card is amended rather than a new commit being made here.
+  the result. Where a stale site is found, route it by *when* its owner runs:
+  - owned by an earlier card **in this batch** (47-53, none of which has landed yet at the point this
+    card runs last): amend that card and let it carry the fix in its own commit;
+  - owned by an earlier **batch** — `quarry/facade_test.go` belongs to batch 6 card 35, and both
+    guard-test files to batches 1 and 2 — whose commits are already landed and unreachable from here:
+    make the fix here, in a commit of this card's own, and say in the commit message which earlier
+    card's file it corrects. Amending a landed batch is not an option, and a found stale site must
+    never be left unfixed because its nominal owner has already run.
   Run both searches below and **read their output**, treating them as search aids rather than as the
   specification:
 
@@ -302,7 +319,9 @@ current claim about quarry. Historical research documents are not updated when t
   Report the outcome in the batch's summary: every search's hit count, which hits were confirmed
   out-of-scope, and an explicit statement that the three non-grep-reachable clauses were checked by
   reading.
-- **Commit:** none
+  This is the one card whose commit is conditional: none when the sweep is clean, one when a landed
+  batch's file needs correcting.
+- **Commit:** none when the sweep finds nothing to fix; otherwise `docs: correct stale prose found by the sweep`
 
 ## Batch Tests
 

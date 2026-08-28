@@ -94,8 +94,8 @@ than assumed:
     plan (`golang.go`, `python.go`, `csharp.go`) needs the joined block text to strip and the block's
     start line to pass to `IsDirectiveBlock`, and neither is derivable from a first node alone:
     `CommentBlockAbove` only walks *upward* from a declaration, so a caller handed bare nodes would
-    have to reinvent the downward sibling walk three times over — which card 4's "no new shared
-    helper per strategy" rule exists to prevent. `Raw` is joined exactly the way
+    have to reinvent the downward sibling walk three times over — which batch 4's Batch Scope rule
+    against introducing a new shared helper per strategy exists to prevent. `Raw` is joined exactly the way
     `CommentBlockAbove`'s `raw` is, so one `StripLineComment` call behaves identically on both.
     `StartLine` is `First.StartPosition().Row + 1`; it is returned rather than recomputed at each
     call site so the 0-based-to-1-based conversion lives in one place.

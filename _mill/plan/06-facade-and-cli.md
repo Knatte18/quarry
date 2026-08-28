@@ -56,8 +56,8 @@ machinery.
   importing an engine subpackage directly: `internal/cli` today imports **nothing** under
   `internal/quarryengine` — every engine identifier reaches it through this file — and cards 36 and 37
   must not be the first exception. Say that in its doc comment.
-  Import `github.com/Knatte18/quarry/internal/quarryengine/toc` and
-  `github.com/Knatte18/quarry/internal/quarryengine/registry` alongside the existing engine imports.
+  Add the `github.com/Knatte18/quarry/internal/quarryengine/toc` import. The `registry` import
+  `TOCLanguages` needs is already present in this file — do not add it a second time.
   Do **not** add behaviour of any kind here — no defaulting of `opts`, no validation, no path
   handling. The facade's whole contract is that it adds nothing.
   The file's own doc comment carries a stale identifier count and a stale package-set enumeration;
@@ -140,9 +140,23 @@ machinery.
     result through `output.Ok`. Add a `// TODO` free comment naming batch 7 as where that literal `1`
     becomes the resolved flag-and-config value, so the placeholder is not mistaken for the final
     shape;
-  - on error, emits `output.Err` with the error's message. Every single-argument toc failure is exit
-    1: no exit 2 and no exit 3, keeping toc inside the exit-code contract the package doc already
-    documents for every verb.
+  - on error, emits `output.Err` with the message `classifyTOCError` returns. Every single-argument toc
+    failure is exit 1: no exit 2 and no exit 3, keeping toc inside the exit-code contract the package
+    doc already documents for every verb.
+  Add `classifyTOCError(err error) (batchStatus, string)` in this same file — the one place an engine
+  toc error becomes a CLI outcome, shared by this command, `toc dir`, and the batch driver in card 38:
+  - `errors.Is(err, quarry.ErrLanguageUnsupported)` — returns `statusError` and a **distinct, stable
+    message** naming the situation and the implemented language set, built from `quarry.TOCLanguages()`
+    rather than a hard-coded list, so the message cannot drift from the vocabulary `--lang` validates
+    against. This branch is the whole reason the sentinel exists: it is what lets the CLI distinguish
+    "quarry cannot read this language" from "quarry failed to read this file", which the wrapped
+    engine text alone does not make reliably machine-checkable.
+  - anything else — `statusError` and `err.Error()` unchanged.
+  The status is `statusError` in both branches on purpose. `found`/`not_found`/`ambiguous`/`error` is
+  the closed vocabulary the four existing verbs share, and an unsupported language is an error rather
+  than a fifth outcome; the distinction lives in the message. Say that in the helper's doc comment,
+  together with the reason the test uses `errors.Is` rather than comparing the message: the message is
+  for humans, the sentinel is the contract.
   Marshal the result by re-marshalling the typed struct into a `map[string]any` via
   `encoding/json`, so `output.Ok`'s `map[string]any` parameter is fed the exact keys the struct tags
   define and the omitempty rules are honoured in one place rather than restated here.
@@ -215,8 +229,12 @@ machinery.
   - `toc dir` on a directory with no supported files — `statusFound`, with an empty `files`;
   - the path does not exist — `statusNotFound`;
   - the wrong path type for the subcommand — `statusError`;
-  - the extension maps to no language, or to a designed-but-unimplemented one — `statusError`;
-  - the file is unreadable or not valid UTF-8 — `statusError`.
+  - any error back from the engine — `statusError`, with both the status and the entry's `error`
+    message taken from `classifyTOCError` (card 36) rather than re-derived here. That is what routes
+    the designed-but-unimplemented and unknown-extension cases through the `errors.Is` branch, so a
+    batch entry for a `.rs` file carries the same distinct message the single-argument path emits,
+    and the sentinel classification is not silently bypassed in batch mode;
+  - the file is unreadable or not valid UTF-8 — `statusError` through the same helper.
   `partial: true` is a field on the entry and must **not** degrade the status: ranking it as a failure
   would poison the exit code of any batch containing a single mid-edit file. `ambiguous` is never
   produced, since a path-addressed lookup has no ambiguity state.
@@ -272,7 +290,14 @@ machinery.
     the consumer sees;
   - the same fixture with a syntax error — `partial: true` present and exit 0;
   - `toc file` on a `.rs` fixture — the explicit "not yet supported" error rather than an empty
-    result;
+    result, carrying the distinct message `classifyTOCError`'s `errors.Is` branch produces rather than
+    the engine's wrapped text;
+  - the same `.rs` argument inside a multi-argument batch — the entry's `error` message is identical
+    to the single-argument one, which is what proves the batch driver routes through
+    `classifyTOCError` instead of re-deriving the message;
+  - a unit test of `classifyTOCError` itself over `fmt.Errorf("...: %w", quarry.ErrLanguageUnsupported)`
+    — asserting the sentinel branch is reached **through a wrap**, since every real caller wraps, and
+    a `==` comparison rather than `errors.Is` would pass the unwrapped case and fail in production;
   - `--lang` with an unrecognised value on both verbs — the error names the valid set;
   - `--lang go` on a `.py` fixture — parses with the Go grammar and does **not** error on the
     mismatch;
