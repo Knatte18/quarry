@@ -1,12 +1,13 @@
 // Package lsp implements Client, the generalized stdio LSP client speaking exactly the
 // request/notification surface this engine needs (initialize, initialized, textDocument/references,
-// textDocument/definition, textDocument/documentSymbol, workspace/symbol, shutdown, exit) — not the
-// full LSP protocol, per the plan's references-only Shared Decision.
-// No callHierarchy, no implementation — the spike's call-hierarchy recommendation (build it on
-// TypesInfo.Uses/Defs, never syntactic *ast.CallExpr pattern-matching) does not translate to a
-// language-agnostic LSP client at all, since LSP callers must accept whatever
-// callHierarchy/incomingCalls a given server implements; that generalization is explicitly deferred
-// (see quarryengine's own package doc comment, "What this engine deliberately does not do").
+// textDocument/definition, textDocument/implementation, textDocument/documentSymbol,
+// workspace/symbol, shutdown, exit) — not the full LSP protocol, per the plan's references-only
+// Shared Decision.
+// No callHierarchy — the spike's call-hierarchy recommendation (build it on TypesInfo.Uses/Defs,
+// never syntactic *ast.CallExpr pattern-matching) does not translate to a language-agnostic LSP
+// client at all, since LSP callers must accept whatever callHierarchy/incomingCalls a given server
+// implements; that generalization is explicitly deferred (see quarryengine's own package doc
+// comment, "What this engine deliberately does not do").
 //
 // Every request phase — initialize, the workspace/symbol resolver call, and
 // textDocument/references or textDocument/definition — is bounded by its own
@@ -87,10 +88,11 @@ type DocumentSymbol struct {
 	Children       []DocumentSymbol `json:"children"`
 }
 
-// capabilities reports the server's workspace/symbol and documentSymbol support.
+// capabilities reports the server's workspace/symbol, documentSymbol, and implementation support.
 type capabilities struct {
 	WorkspaceSymbolProvider capabilityFlag `json:"workspaceSymbolProvider"`
 	DocumentSymbolProvider  capabilityFlag `json:"documentSymbolProvider"`
+	ImplementationProvider  capabilityFlag `json:"implementationProvider"`
 }
 
 // capabilityFlag normalizes LSP capability fields that may be bool or objects.
@@ -399,8 +401,13 @@ func (c *Client) Notify(method string, params any) error {
 // gopls falls back to the flat SymbolInformation[] shape, which unmarshals
 // into a zero-valued SelectionRange for every result and silently breaks
 // every InFile query.
-func (c *Client) Initialize(ctx context.Context, rootURI string) error {
-	raw, err := c.Call(ctx, "initialize", "initialize", map[string]any{
+// initOptions is sent as the request's initializationOptions field if and
+// only if it is non-nil; a nil argument produces a request byte-identical
+// to one with no such field at all. This client has no opinion on what the
+// map contains — it receives an already-rendered map from its caller and
+// never constructs, validates, or interprets one itself.
+func (c *Client) Initialize(ctx context.Context, rootURI string, initOptions map[string]any) error {
+	params := map[string]any{
 		"processId": os.Getpid(),
 		"rootUri":   rootURI,
 		"capabilities": map[string]any{
@@ -410,7 +417,11 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 				},
 			},
 		},
-	})
+	}
+	if initOptions != nil {
+		params["initializationOptions"] = initOptions
+	}
+	raw, err := c.Call(ctx, "initialize", "initialize", params)
 	if err != nil {
 		return fmt.Errorf("initialize: %w", err)
 	}
@@ -441,6 +452,13 @@ func (c *Client) SupportsWorkspaceSymbol() bool {
 // successful initialize call.
 func (c *Client) SupportsDocumentSymbol() bool {
 	return c.caps.DocumentSymbolProvider.Supported
+}
+
+// SupportsImplementation reports whether the server's initialize response
+// advertised implementationProvider. It is only meaningful after a
+// successful initialize call.
+func (c *Client) SupportsImplementation() bool {
+	return c.caps.ImplementationProvider.Supported
 }
 
 // References issues one textDocument/references request (with
@@ -535,6 +553,22 @@ func parseDefinitionResult(raw json.RawMessage) ([]Location, error) {
 		}
 	}
 	return locations, nil
+}
+
+// Implementation issues one textDocument/implementation request and returns
+// the server's reported implementation location(s). The LSP spec gives this
+// method the same result type as textDocument/definition (`Location |
+// Location[] | LocationLink[] | null`), so it reuses parseDefinitionResult
+// rather than a second parser.
+func (c *Client) Implementation(ctx context.Context, fileURI string, pos Position) ([]Location, error) {
+	raw, err := c.Call(ctx, "implementation", "textDocument/implementation", map[string]any{
+		"textDocument": map[string]any{"uri": fileURI},
+		"position":     pos,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseDefinitionResult(raw)
 }
 
 // WorkspaceSymbol issues one workspace/symbol query and returns the

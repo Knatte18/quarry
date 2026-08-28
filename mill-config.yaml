@@ -136,7 +136,7 @@ pipeline:
 roles:
   discussion-review:
     holistic:
-      rounds: 4
+      rounds: 6
       # min_rounds -- floor: the review loop may not terminate on APPROVE before this round, regardless of verdict. Optional; defaults to 1 (today's unfloored behavior) when absent.
       min_rounds: 1
       reviewer: opushigh
@@ -155,7 +155,7 @@ roles:
       reviewer: null
       blocking_classes: [design, scope]
     holistic:
-      rounds: 4
+      rounds: 6
       min_rounds: 1
       reviewer: opushigh
       # large_prompt:            # optional: override reviewer and timeout for large prompts

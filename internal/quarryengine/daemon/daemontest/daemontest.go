@@ -7,8 +7,8 @@
 // supervised_integration_test.go keep their own copies of withFakeInstaller,
 // withTempUserCacheDir, and killRecordedDaemon unchanged, deliberately duplicated rather than
 // routed through this package.
-// Today the only caller outside package daemon is query's refs_test.go and
-// refs_integration_test.go.
+// Today the only callers outside package daemon are query's refs_test.go, refs_integration_test.go,
+// callers_test.go, and buildtags_lsp_test.go.
 // This package is imported only from _test.go files.
 
 package daemontest
@@ -48,6 +48,16 @@ func WithTempUserCacheDir(t *testing.T) string {
 func StateFile(stateDir, lang string) string {
 	return daemon.DaemonStateFile(stateDir, lang)
 }
+
+// ConnKindNative, ConnKindSupervised, and ConnKindLegacy re-export daemon.ConnKind's three values,
+// letting a package which cannot import daemon under the layering DAG (query's _test.go files,
+// per layering_test.go's table) still name a daemon.ConnKind — mirroring why StateFile re-exports
+// daemon.DaemonStateFile above.
+const (
+	ConnKindNative     = daemon.ConnKindNative
+	ConnKindSupervised = daemon.ConnKindSupervised
+	ConnKindLegacy     = daemon.ConnKindLegacy
+)
 
 // KillRecordedDaemon kills the daemon PID recorded in the state file at statePath, ported from
 // supervised_integration_test.go's in-package killRecordedDaemon against daemon's exported

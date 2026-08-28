@@ -59,7 +59,7 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 	defer cancel()
 
 	// (1) First call: no daemon exists yet, so this call must spawn one.
-	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second)
+	client, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second, nil)
 	if err != nil {
 		t.Fatalf("ensureSupervised() first call returned unexpected error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 
 	// (2) Second call, same anchorRoot/lang: must reconnect to the
 	// existing daemon rather than spawning a second one.
-	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second); err != nil {
+	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second, nil); err != nil {
 		t.Fatalf("ensureSupervised() second call returned unexpected error: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestEnsureSupervised_Integration(t *testing.T) {
 	// PID at the same deterministic socket address.
 	killRecordedDaemon(t, statePath)
 
-	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second); err != nil {
+	if _, err := ensureSupervised(ctx, []string{"gopls"}, lang, root, worktreeRoot, 30*time.Second, nil); err != nil {
 		t.Fatalf("ensureSupervised() third call (after killing the daemon) returned unexpected error: %v", err)
 	}
 

@@ -581,8 +581,9 @@ func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	registry := quarry.BuiltinRegistry()
 	query := quarry.Query{Symbol: "Foo"}
 	stateDir := "/state/dir"
+	buildTags := []string{"a", "b"}
 
-	got := buildOptions(registry, "/target", stateDir, "go", query, 5*time.Second)
+	got := buildOptions(registry, "/target", stateDir, "go", query, 5*time.Second, buildTags)
 
 	if got.TargetDir != "/target" {
 		t.Errorf("buildOptions(...).TargetDir = %q; want %q", got.TargetDir, "/target")
@@ -598,6 +599,14 @@ func TestBuildOptions_ThreadsEveryFieldFromItsArguments(t *testing.T) {
 	}
 	if got.Timeout != 5*time.Second {
 		t.Errorf("buildOptions(...).Timeout = %v; want %v", got.Timeout, 5*time.Second)
+	}
+	if len(got.BuildTags) != len(buildTags) {
+		t.Fatalf("buildOptions(...).BuildTags = %v; want %v", got.BuildTags, buildTags)
+	}
+	for i := range buildTags {
+		if got.BuildTags[i] != buildTags[i] {
+			t.Errorf("buildOptions(...).BuildTags[%d] = %q; want %q", i, got.BuildTags[i], buildTags[i])
+		}
 	}
 }
 
@@ -877,5 +886,91 @@ func TestFilterUnexpectedCallers(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestAssertNoCallersFilterOrdering covers filterWithin composed with filterUnexpectedCallers in
+// the exact order assertNoCallersCommand applies them -- --within, then --except, then the
+// declaration exclusion -- over a hand-built reference slice.
+//
+// This is the only part of that ordering internal/cli can observe: quarry.Callers is a direct
+// package-level call with no injection seam, so no test here can see the verification step that
+// now runs ahead of all three filters. internal/quarryengine/query/callers_test.go covers
+// verification itself.
+func TestAssertNoCallersFilterOrdering(t *testing.T) {
+	t.Parallel()
+
+	const baseDir = "/repo"
+	const within = "internal/websterengine"
+
+	decl := quarry.Reference{File: "/repo/internal/websterengine/poll.go", Line: 1, Character: 6}
+	exceptRef := quarry.Reference{File: "/repo/internal/websterengine/wrapper.go", Line: 5, Character: 3}
+	outOfScope := quarry.Reference{File: "/repo/internal/perchengine/identity.go", Line: 10, Character: 2}
+	violation := quarry.Reference{File: "/repo/internal/websterengine/caller.go", Line: 20, Character: 4}
+
+	refs := []quarry.Reference{decl, exceptRef, outOfScope, violation}
+
+	scoped := filterWithin(refs, within, baseDir)
+	if len(scoped) != 3 {
+		t.Fatalf("filterWithin(...) = %v; want 3 entries (outOfScope excluded)", scoped)
+	}
+	for _, r := range scoped {
+		if r == outOfScope {
+			t.Fatalf("filterWithin(...) = %v; want outOfScope %v excluded", scoped, outOfScope)
+		}
+	}
+
+	exceptAbs := map[string]bool{filepath.Clean(exceptRef.File): true}
+	got := filterUnexpectedCallers(scoped, []quarry.Reference{decl}, exceptAbs)
+
+	if len(got) != 1 {
+		t.Fatalf("filterUnexpectedCallers(filterWithin(...)) = %v; want exactly [%v]", got, violation)
+	}
+	if got[0] != violation {
+		t.Errorf("filterUnexpectedCallers(filterWithin(...))[0] = %v; want %v", got[0], violation)
+	}
+	for _, r := range got {
+		if r == decl {
+			t.Errorf("got %v; want the declaration reference %v excluded", got, decl)
+		}
+		if r == exceptRef {
+			t.Errorf("got %v; want the --except reference %v excluded", got, exceptRef)
+		}
+		if r == outOfScope {
+			t.Errorf("got %v; want the out-of-scope reference %v excluded", got, outOfScope)
+		}
+	}
+}
+
+// TestBuildTagsFlag_RegisteredOnAllFourVerbs verifies every verb accepts --build-tags, and that
+// assert-no-callers additionally accepts --no-verify, by looking the flags up on the built
+// command tree rather than by executing a query.
+func TestBuildTagsFlag_RegisteredOnAllFourVerbs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cmd  *cobra.Command
+	}{
+		{"refs", refsCommand()},
+		{"definition", definitionCommand()},
+		{"symbol", symbolCommand()},
+		{"assert-no-callers", assertNoCallersCommand()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.cmd.Flags().Lookup("build-tags") == nil {
+				t.Errorf("%s command has no --build-tags flag registered", tt.name)
+			}
+		})
+	}
+
+	for _, tt := range tests {
+		hasNoVerify := tt.cmd.Flags().Lookup("no-verify") != nil
+		wantNoVerify := tt.name == "assert-no-callers"
+		if hasNoVerify != wantNoVerify {
+			t.Errorf("%s command has --no-verify registered = %v; want %v (assert-no-callers-only)", tt.name, hasNoVerify, wantNoVerify)
+		}
 	}
 }

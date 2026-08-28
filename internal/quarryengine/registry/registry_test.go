@@ -79,6 +79,43 @@ func TestBuiltins_GoHasPinnedNativeDaemon(t *testing.T) {
 	}
 }
 
+func TestBuiltins_GoHasTagsPlaceholderTemplate(t *testing.T) {
+	b := builtins()
+	goEntry := b["go"]
+	if goEntry.InitializationOptions == nil {
+		t.Fatal(`builtins()["go"].InitializationOptions = nil; want a template carrying "{{tags}}"`)
+	}
+	buildFlags, ok := goEntry.InitializationOptions["buildFlags"].([]any)
+	if !ok {
+		t.Fatalf(`builtins()["go"].InitializationOptions["buildFlags"] = %#v; want []any`, goEntry.InitializationOptions["buildFlags"])
+	}
+	found := false
+	for _, flag := range buildFlags {
+		if s, ok := flag.(string); ok && strings.Contains(s, "{{tags}}") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf(`builtins()["go"].InitializationOptions["buildFlags"] = %v; want an element containing "{{tags}}"`, buildFlags)
+	}
+}
+
+func TestBuiltins_NonGoLanguagesHaveNilInitializationOptions(t *testing.T) {
+	tests := []string{"python", "csharp", "typescript", "rust"}
+	b := builtins()
+	for _, lang := range tests {
+		t.Run(lang, func(t *testing.T) {
+			entry, ok := b[lang]
+			if !ok {
+				t.Fatalf("builtins() missing language %q", lang)
+			}
+			if entry.InitializationOptions != nil {
+				t.Errorf("builtins()[%q].InitializationOptions = %v; want nil", lang, entry.InitializationOptions)
+			}
+		})
+	}
+}
+
 func TestBuiltins_NonGoLanguagesHaveNoDaemonStrategy(t *testing.T) {
 	// Every non-Go builtin must leave PinnedVersion/HasNativeDaemon at their
 	// Go zero values -- this is the "third, implicit no-daemon-strategy

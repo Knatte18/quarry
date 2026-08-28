@@ -24,49 +24,51 @@ import (
 // instead of an alias. Package-level variables are never subject to Go's "declared and not used"
 // check, so no test body needs to read them — the compiler is the entire check.
 var (
-	aliasCheckEntryEngine                  registry.Entry
-	aliasCheckEntryFacade                  Entry
-	aliasCheckRegistryEngine               registry.Registry
-	aliasCheckRegistryFacade               Registry
-	aliasCheckPositionEngine               quarryengine.Position
-	aliasCheckPositionFacade               Position
-	aliasCheckQueryEngine                  query.Query
-	aliasCheckQueryFacade                  Query
-	aliasCheckInFileQueryEngine            query.InFileQuery
-	aliasCheckInFileQueryFacade            InFileQuery
-	aliasCheckOptionsEngine                query.Options
-	aliasCheckOptionsFacade                Options
-	aliasCheckReferenceEngine              query.Reference
-	aliasCheckReferenceFacade              Reference
-	aliasCheckSymbolMatchEngine            query.SymbolMatch
-	aliasCheckSymbolMatchFacade            SymbolMatch
-	aliasCheckErrServerNotFoundEngine      quarryengine.ErrServerNotFound
-	aliasCheckErrServerNotFoundFacade      ErrServerNotFound
-	aliasCheckErrSymbolNotFoundEngine      quarryengine.ErrSymbolNotFound
-	aliasCheckErrSymbolNotFoundFacade      ErrSymbolNotFound
-	aliasCheckErrAmbiguousSymbolEngine     quarryengine.ErrAmbiguousSymbol
-	aliasCheckErrAmbiguousSymbolFacade     ErrAmbiguousSymbol
-	aliasCheckErrResolverUnsupportedEngine quarryengine.ErrResolverUnsupported
-	aliasCheckErrResolverUnsupportedFacade ErrResolverUnsupported
-	aliasCheckErrServerTimeoutEngine       quarryengine.ErrServerTimeout
-	aliasCheckErrServerTimeoutFacade       ErrServerTimeout
-	aliasCheckErrServerSpawnTimeoutEngine  quarryengine.ErrServerSpawnTimeout
-	aliasCheckErrServerSpawnTimeoutFacade  ErrServerSpawnTimeout
-	aliasCheckTOCSymbolEngine              toc.Symbol
-	aliasCheckTOCSymbolFacade              TOCSymbol
-	aliasCheckTOCKindEngine                toc.Kind
-	aliasCheckTOCKindFacade                TOCKind
-	aliasCheckTOCFileResultEngine          toc.FileTOC
-	aliasCheckTOCFileResultFacade          TOCFileResult
-	aliasCheckTOCDirEntryEngine            toc.DirEntry
-	aliasCheckTOCDirEntryFacade            TOCDirEntry
-	aliasCheckTOCDirResultEngine           toc.DirTOC
-	aliasCheckTOCDirResultFacade           TOCDirResult
-	aliasCheckTOCOptionsEngine             toc.Options
-	aliasCheckTOCOptionsFacade             TOCOptions
+	aliasCheckEntryEngine                   registry.Entry
+	aliasCheckEntryFacade                   Entry
+	aliasCheckRegistryEngine                registry.Registry
+	aliasCheckRegistryFacade                Registry
+	aliasCheckPositionEngine                quarryengine.Position
+	aliasCheckPositionFacade                Position
+	aliasCheckQueryEngine                   query.Query
+	aliasCheckQueryFacade                   Query
+	aliasCheckInFileQueryEngine             query.InFileQuery
+	aliasCheckInFileQueryFacade             InFileQuery
+	aliasCheckOptionsEngine                 query.Options
+	aliasCheckOptionsFacade                 Options
+	aliasCheckReferenceEngine               query.Reference
+	aliasCheckReferenceFacade               Reference
+	aliasCheckSymbolMatchEngine             query.SymbolMatch
+	aliasCheckSymbolMatchFacade             SymbolMatch
+	aliasCheckErrServerNotFoundEngine       quarryengine.ErrServerNotFound
+	aliasCheckErrServerNotFoundFacade       ErrServerNotFound
+	aliasCheckErrSymbolNotFoundEngine       quarryengine.ErrSymbolNotFound
+	aliasCheckErrSymbolNotFoundFacade       ErrSymbolNotFound
+	aliasCheckErrAmbiguousSymbolEngine      quarryengine.ErrAmbiguousSymbol
+	aliasCheckErrAmbiguousSymbolFacade      ErrAmbiguousSymbol
+	aliasCheckErrResolverUnsupportedEngine  quarryengine.ErrResolverUnsupported
+	aliasCheckErrResolverUnsupportedFacade  ErrResolverUnsupported
+	aliasCheckErrServerTimeoutEngine        quarryengine.ErrServerTimeout
+	aliasCheckErrServerTimeoutFacade        ErrServerTimeout
+	aliasCheckErrServerSpawnTimeoutEngine   quarryengine.ErrServerSpawnTimeout
+	aliasCheckErrServerSpawnTimeoutFacade   ErrServerSpawnTimeout
+	aliasCheckErrBuildTagsUnsupportedEngine quarryengine.ErrBuildTagsUnsupported
+	aliasCheckErrBuildTagsUnsupportedFacade ErrBuildTagsUnsupported
+	aliasCheckTOCSymbolEngine               toc.Symbol
+	aliasCheckTOCSymbolFacade               TOCSymbol
+	aliasCheckTOCKindEngine                 toc.Kind
+	aliasCheckTOCKindFacade                 TOCKind
+	aliasCheckTOCFileResultEngine           toc.FileTOC
+	aliasCheckTOCFileResultFacade           TOCFileResult
+	aliasCheckTOCDirEntryEngine             toc.DirEntry
+	aliasCheckTOCDirEntryFacade             TOCDirEntry
+	aliasCheckTOCDirResultEngine            toc.DirTOC
+	aliasCheckTOCDirResultFacade            TOCDirResult
+	aliasCheckTOCOptionsEngine              toc.Options
+	aliasCheckTOCOptionsFacade              TOCOptions
 )
 
-// init performs the actual round-trip assignment for each of the twenty aliased types: engine
+// init performs the actual round-trip assignment for each of the twenty-one aliased types: engine
 // value into the facade-typed variable, then straight back into the engine-typed variable, with
 // no conversion on either side.
 func init() {
@@ -112,6 +114,9 @@ func init() {
 	aliasCheckErrServerSpawnTimeoutFacade = aliasCheckErrServerSpawnTimeoutEngine
 	aliasCheckErrServerSpawnTimeoutEngine = aliasCheckErrServerSpawnTimeoutFacade
 
+	aliasCheckErrBuildTagsUnsupportedFacade = aliasCheckErrBuildTagsUnsupportedEngine
+	aliasCheckErrBuildTagsUnsupportedEngine = aliasCheckErrBuildTagsUnsupportedFacade
+
 	aliasCheckTOCSymbolFacade = aliasCheckTOCSymbolEngine
 	aliasCheckTOCSymbolEngine = aliasCheckTOCSymbolFacade
 
@@ -131,25 +136,27 @@ func init() {
 	aliasCheckTOCOptionsEngine = aliasCheckTOCOptionsFacade
 }
 
-// The twelve blank-identifier assignments below reference every delegating function in
+// The fourteen blank-identifier assignments below reference every delegating function in
 // facade.go, each against the exact func type its engine counterpart demands: a signature drift
 // on either side fails the build.
 var (
-	_ func() Registry                                         = BuiltinRegistry
-	_ func(string) (Registry, error)                          = LoadRegistry
-	_ func(string, Registry, string) (string, Entry, error)   = DetectLanguage
-	_ func(string, string) string                             = DaemonStateFile
-	_ func(string, string) string                             = DaemonLock
-	_ func(context.Context, Options) ([]Reference, error)     = References
-	_ func(context.Context, Options) ([]Reference, error)     = Definition
-	_ func(context.Context, Options) ([]SymbolMatch, error)   = Symbol
-	_ func(string, string, TOCOptions) (TOCFileResult, error) = TOCFile
-	_ func(string, string) (TOCDirResult, error)              = TOCDir
-	_ func() []string                                         = TOCLanguages
-	_ func() []string                                         = TOCImplemented
+	_ func() Registry                                                  = BuiltinRegistry
+	_ func(string) (Registry, error)                                   = LoadRegistry
+	_ func(string, Registry, string) (string, Entry, error)            = DetectLanguage
+	_ func(string, string) string                                      = DaemonStateFile
+	_ func(string, string) string                                      = DaemonLock
+	_ func(context.Context, Options) ([]Reference, error)              = References
+	_ func(context.Context, Options) ([]Reference, error)              = Definition
+	_ func(context.Context, Options) ([]SymbolMatch, error)            = Symbol
+	_ func(context.Context, Options) ([]Reference, []Reference, error) = Callers
+	_ func(...string) []string                                         = NormalizeBuildTags
+	_ func(string, string, TOCOptions) (TOCFileResult, error)          = TOCFile
+	_ func(string, string) (TOCDirResult, error)                       = TOCDir
+	_ func() []string                                                  = TOCLanguages
+	_ func() []string                                                  = TOCImplemented
 )
 
-// TestFacadeSentinels_Identity verifies each of the eight re-exported sentinel error values is
+// TestFacadeSentinels_Identity verifies each of the nine re-exported sentinel error values is
 // the identical value the engine holds, not merely a re-created error with an equal message —
 // errors.Is/== comparisons against the facade's sentinel would silently stop matching engine
 // errors if a re-export were ever replaced with a fresh errors.New call.
@@ -167,6 +174,7 @@ func TestFacadeSentinels_Identity(t *testing.T) {
 		{"ErrServerTimeoutSentinel", ErrServerTimeoutSentinel, quarryengine.ErrServerTimeoutSentinel},
 		{"ErrServerSpawnTimeoutSentinel", ErrServerSpawnTimeoutSentinel, quarryengine.ErrServerSpawnTimeoutSentinel},
 		{"ErrLanguageUnsupported", ErrLanguageUnsupported, quarryengine.ErrLanguageUnsupported},
+		{"ErrBuildTagsUnsupportedSentinel", ErrBuildTagsUnsupportedSentinel, quarryengine.ErrBuildTagsUnsupportedSentinel},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

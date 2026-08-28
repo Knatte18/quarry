@@ -71,6 +71,9 @@ type ErrServerTimeout = quarryengine.ErrServerTimeout
 // ErrServerSpawnTimeout is quarryengine.ErrServerSpawnTimeout, re-exported unchanged.
 type ErrServerSpawnTimeout = quarryengine.ErrServerSpawnTimeout
 
+// ErrBuildTagsUnsupported is quarryengine.ErrBuildTagsUnsupported, re-exported unchanged.
+type ErrBuildTagsUnsupported = quarryengine.ErrBuildTagsUnsupported
+
 // ErrNoLanguage is quarryengine.ErrNoLanguage, the identical sentinel value re-exported for
 // errors.Is comparisons against this package's import path.
 var ErrNoLanguage = quarryengine.ErrNoLanguage
@@ -94,6 +97,10 @@ var ErrServerTimeoutSentinel = quarryengine.ErrServerTimeoutSentinel
 // ErrServerSpawnTimeoutSentinel is quarryengine.ErrServerSpawnTimeoutSentinel, re-exported
 // unchanged.
 var ErrServerSpawnTimeoutSentinel = quarryengine.ErrServerSpawnTimeoutSentinel
+
+// ErrBuildTagsUnsupportedSentinel is quarryengine.ErrBuildTagsUnsupportedSentinel, re-exported
+// unchanged.
+var ErrBuildTagsUnsupportedSentinel = quarryengine.ErrBuildTagsUnsupportedSentinel
 
 // BuiltinRegistry delegates to registry.BuiltinRegistry.
 func BuiltinRegistry() Registry {
@@ -133,6 +140,16 @@ func Definition(ctx context.Context, opts Options) ([]Reference, error) {
 // Symbol delegates to query.Symbol.
 func Symbol(ctx context.Context, opts Options) ([]SymbolMatch, error) {
 	return query.Symbol(ctx, opts)
+}
+
+// Callers delegates to query.Callers.
+func Callers(ctx context.Context, opts Options) ([]Reference, []Reference, error) {
+	return query.Callers(ctx, opts)
+}
+
+// NormalizeBuildTags delegates to registry.NormalizeBuildTags.
+func NormalizeBuildTags(tags ...string) []string {
+	return registry.NormalizeBuildTags(tags...)
 }
 
 // TOCSymbol is toc.Symbol, re-exported unchanged.

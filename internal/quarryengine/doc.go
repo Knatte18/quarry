@@ -79,15 +79,17 @@
 //     toc/doc.go's own package doc comment. It imports the root, registry
 //     (for language detection), and treesitter (for the parse-and-release
 //     seam).
-//   - query (definition.go, refs.go, symbol.go) is the public orchestration
-//     layer for the LSP-backed verbs: References, Definition, and Symbol,
-//     the entry points internal/cli calls for `quarry refs|definition|
-//     symbol`. It imports the root, lsp, registry, and daemon.
+//   - query (definition.go, refs.go, symbol.go, callers.go, verify.go) is
+//     the public orchestration layer for the LSP-backed verbs: References,
+//     Definition, Symbol, and Callers, the entry points internal/cli calls
+//     for `quarry refs|definition|symbol|assert-no-callers`. It imports the
+//     root, lsp, registry, and daemon.
 //   - daemon/daemontest sits outside the production DAG: it exports test
 //     seams (WithFakeInstaller, WithTempUserCacheDir, StateFile,
-//     KillRecordedDaemon) for callers outside package daemon — today only
-//     query's tests — and is imported only from _test.go files, never from
-//     production code.
+//     KillRecordedDaemon, and the ConnKindNative/ConnKindSupervised/
+//     ConnKindLegacy re-export constants) for callers outside package daemon
+//     — today only query's tests — and is imported only from _test.go
+//     files, never from production code.
 //
 // # The generalized LSP client
 //
@@ -127,7 +129,9 @@
 // does not advertise workspaceSymbolProvider), ErrServerTimeout (a phase's
 // deadline expired; names the stalled phase and the timeout), and
 // ErrServerSpawnTimeout (the supervised strategy's bounded spawn-race retry
-// gave up without ever observing a healthy daemon). ErrSymbolNotFound and
+// gave up without ever observing a healthy daemon), and ErrBuildTagsUnsupported (a
+// non-empty --build-tags set was requested for a language whose registry entry has
+// no {{tags}} placeholder to render it into). ErrSymbolNotFound and
 // ErrAmbiguousSymbol exist as their own distinct types specifically so
 // internal/cli can tell "confirmed absent" apart from "found, but
 // ambiguous" without parsing error strings — exit codes and the rest of
@@ -140,11 +144,15 @@
 //     this engine always goes through LSP, including for Go (gopls),
 //     trading peak Go-only precision/speed for uniform multi-language
 //     coverage.
-//   - No call hierarchy, no implementation. Only textDocument/references,
-//     textDocument/definition, and the workspace/symbol resolver are wired.
-//     The spike's call-hierarchy fix (TypesInfo.Uses/Defs-based, not
-//     AST-pattern-based) does not generalize to a language-agnostic LSP
-//     client, and implementation was never in this engine's rubric.
+//   - No call hierarchy. textDocument/references, textDocument/definition,
+//     the workspace/symbol resolver, and textDocument/implementation are
+//     wired, but call hierarchy is not. The spike's call-hierarchy fix
+//     (TypesInfo.Uses/Defs-based, not AST-pattern-based) does not generalize
+//     to a language-agnostic LSP client. textDocument/implementation is not
+//     a general capability exposed to a caller — it is wired for exactly one
+//     purpose, widening the declaration match set Callers (query/callers.go)
+//     verifies each candidate reference against, so an interface-method
+//     query's declaration set includes its concrete implementers.
 //   - Symbol does not share query's resolvePosition's (refs.go)
 //     ambiguity-collapsing behavior. Unlike References/Definition, Symbol
 //     (query/symbol.go) never collapses multiple workspace/symbol
