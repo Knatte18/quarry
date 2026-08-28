@@ -37,7 +37,8 @@ into this task.
   `refs`/`definition`/`symbol`/`assert-no-callers`.
 - A new engine package `internal/quarryengine/impact`, sitting at the top of the engine DAG and
   importing `query` (for the caller set) and `toc` (for enclosing-declaration ranges).
-- Facade re-exports in `quarry/facade.go`: `Impact`, plus the result types.
+- Facade re-exports in `quarry/facade.go`: a one-line `Impact` delegation plus type aliases for the
+  new result types. No options alias is added — `Impact` takes the existing `quarry.Options`.
 - JSON output carrying the resolved symbol's own definition range and one entry per caller call
   site, each with the caller's enclosing declaration's full line range.
 - Both the resolved symbol's `definition` range and each caller's `enclosing_range` include the
@@ -90,7 +91,12 @@ into this task.
 ### impact-lives-in-its-own-engine-package
 
 - Decision: implement the composition in a new package
-  `internal/quarryengine/impact`, exporting `Impact(ctx, opts) (Result, error)`. Add a layering row
+  `internal/quarryengine/impact`, exporting `Impact(ctx context.Context, opts query.Options)
+  (Result, error)`. It introduces **no options type of its own**: `opts` is the existing
+  `query.Options`, already re-exported as `quarry.Options`, passed through to `query.Callers`
+  unchanged. Nothing is added to `query.Options` either — in particular there is no `Within` field,
+  because `--within` is applied CLI-side (see Technical context). Only the result types are new.
+  Add a layering row
   `{pkgDir: "impact", allowed: pathSet(rootPkg, queryPkg, tocPkg)}` for both the production and test
   rows in `internal/quarryengine/layering_test.go`, and raise that file's `minPackageDirs` constant
   from 8 to 9.
@@ -176,11 +182,15 @@ into this task.
   `owner`, `package`, `signature`) has exactly one provenance: it is the *same* `toc.Symbol` the
   `definition` enclosing lookup found. It is omitted entirely when that lookup found nothing. It is
   never derived from the query string, and never from the LSP `workspace/symbol` candidate.
-- Decision: when `Callers` returns an **empty declaration set with a nil error** — which it does in
-  every one of the silent-skip cases listed under `verification-is-best-effort` — both `target` and
+- Decision: when `Callers` returns an **empty declaration set with a nil error**, both `target` and
   `definition` are omitted entirely and the call still succeeds with its caller list. Their joint
   absence means "the language server returned no definition for the query position". Both keys are
-  therefore on the `omitempty` list.
+  therefore on the `omitempty` list. Precision on when this happens: `callersFromClient` assigns
+  `declaration = toSortedReferences(defLocs)` *before* the implementation-side checks, so only the
+  **two definition-side** silent-skip cases (`defErr != nil`, and `len(defLocs) == 0`) leave it
+  empty. The other two cases from `verification-is-best-effort` (`!SupportsImplementation()`, and
+  `implErr != nil`) are reached only when `len(defLocs) > 0`, so the declaration set is non-empty
+  there and this branch does not apply — those two degrade verification only, never `definition`.
 - Rationale: the declaration site is just another file position; running it through the same lookup
   and the same two degradation paths means there is exactly one rule to implement, one rule to test,
   and no shape the contract leaves undefined. Reusing `Callers`' already-performed
@@ -334,10 +344,22 @@ into this task.
   the identity object gives one shape for both arg-count modes: single-arg carries `target` at the
   envelope's top level, and a batch entry carries `symbol` (the query string, per the shared batch
   contract) alongside `target`, `definition`, and `callers`.
-- Decision: `target`, `definition`, `owner`, `package`, `signature`, `enclosing_range`,
-  `sigend_line`, and the per-caller `error` are all `omitempty`; `callers` is never omitted (empty
-  array instead); `file` and `call_site_line` are always present on a caller entry, and `file` and
-  `line` are always present on `definition` whenever `definition` itself is present.
+- Decision: the full per-key disposition, stated exhaustively so the two degraded shapes above are
+  actually emittable:
+  - **Envelope:** `ok`, `resolution`, `callers` always present (`callers` is an empty, non-nil array
+    when there are none). `target` and `definition` are `omitempty`.
+  - **`target` / caller identity fields** (`kind`, `name`, `owner`, `package`, `signature`): *all
+    five* are `omitempty`. `kind` and `name` being omitempty is what makes a file-scope caller entry
+    emittable — without it the entry emits `"kind":"","name":""`. A file-scope entry **does** keep
+    `package`, since the file parsed successfully and its declared package is known; only the
+    symbol-level fields are absent.
+  - **`definition`:** `file` and `line` always present when `definition` itself is; `start_line`,
+    `sigend_line`, `end_line`, and `error` are all `omitempty`.
+  - **Caller entry:** `file` and `call_site_line` always present; `call_site_character`,
+    `enclosing_range`, and `error` are `omitempty`.
+  - **`enclosing_range`:** `start_line` and `end_line` always present when the object itself is
+    (the object is omitted wholesale otherwise); `sigend_line` is `omitempty`, zero being
+    `toc.Symbol.SigEnd`'s documented absent marker.
 - Decision: `file` paths are absolute, matching `refs`/`definition`/`assert-no-callers`
   (`referenceFields` emits `quarry.Reference.File` unchanged, which is always absolute). This
   deliberately differs from `toc dir`'s caller-relative `path` composition, which exists so an entry
@@ -377,8 +399,22 @@ into this task.
   first line when the docstring is a sibling of the declaration, the declaration's first line
   otherwise. All line numbers 1-based inclusive. `SigEnd == 0` means "no body at all".
 - `internal/cli/cli.go` — `resolveContext`, `buildOptions`, `parseQuery`, `inFileQuery`,
-  `filterWithin`, `isWithinDir`, `filterUnexpectedCallers`, `emitAmbiguousOrError`, `runBatch`,
-  `batchStatus`/`statusRank`, `CwdFrom`, `SetExit`. Reuse all of these; add nothing parallel to them.
+  `isWithinDir`, `emitAmbiguousOrError`, `runBatch`, `batchStatus`/`statusRank`, `CwdFrom`,
+  `SetExit`. Reuse all of these unchanged; add nothing parallel to them.
+- **Deliberately *not* on that reuse list: `filterWithin` and `filterUnexpectedCallers`.** Both take
+  and return `[]quarry.Reference`, while `impact`'s callers are its own struct type, so neither is
+  callable on `impact`'s data. Their rules are split by the seam instead:
+  - **Declaration exclusion runs engine-side, inside `internal/quarryengine/impact`.** It cannot
+    reuse `filterUnexpectedCallers` at all — `seam_enforcement_test.go` bans the engine from
+    importing any `internal/*cli` package. The impact package re-implements the same small
+    set-membership rule over `query.Reference` values *before* building its own entries. This
+    duplication is deliberate and forced by the seam, not an oversight to collapse later.
+    Consequence, stated so the SDK contract is unambiguous: `quarry.Impact` returns a caller list
+    that **already excludes** declaration sites.
+  - **`--within` is applied CLI-side**, over `impact`'s own entry type, by filtering on each entry's
+    `file` with the existing `isWithinDir` helper (which is type-agnostic — it takes two strings).
+    Consequence: `quarry.Impact` is **not** `--within`-filtered; `--within` is a CLI flag with no
+    engine option behind it.
 - `internal/cli/toc.go` — `structToFields` for struct→`map[string]any` marshalling.
 - `internal/output/output.go` — `Ok`, `Err`, `ErrFields`.
 
