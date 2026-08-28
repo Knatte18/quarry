@@ -62,7 +62,9 @@ batches:
     commit_sha: 3b883cf09c43eda3e54e8435dae3d1a0fcec32bf
     verify_baseline_failures: []
   - name: callers-verification-entry-point
-    state: pending
+    state: running
+    implementer_session: fea321d2-ea05-4ad9-923d-f89f4b875192
+    start_sha: f9afd1c195df2e2f4dc19f29ac0f61c4df067f0f
     verify_baseline_failures: []
   - name: cli-surface
     state: pending
