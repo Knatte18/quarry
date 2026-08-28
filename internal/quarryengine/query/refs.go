@@ -1,5 +1,5 @@
-// Package query implements References, Definition, and Symbol, the engine's public orchestration
-// entry points and the sole packages internal/cli calls into.
+// Package query implements References, Definition, Symbol, and Callers, the engine's public
+// orchestration entry points and the sole packages internal/cli calls into.
 //
 // workspace/symbol is the name → position resolver: given a bare symbol name (no explicit
 // position), References/Definition issue workspace/symbol (via resolvePosition, refs.go) and
@@ -26,9 +26,11 @@
 // generalized LSP client (the lsp package) together: given a target directory and a query (a symbol
 // name or an explicit file:line:col position), it launches the right language server, resolves the
 // query to a position if needed, and returns the reference list.
-// It also defines the shared lookup pipeline (acquireConnection, teardownConnection, lookup) that
-// References wraps and that Definition wraps too — both differ only in which single
-// LSP call they make once a position is resolved.
+// It also defines acquireConnection and teardownConnection, the connection-lifecycle halves of the
+// pipeline, plus two entry points built over them: lookup, the thin single-LSP-call wrapper
+// References and Definition share, and runOnConnection, the reusable multi-call connection scope
+// callers.go's Callers drives to issue several LSP calls — definition, implementation, references,
+// then one definition per candidate reference — sequentially on the one connection it acquires.
 // This is the external interface the CLI layer (internal/cli) calls.
 package query
 
@@ -104,6 +106,14 @@ type Options struct {
 	// varying StateDir gets served by whichever daemon StateDir already
 	// points at, tag set mismatch and all.
 	BuildTags []string
+	// SkipVerification, when true, makes Callers elide its verification
+	// phases and return every raw reference unfiltered — today's
+	// two-call behaviour, on one connection instead of two.
+	// This field is negative polarity on purpose: Options is re-exported
+	// verbatim as the public quarry.Options, so the zero value must mean
+	// "verify" and a non-CLI caller must have to opt into the noisier,
+	// unverified behaviour explicitly rather than opt into safety.
+	SkipVerification bool
 }
 
 // References resolves a query and returns every reference to it, sorted by file:line:character.
