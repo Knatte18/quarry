@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-followups
+phase: holistic-reviewing
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-cli-surface  '2026-08-28T05:50:14Z'
 self-resolved-verify-logic  '2026-08-28T06:04:06Z'
 approved-live-tier-tests  '2026-08-28T06:12:07Z'
 approved-docs-and-followups  '2026-08-28T06:16:23Z'
+holistic-reviewing  '2026-08-28T06:16:50Z'
 ```
 
 ## Batches
