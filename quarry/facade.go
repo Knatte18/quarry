@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/quarry/internal/quarryengine/daemon"
 	"github.com/Knatte18/quarry/internal/quarryengine/query"
 	"github.com/Knatte18/quarry/internal/quarryengine/registry"
+	"github.com/Knatte18/quarry/internal/quarryengine/toc"
 )
 
 // Entry is registry.Entry, re-exported unchanged.
@@ -128,4 +129,72 @@ func Definition(ctx context.Context, opts Options) ([]Reference, error) {
 // Symbol delegates to query.Symbol.
 func Symbol(ctx context.Context, opts Options) ([]SymbolMatch, error) {
 	return query.Symbol(ctx, opts)
+}
+
+// TOCSymbol is toc.Symbol, re-exported unchanged.
+type TOCSymbol = toc.Symbol
+
+// TOCKind is toc.Kind, re-exported unchanged.
+type TOCKind = toc.Kind
+
+// TOCFileResult is toc.FileTOC, re-exported unchanged.
+type TOCFileResult = toc.FileTOC
+
+// TOCDirEntry is toc.DirEntry, re-exported unchanged.
+type TOCDirEntry = toc.DirEntry
+
+// TOCDirResult is toc.DirTOC, re-exported unchanged.
+type TOCDirResult = toc.DirTOC
+
+// TOCOptions is toc.Options, re-exported unchanged.
+type TOCOptions = toc.Options
+
+// The three TOCKind values a toc symbol ever carries, re-exported unchanged.
+const (
+	// TOCKindFunction is toc.KindFunction, re-exported unchanged.
+	TOCKindFunction = toc.KindFunction
+	// TOCKindMethod is toc.KindMethod, re-exported unchanged.
+	TOCKindMethod = toc.KindMethod
+	// TOCKindType is toc.KindType, re-exported unchanged.
+	TOCKindType = toc.KindType
+)
+
+// TOCAllSentences is toc.AllSentences, the TOCOptions.DocSentences sentinel meaning "keep the
+// whole docstring, unsplit", re-exported unchanged.
+const TOCAllSentences = toc.AllSentences
+
+// ErrLanguageUnsupported is quarryengine.ErrLanguageUnsupported, the identical sentinel value
+// re-exported for errors.Is comparisons against this package's import path.
+var ErrLanguageUnsupported = quarryengine.ErrLanguageUnsupported
+
+// TOCFile delegates to toc.TOCFile.
+func TOCFile(path string, lang string, opts TOCOptions) (TOCFileResult, error) {
+	return toc.TOCFile(path, lang, opts)
+}
+
+// TOCDir delegates to toc.TOCDir.
+func TOCDir(dir string, lang string) (TOCDirResult, error) {
+	return toc.TOCDir(dir, lang)
+}
+
+// TOCLanguages delegates to registry.ExtensionLanguages, returning the five languages the toc
+// survey designed for, regardless of whether each has a registered Strategy yet. internal/cli
+// validates --lang against this set, not TOCImplemented's: a designed-but-unimplemented language
+// stays a legal request that toc dir can list files under, while toc file surfaces
+// ErrLanguageUnsupported for that same request. internal/cli imports nothing under
+// internal/quarryengine directly — every engine identifier it needs reaches it through this
+// facade file — and this function is why toc's --lang validation does not become the first
+// exception.
+func TOCLanguages() []string {
+	return registry.ExtensionLanguages()
+}
+
+// TOCImplemented delegates to toc.Implemented, returning the subset of TOCLanguages that
+// currently has a registered Strategy. The unsupported-language error message internal/cli builds
+// is worded from this set, not TOCLanguages': that message answers "what can quarry actually
+// read", and naming the full designed set there would claim a language like rust is available in
+// the very error saying it is not. Like TOCLanguages, this exists so internal/cli never has to
+// import internal/quarryengine/toc directly.
+func TOCImplemented() []string {
+	return toc.Implemented()
 }
