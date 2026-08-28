@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-initialization-options-plumbing
+phase: approved-callers-verification-entry-point
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -37,6 +37,7 @@ implementing  '2026-08-28T05:13:02Z'
 approved-lsp-implementation-and-spike  '2026-08-28T05:18:54Z'
 approved-registry-build-tag-template  '2026-08-28T05:23:01Z'
 approved-initialization-options-plumbing  '2026-08-28T05:30:21Z'
+approved-callers-verification-entry-point  '2026-08-28T05:41:23Z'
 ```
 
 ## Batches
@@ -62,9 +63,10 @@ batches:
     commit_sha: 3b883cf09c43eda3e54e8435dae3d1a0fcec32bf
     verify_baseline_failures: []
   - name: callers-verification-entry-point
-    state: running
+    state: approved
     implementer_session: fea321d2-ea05-4ad9-923d-f89f4b875192
     start_sha: f9afd1c195df2e2f4dc19f29ac0f61c4df067f0f
+    commit_sha: 5f5b31137e1acc54a8c1a681f661d560eee31a71
     verify_baseline_failures: []
   - name: cli-surface
     state: pending
