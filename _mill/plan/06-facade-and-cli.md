@@ -31,6 +31,7 @@ machinery.
 - **Context:**
   - `internal/quarryengine/toc/toc.go`
   - `internal/quarryengine/toc/types.go`
+  - `internal/quarryengine/toc/strategy.go`
   - `internal/quarryengine/errors.go`
   - `internal/quarryengine/registry/extension.go`
 - **Edits:**
@@ -48,14 +49,22 @@ machinery.
   engine package to name a kind or ask for the whole docstring.
   Add `var ErrLanguageUnsupported = quarryengine.ErrLanguageUnsupported`, alongside the other
   re-exported sentinels.
-  Add the three delegating functions:
+  Add the four delegating functions:
   `func TOCFile(path string, lang string, opts TOCOptions) (TOCFileResult, error)`,
   `func TOCDir(dir string, lang string) (TOCDirResult, error)`, each a single `return toc....` line,
-  and `func TOCLanguages() []string`, a single `return registry.ExtensionLanguages()` line.
+  `func TOCLanguages() []string`, a single `return registry.ExtensionLanguages()` line, and
+  `func TOCImplemented() []string`, a single `return toc.Implemented()` line.
   `TOCLanguages` exists so the CLI can validate `--lang` against toc's own vocabulary without
   importing an engine subpackage directly: `internal/cli` today imports **nothing** under
   `internal/quarryengine` — every engine identifier reaches it through this file — and cards 36 and 37
   must not be the first exception. Say that in its doc comment.
+  `TOCImplemented` exists for the same reason and covers the other set: `TOCLanguages` returns the five
+  **designed** names the extension map knows, `TOCImplemented` the three that have a registered
+  strategy. Both are needed and they are not interchangeable — `--lang` validates against the designed
+  set, so `toc dir --lang rust` stays a legal request that lists `.rs` files with per-file errors,
+  while the unsupported-language message names the implemented set, so it tells the caller what quarry
+  can actually read. Say exactly that in both doc comments, since re-exporting two nearly identical
+  string slices invites a later cleanup that collapses them into one.
   Add the `github.com/Knatte18/quarry/internal/quarryengine/toc` import. The `registry` import
   `TOCLanguages` needs is already present in this file — do not add it a second time.
   Do **not** add behaviour of any kind here — no defaulting of `opts`, no validation, no path
@@ -82,8 +91,8 @@ machinery.
   exact func type its engine counterpart demands:
   `_ func(string, string, TOCOptions) (TOCFileResult, error) = TOCFile`,
   `_ func(string, string) (TOCDirResult, error) = TOCDir`, and
-  `_ func() []string = TOCLanguages`. The comment above that block states a
-  count of the assignments it holds; update the count to match what the block now contains.
+  `_ func() []string = TOCLanguages`, and `_ func() []string = TOCImplemented`. The comment above that
+  block states a count of the assignments it holds; update the count to match what the block now contains.
   Add alias round-trip pairs for the new type aliases in the `aliasCheck...` variable block and the
   matching assignments in `init`, following the existing two-line engine-to-facade-and-back shape, so
   any of them silently becoming a defined type fails the build. The `init` comment states how many
@@ -124,7 +133,12 @@ machinery.
   read the whole symbol. The full two-phase discovery flow, which turns on the `--doc-sentences` flag,
   is added to this same `Long` in batch 7, where that flag exists.
   Its `RunE`:
-  - resolves the seam cwd with `CwdFrom(ctx)` and, on error, emits `output.Err` and returns nil;
+  - resolves the seam cwd with `CwdFrom(ctx)` and, on error, emits the error and returns nil;
+  **Every error path in this file uses the shape the existing verbs use: `SetExit(ctx, output.Err(out, msg))`,
+  then `return nil`.** `output.Err` writes the envelope and *returns* the exit code; calling it alone
+  discards that code and leaves the process exiting 0 with an `ok:false` body. Stating "emits
+  `output.Err` and exit 1" without the `SetExit` wrapper is exactly how that bug gets written, so the
+  wrapper is named here once and applies to every error return below;
   - validates `--lang` against toc's **own** vocabulary — `quarry.TOCLanguages()`, the facade
     re-export card 34 adds — and not against the server registry. Call it through the facade, never
     `registry.ExtensionLanguages()` directly: `internal/cli` imports nothing under
@@ -146,9 +160,12 @@ machinery.
   Add `classifyTOCError(err error) (batchStatus, string)` in this same file — the one place an engine
   toc error becomes a CLI outcome, shared by this command, `toc dir`, and the batch driver in card 38:
   - `errors.Is(err, quarry.ErrLanguageUnsupported)` — returns `statusError` and a **distinct, stable
-    message** naming the situation and the implemented language set, built from `quarry.TOCLanguages()`
-    rather than a hard-coded list, so the message cannot drift from the vocabulary `--lang` validates
-    against. This branch is the whole reason the sentinel exists: it is what lets the CLI distinguish
+    message** naming the situation and the implemented language set, built from
+    `quarry.TOCImplemented()` rather than a hard-coded list, so the message cannot drift from what
+    actually has a strategy.
+    It is `TOCImplemented()`, not `TOCLanguages()`: this message answers "what can quarry read", and
+    naming the designed set would list `rust` and `typescript` as available in the very error saying
+    they are not. This branch is the whole reason the sentinel exists: it is what lets the CLI distinguish
     "quarry cannot read this language" from "quarry failed to read this file", which the wrapped
     engine text alone does not make reliably machine-checkable.
   - anything else — `statusError` and `err.Error()` unchanged.
@@ -187,8 +204,15 @@ machinery.
     `quarry toc file internal/cli/exec.go` from the same working directory. `DirEntry.Name` is
     `json:"-"` precisely so this composition has to happen here; add the `path` key while building
     each entry's map.
-    Spell out the correlation step, because the re-marshal card 36 mandates destroys the base names
-    on the way through: `Name` is `json:"-"`, so after `encoding/json` has turned the result into a
+    Put the composition in **one shared helper**, `tocDirEntries(arg string, result quarry.TOCDirResult) ([]any, error)`,
+    that both the single-argument `RunE` and the batch closure card 38 wires call. The batch path must
+    not re-derive it: `runPathBatch` supplies the entry-level `"path"` key, which is the *argument*,
+    while every element of `files[]` needs its own per-file `path` — two different keys at two
+    different levels, and nothing in `runPathBatch` composes the inner one. A multi-argument
+    `quarry toc dir a b` that skipped this helper would emit `files[]` entries with no `path` at all,
+    silently and only in batch mode.
+    Spell out the correlation step the helper performs, because the re-marshal card 36 mandates
+    destroys the base names on the way through: `Name` is `json:"-"`, so after `encoding/json` has turned the result into a
     `map[string]any` the decoded `files` array no longer carries it. Zip that array back to
     `result.Files` **by index** — the marshal preserves slice order, so element `i` of the decoded
     array is `result.Files[i]` — and inject `path` from the typed entry while walking the pair. Assert
@@ -224,7 +248,13 @@ machinery.
   reads as a deliberate choice rather than an oversight a later cleanup should collapse.
   Wire both subcommands to call `runPathBatch` when `len(args) > 1`, with a per-argument closure that
   performs the same stat-validate-and-call sequence the single-argument path does and maps its outcome
-  to a status:
+  to a status.
+  `toc dir`'s closure builds its entry's `files` array through card 37's `tocDirEntries` helper,
+  passing that argument's own spelling — the same helper the single-argument path uses. This is the
+  one thing the batch path cannot inherit from `runPathBatch`: that driver writes the per-entry
+  `"path"` key (the argument), not the per-file `path` inside `files[]`, and omitting the helper here
+  produces a `files` array with no `path` key in batch mode only. Say that at the call site.
+  Statuses:
   - parsed successfully, including a `partial: true` entry — `statusFound`;
   - `toc dir` on a directory with no supported files — `statusFound`, with an empty `files`;
   - the path does not exist — `statusNotFound`;
@@ -311,6 +341,10 @@ machinery.
     `header`, no `partial`, and the rest of the directory unaffected;
   - batch mode with two or more arguments on both verbs — the per-entry key is `"path"` and **not**
     `"symbol"`;
+  - batch mode on `toc dir` with two directory arguments — **every element of each entry's `files`
+    array carries its own `path`**, composed from that entry's own argument as written. This is the
+    assertion that fails if the batch closure skips `tocDirEntries`, and nothing else in this file
+    covers it: the entry-level `"path"` key is present either way;
   - a batch mixing a found, a not-found and an error argument — the exit code is the worst rank
     present;
   - a batch containing one `partial: true` file — the exit code is still 0.

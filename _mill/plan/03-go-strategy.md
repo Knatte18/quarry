@@ -183,8 +183,14 @@ than assumed:
     `{` (an `interface_type`'s body, which the grammar exposes with no named body node and no `body`
     field). When neither exists — `type ID string`, `type Alias = T` — there is no body-bearing child
     and the whole spec text is the signature, which is short by construction.
-  - **`SigEnd`** is `SigEnd(decl, goTypeBody(spec), true)` for a spec that has a body-bearing child,
-    and `0` — omitted — for one that does not. A `type ID string` or `type Alias = T` has no body at
+  - **`SigEnd`** is `SigEnd(<the symbol's own node>, goTypeBody(spec), true)` for a spec that has a
+    body-bearing child, and `0` — omitted — for one that does not. The first argument is the node the
+    emitted symbol's range is measured from — the enclosing `type_declaration` in the ungrouped branch,
+    the **spec itself** in the grouped branch — never `decl` in both. `SigEnd`'s first argument is the
+    clamp floor, so passing the group node for a grouped spec would floor every spec in the group at
+    the `type (` line. The `true` flag makes the clamp inert for Go today, which is precisely why this
+    must be stated rather than left to the flag: the bug would be invisible until someone changes the
+    flag or the clamp. A `type ID string` or `type Alias = T` has no body at
     all, so there is no separate "signature end" to report: `start`–`end` already is the signature.
   Add a helper `goTypeBody(spec *ts.Node) *ts.Node` implementing that resolution once, and document
   in its comment why a naive `ChildByFieldName("body")` is wrong here: a Go `type_declaration` has no

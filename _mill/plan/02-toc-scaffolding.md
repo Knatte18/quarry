@@ -147,6 +147,15 @@ the `Strategy` interface with `Register` / `StrategyFor` / `Implemented`; `Strip
   Add `Register(s Strategy)` and `StrategyFor(lang string) (Strategy, bool)` backed by one unexported
   package-level map keyed on the canonical language name. `Register` panics on a duplicate
   registration, which can only be a programming error at package-init time.
+  Add one test-only seam beside them: `swapRegistry(m map[string]Strategy) map[string]Strategy`,
+  unexported, which replaces the package map and returns the previous one. It exists because the map
+  has no unregister path, so a test that exercises the duplicate-registration panic must register a
+  fake language to do it, and that fake then leaks into every later test in the package — including
+  batch 5's `TestImplemented_MatchesRegisteredStrategies`, which asserts `Implemented()` is exactly
+  `csharp`, `go`, `python`, and which runs after `classify_test.go` in file order. Say that in the
+  seam's doc comment, naming the test it protects: a leaked registration fails a *different* file's
+  test, which is the hardest kind of failure to attribute.
+  The seam is used only from `_test.go` files in this package; production code never calls it.
   Add `Implemented() []string` returning the sorted registered language names, so the entry points can
   tell "designed but not implemented" from "unknown extension" without a second list to keep in sync.
   Concrete strategies register themselves from their own file's `init`, so the set is derived from
@@ -349,7 +358,12 @@ the `Strategy` interface with `Register` / `StrategyFor` / `Implemented`; `Strip
   five languages, asserting the *omission* behaviour explicitly — a `Tests.cs`-shaped C# name must
   return `known == false`, and a `_test.go`-suffixed name must return `isTest == true, known == true`.
   Also assert `Register` panics on a duplicate language and that `StrategyFor` reports `false` for an
-  unregistered name.
+  unregistered name. The duplicate-panic test **must** isolate itself with the `swapRegistry` seam
+  card 10 adds: take a copy of the current map, install it, register the fake language into the copy,
+  and restore the original in `t.Cleanup`. Without that restore the fake stays registered for the rest
+  of the package's test binary and batch 5's `TestImplemented_MatchesRegisteredStrategies` fails on a
+  fourth language it never registered — a failure that points at the wrong file entirely. Do not mark
+  this subtest `t.Parallel()`: it mutates package state.
 - **Commit:** `test(toc): cover the shared comment, sentence and classification rules`
 
 ### Card 16: toc layering rows and the guard-floor raise

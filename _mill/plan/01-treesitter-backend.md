@@ -46,11 +46,20 @@ and it is the first `internal/quarryengine/...` package `go test ./...` reaches.
   `github.com/tree-sitter/tree-sitter-c-sharp` v0.23.5,
   `github.com/tree-sitter/tree-sitter-typescript` v0.23.2, and
   `github.com/tree-sitter/tree-sitter-rust` v0.24.2 — plus the indirect
-  `github.com/mattn/go-pointer` v0.0.1. Add them by editing `go.mod`'s require blocks to those exact
-  versions and then running `go mod tidy` to populate `go.sum`; never run `go get <module>@latest`,
-  which would resolve different versions than the node shapes in this plan were confirmed against.
+  `github.com/mattn/go-pointer` v0.0.1. Add each with an explicitly versioned
+  `go get <module>@<version>`, naming the exact version above. Never `go get <module>@latest`, which
+  would resolve different versions than the node shapes in this plan were confirmed against.
+  **Do not run `go mod tidy` in this card.** No file in the module imports any of these packages until
+  card 3 creates `treesitter.go`, and `tidy` prunes every requirement nothing imports — it would
+  delete all seven additions and leave `go.sum` unpopulated, while this card's own `go build ./...`
+  check still passed, so the breakage would surface two cards later as "no required module provides
+  package". `go get` with an explicit version adds the requirement and populates `go.sum` without that
+  pruning, which is why it is the mechanism here. Card 3 runs `tidy` once the first importing file
+  exists.
   Every one of these modules is already in the local module cache, so this must succeed with no
-  network access. Confirm afterwards that `go build ./...` still succeeds.
+  network access. Confirm afterwards that `go build ./...` still succeeds and that `go.mod` names all
+  seven modules at the pinned versions — check the file, since a silently pruned require is the exact
+  failure this card is shaped to avoid.
   Leave the `go 1.26` directive and the three pre-existing requires unchanged.
 - **Commit:** `build(deps): pin tree-sitter runtime and five grammar modules`
 
@@ -84,12 +93,19 @@ and it is the first `internal/quarryengine/...` package `go test ./...` reaches.
 - **Context:**
   - `internal/quarryengine/log.go`
   - `internal/quarryengine/errors.go`
-- **Edits:** none
+- **Edits:**
+  - `go.mod`
+  - `go.sum`
 - **Creates:**
   - `internal/quarryengine/treesitter/treesitter.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** create `package treesitter` with a package doc comment stating that this package
+- **Requirements:** this is the first file in the module that imports the tree-sitter packages, so it
+  is also where `go mod tidy` is finally safe to run — card 1 deliberately deferred it, because tidy
+  prunes requirements nothing imports yet. Run it **after** the file compiles, and confirm the seven
+  pinned versions in `go.mod` are unchanged by it. That check is the point: a version that moved means
+  the pin did not hold, and every node shape in this plan was confirmed against the pinned ones.
+  Create `package treesitter` with a package doc comment stating that this package
   is the parsing backend — grammar loading, parser construction, and nothing else — and that it is the
   only place in the tree that constructs a `*ts.Parser` or a `*ts.Tree`.
   Import the runtime as `ts "github.com/tree-sitter/go-tree-sitter"` and each grammar's

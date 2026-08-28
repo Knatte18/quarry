@@ -138,7 +138,10 @@ version, not assumed.
   resolved value, and delete the `// TODO` comment batch 6 left there. `targetDir` is the resolved
   file's **parent** directory, computed with `filepath.Dir` after the seam-cwd join.
   Any error from the chain — an invalid flag value, an unknown key in the config file, a malformed
-  config file — is an `output.Err` and exit 1, emitted before the engine is called at all.
+  config file — is emitted as `SetExit(ctx, output.Err(out, msg))` followed by `return nil`, before
+  the engine is called at all. That is the shape every error path in `toc.go` uses: `output.Err`'s
+  return value *is* the exit code, so calling it without `SetExit` writes an `ok:false` envelope and
+  still exits 0.
   Resolution is **per argument, not per invocation**: the setting is per-directory and a batch may
   span directories, so each argument resolves the file tier against its own parent directory. The
   flag tier is hoisted — parse `flagValue` once, before the single-argument branch and the batch
