@@ -54,7 +54,9 @@ batches:
     commit_sha: de6a2a868ee86789376e02410dae1e598210324d
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: go-strategy
-    state: pending
+    state: running
+    implementer_session: bd2e15ea-3887-4baa-983e-da32e4b9d7c9
+    start_sha: f3bb6c89d34af5e96f96ea7c661fcc0710e73854
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: python-csharp-strategies
     state: pending
