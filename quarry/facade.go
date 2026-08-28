@@ -1,12 +1,16 @@
 // Package quarry is a stable, behaviour-free re-export of internal/quarryengine.
 // It exists so this module's import path (github.com/Knatte18/quarry/quarry) stays unchanged
-// while the engine itself lives at internal/quarryengine, split into the five-package DAG
-// documented there: the root leaf package, lsp, registry, daemon, and query.
+// while the engine itself lives at internal/quarryengine, split into the seven-package DAG
+// documented there: the root leaf package, lsp, registry, treesitter, daemon, toc, and query.
 // This file adds nothing of its own — every declaration below is either a type alias, a
 // re-exported sentinel var bound to the identical error value, or a one-line delegating
 // function.
-// It re-exports exactly the 29 identifiers this package exported before the engine-repackage
-// move: no more, no less.
+// That is the guarantee this file exists to keep, stated as a property rather than as a count
+// that would go stale on every addition: whatever the engine exports through this facade,
+// grep for a bare struct field, an inline computation, or a multi-line function body anywhere
+// below and you will find none — facade_test.go's alias and delegation checks enforce the same
+// property mechanically, for every identifier this file re-exports, not just a snapshot count of
+// them.
 // For the engine's own design — the package DAG, the EnsureServer daemon lifecycle, the
 // references/definition/symbol resolution pipeline — see internal/quarryengine's own package
 // doc comment, not this file.
