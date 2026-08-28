@@ -49,10 +49,20 @@ into this task.
   `--build-tags`.
 - Layering-table row for the new package (`internal/quarryengine/layering_test.go`) and the
   `minPackageDirs` bump the same file's guard requires.
+- Extending `quarry/facade_test.go` by hand — it enumerates what it checks rather than deriving it
+  (see Technical context): add the `Impact` engine/facade alias pairs for each new result type to
+  the `var` block, add their round-trip assignments to `init()`, add the blank-identifier func-type
+  assignment for `Impact`, and correct the stale "the fourteen blank-identifier assignments" and
+  "twenty-one aliased types" counts in the surrounding comments.
 - Doc updates: `README.md` verb list, `internal/quarryengine/doc.go` (the package-DAG section, which
   currently says "seven-package DAG"), `quarry/facade.go`'s header comment (which repeats the same
-  "seven-package DAG" phrase), and `internal/cli/cli.go`'s package doc comment (which enumerates
-  every verb and the exit-code contract).
+  "seven-package DAG" phrase), `internal/cli/cli.go`'s package doc comment (which enumerates every
+  verb and the exit-code contract), and the stale package enumerations in the two guard files this
+  work already edits — `internal/quarryengine/seam_enforcement_test.go` (its header comment, its
+  `TestEngineSeamInvariant_BannedImports` doc comment, and the `minPackageDirs` comment, which
+  carries a third "seven-package DAG") and `internal/quarryengine/layering_test.go` (the const
+  block's "eight import paths" comment, the `layeringTable` comment enumerating the allowed
+  directions, and the `minPackageDirs` comment enumerating the package directories).
 
 **Out:**
 
@@ -66,8 +76,11 @@ into this task.
   a separate concern.
 - New LSP surface. `impact` issues no LSP request `Callers` does not already issue.
 - Changes to `refs`, `definition`, `symbol`, `assert-no-callers`, or the `toc` verbs' own output.
-- A `--no-verify` flag. That flag is `assert-no-callers`-only and stays that way; `impact` always
-  runs verified.
+- A `--no-verify` flag. That flag is `assert-no-callers`-only and stays that way; `impact` never
+  sets `SkipVerification`. Note this is not the same as "impact always runs verified" — see the
+  `verification-is-best-effort` decision for what `Callers` actually guarantees.
+- Any engine-side change to `query.Callers`' signature or return values, including adding a
+  verified/degraded signal it does not report today.
 - A daemon, cache, or index for the tree-sitter side. `toc` deliberately caches nothing across
   calls; the only caching here is within a single `Impact` call (see the per-call parse cache
   decision).
@@ -128,16 +141,56 @@ into this task.
   `impact` — that flag exists so `assert-no-callers` can reproduce its own pre-fix behaviour; a new
   verb has no such history to reproduce.
 
+### verification-is-best-effort
+
+- Decision: `impact` never sets `SkipVerification`, but it does **not** claim that verification ran.
+  `callersFromClient` (`internal/quarryengine/query/callers.go`) silently sets `verify = false` —
+  returning the raw, unfiltered reference set with a **nil** error — in four cases: the
+  declaration-side `textDocument/definition` errored; that call returned zero locations;
+  `client.SupportsImplementation()` reports false; or `textDocument/implementation` errored.
+  `impact` accepts that behaviour as-is and adds no signal of its own.
+- Decision: consequently `"resolution":"complete"` on `impact` means exactly what it already means
+  on `refs` — *the language server returned every reference for the query as given* — and asserts
+  nothing about per-caller verification having run, nor about enclosing ranges having resolved.
+  Document that wording verbatim in the verb's Long help, next to the existing `--within`
+  interface-method-conflation note, since that note is precisely the case where an unverified set is
+  noisy.
+- Rationale: `refs` already carries `"resolution":"complete"` on a set that is *never* verified, so
+  reading the marker as a verification claim would be a misreading of the existing contract, not a
+  new gap introduced here. Making `impact` alone assert more than `refs` does would need `Callers`
+  to report whether it verified — an engine signature change, out of scope for this task.
+- Rejected: surfacing a per-result `verified`/`degraded` field — requires changing `Callers`' return
+  values, which no current caller needs and which would ripple into `assert-no-callers`. Rejected:
+  suppressing `"resolution"` on `impact` — that would make `impact` the one verb without the trust
+  marker, for a property the marker never claimed.
+
 ### resolved-symbol-definition-range
 
 - Decision: the top-level `definition` field is built from the *first* entry of `Callers`'
-  declaration set (sorted, so deterministic), run through the same enclosing-range lookup used for
-  callers. It carries `file`, `start_line`, `sigend_line`, and `end_line`.
-- Rationale: `Callers` already performs the `textDocument/definition` call and returns its result;
-  reusing it costs nothing. Running it through the same enclosing lookup is what makes the
-  definition range docstring-inclusive, satisfying the brief's explicit requirement that *both*
+  declaration set (sorted, so deterministic), run through the **same** enclosing-range lookup and
+  the **same** degradation rules used for every caller entry. It always carries `file` and `line`
+  (the raw 1-based declaration line the LSP returned); `start_line`, `sigend_line`, and `end_line`
+  are `omitempty` and present only when an enclosing toc symbol resolved; an `error` string carries
+  the reason when one did not.
+- Decision: the top-level `target` object (the resolved symbol's own identity — `kind`, `name`,
+  `owner`, `package`, `signature`) has exactly one provenance: it is the *same* `toc.Symbol` the
+  `definition` enclosing lookup found. It is omitted entirely when that lookup found nothing. It is
+  never derived from the query string, and never from the LSP `workspace/symbol` candidate.
+- Decision: when `Callers` returns an **empty declaration set with a nil error** — which it does in
+  every one of the silent-skip cases listed under `verification-is-best-effort` — both `target` and
+  `definition` are omitted entirely and the call still succeeds with its caller list. Their joint
+  absence means "the language server returned no definition for the query position". Both keys are
+  therefore on the `omitempty` list.
+- Rationale: the declaration site is just another file position; running it through the same lookup
+  and the same two degradation paths means there is exactly one rule to implement, one rule to test,
+  and no shape the contract leaves undefined. Reusing `Callers`' already-performed
+  `textDocument/definition` result costs nothing. Running it through the enclosing lookup is what
+  makes the definition range docstring-inclusive, satisfying the brief's requirement that *both*
   ranges include the docstring.
-- Rejected: a separate `query.Definition` call — a redundant LSP round trip on a second connection.
+- Rejected: a separate `query.Definition` call — a redundant LSP round trip on a second connection,
+  and it would not fix the empty-set case (the same swallowed error produces it). Rejected: emitting
+  `definition: null` or an error envelope for the empty-set case — the caller list is still a
+  complete, useful answer, and failing the whole call over a missing definition would discard it.
   Rejected: emitting only the raw `file:line:col` — fails the brief.
 
 ### caller-identity-is-structured-not-a-qualified-string
@@ -225,9 +278,10 @@ into this task.
 - Decision: exit-code contract identical to `refs`/`definition` — 0 found, 1 not found or engine
   error, 2 ambiguous (envelope carries `candidates`, `ok:true`). Batch mode ranks
   `found(0) < not_found(1) < ambiguous(2) < error(3)` via the existing `statusRank`.
-- Decision: a successful lookup carries `"resolution":"complete"`, with the marker documented as
-  applying to the *caller set* (LSP-resolved and exhaustive) — not to the enclosing ranges, which
-  are tree-sitter-derived and may be absent per the two degradation decisions above.
+- Decision: a successful lookup carries `"resolution":"complete"`, scoped exactly as the
+  `verification-is-best-effort` decision defines it — the caller set is LSP-resolved and exhaustive
+  for the query as given. It does not cover the enclosing ranges (tree-sitter-derived, absent per
+  the two degradation decisions above) and it does not assert that per-caller verification ran.
 - Rationale: consistency is the point; a verb that resolves symbols differently from its three
   siblings is a trap. `--within` is genuinely useful here for the same interface-method-scoping
   reason it exists on `refs`.
@@ -255,8 +309,8 @@ into this task.
 {
   "ok": true,
   "resolution": "complete",
-  "symbol": {"kind": "method", "name": "ApplyDiscount", "owner": "Invoice", "package": "billing", "signature": "func (i *Invoice) ApplyDiscount(pct float64) error"},
-  "definition": {"file": "/abs/internal/billing/invoice.go", "start_line": 88, "sigend_line": 91, "end_line": 102},
+  "target": {"kind": "method", "name": "ApplyDiscount", "owner": "Invoice", "package": "billing", "signature": "func (i *Invoice) ApplyDiscount(pct float64) error"},
+  "definition": {"file": "/abs/internal/billing/invoice.go", "line": 91, "start_line": 88, "sigend_line": 91, "end_line": 102},
   "callers": [
     {
       "file": "/abs/internal/billing/refund.go",
@@ -272,9 +326,18 @@ into this task.
 }
 ```
 
-- Decision: `owner`, `package`, `signature`, `enclosing_range`, `sigend_line`, and the per-caller
-  `error` are all `omitempty`; `callers` is never omitted (empty array instead); `file` and
-  `call_site_line` are always present on a caller entry.
+- Decision: the top-level identity object is keyed `target`, **not** `symbol`. `runBatch`
+  (`internal/cli/cli.go`) builds each batch entry as `{"symbol": arg, "status": ...}` and then
+  merges the per-entry fields over it, so a field named `symbol` would overwrite the batch
+  envelope's own query-string `symbol` key — the key the batch contract identifies entries by. No
+  sibling verb's field set has this collision, so `runBatch` is not the thing to change. Renaming
+  the identity object gives one shape for both arg-count modes: single-arg carries `target` at the
+  envelope's top level, and a batch entry carries `symbol` (the query string, per the shared batch
+  contract) alongside `target`, `definition`, and `callers`.
+- Decision: `target`, `definition`, `owner`, `package`, `signature`, `enclosing_range`,
+  `sigend_line`, and the per-caller `error` are all `omitempty`; `callers` is never omitted (empty
+  array instead); `file` and `call_site_line` are always present on a caller entry, and `file` and
+  `line` are always present on `definition` whenever `definition` itself is present.
 - Decision: `file` paths are absolute, matching `refs`/`definition`/`assert-no-callers`
   (`referenceFields` emits `quarry.Reference.File` unchanged, which is always absolute). This
   deliberately differs from `toc dir`'s caller-relative `path` composition, which exists so an entry
@@ -327,12 +390,17 @@ into this task.
   `len(visitedDirs) >= minPackageDirs` (currently 8) — a new package directory must raise it to 9,
   or the guard silently under-covers.
 - `internal/quarryengine/seam_enforcement_test.go` — the new package must not import
-  `internal/output`, `spf13/cobra`, or any `internal/*cli` package. It also asserts a minimum
-  directory count; check whether that constant needs the same bump.
-- `quarry/facade_test.go` — enforces that every declaration in `quarry/facade.go` is a type alias,
-  a re-exported sentinel bound to the identical value, or a one-line delegating function. The new
-  `Impact` entry must be a one-line delegation and the new result types must be `type X = impact.X`
-  aliases; a struct definition or any computation in `facade.go` fails this test.
+  `internal/output`, `spf13/cobra`, or any `internal/*cli` package. Its own `minPackageDirs` needs
+  **no bump**: its comment states the floor is deliberately kept one below the real count (8, while
+  the two-tree walk actually visits 9), so adding a package keeps it satisfied. Only its stale
+  package *enumerations* in comments need updating (see the doc-update list).
+- `quarry/facade_test.go` — **does not** enforce the alias/delegation property automatically. It is
+  a hand-maintained set of compile-time checks over an *enumerated* list: a `var` block of
+  engine/facade variable pairs, an `init()` that round-trip-assigns each pair, a `var` block of
+  blank-identifier func-type assignments (one per delegating function), and
+  `TestFacadeSentinels_Identity`'s table. A new facade declaration is covered by **nothing** until
+  those blocks are extended by hand — the guard silently under-covers rather than failing. Extending
+  them is in scope (see the Scope "In" list).
 
 **Gotchas found during exploration:**
 
@@ -383,8 +451,11 @@ is a pure function over `[]toc.Symbol` and a line number; write it as one (e.g.
 - empty symbol slice → no match
 
 **`internal/quarryengine/impact` — file-level tests against fixtures.** Test the per-file
-enclosing-range resolution and the per-call parse cache against real source files under
-`testdata/` (a new fixture directory, following `testdata/clockfixture`'s shape). Cover: a Go file
+enclosing-range resolution and the per-call parse cache against real source files in a new
+**repo-root** `testdata/impactfixture/` directory, following `testdata/clockfixture`'s shape.
+Repo-root is not a stylistic preference: `layering_test.go` walks *every* `.go` file under
+`internal/quarryengine/` with no `testdata` exemption, so a Go fixture at
+`internal/quarryengine/impact/testdata/` fails the guard with "no layering row declared". Cover: a Go file
 with a docstring'd method (assert `start_line` is the docstring line, not the `func` line); a file
 where the reference is at package scope; an unreadable path; a `.ts` file (unsupported language →
 per-entry error, no range). Assert the cache parses a file once when several call sites share it —
@@ -396,13 +467,19 @@ assembly seam separately from the transport, the way `query`'s own `callersFromC
 `symbolFromClient` seams are structured: a function that takes an already-obtained
 `(callers, declaration []query.Reference)` plus the file-resolution seam and produces the `Result`.
 Cover: declaration-set exclusion, recursive self-call retention, two call sites in one function
-producing two entries with equal `enclosing_range`, and sort order.
+producing two entries with equal `enclosing_range`, sort order, and — the two shapes the round-2
+review found undefined — an **empty declaration set with a nil error** (both `target` and
+`definition` omitted, callers still returned, no error) and a **declaration site whose file has no
+toc strategy** (`definition` present with `file` + `line` + `error`, no `start_line`/`end_line`,
+`target` omitted).
 
 **`internal/cli` — CLI-level tests via `RunCLIIn`.** Follow `internal/cli/toc_test.go`'s and
 `cli_test.go`'s existing shape: drive the command, decode the JSON envelope, assert on keys and exit
 code. Cover: the `ok`/`resolution` envelope; `callers: []` on zero callers; ambiguity → exit 2 with
 `candidates` and `ok:true`; not-found → exit 1; batch mode with mixed statuses → worst-status exit
-code and per-entry `symbol`/`status` keys; `--within` filtering; `--in-file` composing with batch
+code and per-entry `symbol`/`status` keys — and specifically that a batch entry's `symbol` key still
+holds the **query string**, with the identity object present as `target`, proving the `runBatch`
+merge-order collision is actually avoided; `--within` filtering; `--in-file` composing with batch
 mode; `--build-tags` on a language with no tag template → error, not a silent no-op.
 
 **`internal/cli` — live-tier test.** Add an `impact_lsp_test.go` guarded by `//go:build lsp` and
@@ -437,4 +514,10 @@ separately on a machine with gopls and is not part of the default verify.
 - **Q:** `--depth` / transitive impact? **A:** [auto-pick] Out of scope for v1. **Why:** issue #5 explicitly defers it to keep output size and latency predictable; building a recursion guard "ready for later" is speculative.
 - **Q:** Human-readable rendering? **A:** [auto-pick] JSON only. **Why:** issue #5 states the JSON shape is the source of truth and any human rendering is a presentation layer on top.
 - **Q:** Which docs change? **A:** [auto-pick] `README.md`'s verb list, `internal/quarryengine/doc.go`'s package-DAG section (seven → eight packages), `quarry/facade.go`'s header comment (same phrase), and `internal/cli/cli.go`'s package doc comment. **Why:** all four enumerate the verb or package set explicitly and would go stale; the repo's existing doc discipline treats that as a defect.
+- **Q:** The top-level identity object was keyed `symbol`, which `runBatch` would overwrite with the query string — what shape wins? **A:** [auto-pick] Rename it to `target` in both arg-count modes; leave `runBatch` alone. **Why:** `symbol` is the shared batch contract's entry-identity key across all four existing verbs; changing `runBatch` would change them, while renaming one new field costs nothing and yields one shape for both modes.
+- **Q:** `Callers` silently returns an unverified set on four swallowed-error paths — does `impact` claim verification ran? **A:** [auto-pick] No. Accept the silent-skip path and scope `"resolution":"complete"` to exactly what it means on `refs` — exhaustive for the query as given, no verification claim. **Why:** `refs` already carries that marker on a never-verified set, so reading it as a verification claim misreads the existing contract; asserting more would require an engine signature change to `Callers`, which is out of scope.
+- **Q:** What do `target` and `definition` become when the declaration set comes back empty with a nil error? **A:** [auto-pick] Both omitted; the call still succeeds with its caller list. **Why:** the caller list is still a complete, useful answer, and failing the call over a missing definition would discard it; joint absence is an unambiguous signal.
+- **Q:** Where do the top-level `target` fields come from? **A:** [auto-pick] The same `toc.Symbol` the `definition` enclosing lookup found — never the query string, never the `workspace/symbol` candidate. **Why:** one provenance means one rule to implement and test, and it keeps `target` consistent with every caller entry's identity fields.
+- **Q:** Does `seam_enforcement_test.go`'s `minPackageDirs` need bumping too? **A:** [auto-pick] No. **Why:** its own comment records that the floor is deliberately one below the real count, so adding a package keeps it satisfied; only its stale comment enumerations need updating.
+- **Q:** Where do the Go test fixtures live? **A:** [auto-pick] Repo-root `testdata/impactfixture/`. **Why:** `layering_test.go` walks every `.go` file under `internal/quarryengine/` with no `testdata` exemption, so an in-package fixture directory fails the guard outright.
 - **Q:** Absolute or caller-relative file paths in the output? **A:** [auto-pick] Absolute, matching `refs`/`definition`/`assert-no-callers`. **Why:** `toc dir`'s relative `path` exists so entries round-trip into `toc file`; `impact` has no such round-trip and consistency with the LSP-backed verbs wins.
