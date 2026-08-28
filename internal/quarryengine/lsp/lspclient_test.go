@@ -23,6 +23,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -195,7 +196,7 @@ func TestLSPClient_InitializeCapturesCapabilities(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-done
@@ -203,6 +204,90 @@ func TestLSPClient_InitializeCapturesCapabilities(t *testing.T) {
 	if !client.SupportsWorkspaceSymbol() {
 		t.Error("supportsWorkspaceSymbol() = false; want true (server advertised workspaceSymbolProvider)")
 	}
+}
+
+// TestLSPClient_InitializeOmitsInitializationOptionsWhenNil asserts that a nil initOptions
+// argument produces an initialize request whose decoded params carry no initializationOptions
+// key at all, matching today's request shape byte for byte.
+func TestLSPClient_InitializeOmitsInitializationOptionsWhenNil(t *testing.T) {
+	clientTransport, serverTransport := newPipeTransportPair()
+	defer clientTransport.Close()
+	defer serverTransport.Close()
+
+	client := NewClientFromRW(clientTransport)
+	server := newFakeServer(serverTransport)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req, ok := server.readMessage(t)
+		if !ok {
+			return
+		}
+		var params map[string]json.RawMessage
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Errorf("fakeServer: unmarshal initialize params: %v", err)
+			return
+		}
+		if _, present := params["initializationOptions"]; present {
+			t.Errorf("fakeServer: initialize params carried initializationOptions key; want none for a nil initOptions argument")
+		}
+		if !server.respond(t, req.ID, map[string]any{"capabilities": map[string]any{}}) {
+			return
+		}
+		server.readMessage(t) // initialized notification
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
+		t.Fatalf("initialize() returned unexpected error: %v", err)
+	}
+	<-done
+}
+
+// TestLSPClient_InitializeSendsInitializationOptionsWhenNonNil asserts that a non-nil
+// initOptions argument produces an initialize request carrying that exact map under the
+// initializationOptions key.
+func TestLSPClient_InitializeSendsInitializationOptionsWhenNonNil(t *testing.T) {
+	clientTransport, serverTransport := newPipeTransportPair()
+	defer clientTransport.Close()
+	defer serverTransport.Close()
+
+	client := NewClientFromRW(clientTransport)
+	server := newFakeServer(serverTransport)
+
+	wantOptions := map[string]any{"buildFlags": []any{"-tags=integration"}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req, ok := server.readMessage(t)
+		if !ok {
+			return
+		}
+		var params struct {
+			InitializationOptions map[string]any `json:"initializationOptions"`
+		}
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			t.Errorf("fakeServer: unmarshal initialize params: %v", err)
+			return
+		}
+		if !reflect.DeepEqual(wantOptions, params.InitializationOptions) {
+			t.Errorf("fakeServer: initialize params.initializationOptions = %+v; want %+v", params.InitializationOptions, wantOptions)
+		}
+		if !server.respond(t, req.ID, map[string]any{"capabilities": map[string]any{}}) {
+			return
+		}
+		server.readMessage(t) // initialized notification
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Initialize(ctx, "file:///tmp/example", wantOptions); err != nil {
+		t.Fatalf("initialize() returned unexpected error: %v", err)
+	}
+	<-done
 }
 
 // TestLSPClient_AnswersServerInitiatedRequest verifies server-initiated requests are answered.
@@ -251,7 +336,7 @@ func TestLSPClient_AnswersServerInitiatedRequest(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-done
@@ -604,7 +689,7 @@ func TestLSPClient_SupportsDocumentSymbol(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+			if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 				t.Fatalf("initialize() returned unexpected error: %v", err)
 			}
 			<-done
@@ -661,7 +746,7 @@ func TestLSPClient_SupportsImplementation(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+			if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 				t.Fatalf("initialize() returned unexpected error: %v", err)
 			}
 			<-done
@@ -825,7 +910,7 @@ func TestLSPClient_DialTransport_InitializeOverUnixSocket(t *testing.T) {
 	// block on an unanswered shutdown request until its own 5s timeout.
 	defer client.Kill()
 
-	if err := client.Initialize(ctx, "file:///tmp/example"); err != nil {
+	if err := client.Initialize(ctx, "file:///tmp/example", nil); err != nil {
 		t.Fatalf("initialize() returned unexpected error: %v", err)
 	}
 	<-done

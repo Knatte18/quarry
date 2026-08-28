@@ -401,8 +401,13 @@ func (c *Client) Notify(method string, params any) error {
 // gopls falls back to the flat SymbolInformation[] shape, which unmarshals
 // into a zero-valued SelectionRange for every result and silently breaks
 // every InFile query.
-func (c *Client) Initialize(ctx context.Context, rootURI string) error {
-	raw, err := c.Call(ctx, "initialize", "initialize", map[string]any{
+// initOptions is sent as the request's initializationOptions field if and
+// only if it is non-nil; a nil argument produces a request byte-identical
+// to one with no such field at all. This client has no opinion on what the
+// map contains — it receives an already-rendered map from its caller and
+// never constructs, validates, or interprets one itself.
+func (c *Client) Initialize(ctx context.Context, rootURI string, initOptions map[string]any) error {
+	params := map[string]any{
 		"processId": os.Getpid(),
 		"rootUri":   rootURI,
 		"capabilities": map[string]any{
@@ -412,7 +417,11 @@ func (c *Client) Initialize(ctx context.Context, rootURI string) error {
 				},
 			},
 		},
-	})
+	}
+	if initOptions != nil {
+		params["initializationOptions"] = initOptions
+	}
+	raw, err := c.Call(ctx, "initialize", "initialize", params)
 	if err != nil {
 		return fmt.Errorf("initialize: %w", err)
 	}
