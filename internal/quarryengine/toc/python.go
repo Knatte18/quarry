@@ -164,3 +164,48 @@ func pythonStringContent(str *ts.Node) *ts.Node {
 	}
 	return nil
 }
+
+// Package implements Strategy by always returning "". Python has no package clause inside a source
+// file — its package identity comes from the directory layout and __init__.py, a filesystem fact
+// rather than something the file itself declares. This deliberately does not synthesize a name from
+// the filename or the parent directory: this field reports what the file itself declares, and a
+// synthesized value would be indistinguishable from a declared one.
+func (pythonStrategy) Package(root *ts.Node, src []byte) string {
+	return ""
+}
+
+// Header implements Strategy by preferring the module docstring — the same node shape as a function
+// or class docstring, one level up, read via pythonDocstring(root, src) since the module root's
+// direct children serve as its own "body" for this purpose.
+//
+// When the module has no docstring, Header falls back to the leading comment blocks: it walks
+// LeadingBlocks, strips each with StripLineComment(b.Raw, "#"), and returns the first block for
+// which IsDirectiveBlock("python", ...) is false. That fallback is what makes the shebang and PEP
+// 263 coding-line cases of IsDirectiveBlock reachable, and it means a file with both a shebang and a
+// module docstring returns the docstring rather than the shebang.
+//
+// Header returns the text untruncated; FirstParagraph is applied by the entry points.
+func (pythonStrategy) Header(root *ts.Node, src []byte) string {
+	if doc := pythonDocstring(root, src); doc != "" {
+		return doc
+	}
+	for _, block := range LeadingBlocks(root, src) {
+		stripped := StripLineComment(block.Raw, "#")
+		if !IsDirectiveBlock("python", block.StartLine, stripped) {
+			return stripped
+		}
+	}
+	return ""
+}
+
+// Generated implements Strategy by always reporting known == false. Python has no generated-file
+// banner convention, so the caller must omit the "generated" key entirely rather than emit it as
+// false.
+func (pythonStrategy) Generated(root *ts.Node, src []byte) (generated, known bool) {
+	return false, false
+}
+
+// TestFile implements Strategy by delegating to TestFileByName("python", base).
+func (pythonStrategy) TestFile(base string) (isTest, known bool) {
+	return TestFileByName("python", base)
+}
