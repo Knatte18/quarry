@@ -138,8 +138,8 @@ type CommentBlock struct {
 // blank-line rule CommentBlockAbove uses, in source order, stopping at the first non-comment child
 // of root.
 //
-// This is what every strategy's header rule iterates to skip directive blocks (a build constraint, a
-// go:generate line, a shebang) and find the file's real header. The block text and its start line are
+// This is what every strategy's header rule iterates to skip directive blocks (a build constraint,
+// a generate directive, a shebang) and find the file's real header. The block text and its start line are
 // part of this helper's contract, not the callers': CommentBlockAbove only walks upward from a
 // declaration, so a caller handed bare comment nodes would have to reinvent this downward sibling
 // walk once per strategy — exactly the per-strategy helper duplication the plan's shared-helper rule
