@@ -205,38 +205,34 @@ func teardownConnection(client *lsp.Client, kind daemon.ConnKind, timedOut bool)
 	}
 }
 
-// lookup is the shared pipeline every public lookup entry point (References
-// here; Definition) runs: detect the language, acquire a
-// connection, resolve the query to a position, issue exactly one LSP call
-// at that position, and convert the results. lspCall is the one step that
-// varies between callers — everything else is identical regardless of which
-// LSP method is ultimately invoked.
+// runOnConnection performs the connection-acquisition portion of the lookup pipeline every
+// multi-call entry point shares: detectAndRender, acquireConnection, a deferred teardownConnection
+// closing over a timedOut local, and resolvePosition. Once a position is resolved, it calls fn with
+// the resolved client, the file URI, the position, and a pointer to that same timedOut local, so fn
+// can issue as many further LSP calls on this one connection as its pipeline needs, sequentially,
+// before the deferred teardown runs.
 //
-// The steps: (1) detect the language and its registry.Entry; (2) acquire a
-// connection via acquireConnection; (3) resolve the query to an LSP
-// position — Query.Pos converted directly if set, otherwise a
-// workspace/symbol lookup for Query.Symbol; (4) issue lspCall at that
-// position; (5) map and sort the results. Every LSP phase from step (3)
-// onward is bounded by a fresh context.WithTimeout(ctx, opts.Timeout)
-// deadline; a phase that times out returns ErrServerTimeout and tears the
-// connection down via teardownConnection's timedOut branch rather than its
-// normal-completion branch.
-func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position) ([]lsp.Location, error)) ([]Reference, error) {
+// timedOut is captured by reference — fn receives a pointer to it — because a phase fn runs after
+// this function's defer is registered can still set it to true; this mirrors the invariant lookup
+// (below) relied on directly before this call was factored out. teardownConnection's
+// ConnKindSupervised branch must keep returning with no shutdown handshake and no kill regardless of
+// what fn does to *timedOut, since a supervised daemon connection outlives this call by design.
+func runOnConnection(ctx context.Context, opts Options, fn func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position, timedOut *bool) error) error {
 	lang, entry, initOptions, err := detectAndRender(opts)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	client, kind, err := acquireConnection(ctx, lang, entry, opts, initOptions)
 	if err != nil {
 		// No deferred teardown needed here: acquireConnection already tears
 		// down any partial connection itself on its own error path.
-		return nil, err
+		return err
 	}
 
-	// timedOut is captured by reference via the closure below, since
-	// resolvePosition/lspCall may still set it to true after the defer is
-	// registered.
+	// timedOut is captured by reference via the pointer fn receives, since
+	// resolvePosition below or any phase fn itself runs may still set it to
+	// true after this defer is registered.
 	timedOut := false
 	defer func() {
 		teardownConnection(client, kind, timedOut)
@@ -247,16 +243,34 @@ func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context,
 		if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
 			timedOut = true
 		}
-		return nil, err
+		return err
 	}
 
-	callCtx, callCancel := context.WithTimeout(ctx, opts.Timeout)
-	defer callCancel()
-	locations, err := lspCall(callCtx, client, fileURI, lspPos)
-	if err != nil {
-		if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
-			timedOut = true
+	return fn(ctx, client, fileURI, lspPos, &timedOut)
+}
+
+// lookup is the thin single-LSP-call wrapper both References and Definition run over
+// runOnConnection: once runOnConnection resolves a position, lookup's fn issues exactly one LSP
+// call (lspCall, the one step that varies between callers) under a fresh
+// context.WithTimeout(ctx, opts.Timeout) deadline, sets *timedOut when the call's error satisfies
+// errors.Is(err, quarryengine.ErrServerTimeoutSentinel), and stores the resulting locations for
+// conversion with toSortedReferences once runOnConnection returns.
+func lookup(ctx context.Context, opts Options, lspCall func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position) ([]lsp.Location, error)) ([]Reference, error) {
+	var locations []lsp.Location
+	err := runOnConnection(ctx, opts, func(ctx context.Context, client *lsp.Client, fileURI string, pos lsp.Position, timedOut *bool) error {
+		callCtx, callCancel := context.WithTimeout(ctx, opts.Timeout)
+		defer callCancel()
+		locs, err := lspCall(callCtx, client, fileURI, pos)
+		if err != nil {
+			if errors.Is(err, quarryengine.ErrServerTimeoutSentinel) {
+				*timedOut = true
+			}
+			return err
 		}
+		locations = locs
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
