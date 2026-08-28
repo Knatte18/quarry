@@ -68,7 +68,9 @@ batches:
     commit_sha: b7ea9d0de331f27def742ed4b5803495a067337c
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: toc-entry-points
-    state: pending
+    state: running
+    implementer_session: 03916a03-8d9b-4603-a50f-e3dfd00e883e
+    start_sha: 97d154056abbf1cfd9fc083c9d6da54ef946c83c
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: facade-and-cli
     state: pending
