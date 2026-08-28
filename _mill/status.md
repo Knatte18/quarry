@@ -6,6 +6,7 @@ slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Add file/dir toc verbs (Tree-sitter-backed)
 task_description: |
   Add file/dir toc verbs (Tree-sitter-backed)
@@ -39,19 +40,29 @@ implementing  '2026-08-28T06:20:35Z'
 ```yaml
 batches:
   - name: treesitter-backend
-    state: pending
+    state: running
+    implementer_session: 3a5a1371-3269-4d83-9202-2feb12c1e3ac
+    start_sha: 9c1f0f83a86ec5fbe598c5d4d927a0255fa266a9
+    verify_baseline_failures: ["FAIL\t./internal/quarryengine/treesitter [setup failed]"]
   - name: toc-scaffolding
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: go-strategy
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: python-csharp-strategies
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: toc-entry-points
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: facade-and-cli
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: doc-sentences-config
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: docs-and-sweep
     state: pending
+    verify_baseline_failures: []
 ```
