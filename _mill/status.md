@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-go-strategy
+phase: approved-python-csharp-strategies
 slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
@@ -36,6 +36,7 @@ implementing  '2026-08-28T06:20:35Z'
 approved-treesitter-backend  '2026-08-28T06:27:37Z'
 approved-toc-scaffolding  '2026-08-28T06:35:10Z'
 approved-go-strategy  '2026-08-28T06:43:48Z'
+approved-python-csharp-strategies  '2026-08-28T06:59:54Z'
 ```
 
 ## Batches
@@ -61,9 +62,10 @@ batches:
     commit_sha: 97aa6711114b5c31bf83e5d0c9557cc12b5238bc
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: python-csharp-strategies
-    state: running
+    state: approved
     implementer_session: 35816808-26b0-4d25-bf8b-ab1e4c312b14
     start_sha: 06bce1aa4c422810cdc43c6534249d6b72512469
+    commit_sha: b7ea9d0de331f27def742ed4b5803495a067337c
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: toc-entry-points
     state: pending
