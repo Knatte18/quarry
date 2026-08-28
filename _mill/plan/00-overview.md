@@ -3,7 +3,7 @@
 ```yaml
 task: "Improve gopls query precision (build tags + scoping)"
 slug: "gopls-query-precision"
-approved: false
+approved: true
 started: "20260827-174944"
 parent: "main"
 root: ""
@@ -126,6 +126,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `internal/cli/paths_test.go`
 - `internal/cli/resolve_test.go`
 - `internal/quarryengine/daemon/daemontest/daemontest.go`
+- `internal/quarryengine/doc.go`
 - `internal/quarryengine/daemon/doc.go`
 - `internal/quarryengine/daemon/ensureserver.go`
 - `internal/quarryengine/daemon/ensureserver_integration_test.go`

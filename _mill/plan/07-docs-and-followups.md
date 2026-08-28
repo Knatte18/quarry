@@ -4,7 +4,7 @@
 task: "Improve gopls query precision (build tags + scoping)"
 batch: "docs-and-followups"
 number: 7
-cards: 4
+cards: 5
 verify: null
 depends-on: [5, 6]
 ```
@@ -13,7 +13,7 @@ depends-on: [5, 6]
 
 This batch brings the operator-facing documentation in line with what now ships — the new flags, the new environment variable, the new state-directory keying, and the native-path cost including its batch-mode amplification — corrects one arithmetic error in the document this task cites as its primary evidence, and files the two follow-up issues the design deliberately deferred rather than fixed.
 
-It runs last because every statement it makes is a statement about shipped behaviour, and it is one batch because all four cards are prose or issue text with no code surface. Batch-local decision: the dated findings records under `docs/` are left as they are; only the one arithmetic error is corrected, for the reason card 28 states.
+It also reconciles the engine's own package doc, which four separate earlier changes falsify and which no earlier card owns. It runs last because every statement it makes is a statement about shipped behaviour, and it is one batch because all five cards are prose or issue text with no executable surface — card 30 edits a `.go` file, but only its package comment. Batch-local decision: the dated findings records under `docs/` are left as they are; only the one arithmetic error is corrected, for the reason card 28 states.
 
 ## Cards
 
@@ -34,6 +34,7 @@ It runs last because every statement it makes is a statement about shipped behav
   - In the Configuration section, document `--build-tags <a,b>` and its `$QUARRY_BUILD_TAGS` fallback with the same numbered-precedence shape the section already uses for `servers.yaml`. State that the tag set is normalized — split on commas, trimmed, deduplicated, sorted — so two spellings of one set behave identically. State that passing tags for a language whose registry entry carries no build-tag template is a hard error rather than a silent no-op, and call out the consequence an operator will actually hit: `$QUARRY_BUILD_TAGS` exported globally in a shell and then a query run against a Python project fails loudly. Say that this is deliberate, because a silently-ignored precision flag is the failure mode the flag exists to remove.
   - In the State section, document that a non-empty tag set appends a `tags-<hex>` segment to the resolved leaf directory at all three precedence tiers, so each distinct tag set gets its own daemon, socket, state file and lock, and that an empty tag set leaves the resolved path exactly as it is today. Note the accepted cost in one sentence: alternating tagged and untagged queries leaves two gopls daemons resident until each idles out.
   - In the "Windows: native strategy only" section, document that a non-empty tag set makes the native strategy spawn a private gopls rather than joining the shared `-remote=auto` daemon, so a tagged query on that path pays a cold start with no cross-invocation reuse, and that on windows this is the normal path for tagged queries rather than a fallback. Add the batch-mode amplification: `refs`, `definition` and `symbol` make one independent engine call per positional argument, so an N-symbol tagged batch on the native path pays N cold starts within one invocation.
+  - Update the `## Testing` section, which says the live tier "Requires a real language-server binary (e.g. `gopls`) on `$PATH`". That is the whole story only when gopls happens to be on `$PATH`; every `//go:build lsp` test in this repo skips via `exec.LookPath("gopls")`, so on a machine where the pinned binary lives in the toolchain cache instead, the live tier reports success having exercised nothing. Record the `PATH` prefix that makes it actually run — the toolchain cache directory for the pinned version, prepended to `PATH` — and state the silent-skip consequence plainly, since "silence looks like a pass" is the failure class this task exists to remove and the per-batch `verify:` lines that encode the prefix do not outlive the plan.
   - Add a short subsection describing what `assert-no-callers` now does by default: it resolves each candidate reference's own definition and keeps only those that resolve back to the queried symbol's declaration, so an interface-method check is precise without a scoping flag. Say that verification is fail-closed — a reference it cannot verify stays a violation — and that `--no-verify` reinstates the older, noisier behaviour.
 - **Commit:** `docs(readme): document --build-tags, tag-keyed state, native private spawn, and verification`
 
@@ -70,6 +71,28 @@ It runs last because every statement it makes is a statement about shipped behav
   - Do not edit `docs/scout-agent-usage-findings.md` or `docs/scout-vs-grep.md`. Both are dated findings records whose open question this task answers rather than falsifies, and their value is as a record of the behaviour at the time. Only the arithmetic error above is corrected, and only because it sits in the document this task cites as its primary evidence.
 - **Commit:** `docs(scout-multilang): correct the build-tag gap headline to match its own counts`
 
+### Card 30: reconcile the engine's own package doc
+
+- **Context:**
+  - `internal/quarryengine/errors.go`
+  - `internal/quarryengine/query/callers.go`
+  - `internal/quarryengine/query/verify.go`
+  - `internal/quarryengine/lsp/lspclient.go`
+  - `internal/quarryengine/daemon/daemontest/daemontest.go`
+- **Edits:**
+  - `internal/quarryengine/doc.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+  - `internal/quarryengine/doc.go` is the engine's own package doc and makes four statements this plan falsifies. No earlier card owns it, so this card reconciles all four at once, after the code they describe has landed.
+  - Its "What this engine deliberately does not do" bullet says "No call hierarchy, no implementation", that only `textDocument/references`, `textDocument/definition` and the workspace/symbol resolver are wired, and that implementation "was never in this engine's rubric". Batch 1 card 1 wires `textDocument/implementation`. Remove the implementation half, keep the call-hierarchy half and its rationale intact, and say what implementation is now used for — widening the declaration match set for caller verification, not a general capability.
+  - Its package-layout bullet describes `query` as "References, Definition, and Symbol, the entry points internal/cli calls". Add `Callers`, and mention the two files batch 4 adds to that package.
+  - Its typed-error-vocabulary paragraph enumerates every engine error and omits `ErrBuildTagsUnsupported`. Add it with a one-clause description matching the style of the neighbouring entries.
+  - Its `daemon/daemontest` bullet enumerates that package's exported seams and omits the three `ConnKind` re-export constants batch 4 adds. Add them.
+  - Change nothing else in the file. Every other statement in it is still accurate.
+- **Commit:** `docs(engine): reconcile the engine package doc with implementation, Callers, and the build-tag error`
+
 ### Card 29: file the two deferred follow-up issues
 
 - **Context:**
@@ -90,4 +113,4 @@ It runs last because every statement it makes is a statement about shipped behav
 
 ## Batch Tests
 
-`verify:` is `null` because this batch has no runnable surface: three cards edit prose, and the fourth files GitHub issues and touches no file at all. Correctness here is a review property — every statement must match what batches 1 through 6 actually shipped — and the module-wide `go vet` that runs at the batch boundary is enough to confirm no code was disturbed. The behaviour these documents describe is already pinned by the hermetic tests in batches 2 through 5 and the live tests in batch 6.
+`verify:` is `null` because this batch has no runnable surface: three cards edit prose, card 30 edits only a package comment, and card 29 files GitHub issues and touches no file at all. Correctness here is a review property — every statement must match what batches 1 through 6 actually shipped — and the module-wide `go vet` that runs at the batch boundary is enough to confirm no code was disturbed. The behaviour these documents describe is already pinned by the hermetic tests in batches 2 through 5 and the live tests in batch 6.
