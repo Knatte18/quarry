@@ -46,7 +46,9 @@ batches:
     commit_sha: e26340825676ad35ea76d5b7ba1f4e17a78d1e60
     verify_baseline_failures: []
   - name: facade-reexports
-    state: pending
+    state: running
+    implementer_session: f656b3aa-e00f-4a7d-a1ad-cf91c44acb16
+    start_sha: 885f6c46ace4645699d58ad2c23082d02c9c25d4
     verify_baseline_failures: []
   - name: cli-impact-verb
     state: pending
