@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-lsp-implementation-and-spike
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-review-r6  '2026-08-27T19:24:38Z'
 plan-fix-r6  '2026-08-28T05:12:13Z'
 planned  '2026-08-28T05:12:22Z'
 implementing  '2026-08-28T05:13:02Z'
+approved-lsp-implementation-and-spike  '2026-08-28T05:18:54Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ implementing  '2026-08-28T05:13:02Z'
 ```yaml
 batches:
   - name: lsp-implementation-and-spike
-    state: running
+    state: approved
     implementer_session: bebd2108-1868-41a6-9edd-19b895196de4
     start_sha: ff029064d2a00082ed3335a585ef6ac217859923
+    commit_sha: ed14849afa97dbffa3d529bbd7af8941c8e3eece
     verify_baseline_failures: []
   - name: registry-build-tag-template
     state: pending
