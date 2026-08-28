@@ -14,7 +14,7 @@ the module is `internal/scoutcli`/`lyx scout refs` today), built from this branc
   Every one of 5 hand-picked benchmark symbols (mirroring #008's category table) returned **zero false negatives and zero false positives** against gopls's own default-build-tag view.
   But this repo leans heavily on `//go:build integration`/`//go:build smoke` tags for its Test Tier Purity Invariant,
   and the shipped engine has **no way to pass `-tags` through to the language server** (`lspclient.go`'s `initialize` sends no `initializationOptions`/`buildFlags`) — so every reference inside a tagged test file is invisible to `lyx scout refs` on this repo today, by design of gopls's own default scope, not a precision bug.
-  Quantified below: **40% of this repo's true call sites** to the two most heavily-tested benchmark symbols live behind that tag boundary.
+  Quantified below: **56% of this repo's true call sites** to the two most heavily-tested benchmark symbols live behind that tag boundary — 42 of 68 for `hubgeometry.Resolve` and 17 of 38 for `hubgeometry.Layout.WeftWorktree`, 59 of 106 combined.
   This is a real, load-bearing limitation for exactly the kind of repo this tool ships in, worth a follow-up card (thread a `--build-tags` flag through to the server's `initializationOptions`) even though it's out of this batch's scope.
 - **Python/pylsp: severe, uneven recall — CHARACTERIZE AS RISKY, not a recommended default.**
   Across the same 5-symbol-shaped benchmark on a real, mid-size, partially-typed target (`psf/requests`), pylsp found **27 of 73** true references (37% recall) with **zero false positives** — it is conservative, never fabricating a wrong reference,
