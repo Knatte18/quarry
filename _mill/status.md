@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
@@ -31,4 +31,27 @@ plan-review-r6  '2026-08-28T06:09:19Z'
 plan-fix-r6  '2026-08-28T06:10:55Z'
 plan-review-r7  '2026-08-28T06:19:45Z'
 planned  '2026-08-28T06:20:05Z'
+implementing  '2026-08-28T06:20:35Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: treesitter-backend
+    state: pending
+  - name: toc-scaffolding
+    state: pending
+  - name: go-strategy
+    state: pending
+  - name: python-csharp-strategies
+    state: pending
+  - name: toc-entry-points
+    state: pending
+  - name: facade-and-cli
+    state: pending
+  - name: doc-sentences-config
+    state: pending
+  - name: docs-and-sweep
+    state: pending
 ```
