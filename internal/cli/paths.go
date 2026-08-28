@@ -1,10 +1,11 @@
-// paths.go resolves the two path axes internal/cli owns: the optional servers.yaml config file and
+// paths.go resolves the three path axes internal/cli owns: the optional servers.yaml config file,
 // the per-workspace state directory the supervised daemon uses for its state file, lock file, and
-// socket.
-// Both resolutions produce a path only — neither reads nor creates anything on disk. An absent
-// config file is not an error at this layer; LoadRegistry is what falls back to the built-in
-// registry. The toolchain cache (goToolchainCacheDir in the engine's toolchain.go) is a separate,
-// engine-owned path axis and is not resolved here.
+// socket, and the optional per-directory toc config file.
+// Every resolution produces a path only — none reads nor creates anything on disk. An absent
+// config file is not an error at this layer; LoadRegistry (for servers.yaml) and loadTOCConfig
+// (for the toc config file) are what fall back to their own built-in defaults. The toolchain cache
+// (goToolchainCacheDir in the engine's toolchain.go) is a separate, engine-owned path axis and is
+// not resolved here.
 
 package cli
 
@@ -81,4 +82,31 @@ func resolveStateDir(flagValue, targetDir string) (string, error) {
 		return "", fmt.Errorf("cli: resolve user cache dir: %w", err)
 	}
 	return filepath.Join(dir, "quarry", workspaceKey(targetDir)), nil
+}
+
+// resolveTOCConfigPath resolves the optional toc config file path for targetDir, in precedence
+// order: $QUARRY_TOC_CONFIG when set, otherwise filepath.Join(targetDir, ".quarry.yaml").
+// It resolves a path only and never reads the file — an absent file is not an error at this
+// layer, mirroring resolveConfigPath above for the servers.yaml overlay. Unlike resolveConfigPath
+// it returns no error, because it never consults a machine-global directory (no os.UserConfigDir
+// equivalent) and so has nothing to fail at.
+//
+// The lookup happens in targetDir and nowhere else — no walk up the directory tree, no
+// repository-root search, no project detection. toc has no repository-root concept and never
+// detects a project the way the LSP verbs do; an upward search would introduce exactly that
+// concept.
+//
+// For "toc file", targetDir is the file's parent directory, so the resolution is per-directory
+// rather than per-invocation. "toc dir" never calls this function: it emits headers only, never
+// docstrings, so no setting in this file applies to it. The signature is directory-shaped
+// regardless, because that is the natural shape of a per-directory lookup — the "toc dir" case is
+// reserved but currently unused, so no caller should be assumed for it.
+//
+// This file is not servers.yaml. It has its own name and its own environment variable precisely
+// so toc never touches the language-server registry, which it needs no part of.
+func resolveTOCConfigPath(targetDir string) string {
+	if env := os.Getenv("QUARRY_TOC_CONFIG"); env != "" {
+		return env
+	}
+	return filepath.Join(targetDir, ".quarry.yaml")
 }
