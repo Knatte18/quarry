@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-facade-and-cli
+phase: approved-doc-sentences-config
 slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-go-strategy  '2026-08-28T06:43:48Z'
 approved-python-csharp-strategies  '2026-08-28T06:59:54Z'
 approved-toc-entry-points  '2026-08-28T07:06:46Z'
 approved-facade-and-cli  '2026-08-28T07:13:26Z'
+approved-doc-sentences-config  '2026-08-28T07:19:24Z'
 ```
 
 ## Batches
@@ -82,9 +83,10 @@ batches:
     commit_sha: edbb08971428ce7365b1aa96270e6820f6163848
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: doc-sentences-config
-    state: running
+    state: approved
     implementer_session: 08d214fb-9d26-4464-b374-4e12d63bb142
     start_sha: 1e33a1fa5aca96a02b5e160358f483d3fd53b2c7
+    commit_sha: 2b6f4032ddccd0cbe4f5f006564a73c6bc2cdaec
     verify_baseline_failures: ["FAIL\t./internal/quarryengine/toc [setup failed]"]
   - name: docs-and-sweep
     state: pending
