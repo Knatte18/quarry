@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: impact-verb
 branch: impact-verb
-plan: null
+plan: _mill/plan
 parent: main
 task: Add `impact` verb for caller-context lookup
 task_description: |
@@ -20,4 +20,5 @@ discussion-fix-r3  '2026-08-28T08:47:31Z'
 discussion-fix-r4  '2026-08-28T08:54:52Z'
 discussion-fix-r5  '2026-08-28T09:01:45Z'
 discussed  '2026-08-28T09:01:45Z'
+planning  '2026-08-28T09:11:03Z'
 ```
