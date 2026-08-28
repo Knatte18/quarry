@@ -528,6 +528,7 @@ func assertNoCallersCommand() *cobra.Command {
 	var except []string
 	var within string
 	var buildTags string
+	var noVerify bool
 
 	cmd := &cobra.Command{
 		Use:   "assert-no-callers <symbol|file:line:col>",
@@ -609,35 +610,24 @@ involved — only interface methods are at risk of this conflation.`,
 			}
 
 			opts := buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved)
+			opts.SkipVerification = noVerify
 
-			// Resolve the declaration site(s) to exclude via Definition,
-			// regardless of whether query is a bare symbol name or an explicit
-			// position: Definition's Reference results are always in LSP's
-			// UTF-16-column coordinate system (same as References's own
-			// results below), so declRefs and refs stay directly comparable.
-			// Building a Reference straight from a caller-supplied Position
-			// instead would be wrong whenever query.Pos is set — Position's
-			// Character is a 1-based byte column, which only coincides with
-			// Reference's 1-based UTF-16 column on a pure-ASCII line; on any
-			// other line the declaration would silently fail to match and be
-			// misreported as an unexpected caller.
-			declRefs, defErr := quarry.Definition(ctx, opts)
-			if defErr != nil {
-				emitAmbiguousOrError(ctx, out, defErr)
-				return nil
-			}
-
-			refs, refErr := quarry.References(ctx, opts)
-			if refErr != nil {
-				emitAmbiguousOrError(ctx, out, refErr)
+			// The declaration set must come from a real textDocument/definition
+			// rather than from the caller-supplied position: quarryengine.Position.Character
+			// is a 1-based byte column, while quarry.Reference.Character is a
+			// 1-based UTF-16 column, so the two coincide only on a pure-ASCII
+			// line. quarry.Callers returns the definition-only declaration set
+			// precisely so this exclusion keeps working on any line.
+			refs, declRefs, err := quarry.Callers(ctx, opts)
+			if err != nil {
+				emitAmbiguousOrError(ctx, out, err)
 				return nil
 			}
 			if within != "" {
-				// Scope the candidate set to the intended package before
-				// --except even runs — see the Long help's --within
-				// paragraph for why an unscoped interface-method check can
-				// otherwise report a false "violation" from an unrelated,
-				// structurally-identical interface elsewhere in the repo.
+				// Scope the candidate set before --except runs. --within is
+				// an ordinary optional filter here — see the Long help for
+				// what it does now that verification runs by default inside
+				// quarry.Callers, ahead of all three filters below.
 				refs = filterWithin(refs, within, dir)
 			}
 
@@ -668,11 +658,12 @@ involved — only interface methods are at risk of this conflation.`,
 	cmd.Flags().StringArrayVar(&except, "except", nil, "file path allowed to reference the symbol without failing the check (repeatable)")
 	cmd.Flags().StringVar(&within, "within", "", "restrict the caller search to references whose file lies within this directory (relative to --target-dir, or absolute) — required for a correct check on an interface method, see above")
 	cmd.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
+	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "skip per-caller definition verification (fail-closed by default: an unverifiable reference is kept as a violation rather than dropped); assert-no-callers only")
 
 	return cmd
 }
 
-// emitAmbiguousOrError maps References/Definition errors to the output envelope.
+// emitAmbiguousOrError maps References/Definition/Callers errors to the output envelope.
 func emitAmbiguousOrError(ctx context.Context, out io.Writer, err error) bool {
 	var ambiguous *quarry.ErrAmbiguousSymbol
 	if errors.As(err, &ambiguous) {
@@ -704,8 +695,7 @@ func filterUnexpectedCallers(refs []quarry.Reference, declRefs []quarry.Referenc
 	return violations
 }
 
-// filterWithin returns entries in refs whose file lies within the specified directory,
-// mitigating gopls' interface-method reference conflation across packages.
+// filterWithin returns entries in refs whose file lies within the specified directory.
 func filterWithin(refs []quarry.Reference, within, baseDir string) []quarry.Reference {
 	w := within
 	if !filepath.IsAbs(w) {
