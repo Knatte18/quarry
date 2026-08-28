@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-surface
+phase: self-resolved-verify-logic
 slug: gopls-query-precision
 branch: gopls-query-precision
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-registry-build-tag-template  '2026-08-28T05:23:01Z'
 approved-initialization-options-plumbing  '2026-08-28T05:30:21Z'
 approved-callers-verification-entry-point  '2026-08-28T05:41:23Z'
 approved-cli-surface  '2026-08-28T05:50:14Z'
+self-resolved-verify-logic  '2026-08-28T06:04:06Z'
 ```
 
 ## Batches
