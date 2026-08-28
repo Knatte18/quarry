@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: impact-verb
 branch: impact-verb
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-docs-and-live-tier  '2026-08-28T10:06:25Z'
 holistic-reviewing  '2026-08-28T10:06:41Z'
 holistic-approved  '2026-08-28T10:10:00Z'
 done  '2026-08-28T10:10:29Z'
+pr-pending  '2026-08-28T10:12:02Z'
 ```
 
 ## Batches
