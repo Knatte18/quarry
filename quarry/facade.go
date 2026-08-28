@@ -1,13 +1,16 @@
 // Package quarry is a stable, behaviour-free re-export of internal/quarryengine.
 // It exists so this module's import path (github.com/Knatte18/quarry/quarry) stays unchanged
-// while the engine itself lives at internal/quarryengine, split into the five-package DAG
-// documented there: the root leaf package, lsp, registry, daemon, and query.
+// while the engine itself lives at internal/quarryengine, split into the seven-package DAG
+// documented there: the root leaf package, lsp, registry, treesitter, daemon, toc, and query.
 // This file adds nothing of its own — every declaration below is either a type alias, a
 // re-exported sentinel var bound to the identical error value, or a one-line delegating
 // function.
-// It re-exports exactly 33 identifiers: the 29 this package exported before the engine-repackage
-// move, plus Callers, NormalizeBuildTags, ErrBuildTagsUnsupported, and
-// ErrBuildTagsUnsupportedSentinel — no more, no less.
+// That is the guarantee this file exists to keep, stated as a property rather than as a count
+// that would go stale on every addition: whatever the engine exports through this facade,
+// grep for a bare struct field, an inline computation, or a multi-line function body anywhere
+// below and you will find none — facade_test.go's alias and delegation checks enforce the same
+// property mechanically, for every identifier this file re-exports, not just a snapshot count of
+// them.
 // For the engine's own design — the package DAG, the EnsureServer daemon lifecycle, the
 // references/definition/symbol resolution pipeline — see internal/quarryengine's own package
 // doc comment, not this file.
@@ -21,6 +24,7 @@ import (
 	"github.com/Knatte18/quarry/internal/quarryengine/daemon"
 	"github.com/Knatte18/quarry/internal/quarryengine/query"
 	"github.com/Knatte18/quarry/internal/quarryengine/registry"
+	"github.com/Knatte18/quarry/internal/quarryengine/toc"
 )
 
 // Entry is registry.Entry, re-exported unchanged.
@@ -146,4 +150,72 @@ func Callers(ctx context.Context, opts Options) ([]Reference, []Reference, error
 // NormalizeBuildTags delegates to registry.NormalizeBuildTags.
 func NormalizeBuildTags(tags ...string) []string {
 	return registry.NormalizeBuildTags(tags...)
+}
+
+// TOCSymbol is toc.Symbol, re-exported unchanged.
+type TOCSymbol = toc.Symbol
+
+// TOCKind is toc.Kind, re-exported unchanged.
+type TOCKind = toc.Kind
+
+// TOCFileResult is toc.FileTOC, re-exported unchanged.
+type TOCFileResult = toc.FileTOC
+
+// TOCDirEntry is toc.DirEntry, re-exported unchanged.
+type TOCDirEntry = toc.DirEntry
+
+// TOCDirResult is toc.DirTOC, re-exported unchanged.
+type TOCDirResult = toc.DirTOC
+
+// TOCOptions is toc.Options, re-exported unchanged.
+type TOCOptions = toc.Options
+
+// The three TOCKind values a toc symbol ever carries, re-exported unchanged.
+const (
+	// TOCKindFunction is toc.KindFunction, re-exported unchanged.
+	TOCKindFunction = toc.KindFunction
+	// TOCKindMethod is toc.KindMethod, re-exported unchanged.
+	TOCKindMethod = toc.KindMethod
+	// TOCKindType is toc.KindType, re-exported unchanged.
+	TOCKindType = toc.KindType
+)
+
+// TOCAllSentences is toc.AllSentences, the TOCOptions.DocSentences sentinel meaning "keep the
+// whole docstring, unsplit", re-exported unchanged.
+const TOCAllSentences = toc.AllSentences
+
+// ErrLanguageUnsupported is quarryengine.ErrLanguageUnsupported, the identical sentinel value
+// re-exported for errors.Is comparisons against this package's import path.
+var ErrLanguageUnsupported = quarryengine.ErrLanguageUnsupported
+
+// TOCFile delegates to toc.TOCFile.
+func TOCFile(path string, lang string, opts TOCOptions) (TOCFileResult, error) {
+	return toc.TOCFile(path, lang, opts)
+}
+
+// TOCDir delegates to toc.TOCDir.
+func TOCDir(dir string, lang string) (TOCDirResult, error) {
+	return toc.TOCDir(dir, lang)
+}
+
+// TOCLanguages delegates to registry.ExtensionLanguages, returning the five languages the toc
+// survey designed for, regardless of whether each has a registered Strategy yet. internal/cli
+// validates --lang against this set, not TOCImplemented's: a designed-but-unimplemented language
+// stays a legal request that toc dir can list files under, while toc file surfaces
+// ErrLanguageUnsupported for that same request. internal/cli imports nothing under
+// internal/quarryengine directly — every engine identifier it needs reaches it through this
+// facade file — and this function is why toc's --lang validation does not become the first
+// exception.
+func TOCLanguages() []string {
+	return registry.ExtensionLanguages()
+}
+
+// TOCImplemented delegates to toc.Implemented, returning the subset of TOCLanguages that
+// currently has a registered Strategy. The unsupported-language error message internal/cli builds
+// is worded from this set, not TOCLanguages': that message answers "what can quarry actually
+// read", and naming the full designed set there would claim a language like rust is available in
+// the very error saying it is not. Like TOCLanguages, this exists so internal/cli never has to
+// import internal/quarryengine/toc directly.
+func TOCImplemented() []string {
+	return toc.Implemented()
 }

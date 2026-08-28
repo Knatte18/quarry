@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-// The six internal/quarryengine/... import paths this guard reasons about.
+// The eight internal/quarryengine/... import paths this guard reasons about.
 const (
 	rootPkg       = "github.com/Knatte18/quarry/internal/quarryengine"
 	lspPkg        = rootPkg + "/lsp"
@@ -25,6 +25,8 @@ const (
 	daemonPkg     = rootPkg + "/daemon"
 	daemontestPkg = daemonPkg + "/daemontest"
 	queryPkg      = rootPkg + "/query"
+	treesitterPkg = rootPkg + "/treesitter"
+	tocPkg        = rootPkg + "/toc"
 )
 
 // layeringRow names the set of internal/quarryengine/... import paths a file belonging to pkgDir
@@ -51,7 +53,8 @@ func pathSet(paths ...string) map[string]bool {
 // layeringTable encodes the allowed import directions from the plan's package-layout Shared
 // Decision: the root imports no subpackage; lsp and registry import the root only; daemon imports
 // root + registry + lsp; query's production files import all four; query's test files import
-// root + registry + lsp + daemontest, never daemon directly; daemontest imports daemon.
+// root + registry + lsp + daemontest, never daemon directly; daemontest imports daemon; treesitter
+// imports the root only; toc imports the root, registry, and treesitter.
 var layeringTable = []layeringRow{
 	{pkgDir: "", isTestRow: false, allowed: pathSet()},
 	{pkgDir: "", isTestRow: true, allowed: pathSet()},
@@ -65,6 +68,10 @@ var layeringTable = []layeringRow{
 	{pkgDir: "daemon/daemontest", isTestRow: true, allowed: pathSet(daemonPkg)},
 	{pkgDir: "query", isTestRow: false, allowed: pathSet(rootPkg, registryPkg, lspPkg, daemonPkg)},
 	{pkgDir: "query", isTestRow: true, allowed: pathSet(rootPkg, registryPkg, lspPkg, daemontestPkg)},
+	{pkgDir: "treesitter", isTestRow: false, allowed: pathSet(rootPkg)},
+	{pkgDir: "treesitter", isTestRow: true, allowed: pathSet(rootPkg)},
+	{pkgDir: "toc", isTestRow: false, allowed: pathSet(rootPkg, registryPkg, treesitterPkg)},
+	{pkgDir: "toc", isTestRow: true, allowed: pathSet(rootPkg, registryPkg, treesitterPkg)},
 }
 
 // allowedFor looks up the layeringTable row for pkgDir and isTestRow, reporting ok = false if no
@@ -156,10 +163,12 @@ func TestLayeringInvariant_ImportDirections(t *testing.T) {
 		t.Fatal("scanned zero .go files under internal/quarryengine; the layering check cannot go green by finding nothing to check")
 	}
 
-	// internal/quarryengine itself, lsp, registry, daemon, daemon/daemontest, and query is six
-	// distinct package directories; a package added later and silently skipped by this walk must
-	// not let the guard go green by finding nothing to check against it.
-	const minPackageDirs = 6
+	// This walk covers only the engine tree, so minPackageDirs here is the exact directory count:
+	// internal/quarryengine itself (root), lsp, registry, daemon, daemon/daemontest, query,
+	// treesitter, and toc is eight distinct package directories; a package added later and
+	// silently skipped by this walk must not let the guard go green by finding nothing to check
+	// against it.
+	const minPackageDirs = 8
 	if len(visitedDirs) < minPackageDirs {
 		t.Fatalf("walk visited %d distinct directories; want at least %d, proving the walk actually covers every layer of the DAG rather than silently skipping a package", len(visitedDirs), minPackageDirs)
 	}

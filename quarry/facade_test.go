@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/quarry/internal/quarryengine"
 	"github.com/Knatte18/quarry/internal/quarryengine/query"
 	"github.com/Knatte18/quarry/internal/quarryengine/registry"
+	"github.com/Knatte18/quarry/internal/quarryengine/toc"
 )
 
 // The pairs below compile only if each facade type is a true `=` alias of its underlying engine
@@ -53,9 +54,21 @@ var (
 	aliasCheckErrServerSpawnTimeoutFacade   ErrServerSpawnTimeout
 	aliasCheckErrBuildTagsUnsupportedEngine quarryengine.ErrBuildTagsUnsupported
 	aliasCheckErrBuildTagsUnsupportedFacade ErrBuildTagsUnsupported
+	aliasCheckTOCSymbolEngine               toc.Symbol
+	aliasCheckTOCSymbolFacade               TOCSymbol
+	aliasCheckTOCKindEngine                 toc.Kind
+	aliasCheckTOCKindFacade                 TOCKind
+	aliasCheckTOCFileResultEngine           toc.FileTOC
+	aliasCheckTOCFileResultFacade           TOCFileResult
+	aliasCheckTOCDirEntryEngine             toc.DirEntry
+	aliasCheckTOCDirEntryFacade             TOCDirEntry
+	aliasCheckTOCDirResultEngine            toc.DirTOC
+	aliasCheckTOCDirResultFacade            TOCDirResult
+	aliasCheckTOCOptionsEngine              toc.Options
+	aliasCheckTOCOptionsFacade              TOCOptions
 )
 
-// init performs the actual round-trip assignment for each of the fifteen aliased types: engine
+// init performs the actual round-trip assignment for each of the twenty-one aliased types: engine
 // value into the facade-typed variable, then straight back into the engine-typed variable, with
 // no conversion on either side.
 func init() {
@@ -103,11 +116,29 @@ func init() {
 
 	aliasCheckErrBuildTagsUnsupportedFacade = aliasCheckErrBuildTagsUnsupportedEngine
 	aliasCheckErrBuildTagsUnsupportedEngine = aliasCheckErrBuildTagsUnsupportedFacade
+
+	aliasCheckTOCSymbolFacade = aliasCheckTOCSymbolEngine
+	aliasCheckTOCSymbolEngine = aliasCheckTOCSymbolFacade
+
+	aliasCheckTOCKindFacade = aliasCheckTOCKindEngine
+	aliasCheckTOCKindEngine = aliasCheckTOCKindFacade
+
+	aliasCheckTOCFileResultFacade = aliasCheckTOCFileResultEngine
+	aliasCheckTOCFileResultEngine = aliasCheckTOCFileResultFacade
+
+	aliasCheckTOCDirEntryFacade = aliasCheckTOCDirEntryEngine
+	aliasCheckTOCDirEntryEngine = aliasCheckTOCDirEntryFacade
+
+	aliasCheckTOCDirResultFacade = aliasCheckTOCDirResultEngine
+	aliasCheckTOCDirResultEngine = aliasCheckTOCDirResultFacade
+
+	aliasCheckTOCOptionsFacade = aliasCheckTOCOptionsEngine
+	aliasCheckTOCOptionsEngine = aliasCheckTOCOptionsFacade
 }
 
-// The ten blank-identifier assignments below reference every delegating function in facade.go,
-// each against the exact func type its engine counterpart demands: a signature drift on either
-// side fails the build.
+// The fourteen blank-identifier assignments below reference every delegating function in
+// facade.go, each against the exact func type its engine counterpart demands: a signature drift
+// on either side fails the build.
 var (
 	_ func() Registry                                                  = BuiltinRegistry
 	_ func(string) (Registry, error)                                   = LoadRegistry
@@ -119,9 +150,13 @@ var (
 	_ func(context.Context, Options) ([]SymbolMatch, error)            = Symbol
 	_ func(context.Context, Options) ([]Reference, []Reference, error) = Callers
 	_ func(...string) []string                                         = NormalizeBuildTags
+	_ func(string, string, TOCOptions) (TOCFileResult, error)          = TOCFile
+	_ func(string, string) (TOCDirResult, error)                       = TOCDir
+	_ func() []string                                                  = TOCLanguages
+	_ func() []string                                                  = TOCImplemented
 )
 
-// TestFacadeSentinels_Identity verifies each of the eight re-exported sentinel error values is
+// TestFacadeSentinels_Identity verifies each of the nine re-exported sentinel error values is
 // the identical value the engine holds, not merely a re-created error with an equal message —
 // errors.Is/== comparisons against the facade's sentinel would silently stop matching engine
 // errors if a re-export were ever replaced with a fresh errors.New call.
@@ -138,6 +173,7 @@ func TestFacadeSentinels_Identity(t *testing.T) {
 		{"ErrResolverUnsupportedSentinel", ErrResolverUnsupportedSentinel, quarryengine.ErrResolverUnsupportedSentinel},
 		{"ErrServerTimeoutSentinel", ErrServerTimeoutSentinel, quarryengine.ErrServerTimeoutSentinel},
 		{"ErrServerSpawnTimeoutSentinel", ErrServerSpawnTimeoutSentinel, quarryengine.ErrServerSpawnTimeoutSentinel},
+		{"ErrLanguageUnsupported", ErrLanguageUnsupported, quarryengine.ErrLanguageUnsupported},
 		{"ErrBuildTagsUnsupportedSentinel", ErrBuildTagsUnsupportedSentinel, quarryengine.ErrBuildTagsUnsupportedSentinel},
 	}
 	for _, tt := range tests {

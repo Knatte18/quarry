@@ -17,6 +17,12 @@ import (
 // errors.Is(err, ErrNoLanguage) still succeeds after wrapping.
 var ErrNoLanguage = errors.New("quarry: no language detected")
 
+// ErrLanguageUnsupported is returned when a resolved extension maps to no language, or to a
+// language the toc strategies do not yet implement.
+// Callers wrap it with fmt.Errorf("...: %w", ErrLanguageUnsupported) so errors.Is(err,
+// ErrLanguageUnsupported) still succeeds after wrapping.
+var ErrLanguageUnsupported = errors.New("quarry: language not yet supported by toc")
+
 // ErrServerNotFoundSentinel is the package-level sentinel *ErrServerNotFound.Is compares against,
 // so callers can test for this failure mode with errors.Is(err,
 // quarryengine.ErrServerNotFoundSentinel) without needing to know the concrete field values of the
