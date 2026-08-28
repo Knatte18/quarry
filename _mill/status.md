@@ -53,7 +53,9 @@ batches:
     commit_sha: d4cfd117e4702fbe519f007cb5cc4aae484ec286
     verify_baseline_failures: []
   - name: cli-impact-verb
-    state: pending
+    state: running
+    implementer_session: d0be90d9-ee71-40d7-8744-5def8eccb10a
+    start_sha: 59a776bef7e242ea19aadf2f559c11aa3383829f
     verify_baseline_failures: []
   - name: docs-and-live-tier
     state: pending
