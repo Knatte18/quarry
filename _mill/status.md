@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: toc-verbs
 branch: toc-verbs
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-doc-sentences-config  '2026-08-28T07:19:24Z'
 approved-docs-and-sweep  '2026-08-28T07:27:07Z'
 holistic-reviewing  '2026-08-28T07:27:32Z'
 holistic-approved  '2026-08-28T07:31:14Z'
+done  '2026-08-28T07:31:46Z'
 ```
 
 ## Batches
