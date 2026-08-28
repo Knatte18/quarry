@@ -55,15 +55,22 @@ into this task.
   the `var` block, add their round-trip assignments to `init()`, add the blank-identifier func-type
   assignment for `Impact`, and correct the stale "the fourteen blank-identifier assignments" and
   "twenty-one aliased types" counts in the surrounding comments.
-- Doc updates: `README.md` verb list, `internal/quarryengine/doc.go` (the package-DAG section, which
-  currently says "seven-package DAG"), `quarry/facade.go`'s header comment (which repeats the same
-  "seven-package DAG" phrase), `internal/cli/cli.go`'s package doc comment (which enumerates every
-  verb and the exit-code contract), and the stale package enumerations in the two guard files this
-  work already edits — `internal/quarryengine/seam_enforcement_test.go` (its header comment, its
-  `TestEngineSeamInvariant_BannedImports` doc comment, and the `minPackageDirs` comment, which
-  carries a third "seven-package DAG") and `internal/quarryengine/layering_test.go` (the const
-  block's "eight import paths" comment, the `layeringTable` comment enumerating the allowed
-  directions, and the `minPackageDirs` comment enumerating the package directories).
+- Doc updates, enumerated precisely (each verified to exist at the stated site):
+  - `README.md` — the verb list, **and** line 17's "All four verbs accept `--build-tags`", which is
+    already wrong today (it lists six verbs) and becomes wronger with a seventh.
+  - `internal/quarryengine/doc.go` — two separate stale enumerations: the "# The package layout"
+    section's "seven-package DAG" (line 50), **and** the engine/CLI-split paragraph's own package
+    list at lines 41-46, which enumerates the packages a second time outside that section.
+  - `quarry/facade.go`'s header comment — the second "seven-package DAG" occurrence (line 3).
+  - `internal/cli/cli.go`'s package doc comment — enumerates every verb, the exit-code contract, and
+    the per-verb batch identity key.
+  - `internal/quarryengine/seam_enforcement_test.go` — the **header comment** carries both the
+    package enumeration (lines 2-3) and the third "seven-package DAG" occurrence (line 10). Its
+    `minPackageDirs` comment enumerates the packages too. Its
+    `TestEngineSeamInvariant_BannedImports` doc comment carries **no** enumeration and needs no edit.
+  - `internal/quarryengine/layering_test.go` — the const block's "eight import paths" comment, the
+    `layeringTable` comment enumerating the allowed directions, and the `minPackageDirs` comment
+    enumerating the package directories.
 
 **Out:**
 
@@ -96,6 +103,14 @@ into this task.
   `query.Options`, already re-exported as `quarry.Options`, passed through to `query.Callers`
   unchanged. Nothing is added to `query.Options` either — in particular there is no `Within` field,
   because `--within` is applied CLI-side (see Technical context). Only the result types are new.
+- Decision: the exported result types are named, in the engine package, `impact.Result` (the whole
+  envelope), `impact.Target` (the resolved symbol's identity — named for the JSON key, and to avoid
+  reading as a second `toc.Symbol`), `impact.Definition`, `impact.Caller`, and `impact.Range` (the
+  `start_line`/`sigend_line`/`end_line` triple, shared by `Definition` and `Caller.EnclosingRange`).
+  Their facade aliases follow the repo's existing `TOC`-prefix convention: `ImpactResult`,
+  `ImpactTarget`, `ImpactDefinition`, `ImpactCaller`, `ImpactRange`. These exact identifiers are
+  what the `quarry/facade_test.go` alias-pair, `init()` round-trip, and blank-identifier blocks must
+  be extended with, so they are fixed here rather than left to the implementer.
   Add a layering row
   `{pkgDir: "impact", allowed: pathSet(rootPkg, queryPkg, tocPkg)}` for both the production and test
   rows in `internal/quarryengine/layering_test.go`, and raise that file's `minPackageDirs` constant
@@ -173,11 +188,21 @@ into this task.
 ### resolved-symbol-definition-range
 
 - Decision: the top-level `definition` field is built from the *first* entry of `Callers`'
-  declaration set (sorted, so deterministic), run through the **same** enclosing-range lookup and
-  the **same** degradation rules used for every caller entry. It always carries `file` and `line`
-  (the raw 1-based declaration line the LSP returned); `start_line`, `sigend_line`, and `end_line`
-  are `omitempty` and present only when an enclosing toc symbol resolved; an `error` string carries
-  the reason when one did not.
+  declaration set (sorted, so deterministic), run through the **same** enclosing-range lookup as
+  every caller entry. It always carries `file` and `line` (the raw 1-based declaration line the LSP
+  returned). Beyond that there are **three** distinct outcomes, mirroring the caller side's own
+  two-way split rather than collapsing them into one "error" case:
+  1. **Resolved** — an enclosing toc symbol was found. `start_line`/`sigend_line`/`end_line` present;
+     no `error`; `target` present.
+  2. **Parsed, but no enclosing symbol** — the file parsed fine and simply has no listable
+     declaration covering that line. This is the *file-scope* outcome and is **not** an error, so it
+     is symmetric with `no-enclosing-declaration-is-not-an-error`: the range keys are omitted,
+     `error` is **absent**, and `target` is omitted. This is a real case, not a theoretical one:
+     `toc.Kind`'s vocabulary is function/method/type only, so a package-level `var`/`const`, a
+     struct field, or a Go `const` block target lands here.
+  3. **Parse or language failure** — unreadable file, invalid UTF-8, or no registered toc
+     `Strategy`. The range keys are omitted, `error` **is** present carrying the reason, and `target`
+     is omitted.
 - Decision: the top-level `target` object (the resolved symbol's own identity — `kind`, `name`,
   `owner`, `package`, `signature`) has exactly one provenance: it is the *same* `toc.Symbol` the
   `definition` enclosing lookup found. It is omitted entirely when that lookup found nothing. It is
@@ -276,6 +301,27 @@ into this task.
   stale against on-disk edits between calls.
 - Rejected: parsing per caller — quadratic on a file with many call sites. Rejected: a process-wide
   cache — staleness hazard for a long-lived SDK consumer, and outside this task's scope.
+
+### parse-loop-cancellation-and-timeout-scope
+
+- Decision: the per-caller-file parse loop checks `ctx.Done()` **between files** (before each
+  cache-miss parse) and returns `ctx.Err()` when the context is already cancelled. It does not
+  attempt to interrupt a parse already in flight.
+- Decision: `--timeout` deliberately does **not** cover the parse phase. Its help text already
+  scopes it to the LSP request phases ("initialize, resolve, references"), and that stays literally
+  true — no new phase is added to it, and no second timeout flag is introduced.
+- Rationale: `toc.TOCFile` takes no `ctx` at all (`internal/quarryengine/toc/toc.go`), so there is
+  nothing to thread a deadline into without changing toc's signature — which is out of scope and
+  would affect the toc verbs. A between-files check is the honest bound that is actually available:
+  it makes a cancelled `impact` stop promptly on a high-fan-in symbol (the verb's own target case,
+  where the loop can run over many files) without pretending to a per-parse deadline the backend
+  cannot enforce. Parse cost is linear in file size and the per-call cache bounds the loop to one
+  parse per distinct file, so unbounded growth comes from file *count*, which the cancellation check
+  covers.
+- Rejected: threading `ctx` into `toc.TOCFile` — changes a shared engine signature for one new
+  caller. Rejected: extending `--timeout` to wrap the parse loop — its documented meaning is
+  per-LSP-phase, and silently widening it would make the existing help text false. Rejected: a
+  separate `--parse-timeout` flag — a flag for a phase that cannot honour it mid-parse.
 
 ### cli-shape-mirrors-refs
 
@@ -401,9 +447,18 @@ into this task.
 - `internal/cli/cli.go` — `resolveContext`, `buildOptions`, `parseQuery`, `inFileQuery`,
   `isWithinDir`, `emitAmbiguousOrError`, `runBatch`, `batchStatus`/`statusRank`, `CwdFrom`,
   `SetExit`. Reuse all of these unchanged; add nothing parallel to them.
-- **Deliberately *not* on that reuse list: `filterWithin` and `filterUnexpectedCallers`.** Both take
-  and return `[]quarry.Reference`, while `impact`'s callers are its own struct type, so neither is
-  callable on `impact`'s data. Their rules are split by the seam instead:
+- **Deliberately *not* on that reuse list, because all four are typed to `[]quarry.Reference` and
+  `impact`'s result is its own struct: `filterWithin`, `filterUnexpectedCallers`,
+  `classifyLookupError`, and `emitLookupResult`.** "Add nothing parallel" applies to the first list,
+  not to these — each needs a small `impact`-typed counterpart, and that is expected work, not
+  duplication to avoid:
+  - `emitLookupResult`'s single-arg envelope mapping and `classifyLookupError`'s batch mapping are
+    reimplemented for `impact`'s result type, preserving the *same* three-way error routing
+    verbatim: `*quarry.ErrAmbiguousSymbol` (via `errors.As`) → `candidates` + `ok:true` + exit 2 /
+    `statusAmbiguous`; `quarry.ErrSymbolNotFoundSentinel` (via `errors.Is`) → exit 1 /
+    `statusNotFound` with no extra fields; anything else → `output.Err` exit 1 / `statusError` with
+    an `error` field. Do not invent a fourth branch or reorder the three.
+  - The remaining two split by the seam instead of being reimplemented wholesale:
   - **Declaration exclusion runs engine-side, inside `internal/quarryengine/impact`.** It cannot
     reuse `filterUnexpectedCallers` at all — `seam_enforcement_test.go` bans the engine from
     importing any `internal/*cli` package. The impact package re-implements the same small
@@ -459,10 +514,13 @@ into this task.
 - `toc` is deliberately not reached through `resolveContext`/`buildOptions` in the CLI (see
   `internal/cli/toc.go`'s header comment) because it needs no registry and no state dir. `impact`
   *does* need both — it makes LSP calls — so it uses the `refs` path, not the `toc` path.
-- The phrase "seven-package DAG" appears exactly once in `internal/quarryengine/doc.go` (line 50,
-  which also enumerates every package) and once more in `quarry/facade.go`'s header comment
-  (line 3). Both need updating to eight; the facade one is easy to miss because the doc-update
-  chore reads as a `doc.go`-only change.
+- The phrase "seven-package DAG" appears in three files, not one: `internal/quarryengine/doc.go`
+  (line 50), `quarry/facade.go`'s header comment (line 3), and
+  `internal/quarryengine/seam_enforcement_test.go`'s header comment (line 10). All three need
+  updating to eight, and the latter two are easy to miss because the doc-update chore reads as a
+  `doc.go`-only change. `doc.go` additionally enumerates the package set a *second* time at lines
+  41-46, outside the "# The package layout" section. See the Scope "In" doc-update list for the
+  full, precise inventory.
 - `internal/cli/cli.go`'s package doc comment enumerates every verb and the batch-mode identity key
   per verb (`symbol`-keyed vs `path`-keyed). `impact` is symbol-keyed; add it there.
 
@@ -505,9 +563,12 @@ assembly seam separately from the transport, the way `query`'s own `callersFromC
 Cover: declaration-set exclusion, recursive self-call retention, two call sites in one function
 producing two entries with equal `enclosing_range`, sort order, and — the two shapes the round-2
 review found undefined — an **empty declaration set with a nil error** (both `target` and
-`definition` omitted, callers still returned, no error) and a **declaration site whose file has no
-toc strategy** (`definition` present with `file` + `line` + `error`, no `start_line`/`end_line`,
-`target` omitted).
+`definition` omitted, callers still returned, no error) and all three `definition` outcomes:
+**resolved**; **parsed but no enclosing symbol** (a package-level `var` target — ranges omitted,
+`error` *absent*, `target` omitted); and **no toc strategy for the declaring file** (`definition`
+present with `file` + `line` + `error`, no `start_line`/`end_line`, `target` omitted). The middle
+case is the one that distinguishes the two non-resolving outcomes and must be asserted separately
+from the third, not folded into it.
 
 **`internal/cli` — CLI-level tests via `RunCLIIn`.** Follow `internal/cli/toc_test.go`'s and
 `cli_test.go`'s existing shape: drive the command, decode the JSON envelope, assert on keys and exit
