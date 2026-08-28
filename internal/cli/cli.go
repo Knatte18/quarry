@@ -4,11 +4,12 @@
 // Decision), so this file is where every engine result and typed error gets mapped to the
 // internal/output JSON envelope.
 
-// Package cli builds quarry's own command tree, exposing four verbs — "refs" (every reference to
-// a symbol or position), "definition" (a symbol or position's definition), "symbol" (a
-// workspace/symbol name search), and "assert-no-callers" (a CI-shaped gate: fail if a symbol has
-// any caller outside its declaration and an allowed list) — across the languages the quarry
-// engine package supports.
+// Package cli builds quarry's own command tree, exposing "refs" (every reference to a symbol or
+// position), "definition" (a symbol or position's definition), "symbol" (a workspace/symbol name
+// search), "assert-no-callers" (a CI-shaped gate: fail if a symbol has any caller outside its
+// declaration and an allowed list), and the "toc" group — "toc file" and "toc dir" (a source
+// file's or a directory's table of contents, tree-sitter-backed rather than LSP-backed) — across
+// the languages the quarry engine package supports.
 //
 // # The exit-code contract
 //
@@ -18,12 +19,19 @@
 // result the caller must disambiguate). symbol never produces "ambiguous"/exit 2 in
 // either shape: returning several workspace/symbol candidates is its ordinary
 // successful answer, not an error state needing disambiguation, so its single-arg
-// call only ever exits 0 or 1.
+// call only ever exits 0 or 1. toc's single-argument call has no "ambiguous" outcome
+// either: it exits 0 or 1 only.
 //
 // A call with 2 or more positional arguments switches to batch mode instead of the
-// single-symbol shape above: it returns one JSON entry per symbol under a top-level
-// "results" array, each entry carrying a 4th per-entry status — "found", "not_found",
-// "ambiguous" (refs/definition only), or "error" (a genuine infrastructure failure,
+// single-result shape above: it returns one JSON entry per argument under a top-level
+// "results" array, each entry carrying a per-entry status. The results array, the
+// status vocabulary, and the worst-status exit-code ranking are shared by every verb;
+// only the entry's identity key differs by shape. refs/definition/symbol/
+// assert-no-callers key each entry on "symbol", the resolved name or position; toc
+// file/toc dir key each entry on "path" instead, since a toc lookup addresses a
+// filesystem path, not a symbol. The status vocabulary is "found", "not_found",
+// "ambiguous" (refs/definition only; toc never produces it, matching its
+// single-argument shape above), or "error" (a genuine infrastructure failure,
 // distinct from a confirmed-absent "not_found") — and the process exit code is set to
 // the worst status present across the whole batch, ranked found(0) < not_found(1) <
 // ambiguous(2) < error(3).
@@ -48,7 +56,7 @@ import (
 func Command() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "quarry",
-		Short: "code intelligence lookups (references, definitions, symbol search) across supported languages",
+		Short: "code intelligence: LSP-backed symbol lookups plus tree-sitter-backed file/directory tables of contents",
 		RunE:  GroupRunE,
 	}
 
@@ -854,7 +862,9 @@ func parsePosition(arg string) (quarry.Position, bool) {
 	return quarry.Position{File: file, Line: line, Character: col}, true
 }
 
-// batchStatus is the per-symbol outcome in batch mode.
+// batchStatus is the per-entry outcome in batch mode, shared by every verb's batch driver —
+// runBatch's symbol-keyed entries and runPathBatch's (internal/cli/toc.go) path-keyed entries
+// alike.
 type batchStatus string
 
 const (
