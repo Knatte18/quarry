@@ -84,5 +84,7 @@ batches:
     commit_sha: 1a4deb7f7902962957cf7314738c57520e531979
     verify_baseline_failures: []
   - name: docs-and-followups
-    state: pending
+    state: running
+    implementer_session: afeb0f6b-08fe-4126-9200-3f55b90449cc
+    start_sha: a610a9c2abd152691c96f02419c0395c4448a9a1
 ```
