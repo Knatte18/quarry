@@ -155,3 +155,59 @@ func csharpBodyOnSignatureLine(body *ts.Node) bool {
 		return false
 	}
 }
+
+// Package implements Strategy by returning the namespace name: the "name" field of root's
+// file_scoped_namespace_declaration when there is one, otherwise the "name" field of the outermost
+// namespace_declaration, otherwise "" for a file in the global namespace. A qualified name such as a
+// dotted namespace is returned whole, exactly as written.
+//
+// When a file declares more than one braced namespace at the root, this returns the first one in
+// source order — a deliberate simplification: the field is one per file, so a multi-namespace file
+// gets the first namespace rather than a synthesized list.
+func (csharpStrategy) Package(root *ts.Node, src []byte) string {
+	for i := uint(0); i < root.ChildCount(); i++ {
+		child := root.Child(i)
+		switch child.Kind() {
+		case "file_scoped_namespace_declaration", "namespace_declaration":
+			return NodeText(child.ChildByFieldName("name"), src)
+		}
+	}
+	return ""
+}
+
+// Header implements Strategy by walking LeadingBlocks in order, stripping each block with
+// StripComment(b.Raw, "///") followed by StripComment(result, "//") so both the XML-doc and the
+// plain comment forms are handled, applying StripXMLDocTags, and returning the first block for which
+// IsDirectiveBlock("csharp", ...) is false. An auto-generated block is therefore skipped as a header
+// and the next block, if any, is taken instead.
+//
+// Header returns the text untruncated; FirstParagraph is applied by the entry points.
+func (csharpStrategy) Header(root *ts.Node, src []byte) string {
+	for _, block := range LeadingBlocks(root, src) {
+		stripped := StripXMLDocTags(StripComment(StripComment(block.Raw, "///"), "//"))
+		if !IsDirectiveBlock("csharp", block.StartLine, stripped) {
+			return stripped
+		}
+	}
+	return ""
+}
+
+// Generated implements Strategy by reading the raw text of the first leading block — directive or
+// not, since a generated-file banner is both a directive block for Header's purposes and a marker
+// here, and the two readings are independent — and delegating to GeneratedByBanner("csharp", raw).
+// The same block that Header skips as a header candidate is still consumed here as a marker.
+func (csharpStrategy) Generated(root *ts.Node, src []byte) (generated, known bool) {
+	blocks := LeadingBlocks(root, src)
+	if len(blocks) == 0 {
+		return GeneratedByBanner("csharp", "")
+	}
+	return GeneratedByBanner("csharp", blocks[0].Raw)
+}
+
+// TestFile implements Strategy by always reporting known == false. C# has no reliable test-file
+// naming rule: test-ness lives in attributes or in a project file referencing a test SDK, and a
+// "Tests.cs"-shaped filename is style, not a rule the toolchain enforces. The caller must therefore
+// omit the "test" key entirely rather than emit it as a best-effort false.
+func (csharpStrategy) TestFile(base string) (isTest, known bool) {
+	return false, false
+}
