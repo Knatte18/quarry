@@ -114,6 +114,7 @@ version, not assumed.
   - `internal/output/output.go`
   - `quarry/facade.go`
   - `internal/cli/cwdcontext.go`
+  - `internal/cli/exec.go`
 - **Edits:**
   - `internal/cli/toc.go`
 - **Creates:** none

@@ -184,7 +184,9 @@ machinery.
 - **Context:**
   - `internal/cli/cli.go`
   - `internal/cli/cwdcontext.go`
+  - `internal/cli/exec.go`
   - `internal/output/output.go`
+  - `internal/quarryengine/toc/types.go`
   - `quarry/facade.go`
 - **Edits:**
   - `internal/cli/toc.go`
