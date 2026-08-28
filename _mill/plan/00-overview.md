@@ -3,7 +3,7 @@
 ```yaml
 task: "Add file/dir toc verbs (Tree-sitter-backed)"
 slug: "toc-verbs"
-approved: false
+approved: true
 started: "20260827-182202"
 parent: "main"
 root: ""
