@@ -213,3 +213,71 @@ def test_require_pins_passes_once_all_four_carry_values():
     ladder = lc.load_ladder(LADDER_YAML)
     ladder = replace(ladder, run_model="claude-opus-5")
     lc.require_pins(ladder)
+
+
+""" DENY-LIST AND SETTINGS DERIVATION """
+
+
+@pytest.fixture
+def ladder():
+    return lc.load_ladder(LADDER_YAML)
+
+
+def test_deny_list_for_none_controls_denies_all_seven_quarry_names(ladder):
+    a0 = lc.config_by_id(ladder, "a0-none")
+    b0 = lc.config_by_id(ladder, "b0-none")
+    expected = sorted(lc.mcp_name(t) for t in lc.QUARRY_TOOLS)
+    assert lc.deny_list_for(ladder, a0) == expected
+    assert lc.deny_list_for(ladder, b0) == expected
+
+
+def test_deny_list_for_full_bundles_denies_no_quarry_name(ladder):
+    a5 = lc.config_by_id(ladder, "a5-bundle")
+    b7 = lc.config_by_id(ladder, "b7-bundle")
+    assert lc.deny_list_for(ladder, a5) == []
+    assert lc.deny_list_for(ladder, b7) == []
+
+
+def test_deny_list_for_b5_impact_denies_exactly_six():
+    ladder_obj = lc.load_ladder(LADDER_YAML)
+    b5 = lc.config_by_id(ladder_obj, "b5-impact")
+    assert len(lc.deny_list_for(ladder_obj, b5)) == 6
+
+
+def test_every_settings_document_contains_task_in_deny_and_identical_allow(ladder):
+    allow_sets = set()
+    for config in ladder.configs:
+        settings = lc.settings_document_for(ladder, config)
+        assert "Task" in settings["permissions"]["deny"]
+        allow_sets.add(tuple(settings["permissions"]["allow"]))
+    assert allow_sets == {("Read", "Grep", "Glob", "Bash")}
+
+
+def test_no_non_quarry_name_other_than_task_appears_in_any_deny_list(ladder):
+    quarry_names = {lc.mcp_name(t) for t in lc.QUARRY_TOOLS}
+    for config in ladder.configs:
+        settings = lc.settings_document_for(ladder, config)
+        for name in settings["permissions"]["deny"]:
+            assert name == "Task" or name in quarry_names
+
+
+def test_drift_guard_fabricated_eighth_tool_appears_in_every_restricted_deny_list(ladder):
+    # Post-load mutation on purpose: load_ladder rejects a quarry_tools list
+    # that is not exactly the canonical seven, so this drift can only be
+    # expressed on an already-loaded Ladder. It proves deny_list_for derives
+    # from ladder.quarry_tools with no per-config edit -- not that the
+    # loader accepts an eighth tool.
+    mutated = replace(ladder, quarry_tools=ladder.quarry_tools + ("eighth_tool",))
+    for config in mutated.configs:
+        deny = lc.deny_list_for(mutated, config)
+        if "eighth_tool" not in config.allowed:
+            assert lc.mcp_name("eighth_tool") in deny
+
+
+def test_write_settings_serialises_the_settings_document(tmp_path, ladder):
+    a0 = lc.config_by_id(ladder, "a0-none")
+    out_path = tmp_path / "settings.json"
+    lc.write_settings(ladder, a0, out_path)
+    with open(out_path) as f:
+        written = json.load(f)
+    assert written == lc.settings_document_for(ladder, a0)

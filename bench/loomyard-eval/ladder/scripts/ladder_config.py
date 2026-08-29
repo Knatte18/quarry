@@ -10,6 +10,7 @@ Usage:
     from ladder_config import load_ladder, deny_list_for, preamble_for
     ladder = load_ladder("bench/loomyard-eval/ladder/ladder.yaml")
 """
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -273,3 +274,43 @@ def require_pins(ladder):
         raise LadderConfigError("ladder.yaml: scorer.model is unset")
     if ladder.scorer.effort is None:
         raise LadderConfigError("ladder.yaml: scorer.effort is unset")
+
+
+""" DENY-LIST AND SETTINGS DERIVATION """
+
+
+def deny_list_for(ladder, config):
+    """
+    Returns the sorted list of client-side mcp__quarry__* names for every
+    canonical tool in ladder.quarry_tools not in config.allowed. Always
+    prefixed via mcp_name -- never assembled from a literal -- so a config's
+    deny-list tracks ladder.quarry_tools even for a deliberately mutated,
+    already-loaded Ladder (see the drift-guard test).
+    """
+    return sorted(mcp_name(tool) for tool in ladder.quarry_tools if tool not in config.allowed)
+
+
+def settings_document_for(ladder, config):
+    """
+    Returns the full settings mapping a run is launched with:
+    permissions.allow is fixed to Read/Grep/Glob/Bash (prompt-avoidance
+    only, per the plan's Shared Decision -- never treated as an allowlist
+    anywhere in this suite), and permissions.deny is config's quarry
+    deny-list plus "Task", denied uniformly across all 45 runs so a
+    dispatched subagent's tool calls can never produce an undercounted
+    transcript.
+    """
+    deny = sorted(deny_list_for(ladder, config) + ["Task"])
+    return {
+        "permissions": {
+            "allow": ["Read", "Grep", "Glob", "Bash"],
+            "deny": deny,
+        }
+    }
+
+
+def write_settings(ladder, config, path):
+    """Serialises settings_document_for(ladder, config) as JSON to path."""
+    with open(path, "w") as f:
+        json.dump(settings_document_for(ladder, config), f, indent=2)
+        f.write("\n")
