@@ -41,7 +41,7 @@ Batch-local decision: the transcript event shapes this batch parses are the ones
   - `errored-tool-result.jsonl`: a run containing a `tool_result` block with `is_error: true`.
   - `targetdir-override.jsonl`: a run containing an `mcp__quarry__impact` tool call whose `input` carries a `targetDir` key, and a second containing `buildTags`.
   - `none-target-origin-mention.jsonl`: a `none`-shaped run — empty `mcp_servers`, no `mcp__quarry__*` name anywhere — whose transcript contains the word `quarry` only inside a `tool_result` payload that reads as file content from the task worktree.
-  - `cold-native-fallback.jsonl`: an `a5-bundle-cold`-shaped run that completed normally; it carries no signal of its own about daemon strategy, and exists so batch 3's cold-cell gate can be tested against a real transcript alongside a filesystem state that lacks the post-run marker.
+  - `cold-native-fallback.jsonl`: an `a5-bundle-cold`-shaped run that completed normally using **only** `mcp__quarry__toc_file` and `mcp__quarry__toc_dir` quarry calls, plus non-quarry calls. It carries no call to any daemon-backed tool, which is exactly the third cold-cell outcome batch 3's gate must distinguish from a native fallback: the toc handlers never start a daemon, so this run writes no daemon state and yet is not a fallback.
 - **Commit:** `test(bench): add tracked transcript fixtures for the ladder suite`
 
 ### Card 7: extract per-run metrics from a transcript

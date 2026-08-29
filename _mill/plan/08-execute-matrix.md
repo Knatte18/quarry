@@ -72,9 +72,9 @@ Every literal path here spells the results directory `bench/loomyard-eval/ladder
 - **Moves:** none
 - **Requirements:** Run the cold cell after the entire main matrix has finished, never before and never interleaved. Each of its three runs gets its own freshly-built worktree at a distinct path, no warm-up, and its coldness asserted on both sides: no daemon state before, and daemon state present after. Between runs the harness waits for the previous run's daemon to exit.
 
-  Two dispositions, and they are not the same thing. A cold run that finishes with no daemon state present took the native fallback; it is invalidated and retried, and a persistent native fallback means the supervised strategy is unavailable on this machine. In that case the cold cell is reported as **not run** — an environment limitation — and the matrix is not halted. A different gate failing three times is a fault and does halt the matrix, exactly as in the main matrix.
+  Three dispositions, and they are not the same thing. A cold run that **used a daemon-backed tool** and finishes with no daemon state present took the native fallback; it is invalidated and retried, and a persistent native fallback means the supervised strategy is unavailable on this machine — the cold cell is then reported as **not run**, an environment limitation, and the matrix is not halted. A cold run that used **no** daemon-backed tool is valid and is kept: `toc_file` and `toc_dir` never start a daemon, so its lack of daemon state is not a fallback; if all three repetitions are of this shape the cell holds three good runs that carry no warmth signal, which is a third outcome distinct from not-run. A different gate failing three times is a fault and does halt the matrix, exactly as in the main matrix.
 
-  Report which of the two outcomes occurred, so batch 9 knows whether it has a warm-vs-cold contrast to write about at all.
+  Report which of the three outcomes occurred, so batch 9 knows whether it has a warm-vs-cold contrast to write about at all.
 - **Commit:** none
 
 ### Card 27: summarise the matrix

@@ -40,7 +40,7 @@ batches:
   - number: 5
     name: summarize-and-separation
     file: 05-summarize-and-separation.md
-    depends-on: [1]
+    depends-on: [1, 3]
     verify: uv run --no-project --with pytest --with pyyaml python -m pytest bench/loomyard-eval/ladder/tests/test_summarize.py -q
   - number: 6
     name: run-orchestration
@@ -99,8 +99,20 @@ batches:
 ### Decision: filesystem setting sources are disabled per run
 
 - **Decision:** every `claude -p` invocation the harness makes — matrix runs, the preflight probe, and every scoring call — passes `--setting-sources ""` and `--strict-mcp-config`.
-- **Rationale:** the discussion neutralises the task worktree's own `.claude/` directory but does not address the operator's user-level settings, which would otherwise layer a second, unaudited permissions and hooks source under the generated `--settings` file — the same defect the worktree-neutralisation decision exists to prevent, sourced from the operator's home directory instead. `--strict-mcp-config` is the matching guard for MCP servers: without it a `none` run could inherit an ambient quarry server declaration and observe the `mcp__quarry__*` namespace, defeating the blinding. Both flags were confirmed accepted by the installed client (2.1.236) while planning.
+- **Rationale:** the discussion neutralises the task worktree's own `.claude/` directory but does not address the operator's user-level settings, which would otherwise layer a second, unaudited permissions and hooks source under the generated `--settings` file — the same defect the worktree-neutralisation decision exists to prevent, sourced from the operator's home directory instead. `--strict-mcp-config` is the matching guard for MCP servers: without it a `none` run could inherit an ambient quarry server declaration and observe the `mcp__quarry__*` namespace, defeating the blinding.
 - **Applies to:** all batches
+
+### Decision: every client flag the harness depends on was checked against the installed client
+
+- **Decision:** all 46 benchmark dispatches and all 45 scoring calls depend on a small set of `claude` flags being accepted with the exact spelling the plan gives. Each was exercised against the installed client (2.1.236) while planning, and the harness uses no flag that was not: `--print`, `--output-format stream-json` with `--verbose`, `--output-format json`, `--setting-sources ""`, `--strict-mcp-config`, `--settings <file>`, `--permission-mode dontAsk`, `--model <full model id>`, `--effort high`, `--mcp-config <file>`, and `--max-turns`.
+- **Rationale:** a flag rejected by the client fails every one of the 46 runs identically, and would be discovered only after the operator has pinned a model and started a multi-hour paid matrix. `--permission-mode dontAsk` was exercised in both planning probes; `--effort high` alongside an explicit `--model claude-opus-5` in a third. Recording the check here means the plan's flag spellings are evidence rather than recollection, and a future client version that drops one of them fails against a written list rather than silently.
+- **Applies to:** batch 4, batch 6, batch 8
+
+### Decision: the cold cell can only measure warmth on a daemon-backed run
+
+- **Decision:** `toc_file` and `toc_dir` are excluded from the set of daemon-backed tools. Every cold-cell assertion about daemon state applies only to a run whose transcript contains at least one call to a tool in `DAEMON_BACKED_TOOLS` — `textDocument_definition`, `textDocument_references`, `workspace_symbol`, `impact`, `assert_no_callers`. A cold run that invoked none of them is valid and is not invalidated; it simply carries no warmth signal, and both the summary and the conclusion say so.
+- **Rationale:** established from source while planning: `tocFileHandler` and `tocDirHandler` in `internal/mcpserver/tools_toc.go` call `effectiveTargetDir` and `tocPreflight` directly and never `resolveCall`, so a toc call never reaches `EnsureServer` and never writes a `daemon.json`. The cold cell runs `a5-bundle-cold` against the task-01 exploration task, which a bundle agent can plausibly answer with toc calls alone — so "no `daemon.json` after the run" has two completely different causes, and reading it unconditionally as "the native fallback was taken" would invalidate perfectly good runs and, worse, could invalidate all three and report an environment limitation that does not exist. This is also a real limit on what the cold cell can deliver: if none of its three runs touches a daemon-backed tool, the warm-versus-cold question is reported as unanswered rather than answered from runs that never started a daemon.
+- **Applies to:** batch 3, batch 5, batch 6, batch 8, batch 9
 
 ### Decision: token classes are summed from assistant events, not read off the result envelope
 
