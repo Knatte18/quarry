@@ -163,7 +163,7 @@ scoped to one package comes back both complete and precise:
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			buildTagsResolved := resolveBuildTags(buildTags)
+			buildTagsResolved := ResolveBuildTags(buildTags)
 			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
@@ -322,7 +322,7 @@ then ignored, never combined or validated against it.`,
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			buildTagsResolved := resolveBuildTags(buildTags)
+			buildTagsResolved := ResolveBuildTags(buildTags)
 			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
@@ -456,7 +456,7 @@ matches into an ambiguity failure. Example:
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			buildTagsResolved := resolveBuildTags(buildTags)
+			buildTagsResolved := ResolveBuildTags(buildTags)
 			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
@@ -512,14 +512,14 @@ matches into an ambiguity failure. Example:
 // would resolve filepath.Abs("") (the process working directory) rather than the seam cwd.
 //
 // configFlag and stateDirFlag are the --config and --state-dir flag values, threaded straight
-// through to resolveConfigPath and resolveStateDir so their own $QUARRY_CONFIG/$QUARRY_STATE_DIR
+// through to ResolveConfigPath and ResolveStateDir so their own $QUARRY_CONFIG/$QUARRY_STATE_DIR
 // and user-directory-default precedence tiers apply unchanged.
 //
-// buildTags is the already-resolved (resolveBuildTags-normalized) build-tag set, threaded
-// straight through to resolveStateDir so the returned state directory carries its "tags-<hex>"
+// buildTags is the already-resolved (ResolveBuildTags-normalized) build-tag set, threaded
+// straight through to ResolveStateDir so the returned state directory carries its "tags-<hex>"
 // segment whenever buildTags is non-empty.
 //
-// The returned error carries a resolveConfigPath, quarry.LoadRegistry, or resolveStateDir failure
+// The returned error carries a ResolveConfigPath, quarry.LoadRegistry, or ResolveStateDir failure
 // unchanged — a malformed servers.yaml, or a userConfigDir/userCacheDir failure, still fails the
 // lookup rather than degrading silently.
 func resolveContext(dir, configFlag, stateDirFlag string, buildTags []string) (quarry.Registry, string, string, error) {
@@ -533,7 +533,7 @@ func resolveContext(dir, configFlag, stateDirFlag string, buildTags []string) (q
 		abs = filepath.Clean(dir)
 	}
 
-	configPath, err := resolveConfigPath(configFlag)
+	configPath, err := ResolveConfigPath(configFlag)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -542,7 +542,7 @@ func resolveContext(dir, configFlag, stateDirFlag string, buildTags []string) (q
 		return nil, "", "", err
 	}
 
-	stateDir, err := resolveStateDir(stateDirFlag, abs, buildTags)
+	stateDir, err := ResolveStateDir(stateDirFlag, abs, buildTags)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -654,7 +654,7 @@ and symbol are unchanged by this task and gain no verification flag.`,
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			buildTagsResolved := resolveBuildTags(buildTags)
+			buildTagsResolved := ResolveBuildTags(buildTags)
 			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))

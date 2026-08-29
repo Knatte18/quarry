@@ -119,7 +119,7 @@ those whose file lies within <dir> (relative to --target-dir, or absolute):
 
 			configFlag, _ := cmd.Flags().GetString("config")
 			stateDirFlag, _ := cmd.Flags().GetString("state-dir")
-			buildTagsResolved := resolveBuildTags(buildTags)
+			buildTagsResolved := ResolveBuildTags(buildTags)
 			registry, _, stateDir, err := resolveContext(dir, configFlag, stateDirFlag, buildTagsResolved)
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))

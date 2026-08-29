@@ -20,22 +20,22 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// userConfigDir is the seam resolveConfigPath calls through instead of os.UserConfigDir()
+// userConfigDir is the seam ResolveConfigPath calls through instead of os.UserConfigDir()
 // directly, so tests can redirect resolution at a t.TempDir() without ever touching the real
 // machine-global config directory. Production leaves it at the stdlib default.
 var userConfigDir = os.UserConfigDir
 
-// userCacheDir is the seam resolveStateDir calls through instead of os.UserCacheDir() directly,
+// userCacheDir is the seam ResolveStateDir calls through instead of os.UserCacheDir() directly,
 // so tests can redirect resolution at a t.TempDir() without ever touching the real machine-global
 // cache directory. Production leaves it at the stdlib default.
 var userCacheDir = os.UserCacheDir
 
-// resolveConfigPath resolves the servers.yaml config file path, in precedence order: flagValue
+// ResolveConfigPath resolves the servers.yaml config file path, in precedence order: flagValue
 // (the --config flag), then $QUARRY_CONFIG, then filepath.Join(userConfigDir(), "quarry",
 // "servers.yaml").
 // It resolves a path only and never reads the file — an absent file is not an error at this
 // layer, because LoadRegistry is what falls back to the built-in registry.
-func resolveConfigPath(flagValue string) (string, error) {
+func ResolveConfigPath(flagValue string) (string, error) {
 	if flagValue != "" {
 		return flagValue, nil
 	}
@@ -49,16 +49,16 @@ func resolveConfigPath(flagValue string) (string, error) {
 	return filepath.Join(dir, "quarry", "servers.yaml"), nil
 }
 
-// resolveBuildTags resolves the normalized build-tag set, in precedence order: flagValue (the
+// ResolveBuildTags resolves the normalized build-tag set, in precedence order: flagValue (the
 // --build-tags flag), then $QUARRY_BUILD_TAGS, then empty. Whichever raw comma-separated string
 // wins is passed to quarry.NormalizeBuildTags, so a raw value that normalizes away entirely —
 // "", ",", " , " — yields nil from either source, which every downstream consumer (the
 // initializationOptions render, the tags-<hex> state-directory segment, and nativeArgv) treats as
 // "no build tags", per the empty-tag-set-is-a-uniform-no-op Shared Decision.
-// It shares resolveConfigPath's and resolveStateDir's flag-then-environment-then-default
+// It shares ResolveConfigPath's and ResolveStateDir's flag-then-environment-then-default
 // resolution shape, which is why it lives beside them rather than in cli.go, even though it is
 // the one function in this file that imports beyond the standard library.
-func resolveBuildTags(flagValue string) []string {
+func ResolveBuildTags(flagValue string) []string {
 	raw := flagValue
 	if raw == "" {
 		raw = os.Getenv("QUARRY_BUILD_TAGS")
@@ -89,7 +89,7 @@ func workspaceKey(targetDir string) string {
 // "tags-" followed by the first 12 hex characters of the SHA-256 digest of the normalized tags
 // joined with ",". It shares workspaceKey's hash-and-6-byte-truncate convention above, so this
 // file carries one hashing convention rather than two, and it is factored out here specifically
-// so resolveStateDir can call it at all three of its precedence tiers.
+// so ResolveStateDir can call it at all three of its precedence tiers.
 // The re-normalization here (via quarry.NormalizeBuildTags, defensive of a caller that has
 // already normalized) is what makes two tag sets differing only in input order — []string{"a",
 // "b"} and []string{"b", "a"} — hash to the same segment.
@@ -98,7 +98,7 @@ func buildTagsSegment(buildTags []string) string {
 	return "tags-" + hex.EncodeToString(sum[:6])
 }
 
-// resolveStateDir resolves the leaf state directory for targetDir, in precedence order:
+// ResolveStateDir resolves the leaf state directory for targetDir, in precedence order:
 // flagValue (the --state-dir flag), then $QUARRY_STATE_DIR, then
 // filepath.Join(userCacheDir(), "quarry", workspaceKey(targetDir)).
 // The returned directory is the leaf the engine is told; it carries no "<lang>" segment, because
@@ -115,7 +115,7 @@ func buildTagsSegment(buildTags []string) string {
 // because the first two tiers never call workspaceKey: folding the tag segment in there would
 // silently collide two different tag sets onto one socket for an operator who pins --state-dir or
 // $QUARRY_STATE_DIR, which is exactly the case this keying exists to prevent.
-func resolveStateDir(flagValue, targetDir string, buildTags []string) (string, error) {
+func ResolveStateDir(flagValue, targetDir string, buildTags []string) (string, error) {
 	var leaf string
 	switch {
 	case flagValue != "":
@@ -123,7 +123,7 @@ func resolveStateDir(flagValue, targetDir string, buildTags []string) (string, e
 	case os.Getenv("QUARRY_STATE_DIR") != "":
 		// Read once per branch rather than caching to a local first: os.Getenv
 		// is cheap, and this keeps each precedence tier self-contained,
-		// mirroring resolveConfigPath's own two-read shape for QUARRY_CONFIG.
+		// mirroring ResolveConfigPath's own two-read shape for QUARRY_CONFIG.
 		leaf = os.Getenv("QUARRY_STATE_DIR")
 	default:
 		dir, err := userCacheDir()
@@ -142,7 +142,7 @@ func resolveStateDir(flagValue, targetDir string, buildTags []string) (string, e
 // resolveTOCConfigPath resolves the optional toc config file path for targetDir, in precedence
 // order: $QUARRY_TOC_CONFIG when set, otherwise filepath.Join(targetDir, ".quarry.yaml").
 // It resolves a path only and never reads the file — an absent file is not an error at this
-// layer, mirroring resolveConfigPath above for the servers.yaml overlay. Unlike resolveConfigPath
+// layer, mirroring ResolveConfigPath above for the servers.yaml overlay. Unlike ResolveConfigPath
 // it returns no error, because it never consults a machine-global directory (no os.UserConfigDir
 // equivalent) and so has nothing to fail at.
 //
