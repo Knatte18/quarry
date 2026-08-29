@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -29,4 +29,25 @@ plan-fix-r4  '2026-08-29T07:31:55Z'
 plan-review-r5  '2026-08-29T07:37:29Z'
 plan-fix-r5  '2026-08-29T07:38:49Z'
 planned  '2026-08-29T07:38:58Z'
+implementing  '2026-08-29T07:39:30Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: export-cli-helpers
+    state: pending
+  - name: mcpserver-foundation
+    state: pending
+  - name: lsp-mirrored-tools
+    state: pending
+  - name: quarry-native-lsp-tools
+    state: pending
+  - name: toc-tools
+    state: pending
+  - name: server-binary-and-transport-tests
+    state: pending
+  - name: integration-and-docs
+    state: pending
 ```
