@@ -131,6 +131,7 @@ That maps directly onto the friction observed and fixed this session.
   - `classifyLookupError` (`cli.go:942`), `classifySymbolError` (`cli.go:963`), `classifyImpactError` (`impact.go:234`) — all three return the unexported `batchStatus`, and `classifyImpactError` also injects the `resolution` marker and the marshal-failure reword, both of which the MCP layer decides for itself.
   - `referenceFields` (`cli.go:835`), `symbolMatchFields` (`cli.go:793`) — three- and five-key `map[string]any` builders, trivially rewritten, and the MCP layer emits them under its own entry keys.
   - `rewordImpactMarshalFailure` (`impact.go:261`) — the MCP layer needs the same `"toc: "`→`"impact: "` rewrite but applied to its own error text.
+  - the `except`-set composition (`cli.go:692-699`) — three lines, and it feeds `FilterUnexpectedCallers`'s prebuilt-map parameter rather than being a function; see assert-no-callers-semantics for the base it must resolve against.
 - **Deliberately reimplemented, not exported:** the per-entry status classification.
   `classifyLookupError` (`cli.go:942`) and `classifySymbolError` (`cli.go:963`) return a `batchStatus` plus fields shaped for the CLI's own envelope, which is not the MCP envelope (no `target` key, no `structuredContent`, and the CLI's `statusRank` exit-code machinery has no MCP counterpart).
   `internal/mcpserver` writes its own classification.
@@ -208,7 +209,7 @@ That maps directly onto the friction observed and fixed this session.
   At **server startup**, before any handler can run: the launch default is `--target-dir` when given, else the server's own process working directory; either way it is resolved through `filepath.Abs` **once, at startup**, and the resolved absolute path is logged to stderr.
   If absolutisation fails, the server exits non-zero with that error rather than starting.
   At **handler entry**, a per-call `targetDir` override is resolved through `filepath.Abs` immediately, before it is used for anything.
-  Every downstream consumer — `AbsOrJoin`, `ResolveStateDir`, `FilterWithin`, `FilterImpactWithin`, and the facade's `Options.TargetDir` — therefore only ever sees an absolute path.
+  Every downstream consumer — `AbsOrJoin`, `ResolveStateDir`, `FilterWithin`, `FilterImpactWithin`, `ResolveTOCPath`, the `except`-set composition (see assert-no-callers-semantics), and the facade's `Options.TargetDir` — therefore only ever sees an absolute path.
 - Rationale for pinning this: three separate places silently depend on it.
   `ResolveStateDir` hashes `filepath.Clean(abs(targetDir))` into the daemon key, so a relative value resolved at a different moment keys a different daemon.
   `filterWithin` falls back to `filepath.Abs` against the **process** working directory when its `baseDir` is still relative (`cli.go:762-771`) — a documented CLI convention, but one that would make `within` scoping resolve against the server's cwd instead of the caller's project.
@@ -227,6 +228,20 @@ That maps directly onto the friction observed and fixed this session.
 - Rejected: one target per call (would have matched the LSP request shape, but the justification — "Claude can issue several tool calls in one message" — is false for the primary consumer); arrays only on the quarry-native tools (splits the mechanism exactly where it is needed most).
 - Note: the "no LSP analogue for a batch shape" cost is real but irrelevant.
   `textDocument/definition` is single-request in every LSP variant, so no option here has a batch shape to mirror — there is no hedge to lose at the batch level.
+
+### input-schema-strictness
+
+- Decision: input schemas are **strict about the call, permissive about the entry.**
+  - Encoded in the schema, so a violation is a whole-call `isError` before any entry runs: the array's `minItems`/`maxItems`, the presence and JSON type of every call-wide parameter, and the entry array being an array of objects.
+  - **Not** encoded as a schema `oneOf`: the entry union itself.
+    Each tool's entry object declares every property it can accept (`textDocument`, `position`, `symbol` for the two `textDocument_*` tools; `query` for `workspace_symbol`; `file`, `line`, `character`, `symbol`, `within`, `except` for the quarry-native ones) as **optional**, with the legal combinations described in the property descriptions.
+    The handler validates the combination per entry.
+  - An entry whose combination is not one of the legal forms — a `position` with no `textDocument`, neither `symbol` nor `position`, a `textDocument`+`position` entry sent to `workspace_symbol` — is **per-entry `status: "error"`**, with a message naming the accepted forms for that tool.
+- Rationale: this is the same partial-results principle result-shape applies to the output schema, applied to the input.
+  A schema-level `oneOf` fails the entire `tools/call` request, so one malformed entry in a 20-entry array would discard 19 good answers — the exact outcome error-mapping exists to prevent, reintroduced through the schema instead of through `isError`.
+  Call-level properties are different: they are single-valued, so rejecting them early costs no partial result and catches the error at the cheapest point.
+  The rule is uniform across all seven tools, including `workspace_symbol` — no tool gets an entry-level schema strictness the others lack.
+- Rejected: encoding the union as a `oneOf` (maximally precise, discards good entries); no schema at all beyond types (gives the model no shape guidance, which is what the task exists to provide).
 
 ### batching-execution-model
 
@@ -259,7 +274,7 @@ That maps directly onto the friction observed and fixed this session.
   - project-wide symbol name: `{"symbol": "Name"}`
   - file-scoped symbol name: `{"textDocument": {"uri": "..."}, "symbol": "Name"}`
 - **`workspace_symbol` is the exception: it accepts one entry form only.**
-  Its array elements are `{"query": "Name"}` — LSP's own `WorkspaceSymbolParams` field name — and its schema declares nothing else, so a position or file-scoped entry is **rejected by schema validation before the handler runs**.
+  Its array elements are `{"query": "Name"}` — LSP's own `WorkspaceSymbolParams` field name — and its schema declares no other entry property, so a position or file-scoped entry is rejected **per entry** by the handler (see input-schema-strictness), never silently mis-executed.
   Reason: `query.Symbol` reads only `opts.Query.Symbol` (`query/symbol.go:90`).
   A position entry would search for the empty string and a file-scoped entry would silently drop the scoping — both returning a confident wrong answer rather than an error.
   The CLI offers neither form for `symbol` either (no `--in-file`, no `--within`, `cli.go:466-492`).
@@ -286,7 +301,7 @@ That maps directly onto the friction observed and fixed this session.
   Keeping the two shapes cleanly separated is also what makes #006 interpretable: any measured difference is attributable to shape, not to a muddled hybrid.
   It has the side benefit that quarry-native tool output stays directly comparable with the CLI's.
   Scope that claim precisely: the **payload fields** of an entry match the CLI's (`files`, `path`, `callers`, `violation`, impact's marshalled result, and the same `status` vocabulary and wording).
-  The **envelope** does not and cannot — MCP entries are keyed `target` uniformly, where the CLI uses `symbol` in `runBatch` and `path` in `runPathBatch` (`toc.go:428`ff), and there is no `ok` field or exit code.
+  The **envelope** does not and cannot — MCP entries are keyed `target` uniformly, where the CLI uses `symbol` in `runBatch` (`cli.go:976`) and `path` in `runPathBatch` (`toc.go:449`), and there is no `ok` field or exit code.
 - Rejected: applying the LSP nested shape uniformly for internal consistency (would contradict the brief and destroy #006's ability to attribute a result).
 - Consequence to handle explicitly: the server exposes two positional conventions at once — 0-based on the LSP-mirrored three, 1-based on the quarry-native ones.
   Every tool's description string must state its convention in its first line so the difference is never inferred.
@@ -340,7 +355,8 @@ That maps directly onto the friction observed and fixed this session.
 
   `tocFileCommand`/`tocDirCommand` never call `resolveContext`, `LoadRegistry`, or `resolveStateDir` (`toc.go:104-140`), so a malformed `servers.yaml` must **not** fail a `toc_file` call — the CLI succeeds there, and failing would be a behavioural divergence.
   Conversely toc has two up-front validations of its own that the CLI performs once, before any argument is processed, and they belong in the whole-call set for exactly that reason.
-  Everything surfacing from a per-entry facade call is per-entry `status: "error"` — **including daemon spawn failures** (`ErrServerNotFound`, `ErrServerSpawnTimeout`, `ErrServerTimeout`).
+  Everything that happens **per entry** is per-entry `status: "error"` — both anything surfacing from that entry's facade call (**including daemon spawn failures**: `ErrServerNotFound`, `ErrServerSpawnTimeout`, `ErrServerTimeout`) and anything failing before it, namely the entry-combination validation described under input-schema-strictness.
+  A parse failure is not a facade error, but it is per-entry, and per-entry is what determines the disposition.
 - Rationale: reuses `classifyLookupError`/`classifySymbolError`'s **error predicates** exactly (see export-inventory — the classification itself is reimplemented for a different envelope), and preserves partial results.
   This matters far more under array batching than it would have for single-target calls: with arrays, `isError` on one bad target would discard every good answer in the same call.
 - On daemon spawn failure specifically: round 2's list named it as a whole-call failure, which was wrong — it surfaces only as the error returned from a per-entry facade call, where no predicate distinguishes it from any other per-entry error.
@@ -360,6 +376,12 @@ That maps directly onto the friction observed and fixed this session.
   - A violation never sets tool-level `isError`.
     It is an answer to the question asked, not a failure to answer it.
   - `except` and `within` are **per-entry** for this tool.
+  - **`except` absolutisation base, pinned:** each per-entry `except` path is resolved with `AbsOrJoin` against the effective absolute `targetDir` — never the process cwd — and then `filepath.Clean`ed, and the cleaned paths form the `map[string]bool` that `FilterUnexpectedCallers` takes.
+    This mirrors the CLI's inline composition (`cli.go:692-699`) exactly, and it matters because that map is compared against `filepath.Clean(r.File)` on already-absolute `Reference.File` values: a base mismatch makes every exemption silently fail to match, turning a sanctioned wrapper into a reported violation.
+    The composition is three lines and is **reimplemented** in `internal/mcpserver`, not exported — `FilterUnexpectedCallers` takes the built map, so there is no shared function to reuse.
+  - **Status predicates:** the LSP predicates from error-mapping apply here unchanged — `errors.As` → `ambiguous`, `errors.Is(ErrSymbolNotFoundSentinel)` → `not_found`, otherwise `error`.
+    The CLI's own path differs: `emitAmbiguousOrError` (`cli.go:725-734`) maps ambiguity to `candidates` with exit 2 but sends `ErrSymbolNotFound` to a plain error envelope, never `not_found`.
+    That is not a divergence to preserve — it is an artefact of `assert-no-callers` having no batch envelope at all (`cobra.ExactArgs(1)`), and `not_found` here is an intended addition arriving *with* the batch envelope, using the same status vocabulary as the other six tools.
 - Rationale: overloading `status` with a fifth `violation` value would make "did the lookup succeed" and "was the assertion satisfied" indistinguishable, and would break the shared `found`/`not_found`/`ambiguous`/`error` vocabulary every other tool uses.
   Keeping them orthogonal means a caller reads `status` to know whether to trust the entry and `violation` to know the answer.
   `except` is inherently per-target — it names the specific paths sanctioned for *that* symbol — so a call-wide `except` would either leak one target's exemptions onto another's check (silently weakening the gate) or force one call per symbol, destroying the batching the tool exists to provide.
@@ -377,6 +399,29 @@ That maps directly onto the friction observed and fixed this session.
   `noVerify` is a mode for the whole check and `docSentences` a rendering choice; neither is target-specific.
   Everything remaining that genuinely differs per target is per-entry.
 - Rejected: making every answer-shaping parameter per-entry uniformly (simple rule, but `lang`/`buildTags` per entry would silently mismatch the daemon serving the call); keeping `within`/`except` call-wide for CLI parity (the contradiction round 1 caught).
+- **The rule alone is not enough — the per-tool sets differ.**
+  This matrix is authoritative; a tool exposes exactly these and nothing else:
+
+  | Tool | Entry form | Per-entry | Call-wide |
+  | --- | --- | --- | --- |
+  | `textDocument_definition` | 3-form LSP union | `within` | `lang`ᴬ, `buildTags`, `targetDir` |
+  | `textDocument_references` | 3-form LSP union | `within` | `lang`ᴬ, `buildTags`, `targetDir` |
+  | `workspace_symbol` | `{query}` only | — | `lang`ᴬ, `buildTags`, `targetDir` |
+  | `impact` | flat union | `within` | `lang`ᴬ, `buildTags`, `targetDir` |
+  | `assert_no_callers` | flat union | `within`, `except` | `lang`ᴬ, `buildTags`, `noVerify`, `targetDir` |
+  | `toc_file` | plain path | — | `lang`ᴮ, `docSentences`, `targetDir` |
+  | `toc_dir` | plain path | — | `lang`ᴮ, `targetDir` |
+
+  - `workspace_symbol` has no `within`: the CLI registers none (`cli.go:497-500`), and `query.Symbol` has nothing to filter per-file against.
+  - **`toc_dir` has no `docSentences`.**
+    The CLI registers `--doc-sentences` on `toc file` only, deliberately — `toc dir` emits headers and never docstrings, so the setting has nothing to affect there (`toc.go:153-156`).
+  - **Neither toc tool has `buildTags`.**
+    toc is tree-sitter-backed, never loads the server registry, and registers no `--build-tags`.
+  - `noVerify` is `assert_no_callers`-only, exactly as `--no-verify` is in the CLI.
+- **`lang` is two different parameters wearing one name:**
+  - ᴬ **LSP-backed five** — a **registry key**, validated by `registry.DetectLanguage` through `resolveContext`; an unknown value fails there.
+  - ᴮ **toc two** — validated by `ValidateTOCLang` against `quarry.TOCLanguages()` (`toc.go:239`), which toc checks *without* loading the server registry at all, and whose semantics differ per tool: on `toc_file` it overrides detection, on `toc_dir` it restricts which extensions are listed.
+  The two must not share a validation path, and each tool's schema description must say which meaning applies.
 ### param-split
 
 - Decision: the model sees only parameters that change the **answer**; everything infrastructural is a server-launch flag it never sees.
@@ -569,7 +614,9 @@ Client and server wired over the SDK's in-memory transport, with the facade func
 The stubs are what make the status and error-mapping assertions below reachable at all — five of seven handlers have no other way to be driven without a live language server:
 
 - Tool listing: all seven tools present, names exactly as decided, each with an input and output schema.
-- Schema validation rejects a malformed call before any handler runs.
+- Schema validation rejects a malformed **call** before any handler runs (bad array length, wrong parameter type), while a malformed **entry** yields per-entry `status: "error"` with the other entries' results intact — assert both, since conflating them is the failure mode.
+- The per-tool parameter matrix holds: `toc_dir` rejects `docSentences`, neither toc tool accepts `buildTags`, `workspace_symbol` accepts no `within`, and `lang` is validated against `TOCLanguages()` for the toc tools but as a registry key for the other five.
+- An `assert_no_callers` entry with a relative `except` path exempts the intended file — the regression is resolving it against process cwd, where the exemption silently never matches.
 - **Array batching**: a multi-entry call returns one entry per input, in order, with the right per-entry `status`.
 - **Error mapping**: a mixed call — one resolvable target, one not-found, one ambiguous — returns `isError: false` with three distinct per-entry statuses and the good result intact.
   This is the regression that matters most under array batching.
