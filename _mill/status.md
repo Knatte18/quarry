@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r6
+phase: planned
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -30,4 +30,5 @@ plan-review-r5  '2026-08-29T13:31:36Z'
 plan-fix-r5  '2026-08-29T13:34:13Z'
 plan-review-r6  '2026-08-29T13:39:35Z'
 plan-fix-r6  '2026-08-29T13:41:43Z'
+planned  '2026-08-29T13:41:52Z'
 ```
