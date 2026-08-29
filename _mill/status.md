@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-toc-tools  '2026-08-29T10:13:29Z'
 approved-server-binary-and-transport-tests  '2026-08-29T10:20:22Z'
 approved-integration-and-docs  '2026-08-29T10:26:00Z'
 holistic-reviewing  '2026-08-29T10:26:25Z'
+holistic-fixing  '2026-08-29T10:30:35Z'
 ```
 
 ## Batches
