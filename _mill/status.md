@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: quarry-mcp-vs-cli-bench
 branch: quarry-mcp-vs-cli-bench
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-29T11:00:55Z'
+done  '2026-08-29T11:58:47Z'
 ```
