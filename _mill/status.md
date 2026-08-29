@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-scope-violation
+phase: done
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -46,6 +46,7 @@ holistic-fixing  '2026-08-29T15:28:51Z'
 nits-fixed-holistic  '2026-08-29T15:30:17Z'
 holistic-approved  '2026-08-29T15:30:26Z'
 self-resolved-scope-violation  '2026-08-29T15:31:14Z'
+done  '2026-08-29T15:31:34Z'
 ```
 
 ## Batches
