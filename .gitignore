@@ -4,6 +4,9 @@
 # its contents tracked.
 /quarry
 !/quarry/
+# The optional `go build -o quarry-mcp ./cmd/quarry-mcp` warm-start alternative documented in
+# docs/mcp-setup.md. No collision with a package directory, so no re-include is needed.
+/quarry-mcp
 *.test
 *.test.exe
 *.out
