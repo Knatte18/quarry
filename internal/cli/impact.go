@@ -134,9 +134,9 @@ those whose file lies within <dir> (relative to --target-dir, or absolute):
 			// combined with batch mode.
 			buildQuery := func(arg string) (quarry.Query, error) {
 				if inFile != "" {
-					return inFileQuery(cwd, inFile, arg)
+					return inFileQuery(dir, inFile, arg)
 				}
-				return parseQuery(cwd, arg)
+				return parseQuery(dir, arg)
 			}
 
 			if len(args) == 1 {

@@ -44,6 +44,7 @@ func tocCommand() *cobra.Command {
 func tocFileCommand() *cobra.Command {
 	var lang string
 	var docSentences string
+	var targetDir string
 
 	cmd := &cobra.Command{
 		Use:   "file <path>",
@@ -109,6 +110,7 @@ default of 1.`,
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
+			dir := resolveTOCBaseDir(cwd, targetDir)
 
 			if err := validateTOCLang(lang); err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
@@ -131,12 +133,12 @@ default of 1.`,
 
 			if len(args) > 1 {
 				runPathBatch(ctx, out, args, func(arg string) (batchStatus, map[string]any) {
-					return tocFileOne(cwd, arg, lang, docSentences)
+					return tocFileOne(dir, arg, lang, docSentences)
 				})
 				return nil
 			}
 
-			status, fields := tocFileOne(cwd, args[0], lang, docSentences)
+			status, fields := tocFileOne(dir, args[0], lang, docSentences)
 			if status != statusFound {
 				msg, _ := fields["error"].(string)
 				SetExit(ctx, output.Err(out, msg))
@@ -152,12 +154,14 @@ default of 1.`,
 	// headers and never docstrings, so the setting has nothing to affect
 	// there.
 	cmd.Flags().StringVar(&docSentences, "doc-sentences", "", "number of leading docstring sentences to emit, or \"all\" (default: 1, or the resolved config value)")
+	cmd.Flags().StringVar(&targetDir, "target-dir", "", "base directory to resolve a relative <path> against (default: cwd); accepted for consistency with refs/definition/symbol/impact/assert-no-callers, has no effect when <path> is already absolute")
 	return cmd
 }
 
 // tocDirCommand builds the "toc dir" subcommand.
 func tocDirCommand() *cobra.Command {
 	var lang string
+	var targetDir string
 
 	cmd := &cobra.Command{
 		Use:   "dir <path>",
@@ -193,6 +197,7 @@ The process exit code is set to the worst status present across the batch.`,
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
+			dir := resolveTOCBaseDir(cwd, targetDir)
 
 			if err := validateTOCLang(lang); err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
@@ -201,12 +206,12 @@ The process exit code is set to the worst status present across the batch.`,
 
 			if len(args) > 1 {
 				runPathBatch(ctx, out, args, func(arg string) (batchStatus, map[string]any) {
-					return tocDirOne(cwd, arg, lang)
+					return tocDirOne(dir, arg, lang)
 				})
 				return nil
 			}
 
-			status, fields := tocDirOne(cwd, args[0], lang)
+			status, fields := tocDirOne(dir, args[0], lang)
 			if status != statusFound {
 				msg, _ := fields["error"].(string)
 				SetExit(ctx, output.Err(out, msg))
@@ -218,6 +223,7 @@ The process exit code is set to the worst status present across the batch.`,
 	}
 
 	cmd.Flags().StringVar(&lang, "lang", "", "restrict the listing to this language's extensions (validated against toc's own supported set)")
+	cmd.Flags().StringVar(&targetDir, "target-dir", "", "base directory to resolve a relative <path> against (default: cwd); accepted for consistency with refs/definition/symbol/impact/assert-no-callers, has no effect when <path> is already absolute")
 	return cmd
 }
 
@@ -242,18 +248,37 @@ func validateTOCLang(lang string) error {
 	return fmt.Errorf("toc: unrecognised --lang %q; valid languages: %s", lang, strings.Join(quarry.TOCLanguages(), ", "))
 }
 
-// resolveTOCPath joins arg onto cwd unless arg is already absolute, mirroring absOrJoin's
+// resolveTOCPath joins arg onto baseDir unless arg is already absolute, mirroring absOrJoin's
 // resolution rule for a toc positional argument.
-func resolveTOCPath(cwd, arg string) string {
+func resolveTOCPath(baseDir, arg string) string {
 	if filepath.IsAbs(arg) {
 		return filepath.Clean(arg)
 	}
-	return filepath.Join(cwd, arg)
+	return filepath.Join(baseDir, arg)
 }
 
-// tocFileOne resolves arg (a "toc file" positional argument) against cwd, validates it names an
-// existing, non-directory path, resolves the effective DocSentences value against arg's own
+// resolveTOCBaseDir resolves the base directory "toc file"/"toc dir" join a relative positional
+// argument onto: targetDir if set (absolute as given, or joined onto cwd if relative), otherwise
+// cwd itself. This is the same targetDir-defaults-to-cwd idiom the language-server-backed verbs
+// use for their own --target-dir (see cli.go), kept here as a separate copy rather than a shared
+// helper because toc's targetDir has no daemon/registry role — it exists purely so "toc file"/"toc
+// dir" accept the same flag name as every other verb instead of erroring on it, not because toc
+// needs a project root for anything else.
+func resolveTOCBaseDir(cwd, targetDir string) string {
+	if targetDir == "" {
+		return cwd
+	}
+	if filepath.IsAbs(targetDir) {
+		return filepath.Clean(targetDir)
+	}
+	return filepath.Join(cwd, targetDir)
+}
+
+// tocFileOne resolves arg (a "toc file" positional argument) against baseDir, validates it names
+// an existing, non-directory path, resolves the effective DocSentences value against arg's own
 // parent directory, calls quarry.TOCFile, and returns the batch outcome.
+//
+// baseDir is cwd unless --target-dir was given (see resolveTOCBaseDir).
 //
 // Both the single-argument RunE above and runPathBatch's per-argument closure call this function,
 // so the two call paths cannot drift apart.
@@ -263,8 +288,8 @@ func resolveTOCPath(cwd, arg string) string {
 // directory. When docSentences is non-empty, resolveDocSentences short-circuits before touching
 // any config file — the caller has already validated the flag once, up front, before any
 // argument was processed.
-func tocFileOne(cwd, arg, lang, docSentences string) (batchStatus, map[string]any) {
-	abs := resolveTOCPath(cwd, arg)
+func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[string]any) {
+	abs := resolveTOCPath(baseDir, arg)
 
 	info, err := os.Stat(abs)
 	if err != nil {
@@ -296,14 +321,16 @@ func tocFileOne(cwd, arg, lang, docSentences string) (batchStatus, map[string]an
 	return statusFound, fields
 }
 
-// tocDirOne resolves arg (a "toc dir" positional argument) against cwd, validates it names an
+// tocDirOne resolves arg (a "toc dir" positional argument) against baseDir, validates it names an
 // existing directory, calls quarry.TOCDir, composes each listed file's caller-relative "path" via
 // tocDirEntries, and returns the batch outcome.
 //
+// baseDir is cwd unless --target-dir was given (see resolveTOCBaseDir).
+//
 // Both the single-argument RunE above and runPathBatch's per-argument closure call this function,
 // so the two call paths cannot drift apart.
-func tocDirOne(cwd, arg, lang string) (batchStatus, map[string]any) {
-	abs := resolveTOCPath(cwd, arg)
+func tocDirOne(baseDir, arg, lang string) (batchStatus, map[string]any) {
+	abs := resolveTOCPath(baseDir, arg)
 
 	info, err := os.Stat(abs)
 	if err != nil {

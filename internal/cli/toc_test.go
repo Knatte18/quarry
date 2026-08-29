@@ -891,6 +891,53 @@ func TestRunCLI_TocFile_RangesStayFixedAcrossDocSentences(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Toc_TargetDirAcceptsAbsolutePathUnused verifies both verbs accept --target-dir
+// alongside an already-absolute positional path without erroring — the exact call shape the
+// language-server-backed verbs' own --target-dir convention encourages, which "toc file"/"toc dir"
+// used to reject with "unknown flag: --target-dir" before this flag was added purely for
+// consistency.
+func TestRunCLI_Toc_TargetDirAcceptsAbsolutePathUnused(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "foo.go", goFixture)
+
+	for _, sub := range []string{"file", "dir"} {
+		sub := sub
+		t.Run(sub, func(t *testing.T) {
+			t.Parallel()
+			arg := filepath.Join(dir, "foo.go")
+			if sub == "dir" {
+				arg = dir
+			}
+			// cwd (t.TempDir() for the whole test) is deliberately not dir, proving
+			// --target-dir is accepted and simply irrelevant once arg is absolute.
+			exitCode, env := runTOCCLI(t, t.TempDir(), "toc", sub, arg, "--target-dir", dir)
+			if exitCode != 0 {
+				t.Fatalf("RunCLIIn(toc %s %s --target-dir %s) = %d; want 0. envelope: %v", sub, arg, dir, exitCode, env)
+			}
+		})
+	}
+}
+
+// TestRunCLI_TocFile_TargetDirResolvesRelativePath verifies --target-dir is actually used to
+// resolve a *relative* positional path when given, rooting it at --target-dir instead of cwd.
+func TestRunCLI_TocFile_TargetDirResolvesRelativePath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeTOCFixture(t, root, "foo.go", goFixture)
+
+	elsewhere := t.TempDir()
+	exitCode, env := runTOCCLI(t, elsewhere, "toc", "file", "foo.go", "--target-dir", root)
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc file foo.go --target-dir %s) = %d; want 0. envelope: %v", root, exitCode, env)
+	}
+	if env["package"] != "fixture" {
+		t.Errorf("package = %v; want \"fixture\" (resolved against --target-dir, not cwd)", env["package"])
+	}
+}
+
 // TestRunCLI_TocDir_NoDocSentencesFlag verifies "toc dir" has no --doc-sentences flag, mirroring
 // TestInFileFlag_RegisteredOnRefsAndDefinitionOnlyNotSymbol's assertion of the equivalent
 // asymmetry for the existing verbs.

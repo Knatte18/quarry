@@ -84,6 +84,10 @@ task's `Setup` section for the exact worktree path before substituting
 ### Agent A preamble
 
 ```
+USE PARALLEL TOOL CALLS. Whenever you have more than one independent thing to
+read or check, issue ALL of those tool calls together in the SAME turn --
+never one at a time across separate turns. This is not optional.
+
 You are working on a code task. You have access to a code-navigation CLI
 called quarry, built from an LSP-backed Go tool. Binary: /tmp/quarry-bench
 Target codebase for all quarry commands: <TARGET_DIR>
@@ -110,12 +114,50 @@ Verbs relevant to you:
   resolves a symbol, finds its callers, and reports each caller's full
   enclosing-function line range.
 
-All verbs output JSON on stdout. You may also use ordinary tools (Read, Grep,
-Bash, Glob) -- quarry supplements exploration, it does not replace it. Prefer
-quarry when it directly answers what you need (symbol lookups, "who calls
-this", a file/directory survey); use grep/read for everything else.
+All verbs output JSON on stdout.
+
+Use quarry as your PRIMARY tool for anything it covers: symbol lookups, "who
+calls this / where is this defined", file/directory surveys, and
+caller-impact analysis. Its answers come from an LSP-backed, compiler-accurate
+index, not text matching -- it resolves interface-dispatched calls, method
+sets, and build-tag-gated code that grep cannot see, and it does not produce
+the false positives/negatives grep can (wrong identifier boundaries,
+string-literal matches that aren't code, missed call sites behind an
+interface). Trust its output.
+
+Do NOT reach for grep/ripgrep as a reflex, and do NOT use it to "double-check"
+a question quarry has already answered -- that defeats the point of having it
+and just spends tokens re-deriving what you already know. Use grep/Read only
+for what quarry does not cover: reading actual code bodies, comments, prose,
+or non-Go text. If you notice yourself about to grep for a symbol reference, a
+definition, or a caller list, stop and run the matching quarry verb instead.
+
+If you already know a symbol's declaration line -- e.g. from an earlier
+`toc file` call, which gives you every symbol's exact line range up front --
+call `refs`/`definition`/`impact` with that `file:line:col` position directly
+instead of the bare symbol name. A bare name triggers a project-wide
+workspace/symbol search that is often genuinely ambiguous (a common method
+name matching both its real declaration and an unrelated test helper of the
+same name, for instance) and costs you a second round trip to disambiguate
+with the position you already had. Skipping straight to the position when you
+have it is strictly cheaper and never wrong.
 
 <TASK TEXT>
+
+<use_parallel_tool_calls>
+For maximum efficiency, whenever you need to perform multiple independent
+operations, invoke all relevant tools simultaneously rather than
+sequentially. Prioritize calling tools in parallel whenever possible. For
+example, once you know several independent locations to read or check (e.g.
+a list of caller locations from a single lookup), issue all of those Read or
+Bash calls together in one turn rather than one at a time across separate
+turns -- each turn costs a full round of model latency regardless of how
+fast the underlying tool executes, so batching directly cuts wall-clock and
+token cost. Err on the side of maximizing parallel tool calls rather than
+running too many tools sequentially. Only batch tool calls that are
+independent of each other -- two Read calls at two locations you already
+know about are never dependent on each other.
+</use_parallel_tool_calls>
 
 When you are completely done, end your final message with ONLY a fenced json
 code block matching the schema below -- no other trailing prose after it.
@@ -126,11 +168,30 @@ code block matching the schema below -- no other trailing prose after it.
 ### Agent B preamble
 
 ```
+USE PARALLEL TOOL CALLS. Whenever you have more than one independent thing to
+read or check, issue ALL of those tool calls together in the SAME turn --
+never one at a time across separate turns. This is not optional.
+
 You are working on a code task in the codebase at <TARGET_DIR>. You have
 standard tools: Read, Grep, Bash, Glob. Explore as needed to answer
 thoroughly and correctly.
 
 <TASK TEXT>
+
+<use_parallel_tool_calls>
+For maximum efficiency, whenever you need to perform multiple independent
+operations, invoke all relevant tools simultaneously rather than
+sequentially. Prioritize calling tools in parallel whenever possible. For
+example, once you know several independent locations to read or check (e.g.
+a list of caller locations from a single lookup), issue all of those Read or
+Bash calls together in one turn rather than one at a time across separate
+turns -- each turn costs a full round of model latency regardless of how
+fast the underlying tool executes, so batching directly cuts wall-clock and
+token cost. Err on the side of maximizing parallel tool calls rather than
+running too many tools sequentially. Only batch tool calls that are
+independent of each other -- two Read calls at two locations you already
+know about are never dependent on each other.
+</use_parallel_tool_calls>
 
 When you are completely done, end your final message with ONLY a fenced json
 code block matching the schema below -- no other trailing prose after it.
@@ -146,6 +207,10 @@ naturally would.
 ### Agent C preamble
 
 ```
+USE PARALLEL TOOL CALLS. Whenever you have more than one independent thing to
+read or check, issue ALL of those tool calls together in the SAME turn --
+never one at a time across separate turns. This is not optional.
+
 You are the reference agent for a benchmark. Your only job is to produce the
 most accurate, thoroughly verified answer to the task below. There is no time
 or token budget pressure -- prioritize correctness over speed. You may use any
@@ -162,6 +227,21 @@ build tags if the task depends on it.
 
 You have not been shown any other agent's output, and there is none to
 consider -- produce your answer purely from your own investigation.
+
+<use_parallel_tool_calls>
+For maximum efficiency, whenever you need to perform multiple independent
+operations, invoke all relevant tools simultaneously rather than
+sequentially. Prioritize calling tools in parallel whenever possible. For
+example, once you know several independent locations to read or check (e.g.
+a list of caller locations from a single lookup), issue all of those Read or
+Bash calls together in one turn rather than one at a time across separate
+turns -- each turn costs a full round of model latency regardless of how
+fast the underlying tool executes, so batching directly cuts wall-clock and
+token cost. Err on the side of maximizing parallel tool calls rather than
+running too many tools sequentially. Only batch tool calls that are
+independent of each other -- two Read calls at two locations you already
+know about are never dependent on each other.
+</use_parallel_tool_calls>
 
 When you are completely done, end your final message with ONLY a fenced json
 code block matching the schema below -- no other trailing prose after it.
@@ -200,6 +280,21 @@ code block matching the schema below -- no other trailing prose after it.
 }
 ```
 
+**Impact-analysis tasks** (task 04 — pre-implementation "what would I need
+to touch", not a review of an already-made diff):
+```json
+{
+  "callers_to_update": [
+    {"file": "path/to/file.go", "line": N, "evidence": "how this was confirmed to resolve to the interface method in question"}
+  ],
+  "excluded_lookalikes": [
+    {"file": "path/to/file.go", "line": N, "reason": "why this same-named call site is unrelated"}
+  ],
+  "confidence": "high|medium|low",
+  "open_questions": ["anything left uncertain, if any"]
+}
+```
+
 ## Dispatch protocol
 
 1. For the task at hand, read its file under `tasks/` and run its `Setup`
@@ -211,7 +306,14 @@ code block matching the schema below -- no other trailing prose after it.
    sequentially just wastes wall-clock time.
 4. Each agent call reports back its final message (the JSON block) plus
    token/tool-call/duration usage. Record all of this — do not discard the
-   usage numbers, they are half of what this benchmark measures.
+   usage numbers, they are half of what this benchmark measures. For Agent A
+   specifically, also grep its raw tool-call transcript (`grep -o
+   '"command":"[^"]\{1,200\}' <output_file>` against the completed agent's
+   output file works without loading the whole transcript) for `grep`/`rg`
+   invocations, and record the count as `grep_fallback_count` in that arm's
+   `usage.json` entry — this is the signal for whether "prefer quarry, don't
+   double-check with grep" is actually being followed, not just whether
+   quarry was available.
 5. Write results to `results/<YYYY-MM-DD>/<task-slug>/`:
    - `a.json`, `b.json`, `c.json` — each agent's parsed output block
    - `usage.json` — `{"a": {"tokens": N, "tool_uses": N, "duration_ms": N}, "b": {...}, "c": {...}}`
@@ -261,11 +363,23 @@ quarry worth it on this task, and why.
   a publishable study. If a task's result looks ambiguous, rerun that
   specific task before drawing a conclusion from it — don't add blanket
   repetition up front.
+- **Agent A's preamble explicitly tells it to prefer quarry over grep and not
+  to double-check quarry's answers with grep.** Task 01's first run (before
+  this instruction existed) showed A spending roughly a third of its Bash
+  calls on plain `grep` despite having quarry available and being told to
+  "prefer" it — that hedging erased any efficiency edge quarry might
+  otherwise have shown, independent of whether quarry itself was actually
+  useful. Track `grep_fallback_count` (see Dispatch protocol step 4) across
+  runs to see whether the stronger instruction actually changes behavior, or
+  whether agents hedge with grep regardless of phrasing.
 
 ## Tasks
 
 See `tasks/`:
 - `01-reed-geometry-exploration.md` — exploration, `toc`, runnable now
 - `02-shedadapters-exploration.md` — exploration, `toc`, runnable now
-- `03-reed-attach-geometry-review.md` — code review, `impact`, blocked until impact-verb lands
-- `04-refactor-review-TBD.md` — code review, `impact`, blocked + target diff not yet finalized
+- `03-reed-attach-geometry-review.md` — code review, `impact`, runnable now
+- `04-shedadapters-shuttle-impact.md` — pre-implementation impact analysis
+  targeting interface-method conflation specifically (see the task file's
+  "Why this task exists" — this is the one scenario tasks 01-03 didn't
+  test), `impact`/`refs`, runnable now

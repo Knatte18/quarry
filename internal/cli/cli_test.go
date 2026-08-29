@@ -223,6 +223,56 @@ func TestRunCLI_Definition_NoLanguageError(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Definition_FileLineCharFlags_ReachesNoLanguageError verifies --file/--line/--char
+// given together (no positional argument) are accepted by the Args validator and actually build a
+// position query -- reaching the same ErrNoLanguage failure a "file:line:col" positional argument
+// would, rather than failing at argument parsing or silently no-op'ing.
+func TestRunCLI_Definition_FileLineCharFlags_ReachesNoLanguageError(t *testing.T) {
+	withIsolatedPathSeams(t)
+
+	emptyTargetDir := t.TempDir()
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{
+		"definition", "--target-dir", emptyTargetDir,
+		"--file", "foo.go", "--line", "1", "--char", "1",
+	})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(definition --file foo.go --line 1 --char 1 --target-dir <empty>) = 0; want non-zero exit for ErrNoLanguage")
+	}
+
+	var env map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &env); err != nil {
+		t.Fatalf("RunCLI output is not valid JSON: %v; got: %q", err, out.String())
+	}
+
+	errMsg, _ := env["error"].(string)
+	if !strings.Contains(errMsg, "no language detected") {
+		t.Errorf("RunCLI(definition --file --line --char --target-dir <empty>) error = %q; want it to mention ErrNoLanguage's \"no language detected\" -- proves the flags reached a real position query, not an argument-parsing failure", errMsg)
+	}
+}
+
+// TestRunCLI_Definition_PartialPositionFlags_ArgsError verifies giving only some of
+// --file/--line/--char, with no positional argument, fails at argument validation with a message
+// naming both accepted forms -- rather than silently treating it as a bare 0-argument call or
+// panicking on an incomplete position.
+func TestRunCLI_Definition_PartialPositionFlags_ArgsError(t *testing.T) {
+	withIsolatedPathSeams(t)
+
+	var out bytes.Buffer
+	exitCode := RunCLI(&out, []string{"definition", "--file", "foo.go", "--line", "1"})
+
+	if exitCode == 0 {
+		t.Fatalf("RunCLI(definition --file foo.go --line 1) = 0; want non-zero exit for a missing --char")
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "file:line:col") || !strings.Contains(got, "--file/--line/--char") {
+		t.Errorf("RunCLI(definition --file foo.go --line 1) output = %q; want it to name both the positional and --file/--line/--char forms", got)
+	}
+}
+
 // TestRunCLI_Symbol_NoLanguageError verifies "symbol" fails with ErrNoLanguage in an empty
 // directory.
 func TestRunCLI_Symbol_NoLanguageError(t *testing.T) {

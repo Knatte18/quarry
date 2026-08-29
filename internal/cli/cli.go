@@ -41,6 +41,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strconv"
@@ -177,9 +178,9 @@ scoped to one package comes back both complete and precise:
 			// combined with batch mode.
 			buildQuery := func(arg string) (quarry.Query, error) {
 				if inFile != "" {
-					return inFileQuery(cwd, inFile, arg)
+					return inFileQuery(dir, inFile, arg)
 				}
-				return parseQuery(cwd, arg)
+				return parseQuery(dir, arg)
 			}
 
 			if len(args) == 1 {
@@ -232,6 +233,9 @@ func definitionCommand() *cobra.Command {
 	var inFile string
 	var within string
 	var buildTags string
+	var posFile string
+	var posLine int
+	var posChar int
 
 	definition := &cobra.Command{
 		Use:   "definition <symbol|file:line:col>",
@@ -275,8 +279,24 @@ marker; batch mode carries the same field on each per-entry "found" result.
 --within <dir> restricts the result set to definitions whose file lies
 within <dir> (relative to --target-dir, or absolute) — see "refs --help"
 for why this exists (interface-method reference conflation across
-structurally-identical interfaces in different packages).`,
-		Args: cobra.MinimumNArgs(1),
+structurally-identical interfaces in different packages).
+
+--file/--line/--char together are an alternative to the "file:line:col"
+positional form, for a caller that already has the three values separately
+rather than a pre-formatted string:
+    quarry definition --file internal/foo/bar.go --line 42 --char 8
+All three are required together, and only apply when no positional argument
+is given — a positional argument always takes precedence and these flags are
+then ignored, never combined or validated against it.`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) >= 1 {
+				return nil
+			}
+			if posFile != "" && posLine > 0 && posChar > 0 {
+				return nil
+			}
+			return fmt.Errorf("requires a \"symbol\" or \"file:line:col\" positional argument, or --file/--line/--char given together")
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			out := cmd.OutOrStdout()
@@ -317,9 +337,25 @@ structurally-identical interfaces in different packages).`,
 			// combined with batch mode.
 			buildQuery := func(arg string) (quarry.Query, error) {
 				if inFile != "" {
-					return inFileQuery(cwd, inFile, arg)
+					return inFileQuery(dir, inFile, arg)
 				}
-				return parseQuery(cwd, arg)
+				return parseQuery(dir, arg)
+			}
+
+			// len(args) == 0 is only reachable when the Args validator above
+			// accepted --file/--line/--char in place of a positional argument;
+			// a positional argument always takes precedence when both forms
+			// are given, so this branch never consults the flags otherwise.
+			if len(args) == 0 {
+				query := quarry.Query{Pos: &quarry.Position{File: absOrJoin(dir, posFile), Line: posLine, Character: posChar}}
+				opts := buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved)
+
+				results, err := quarry.Definition(ctx, opts)
+				if err == nil && within != "" {
+					results = filterWithin(results, within, dir)
+				}
+				emitLookupResult(ctx, out, "definitions", results, err)
+				return nil
 			}
 
 			if len(args) == 1 {
@@ -360,6 +396,9 @@ structurally-identical interfaces in different packages).`,
 	definition.Flags().StringVar(&inFile, "in-file", "", "resolve each positional argument as a bare symbol name within this one file, instead of a project-wide workspace/symbol search")
 	definition.Flags().StringVar(&within, "within", "", "restrict results to definitions whose file lies within this directory (relative to --target-dir, or absolute)")
 	definition.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
+	definition.Flags().StringVar(&posFile, "file", "", "position form of the query: the file, paired with --line and --char (all three required together); ignored if a positional argument is also given")
+	definition.Flags().IntVar(&posLine, "line", 0, "position form of the query: the 1-based line, paired with --file and --char")
+	definition.Flags().IntVar(&posChar, "char", 0, "position form of the query: the 1-based column, paired with --file and --line")
 
 	return definition
 }
@@ -622,7 +661,7 @@ and symbol are unchanged by this task and gain no verification flag.`,
 				return nil
 			}
 
-			query, err := parseQuery(cwd, args[0])
+			query, err := parseQuery(dir, args[0])
 			if err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil

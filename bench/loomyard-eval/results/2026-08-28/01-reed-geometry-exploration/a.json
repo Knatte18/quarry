@@ -1,0 +1,81 @@
+{
+  "_meta": {
+    "task": "01-reed-geometry-exploration",
+    "type": "exploration",
+    "pinned_sha": "975578cda8d6f3a81580bd4e73725e060211b766",
+    "scope": [
+      "internal/reedengine",
+      "internal/reedcli"
+    ],
+    "date": "2026-08-28",
+    "arm": "A",
+    "role": "quarry-equipped agent -- has the quarry CLI (/tmp/quarry-bench) and is instructed to prefer it over grep/read for symbol lookups, references, definitions, toc, and impact analysis",
+    "see_also": "scorecard.md (scoring/analysis), usage.json (tokens/tool-calls/duration, revision notes)"
+  },
+  "relevant_files": [
+    "internal/reedcli/attach.go",
+    "internal/reedengine/attach.go",
+    "internal/reedengine/windowsize.go",
+    "internal/reedengine/apply.go",
+    "internal/reedengine/spawn.go",
+    "internal/reedengine/lifecycle.go",
+    "internal/reedengine/config.go",
+    "internal/reedengine/geometry.go",
+    "internal/reedengine/attachgeometry_integration_test.go"
+  ],
+  "key_symbols": [
+    {
+      "name": "attachCmd",
+      "file": "internal/reedcli/attach.go",
+      "role": "reads the operator's live terminal size via term.GetSize and calls Engine.AttachArgv before handing stdio to tmux"
+    },
+    {
+      "name": "AttachArgv",
+      "file": "internal/reedengine/attach.go",
+      "role": "builds the attach argv, chaining a client-sized select-layout when preconditions hold; degrades to bare attach on any failure"
+    },
+    {
+      "name": "chainedAttachArgv",
+      "file": "internal/reedengine/attach.go",
+      "role": "composes the bare attach-session argv with a ; select-layout command carrying the told-box layout string"
+    },
+    {
+      "name": "liveBoxLocked",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "queries tmux's current live window size (display-message), falling back to configured Width/Height on failure"
+    },
+    {
+      "name": "pinGeometryOptionsLocked",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "pins session options status=off and window-size=latest, the setting that makes tmux auto-track the attached client's size"
+    },
+    {
+      "name": "readWindowSizeLatestLocked / readStatusRowsLocked",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "read back the effective pinned options to gate whether AttachArgv's chain is safe to build"
+    },
+    {
+      "name": "planLayout",
+      "file": "internal/reedengine/apply.go",
+      "role": "pure function mapping a strand table + box (told or live) to a tmux window_layout string and focus pane"
+    },
+    {
+      "name": "applyLayoutLocked",
+      "file": "internal/reedengine/apply.go",
+      "role": "fetches the fresh live box via liveBoxLocked and applies the recomputed layout via select-layout/select-pane"
+    },
+    {
+      "name": "reconcileApplyPersistLocked",
+      "file": "internal/reedengine/spawn.go",
+      "role": "shared tail after every mutating op (add/remove/resume) that re-reads live panes/geometry and reapplies layout"
+    },
+    {
+      "name": "ensureServerAndSessionLocked",
+      "file": "internal/reedengine/lifecycle.go",
+      "role": "boots tmux with new-session -x cfg.Width -y cfg.Height and calls pinGeometryOptionsLocked on fresh boot"
+    }
+  ],
+  "summary": "reed reads the operator's real terminal size only at attach time, in internal/reedcli/attach.go via golang.org/x/term.GetSize, and hands it as cols/rows into internal/reedengine's Engine.AttachArgv. While an operator is already attached and simply resizes their terminal window, reed does no polling of its own: tmux's window-size=latest option (pinned by pinGeometryOptionsLocked at boot and re-pinned defensively by AttachArgv) makes tmux itself continuously resize the live window to match the attached client, and reed only recomputes and reasserts its own precise row-budget layout the next time a mutating op runs, by querying tmux's live size fresh via liveBoxLocked/display-message in applyLayoutLocked. On a fresh attach or re-attach, reconciliation is explicit: AttachArgv deliberately ignores the live tmux size (which at that instant is still the stale, pre-attach value) in favor of the freshly told client size, per the documented Shared Decision 'told-box-wins-live-query-is-the-fallback', builds a layout string against that told box, and chains it onto the attach-session command itself so it lands after tmux's own attach-triggered resize has already taken effect, avoiding a double rescale. Every precondition check along this chain degrades to the bare, unchained attach on failure rather than ever blocking the handover.",
+  "confidence": "high",
+  "open_questions": []
+}

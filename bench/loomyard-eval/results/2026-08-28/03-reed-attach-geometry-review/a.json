@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "task": "03-reed-attach-geometry-review",
+    "type": "code-review",
+    "pinned_sha": "8b14f32ba34c766d06787c6be5c084368287c90d",
+    "scope": [
+      "internal/reedengine",
+      "internal/reedcli",
+      "internal/loomcli"
+    ],
+    "date": "2026-08-28",
+    "arm": "A",
+    "role": "quarry-equipped agent -- has the quarry CLI (/tmp/quarry-bench) and is instructed to prefer it over grep/read for symbol lookups, references, definitions, toc, and impact analysis",
+    "see_also": "scorecard.md (scoring/analysis), usage.json (tokens/tool-calls/duration, revision notes)"
+  },
+  "verdict": "unsafe",
+  "issues_found": [
+    {
+      "description": "internal/loomcli's run verb still calls the old free function attachArgv(socket, session string) with c.reed.Socket()/c.reed.SessionName(), instead of the new c.reed.AttachArgv(cols, rows int) method that internal/reedcli/attach.go was correctly updated to use. The old attachArgv symbol no longer exists anywhere in the project, so this caller was missed by the rename and the package fails to build.",
+      "location": "internal/loomcli/run.go:295",
+      "severity": "blocking",
+      "evidence": "quarry refs on Engine.AttachArgv's declaration (internal/reedengine/attach.go:62) lists only internal/reedcli/attach.go:71 as a caller -- internal/loomcli/run.go is absent. quarry definition attachArgv finds no matching symbol in the project. go build ./... in /tmp/loomyard-review-03 fails with 'internal/loomcli/run.go:295:46: undefined: attachArgv'. git diff --cached -- internal/loomcli/run.go shows this line was reverted from the correct c.reed.AttachArgv(cols, rows) call (with a terminal-size read via golang.org/x/term, mirroring reedcli/attach.go) back to the old free-function call."
+    }
+  ],
+  "confidence": "high"
+}
