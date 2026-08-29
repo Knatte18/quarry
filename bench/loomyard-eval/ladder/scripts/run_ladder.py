@@ -919,6 +919,15 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
     dispositions -- confirmed-cold, not-run, no-daemon-signal, or
     partial -- and the number of confirmed-cold repetitions, so a not-run
     or partial cell is never mistaken for an interrupted one.
+
+    A repetition that never confirms cold can land there for two distinct
+    reasons -- every attempt exhausted MAX_ATTEMPTS on the native-fallback
+    branch (an environment limitation the not-run disposition documents),
+    or every attempt discarded because gate_cold_before found a live
+    daemon before it even started (a different, retry-exhausting cause the
+    plan's not-run definition does not describe). The per-repetition cause
+    is tracked and recorded in "not_run_causes" so the reason text stays
+    accurate rather than reporting both alike.
     """
     results_root = Path(results_root)
     env = run_env()
@@ -934,6 +943,7 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
     pending_ns = {n for _config, n in pending}
 
     dispositions = {}
+    not_run_causes = {}
     for config, n in all_pairs:
         if n not in pending_ns:
             dispositions[n] = _rep_disposition_from_run_json(run_dir_for(results_root, config.id, n))
@@ -944,6 +954,7 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
         task_sha = ladder.tasks[config.task].pinned_sha
 
         rep_disposition = "not_run"
+        rep_not_run_cause = None
         for attempt in range(1, MAX_ATTEMPTS + 1):
             build_worktree(ladder, target_dir, task_sha, git=git)
             clear_state_dir(target_dir, cache_dir, env)
@@ -951,7 +962,9 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
             if gate_cold_before(target_dir, cache_dir, env):
                 # A genuinely live daemon means this attempt cannot be
                 # cold -- discard it and retry rather than reporting it
-                # as cold.
+                # as cold. Distinct cause from a native-fallback
+                # exhaustion below -- see run_cold_cell's docstring.
+                rep_not_run_cause = "live_daemon_before_start"
                 remove_worktree(ladder, target_dir, git=git)
                 continue
 
@@ -966,16 +979,38 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
                 )
             if outcome.status == "complete":
                 rep_disposition = _rep_disposition_from_run_json(a_run_dir)
+                rep_not_run_cause = None
                 break
 
+            rep_not_run_cause = "native_fallback_exhausted"
             invalidate(a_run_dir)
 
         dispositions[n] = rep_disposition
+        if rep_disposition == "not_run":
+            not_run_causes[n] = rep_not_run_cause
         wait_for_daemon_exit(target_dir, cache_dir, env, DAEMON_EXIT_TIMEOUT_S)
 
     reps_confirmed_cold = sum(1 for status in dispositions.values() if status == "cold")
     reps_not_run = sum(1 for status in dispositions.values() if status == "not_run")
     total_reps = len(all_pairs)
+
+    reps_not_run_live_daemon = sum(
+        1 for cause in not_run_causes.values() if cause == "live_daemon_before_start"
+    )
+    reps_not_run_native_fallback = reps_not_run - reps_not_run_live_daemon
+
+    def _not_run_reps_reason():
+        """Describes why the not-run reps never confirmed cold, naming
+        both causes only when both actually occurred -- see
+        run_cold_cell's docstring on why they are tracked separately."""
+        if reps_not_run_live_daemon == 0:
+            return f"{reps_not_run_native_fallback} exhausted attempts on the native-fallback branch"
+        if reps_not_run_native_fallback == 0:
+            return f"{reps_not_run_live_daemon} found a live daemon before every attempt started"
+        return (
+            f"{reps_not_run_native_fallback} exhausted attempts on the native-fallback branch, "
+            f"{reps_not_run_live_daemon} found a live daemon before every attempt started"
+        )
 
     if reps_confirmed_cold >= 1 and reps_not_run == 0:
         disposition = "confirmed-cold"
@@ -984,14 +1019,17 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
         disposition = "partial"
         reason = (
             f"{reps_confirmed_cold} of {total_reps} repetitions confirmed cold; "
-            f"{reps_not_run} exhausted attempts on the native-fallback branch"
+            f"{reps_not_run} did not: {_not_run_reps_reason()}"
         )
     elif reps_confirmed_cold == 0 and reps_not_run == total_reps:
         disposition = "not-run"
-        reason = (
-            "the supervised daemon strategy is unavailable on this machine -- every "
-            "repetition exhausted its attempts on the native-fallback branch"
-        )
+        if reps_not_run_live_daemon == 0:
+            reason = (
+                "the supervised daemon strategy is unavailable on this machine -- every "
+                "repetition exhausted its attempts on the native-fallback branch"
+            )
+        else:
+            reason = f"no repetition confirmed cold: {_not_run_reps_reason()}"
     else:
         disposition = "no-daemon-signal"
         reason = "every repetition completed validly but none invoked a daemon-backed tool"
@@ -1002,6 +1040,7 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
         "confirmed_cold_reps": reps_confirmed_cold,
         "reps": total_reps,
         "per_repetition": dispositions,
+        "not_run_causes": not_run_causes,
     }
     with open(results_root / "cold_cell.json", "w") as f:
         json.dump(record, f, indent=2)

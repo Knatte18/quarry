@@ -446,8 +446,41 @@ def test_run_cold_cell_not_run_disposition_excludes_cell_from_build_summary_inco
     record = run_cold_cell(real_ladder, results_root, "/bin/server", "/repo", "/cache")
 
     assert record["disposition"] == "not-run"
+    assert set(record["not_run_causes"].values()) == {"native_fallback_exhausted"}
+    assert "native-fallback" in record["reason"]
 
     summary = summarize.build_summary(real_ladder, results_root)
 
     cold_config = next(config for config in real_ladder.configs if config.cold)
     assert cold_config.id not in summary["incomplete"]
+
+
+def test_run_cold_cell_distinguishes_live_daemon_from_native_fallback_not_run_cause(tmp_path, monkeypatch, real_ladder):
+    """
+    A repetition that never confirms cold because gate_cold_before finds a
+    live daemon before every attempt starts is a different, retry-
+    exhausting cause than every attempt failing gate_cold_after on the
+    native-fallback branch -- see run_cold_cell's docstring. The two must
+    not collapse into the same untraceable "not_run" reason text.
+    """
+    results_root = tmp_path / "results"
+    results_root.mkdir()
+
+    monkeypatch.setattr(run_ladder, "wait_for_daemon_exit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "build_worktree", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "clear_state_dir", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "gate_cold_before", lambda *args, **kwargs: True)
+    monkeypatch.setattr(run_ladder, "remove_worktree", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "invalidate", lambda a_run_dir: a_run_dir)
+
+    def never_reached(*args, **kwargs):
+        raise AssertionError("execute_run should never be called when gate_cold_before is always True")
+
+    monkeypatch.setattr(run_ladder, "execute_run", never_reached)
+
+    record = run_cold_cell(real_ladder, results_root, "/bin/server", "/repo", "/cache")
+
+    assert record["disposition"] == "not-run"
+    assert set(record["not_run_causes"].values()) == {"live_daemon_before_start"}
+    assert "live daemon" in record["reason"]
+    assert "native-fallback" not in record["reason"]
