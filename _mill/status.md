@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-suite-skeleton-and-generation
+phase: approved-usage-extraction
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-fix-r6  '2026-08-29T13:41:43Z'
 planned  '2026-08-29T13:41:52Z'
 implementing  '2026-08-29T13:42:16Z'
 approved-suite-skeleton-and-generation  '2026-08-29T13:49:42Z'
+approved-usage-extraction  '2026-08-29T13:54:59Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     commit_sha: 242a0de8d080328cb4c86d159f73ff5c172171e9
     verify_baseline_failures: []
   - name: usage-extraction
-    state: running
+    state: approved
     implementer_session: 3d76e136-8443-4c91-88da-9c2cb0513f1e
     start_sha: bc71c997e98c413319f1996eb71925bc158bd792
+    commit_sha: 444e077bed1a66b909047e0129137ea02f4d791d
     verify_baseline_failures: []
   - name: blinded-scoring
     state: pending
