@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-run-orchestration
+phase: approved-protocol-readme
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-blinded-scoring  '2026-08-29T14:02:57Z'
 approved-validation-gates  '2026-08-29T14:10:25Z'
 approved-summarize-and-separation  '2026-08-29T14:17:07Z'
 approved-run-orchestration  '2026-08-29T14:32:46Z'
+approved-protocol-readme  '2026-08-29T14:35:37Z'
 ```
 
 ## Batches
@@ -81,9 +82,10 @@ batches:
     commit_sha: 0e22f8a996486224e3adc52372fa834a0c11bc2a
     verify_baseline_failures: []
   - name: protocol-readme
-    state: running
+    state: approved
     implementer_session: a7b266a3-6873-4835-9585-a19de8d2bbc7
     start_sha: 5c4811d691bda1954262c1eed0900798ee7967b8
+    commit_sha: 2293c4bf1b5add5ac13bfc072e0804aaaaf4d3d0
   - name: execute-matrix
     state: pending
   - name: conclusion
