@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-validation-gates
+phase: approved-summarize-and-separation
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-suite-skeleton-and-generation  '2026-08-29T13:49:42Z'
 approved-usage-extraction  '2026-08-29T13:54:59Z'
 approved-blinded-scoring  '2026-08-29T14:02:57Z'
 approved-validation-gates  '2026-08-29T14:10:25Z'
+approved-summarize-and-separation  '2026-08-29T14:17:07Z'
 ```
 
 ## Batches
@@ -67,9 +68,10 @@ batches:
     commit_sha: f336b0b4dfd71f674f46b27f68d1f11b0ea47410
     verify_baseline_failures: []
   - name: summarize-and-separation
-    state: running
+    state: approved
     implementer_session: eedb1a0a-244a-4ac2-9c76-bff9affd80df
     start_sha: e409060984d31b10f64e4ee4a3766b2e1b982ce3
+    commit_sha: 36d8c081db30cc7ac5a8307072d4f6578ccdf84f
     verify_baseline_failures: []
   - name: run-orchestration
     state: pending
