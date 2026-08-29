@@ -6,6 +6,7 @@ slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Add an MCP wrapper for quarry
 task_description: |
   Add an MCP wrapper for quarry
@@ -37,17 +38,26 @@ implementing  '2026-08-29T07:39:30Z'
 ```yaml
 batches:
   - name: export-cli-helpers
-    state: pending
+    state: running
+    implementer_session: 75982287-6523-41a9-98ac-05d429040078
+    start_sha: 304f170e41b1ed0c82d64b0ba4e4c5872466ffe9
+    verify_baseline_failures: []
   - name: mcpserver-foundation
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: lsp-mirrored-tools
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: quarry-native-lsp-tools
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: toc-tools
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: server-binary-and-transport-tests
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: integration-and-docs
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
 ```
