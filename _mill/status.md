@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-integration-and-docs
+phase: holistic-reviewing
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-quarry-native-lsp-tools  '2026-08-29T10:05:54Z'
 approved-toc-tools  '2026-08-29T10:13:29Z'
 approved-server-binary-and-transport-tests  '2026-08-29T10:20:22Z'
 approved-integration-and-docs  '2026-08-29T10:26:00Z'
+holistic-reviewing  '2026-08-29T10:26:25Z'
 ```
 
 ## Batches
