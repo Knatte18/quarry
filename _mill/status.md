@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r5
+phase: planned
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -28,4 +28,5 @@ plan-review-r4  '2026-08-29T07:30:50Z'
 plan-fix-r4  '2026-08-29T07:31:55Z'
 plan-review-r5  '2026-08-29T07:37:29Z'
 plan-fix-r5  '2026-08-29T07:38:49Z'
+planned  '2026-08-29T07:38:58Z'
 ```
