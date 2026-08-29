@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-suite-skeleton-and-generation
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-review-r6  '2026-08-29T13:39:35Z'
 plan-fix-r6  '2026-08-29T13:41:43Z'
 planned  '2026-08-29T13:41:52Z'
 implementing  '2026-08-29T13:42:16Z'
+approved-suite-skeleton-and-generation  '2026-08-29T13:49:42Z'
 ```
 
 ## Batches
@@ -39,9 +40,10 @@ implementing  '2026-08-29T13:42:16Z'
 ```yaml
 batches:
   - name: suite-skeleton-and-generation
-    state: running
+    state: approved
     implementer_session: 8c7a710d-f135-4924-a3cb-419641388b62
     start_sha: 57859a8caf4c1965f181176ba263082b6ac3aa73
+    commit_sha: 242a0de8d080328cb4c86d159f73ff5c172171e9
     verify_baseline_failures: []
   - name: usage-extraction
     state: pending
