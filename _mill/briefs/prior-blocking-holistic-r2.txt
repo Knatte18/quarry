@@ -1,0 +1,3 @@
+- cold-cell disposition strings disagree between batch 5 and batch 6: **Location:** `bench/loomyard-eval/ladder/scripts/run_ladder.py:1008,1011,1017,1023` vs `bench/loomyard-eval/ladder/scripts/summarize.py:294,414`
+- gates.py reimplements tool_use/tool_result traversal instead of reusing extract_usage.iter_tool_uses: **Location:** `bench/loomyard-eval/ladder/scripts/gates.py:77-98` (`_tool_use_blocks`, `_tool_results_by_id`) vs `bench/loomyard-eval/ladder/scripts/extract_usage.py:60-70` (`iter_tool_uses`)
+- run_probe's denial check duplicates gate_denied_tools_not_used's predicate: **Location:** `bench/loomyard-eval/ladder/scripts/run_ladder.py:398-419` (`_denied_call_succeeded`) vs `bench/loomyard-eval/ladder/scripts/gates.py:101-124` (`gate_denied_tools_not_used`)

@@ -1,0 +1,42 @@
+MILL_REVIEW_BEGIN
+# Review: Per-capability quarry-mcp benchmark suite — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-29
+```
+
+## Findings
+
+### [BLOCKING:consistency] cold-cell disposition strings disagree between batch 5 and batch 6
+**Location:** `bench/loomyard-eval/ladder/scripts/run_ladder.py:1008,1011,1017,1023` vs `bench/loomyard-eval/ladder/scripts/summarize.py:294,414`
+**Issue:** `run_cold_cell` writes `disposition` into `cold_cell.json` as `"confirmed_cold"` / `"not_run"` / `"no_daemon_signal"` / `"partial"` (underscores), but `summarize.py`'s `compare_warm_cold` and `build_summary`'s `incomplete` exclusion check `cold_disposition in ("not-run", "partial")` (hyphens), and the plan (`04-blinded-scoring`-adjacent `05-summarize-and-separation.md` card 15) literally specifies `` `confirmed-cold`, `not-run`, `no-daemon-signal`, or `partial` ``. On a real run where the cold cell legitimately lands on `not-run` or a mixed `partial`, `build_summary` will wrongly add the cold config to `incomplete` and the `summarize.py` CLI will exit non-zero even though the matrix finished exactly as designed — the one scenario card 15 explicitly says must exit zero. `test_summarize.py` only exercises this with hand-written hyphenated payloads, so the mismatch is untested against `run_ladder.py`'s real writer.
+**Fix:** Pick one vocabulary (hyphenated, per the plan's literal spec) and use it in both `run_cold_cell`'s disposition assignment and `summarize.py`'s comparisons; add a test that feeds `run_cold_cell`'s actual output into `build_summary`.
+
+### [BLOCKING:design] gates.py reimplements tool_use/tool_result traversal instead of reusing extract_usage.iter_tool_uses
+**Location:** `bench/loomyard-eval/ladder/scripts/gates.py:77-98` (`_tool_use_blocks`, `_tool_results_by_id`) vs `bench/loomyard-eval/ladder/scripts/extract_usage.py:60-70` (`iter_tool_uses`)
+**Issue:** Batch 2's own stated scope (`_mill/plan/02-usage-extraction.md`, Batch Scope) says: "`gates.py` (batch 3) reuses `read_transcript` and `iter_tool_uses` rather than re-parsing the transcript itself." `gates.py`'s import list (line 28) imports only from `ladder_config`, never from `extract_usage`, and defines its own private assistant/tool_use walker instead. This is the exact "two batches independently reimplement the same helper" case the review criteria call BLOCKING.
+**Fix:** Extend `iter_tool_uses` to also yield the block id (or add a second small helper beside it in `extract_usage.py`) and have `gates.py` import and reuse it, per the stated interface.
+
+### [BLOCKING:design] run_probe's denial check duplicates gate_denied_tools_not_used's predicate
+**Location:** `bench/loomyard-eval/ladder/scripts/run_ladder.py:398-419` (`_denied_call_succeeded`) vs `bench/loomyard-eval/ladder/scripts/gates.py:101-124` (`gate_denied_tools_not_used`)
+**Issue:** `_denied_call_succeeded` re-derives the identical tool_use/tool_result correlation `gate_denied_tools_not_used` already implements — "some tool_use block named X has a matching tool_result that did not error" — independently, in a different batch, instead of calling the existing gate (`bool(gate_denied_tools_not_used(events, [denied_name]))` is exactly `denial_blocks`'s negation).
+**Fix:** Have `run_probe` call `gates.gate_denied_tools_not_used` (or the shared traversal helper from the prior finding) instead of a third private reimplementation.
+
+### [NIT:consistency] fenced-json extraction regex duplicated with different first/last semantics
+**Location:** `bench/loomyard-eval/ladder/scripts/score_run.py:249,252-261` vs `bench/loomyard-eval/ladder/scripts/run_ladder.py:566-575,685,688-701`
+**Issue:** Both modules compile a near-identical ` ```json...``` ` regex and hand-roll a "raise on no match, json.loads with a wrapping try/except" pattern — one takes the first match (`_extract_fenced_json`), the other the last (`_extract_answer`), and a third, `_first_fenced_json_block`, is a text-slice variant for schema extraction. The selection semantics genuinely differ, so this is lower severity than the two above, but three near-copies of the same regex/parse idiom is drift risk.
+**Fix:** Factor a shared `extract_fenced_json(text, which="first"|"last")` helper (e.g. in `ladder_config.py` or a small new module) and have all three call sites use it.
+
+### [NIT:design] cold-cell per-rep "not_run" label conflates two distinct causes
+**Location:** `bench/loomyard-eval/ladder/scripts/run_ladder.py:973-1000`
+**Issue:** A repetition lands on `rep_disposition = "not_run"` both when every attempt exhausts `MAX_ATTEMPTS` on the native-fallback branch (`gate_cold_after` fatal) and when every attempt is discarded because `gate_cold_before` finds a live daemon (a different, retry-exhausting cause). The plan's card 21 describes "Not-run" specifically as the native-fallback exhaustion case; a `gate_cold_before` failure repeated three times would be misreported the same way.
+**Fix:** Track the specific reason per exhausted attempt (or at least distinguish "live daemon before start" from "native fallback after") so `cold_cell.json`'s `reason` text stays accurate.
+
+## Verdict
+
+REQUEST_CHANGES
+Cold-cell disposition vocabulary mismatch between run_ladder.py and summarize.py breaks the documented exit-zero contract on real runs.
+MILL_REVIEW_END
