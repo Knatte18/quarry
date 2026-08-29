@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-usage-extraction
+phase: approved-blinded-scoring
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -34,6 +34,7 @@ planned  '2026-08-29T13:41:52Z'
 implementing  '2026-08-29T13:42:16Z'
 approved-suite-skeleton-and-generation  '2026-08-29T13:49:42Z'
 approved-usage-extraction  '2026-08-29T13:54:59Z'
+approved-blinded-scoring  '2026-08-29T14:02:57Z'
 ```
 
 ## Batches
@@ -53,9 +54,10 @@ batches:
     commit_sha: 444e077bed1a66b909047e0129137ea02f4d791d
     verify_baseline_failures: []
   - name: blinded-scoring
-    state: running
+    state: approved
     implementer_session: a14e9f92-405e-4605-9f53-4037542bdcb9
     start_sha: b4409ffa87797c13a8ede57d8cfa01596da24986
+    commit_sha: 687ed5b3c7184bc17ba614ca7db098d2decd0353
     verify_baseline_failures: []
   - name: validation-gates
     state: pending
