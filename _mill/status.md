@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mcp-capability-bench
 branch: mcp-capability-bench
-plan: null
+plan: _mill/plan
 parent: main
 task: Per-capability quarry-mcp benchmark suite
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-29T12:00:41Z'
 discussion-fix-r6  '2026-08-29T12:43:35Z'
 discussed  '2026-08-29T12:43:35Z'
+planning  '2026-08-29T12:57:52Z'
 ```

@@ -1,0 +1,95 @@
+# Batch: validation-gates
+
+```yaml
+task: "Per-capability quarry-mcp benchmark suite"
+batch: "validation-gates"
+number: 3
+cards: 3
+verify: uv run --no-project --with pytest --with pyyaml python -m pytest bench/loomyard-eval/ladder/tests/test_gates.py -q
+depends-on: [1, 2]
+```
+
+## Batch Scope
+
+This batch delivers `gates.py`: every per-run validation gate, as pure predicates over a parsed transcript, a filesystem state, and a run directory. The discussion makes these verification steps over produced data rather than unit tests of the runs, and names each one as separately testable — which is why they live in their own module instead of inside the dispatch layer.
+
+The external interface batch 6 consumes is `gates.py`'s `run_gates(...) -> GateReport`, plus the individual predicates it composes. `run_ladder.py` calls `run_gates` once per run and writes `run.json` only when the report passes; it never re-implements a gate.
+
+Batch-local decision: a gate returns a structured `GateFinding` rather than raising, so one run can fail several gates and report all of them. `GateReport.passed` is `True` only when no finding has `fatal: True`; findings that are observations (`worktree_dirtied`, `target_origin_quarry_mention`) are carried on the report with `fatal: False` and never block.
+
+## Cards
+
+### Card 8: transcript-derived gates
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/scripts/extract_usage.py`
+  - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
+  - `bench/loomyard-eval/ladder/tests/conftest.py`
+  - `bench/loomyard-eval/ladder/tests/fixtures/bundle-mixed-tools.jsonl`
+  - `bench/loomyard-eval/ladder/tests/fixtures/denied-attempt.jsonl`
+  - `bench/loomyard-eval/ladder/tests/fixtures/targetdir-override.jsonl`
+  - `bench/loomyard-eval/ladder/tests/fixtures/none-target-origin-mention.jsonl`
+- **Edits:** none
+- **Creates:**
+  - `bench/loomyard-eval/ladder/scripts/gates.py`
+  - `bench/loomyard-eval/ladder/tests/test_gates.py`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Write the tests first. Define the frozen dataclasses `GateFinding` (fields `gate`, `message`, `fatal`) and `GateReport` (fields `findings`, plus a `passed` property). Then the transcript gates, each taking the parsed event list and returning a list of findings:
+  - `gate_denied_tools_not_used(events, denied_names)` — fatal when any `tool_use` block names a tool in that config's deny-list **and** its matching `tool_result` did not error. A denied name that appears only as a rejected attempt is not a violation; it is the `denied_tool_attempts` metric.
+  - `gate_no_target_override(events)` — fatal when any `mcp__quarry__*` tool call's `input` carries a `targetDir` or a `buildTags` key. A run that retargets breaks both the pinned-worktree constraint and the cold cell's daemon key.
+  - `gate_model_pinned(events, run_model)` — fatal when the init event's `model` does not match the pinned id. Match by normalising away a trailing bracketed context-window suffix, so a pinned `claude-opus-5` is satisfied by a reported `claude-opus-5[1m]` but not by any other id.
+  - `gate_blinding(events, repo_root)` — applies only to a config whose `allowed` is empty. Fatal when the transcript contains an `mcp__quarry__` tool name, the literal `/tmp/quarry-bench`, or any filesystem path into `repo_root`. A bare `quarry` mention whose only occurrence is inside a `tool_result` payload is **not** fatal: it records a non-fatal `target_origin_quarry_mention` finding instead, because the target codebase mentions quarry in its own tracked files and a bare-string gate would halt the matrix over the target's own prose.
+
+  Tests assert each gate against the fixtures: the bundle fixture passes the denial and override gates; the `targetdir-override` fixture fails `gate_no_target_override` on both the `targetDir` and the `buildTags` call; the `denied-attempt` fixture passes `gate_denied_tools_not_used` because the attempt did not succeed while still being counted by the extractor; a model mismatch is fatal while the bracketed-suffix form is not; the `none-target-origin-mention` fixture passes `gate_blinding` and carries the non-fatal observation; and a `none`-shaped transcript containing an `mcp__quarry__` name, a `/tmp/quarry-bench` string, or a path under `repo_root` fails it, asserted as three separate cases.
+- **Commit:** `feat(bench): add transcript-derived validation gates`
+
+### Card 9: filesystem and daemon-state gates
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
+  - `bench/loomyard-eval/ladder/tests/fixtures/cold-native-fallback.jsonl`
+  - `internal/cli/paths.go`
+  - `internal/quarryengine/daemon/daemonstate.go`
+- **Edits:**
+  - `bench/loomyard-eval/ladder/scripts/gates.py`
+  - `bench/loomyard-eval/ladder/tests/test_gates.py`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Write the tests first. Add:
+  - `workspace_key(target_dir)` — a Python re-derivation of quarry's own keying: the target directory's base name, a hyphen, then the first 12 hex characters of the SHA-256 digest of the cleaned absolute path. Mirrors `workspaceKey` in the Go source listed in Context.
+  - `resolve_state_dir(target_dir, cache_dir)` — `<cache_dir>/quarry/<workspace_key>`, matching the third precedence tier of `ResolveStateDir`. The suite never passes `--state-dir` and always clears `QUARRY_STATE_DIR`, so the two higher tiers are deliberately not modelled; the function raises `GateError` when `QUARRY_STATE_DIR` is set in the environment it is asked about, rather than silently returning a key that would not be the one in use.
+  - `daemon_state_file(state_dir, lang)` — `<state_dir>/<lang>/daemon.json`, with `lang` defaulting to `go`.
+  - `gate_cold_before(target_dir, cache_dir)` — fatal when the resolved `daemon.json` exists before a cold run starts, since the daemon is already warm and the run cannot be reported as cold.
+  - `gate_cold_after(target_dir, cache_dir)` — fatal when no `daemon.json` exists after a cold run finishes. Its absence means the native fallback was taken, and the run is invalidated rather than reported as cold; the finding's message must say so, because a state-absence check alone would pass vacuously on that path.
+  - `gate_worktree_neutralised(worktree)` — fatal when `CLAUDE.md`, `CONSTRAINTS.md`, or `.claude/` exists in the task worktree.
+  - `observe_worktree_dirtied(worktree)` — returns a non-fatal finding carrying `True` or `False` from `git -C <worktree> status --porcelain` being non-empty. Recorded, never gated.
+
+  Tests use `tmp_path` for both the worktree and the cache dir: `workspace_key` is deterministic and differs between two distinct paths sharing a basename; `resolve_state_dir` raises when `QUARRY_STATE_DIR` is set via monkeypatch; `gate_cold_before` passes on an empty cache dir and fails once the `daemon.json` is created at the resolved location; `gate_cold_after` fails on that same empty state and passes once it exists; `gate_worktree_neutralised` fails for each of the three ambient-context entries independently and passes when none is present; and `observe_worktree_dirtied` is non-fatal in both outcomes.
+- **Commit:** `feat(bench): add worktree and cold-daemon state gates`
+
+### Card 10: run-state, invalidation, and the composed gate report
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
+  - `bench/loomyard-eval/ladder/scripts/extract_usage.py`
+- **Edits:**
+  - `bench/loomyard-eval/ladder/scripts/gates.py`
+  - `bench/loomyard-eval/ladder/tests/test_gates.py`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Write the tests first. Add:
+  - `run_dir(results_root, config_id, n)` — `<results_root>/raw/<config_id>/<n>/`.
+  - `is_complete(run_dir)` — `True` only when `run.json` exists in that directory **and** parses with `state == "complete"`. A directory holding `answer.json` and `usage.json` but no `score.json` is by construction not complete, because `run.json` is written last.
+  - `invalidate(run_dir)` — delete `run.json`, then move the directory aside to a sibling `<n>.invalid-<k>/` with `k` the lowest unused index, leaving the discarded attempt inspectable. Returns the new path.
+  - `write_run_json(run_dir, payload)` — write the terminal-state marker with `state: "complete"`, the config id, the repetition index, the resolved run model, the gate report's non-fatal observations, and the timestamp. Called only after the answer parsed, `usage.json` was extracted, every fatal gate passed, and `score.json` exists.
+  - `run_gates(...)` — compose the card 8 and card 9 gates plus a `gate_artifacts_present(run_dir)` requiring `answer.json`, `answer.redacted.json`, `usage.json`, and `score.json`, and return one `GateReport`. Its signature takes the parsed events, the `LadderConfig`, the pinned run model, the repo root, the task worktree, and the run directory, and applies the cold-cell gates only when `config.cold` is true.
+
+  Tests: a run directory with a `state: "complete"` `run.json` is skipped by `is_complete` while one without it is not; a directory whose `run.json` records any other state is not complete; a directory holding an answer and usage but no `score.json` is not complete; `invalidate` removes `run.json`, moves the directory to `<n>.invalid-1/` without destroying its contents, and a second invalidation of a re-created directory lands on `<n>.invalid-2/`; and `run_gates` returns a failing report when any fatal gate fails and a passing report carrying the non-fatal observations when none does.
+- **Commit:** `feat(bench): add run-state, invalidation, and the composed gate report`
+
+## Batch Tests
+
+`verify:` runs `bench/loomyard-eval/ladder/tests/test_gates.py`, the only test file this batch creates. It covers all three cards' gates: the transcript gates against the committed fixtures, the filesystem and daemon-state gates against `tmp_path` fixtures, and the run-state helpers against synthesised run directories. No live model call, no network, and no real daemon is involved — the daemon gates are asserted against the state artifact's presence, which is the only source-grounded signal available without modifying quarry.
