@@ -18,15 +18,26 @@ Usage:
 """
 import json
 import os
+import re
 import select
 import shutil
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
-from extract_usage import init_event, read_transcript
-from gates import daemon_state_file, gate_worktree_neutralised, resolve_state_dir
-from ladder_config import mcp_name, write_settings
+from extract_usage import extract_usage, init_event, read_transcript, result_event
+from gates import (
+    GateFinding,
+    daemon_state_file,
+    gate_run_complete_artifacts,
+    gate_worktree_neutralised,
+    resolve_state_dir,
+    run_gates,
+    write_run_json,
+)
+from ladder_config import mcp_name, preamble_for, write_settings
+from score_run import ScoringError, score_run
 
 
 class HarnessError(Exception):
@@ -477,3 +488,311 @@ def run_probe(ladder, repo_root, results_root, target_dir, server_path):
             "block; halting before any matrix run"
         )
     return probe_record
+
+
+""" EXECUTE ONE RUN END TO END """
+
+# The exact heading text both task files use to introduce their identical
+# task-text block -- the section boundary is load-bearing, not tidiness
+# (see task_text_for's docstring).
+TASK_TEXT_HEADING = "## `<TASK TEXT>` (identical for A, B, C)"
+
+
+def task_text_for(ladder, task_key):
+    """
+    Extracts the task's task-text block from its committed task file, so
+    the preamble is assembled from the tracked source rather than from a
+    copy.
+
+    Starts at the line whose heading text is TASK_TEXT_HEADING, takes
+    every following line up to but not including the next line beginning
+    with "## ", strips a leading "> " or ">" from each line, and strips
+    surrounding blank lines. Over-reading this boundary is the worst
+    failure this harness can have: task 01's very next section is its
+    fasit leads, and task 04's is followed by its scoring notes naming
+    the real callers and the burler.go:373 decoy outright -- an extractor
+    that ran past the boundary would paste the answer key into every
+    run's prompt.
+
+    Raises HarnessError when the heading is absent or the extracted body
+    is empty.
+    """
+    task = ladder.tasks[task_key]
+    with open(task.task_file) as f:
+        lines = f.read().splitlines()
+
+    try:
+        start = lines.index(TASK_TEXT_HEADING)
+    except ValueError as exc:
+        raise HarnessError(f"task_text_for: {task.task_file!r} has no {TASK_TEXT_HEADING!r} heading") from exc
+
+    body_lines = []
+    for line in lines[start + 1:]:
+        if line.startswith("## "):
+            break
+        if line.startswith("> "):
+            body_lines.append(line[2:])
+        elif line.startswith(">"):
+            body_lines.append(line[1:])
+        else:
+            body_lines.append(line)
+
+    while body_lines and not body_lines[0].strip():
+        body_lines.pop(0)
+    while body_lines and not body_lines[-1].strip():
+        body_lines.pop()
+
+    if not body_lines:
+        raise HarnessError(f"task_text_for: {task.task_file!r} extracted an empty task-text body")
+
+    return "\n".join(body_lines)
+
+
+_FENCED_JSON_BLOCK_RE = re.compile(r"```json\n.*?\n```", re.DOTALL)
+
+
+def _first_fenced_json_block(text):
+    """Returns the first ```json ... ``` fenced block found in text, fences
+    included. Raises HarnessError when none is present."""
+    match = _FENCED_JSON_BLOCK_RE.search(text)
+    if match is None:
+        raise HarnessError("schema_for: no fenced json block found in the expected section")
+    return match.group(0)
+
+
+def _section(text, heading):
+    """Returns the text between heading (exclusive) and the next line
+    starting with "## " (exclusive), or to the end of text when there is
+    no next "## " line. Raises HarnessError when heading is absent."""
+    idx = text.find(heading)
+    if idx == -1:
+        raise HarnessError(f"schema_for: no {heading!r} section found")
+    section = text[idx + len(heading):]
+    next_heading = section.find("\n## ")
+    if next_heading != -1:
+        section = section[:next_heading]
+    return section
+
+
+_IMPACT_SCHEMA_HEADING = "## Output schema (impact-analysis tasks)"
+_EXPLORATION_SCHEMAS_HEADING = "## Output schemas"
+_EXPLORATION_SCHEMA_MARKER = "**Exploration tasks:**"
+_BENCHMARK_README_PATH = "bench/loomyard-eval/README.md"
+
+
+def schema_for(ladder, task_key):
+    """
+    Returns the task's output schema (a fenced ```json ... ``` block, with
+    fences), from the source that actually holds it -- which differs per
+    task and is not uniform.
+
+    The impact schema is in task 04's own "## Output schema
+    (impact-analysis tasks)" section. Task 01 has no schema section at
+    all, so the exploration schema comes from the "## Output schemas"
+    section of the benchmark README, under its "Exploration tasks:"
+    marker. Selection is driven by the task's declared schema field,
+    never by guessing which file to read.
+
+    Raises HarnessError when the named section is absent.
+    """
+    task = ladder.tasks[task_key]
+
+    if task.schema == "impact":
+        with open(task.task_file) as f:
+            text = f.read()
+        return _first_fenced_json_block(_section(text, _IMPACT_SCHEMA_HEADING))
+
+    if task.schema == "exploration":
+        with open(_BENCHMARK_README_PATH) as f:
+            text = f.read()
+        schemas_section = _section(text, _EXPLORATION_SCHEMAS_HEADING)
+        marker_idx = schemas_section.find(_EXPLORATION_SCHEMA_MARKER)
+        if marker_idx == -1:
+            raise HarnessError(
+                f"schema_for: {_BENCHMARK_README_PATH!r}'s {_EXPLORATION_SCHEMAS_HEADING!r} section "
+                f"has no {_EXPLORATION_SCHEMA_MARKER!r} marker"
+            )
+        return _first_fenced_json_block(schemas_section[marker_idx:])
+
+    raise HarnessError(f"schema_for: unknown schema {task.schema!r} for task {task_key!r}")
+
+
+def build_argv(ladder, config, run_dir, target_dir):
+    """
+    Builds the full claude argv for one matrix run: -p, the generated
+    preamble as the prompt, --model the pinned run model, --output-format
+    stream-json, --verbose, --setting-sources "", --strict-mcp-config,
+    --settings <run_dir>/settings.json, --permission-mode dontAsk,
+    --max-turns from the ladder's max_turns field, and --mcp-config
+    <run_dir>/mcp.json only when config.allowed is non-empty.
+
+    Never includes --state-dir: the suite always resolves the state
+    directory through the scrubbed environment, never the launch flag.
+    """
+    task_text = task_text_for(ladder, config.task)
+    schema_json = schema_for(ladder, config.task)
+    prompt = preamble_for(ladder, config, target_dir, task_text, schema_json)
+
+    run_dir = Path(run_dir)
+    argv = [
+        "claude", "-p", prompt,
+        "--model", ladder.run_model,
+        "--output-format", "stream-json",
+        "--verbose",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--settings", str(run_dir / "settings.json"),
+        "--permission-mode", "dontAsk",
+        "--max-turns", str(ladder.max_turns),
+    ]
+    if config.allowed:
+        argv += ["--mcp-config", str(run_dir / "mcp.json")]
+    return argv
+
+
+def launch_run(argv, cwd, env, transcript_path):
+    """
+    The default executor: the one place this module starts a claude
+    subprocess.
+
+    Captures the subprocess's stdout stream directly to transcript_path
+    as it runs -- the OS pipes the child's writes straight to the open
+    file, so a run that dies mid-way still leaves a diagnosable
+    transcript. Exists as a named seam so tests drive an injected
+    executor rather than a model.
+    """
+    with open(transcript_path, "w") as transcript_file:
+        subprocess.run(argv, cwd=str(cwd), env=env, stdout=transcript_file, stderr=subprocess.PIPE, text=True)
+
+
+_FENCED_JSON_ANSWER_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
+
+
+def _extract_answer(result_payload):
+    """
+    Parses the final fenced json block out of the result event's "result"
+    text field. Raises HarnessError when none is present or it does not
+    parse.
+    """
+    text = result_payload.get("result", "")
+    matches = _FENCED_JSON_ANSWER_RE.findall(text)
+    if not matches:
+        raise HarnessError("execute_run: result event's result field carried no fenced json block")
+    try:
+        return json.loads(matches[-1])
+    except json.JSONDecodeError as exc:
+        raise HarnessError(f"execute_run: final fenced json block did not parse: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class RunOutcome:
+    """
+    The result of execute_run's per-run pipeline.
+
+    Instance variables:
+        status: "complete", "truncated", or "failed".
+        config_id: the config this outcome belongs to.
+        n: 1-based repetition index.
+        run_json: the written run.json record, present only when status
+            == "complete".
+        findings: tuple of GateFinding-shaped details explaining a
+            "truncated" or "failed" outcome; empty for "complete".
+    """
+
+    status: str
+    config_id: str
+    n: int
+    run_json: dict = None
+    findings: tuple = ()
+
+
+def execute_run(ladder, config, n, run_dir, target_dir, server_path, repo_root, cache_dir, executor=launch_run):
+    """
+    The per-run pipeline: materialise inputs; launch the subprocess
+    through executor, capturing its stdout stream directly to
+    transcript.jsonl as it runs; parse the final fenced json block out of
+    the result event's result field into answer.json; extract
+    usage.json; run run_gates; invoke score_run; run
+    gate_run_complete_artifacts; and only then write_run_json.
+
+    A run whose result event reports a non-success subtype -- the shape a
+    run stopped by --max-turns leaves, with no fenced json block to parse
+    -- returns a "truncated" RunOutcome rather than the generic
+    unparseable-answer failure, because the two call for opposite
+    responses. Any failing fatal gate, an unparseable answer from a run
+    that did finish, or a scoring failure returns a "failed" RunOutcome
+    carrying the findings, and no run.json is written in any of these
+    cases.
+    """
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    write_run_inputs(ladder, config, run_dir, target_dir, server_path)
+
+    argv = build_argv(ladder, config, run_dir, target_dir)
+    transcript_path = run_dir / "transcript.jsonl"
+    env = run_env()
+
+    start = time.monotonic()
+    executor(argv, cwd=target_dir, env=env, transcript_path=transcript_path)
+    wall_clock_ms = int((time.monotonic() - start) * 1000)
+
+    events = read_transcript(transcript_path)
+    result = result_event(events)
+
+    if result.get("subtype") != "success":
+        return RunOutcome(
+            status="truncated",
+            config_id=config.id,
+            n=n,
+            findings=(
+                GateFinding(
+                    "truncated",
+                    f"config {config.id!r} rep {n} did not finish successfully "
+                    f"(subtype={result.get('subtype')!r}); max_turns={ladder.max_turns}",
+                    fatal=True,
+                ),
+            ),
+        )
+
+    try:
+        answer = _extract_answer(result)
+    except HarnessError as exc:
+        return RunOutcome(
+            status="failed", config_id=config.id, n=n,
+            findings=(GateFinding("unparseable_answer", str(exc), fatal=True),),
+        )
+
+    with open(run_dir / "answer.json", "w") as f:
+        json.dump(answer, f, indent=2)
+        f.write("\n")
+
+    usage = extract_usage(events, wall_clock_ms=wall_clock_ms, transcript_path=str(transcript_path))
+    with open(run_dir / "usage.json", "w") as f:
+        json.dump(usage, f, indent=2)
+        f.write("\n")
+
+    gate_report = run_gates(events, ladder, config, ladder.run_model, repo_root, target_dir, run_dir, cache_dir, env)
+    if not gate_report.passed:
+        return RunOutcome(status="failed", config_id=config.id, n=n, findings=gate_report.findings)
+
+    task_text = task_text_for(ladder, config.task)
+    try:
+        score_run(ladder, config, run_dir, task_text)
+    except ScoringError as exc:
+        return RunOutcome(
+            status="failed", config_id=config.id, n=n,
+            findings=(GateFinding("scoring_failed", str(exc), fatal=True),),
+        )
+
+    artifact_findings = gate_run_complete_artifacts(run_dir)
+    if artifact_findings:
+        return RunOutcome(status="failed", config_id=config.id, n=n, findings=tuple(artifact_findings))
+
+    payload = {
+        "config_id": config.id,
+        "n": n,
+        "model": ladder.run_model,
+        "observations": [{"gate": finding.gate, "message": finding.message} for finding in gate_report.findings],
+    }
+    written = write_run_json(run_dir, payload)
+    return RunOutcome(status="complete", config_id=config.id, n=n, run_json=written)
