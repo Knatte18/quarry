@@ -33,6 +33,7 @@ from gates import (
     clear_state_dir,
     daemon_state_file,
     gate_cold_before,
+    gate_denied_tools_not_used,
     gate_run_complete_artifacts,
     gate_worktree_neutralised,
     invalidate,
@@ -395,30 +396,6 @@ def run_env():
 _PROBE_DENIED_TOOL = "impact"
 
 
-def _denied_call_succeeded(events, denied_name):
-    """
-    True when some tool_use block named denied_name has a matching
-    tool_result that did not error -- i.e. the denial did not block it.
-    """
-    results_by_id = {}
-    for event in events:
-        if event.get("type") != "user":
-            continue
-        for block in event.get("message", {}).get("content", []):
-            if block.get("type") == "tool_result":
-                results_by_id[block["tool_use_id"]] = block
-
-    for event in events:
-        if event.get("type") != "assistant":
-            continue
-        for block in event["message"]["content"]:
-            if block.get("type") == "tool_use" and block["name"] == denied_name:
-                result = results_by_id.get(block["id"])
-                if result and not result.get("is_error"):
-                    return True
-    return False
-
-
 def run_probe(ladder, repo_root, results_root, target_dir, server_path):
     """
     Executes one throwaway claude -p run, before any matrix run, that
@@ -482,7 +459,7 @@ def run_probe(ladder, repo_root, results_root, target_dir, server_path):
 
     init = init_event(events)
     advertised_tools = init.get("tools") or []
-    denial_blocks = not _denied_call_succeeded(events, denied_name)
+    denial_blocks = not gate_denied_tools_not_used(events, [denied_name])
 
     probe_record = {
         "denial_blocks": denial_blocks,
