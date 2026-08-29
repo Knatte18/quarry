@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -31,4 +31,29 @@ plan-fix-r5  '2026-08-29T13:34:13Z'
 plan-review-r6  '2026-08-29T13:39:35Z'
 plan-fix-r6  '2026-08-29T13:41:43Z'
 planned  '2026-08-29T13:41:52Z'
+implementing  '2026-08-29T13:42:16Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: suite-skeleton-and-generation
+    state: pending
+  - name: usage-extraction
+    state: pending
+  - name: blinded-scoring
+    state: pending
+  - name: validation-gates
+    state: pending
+  - name: summarize-and-separation
+    state: pending
+  - name: run-orchestration
+    state: pending
+  - name: protocol-readme
+    state: pending
+  - name: execute-matrix
+    state: pending
+  - name: conclusion
+    state: pending
 ```
