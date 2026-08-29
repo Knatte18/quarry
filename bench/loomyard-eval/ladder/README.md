@@ -392,6 +392,7 @@ bench/loomyard-eval/ladder/
 │   └── test_summarize.py
 └── results/<YYYY-MM-DD>/        one dated directory per matrix run
     ├── probe.json               tracked
+    ├── cold_cell.json           tracked
     ├── summary.json             tracked
     ├── conclusion.md            tracked
     └── raw/                     gitignored (bench/loomyard-eval/ladder/results/**/raw/) —
