@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-export-cli-helpers
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-review-r5  '2026-08-29T07:37:29Z'
 plan-fix-r5  '2026-08-29T07:38:49Z'
 planned  '2026-08-29T07:38:58Z'
 implementing  '2026-08-29T07:39:30Z'
+approved-export-cli-helpers  '2026-08-29T07:44:35Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ implementing  '2026-08-29T07:39:30Z'
 ```yaml
 batches:
   - name: export-cli-helpers
-    state: running
+    state: approved
     implementer_session: 75982287-6523-41a9-98ac-05d429040078
     start_sha: 304f170e41b1ed0c82d64b0ba4e4c5872466ffe9
+    commit_sha: 010187c71bb72765c1f47c59be7dfa7c17470694
     verify_baseline_failures: []
   - name: mcpserver-foundation
     state: pending
