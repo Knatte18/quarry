@@ -85,30 +85,42 @@ another pass of the existing harness.
 
   **Ladder A — exploration, against task 01 (`01-reed-geometry-exploration`), 6 configs:**
 
-  | # | config id | quarry tools allowed |
-  |---|---|---|
-  | A0 | `none` | (none) |
-  | A1 | `toc_file` | `toc_file` |
-  | A2 | `toc_dir` | `toc_dir` |
-  | A3 | `toc_pair` | `toc_dir`, `toc_file` |
-  | A4 | `toc_pair_symbol` | `toc_dir`, `toc_file`, `workspace_symbol` |
-  | A5 | `bundle` | all seven |
+  | config id | quarry tools allowed |
+  |---|---|
+  | `a0-none` | (none) |
+  | `a1-toc-file` | `toc_file` |
+  | `a2-toc-dir` | `toc_dir` |
+  | `a3-toc-pair` | `toc_dir`, `toc_file` |
+  | `a4-toc-pair-symbol` | `toc_dir`, `toc_file`, `workspace_symbol` |
+  | `a5-bundle` | all seven |
 
   **Ladder B — navigation / impact analysis, against task 04
   (`04-shedadapters-shuttle-impact`), 8 configs:**
 
-  | # | config id | quarry tools allowed |
-  |---|---|---|
-  | B0 | `none` | (none) |
-  | B1 | `symbol` | `workspace_symbol` |
-  | B2 | `definition` | `textDocument_definition` |
-  | B3 | `references` | `textDocument_references` |
-  | B4 | `lsp_trio` | `workspace_symbol`, `textDocument_definition`, `textDocument_references` |
-  | B5 | `impact` | `impact` |
-  | B6 | `assert_no_callers` | `assert_no_callers` |
-  | B7 | `bundle` | all seven |
+  | config id | quarry tools allowed |
+  |---|---|
+  | `b0-none` | (none) |
+  | `b1-symbol` | `workspace_symbol` |
+  | `b2-definition` | `textDocument_definition` |
+  | `b3-references` | `textDocument_references` |
+  | `b4-lsp-trio` | `workspace_symbol`, `textDocument_definition`, `textDocument_references` |
+  | `b5-impact` | `impact` |
+  | `b6-assert-no-callers` | `assert_no_callers` |
+  | `b7-bundle` | all seven |
 
-  14 configs × N = 3 → 42 runs, plus the cold-daemon cell (see "Daemon warmth") → 45.
+  **Cold-daemon cell (see "Daemon warmth"), 1 config:** `a5-bundle-cold` — identical tool
+  set and task to `a5-bundle`, differing only in daemon state.
+
+  14 main configs × N = 3 → 42 runs, plus the cold cell's 3 → 45.
+
+  **Config ids are ladder-qualified and globally unique**, and `ladder.yaml`'s `id` field is
+  that unique key. Everything downstream is keyed on it: the `raw/<config-id>/<n>/`
+  directory, the `run.json` resume lookup, `summarize.py`'s per-config grouping, and the
+  "exactly 3 complete runs per config" gate. A bare `none` or `bundle` would collide two
+  ladders' runs into one directory and make "its own ladder's `none` control" unresolvable
+  from the id, so the ladder letter is part of the id rather than a separate column. Each
+  config also carries an explicit `ladder: a|b` field, so the disjoint-range rule resolves
+  its control by lookup rather than by parsing the id string.
 
 - Rationale: a full cross product (11+ rungs × 2 tasks × 3 reps) is ~70 runs for
   information the pairing already yields — `assert_no_callers` on an open-ended
@@ -184,8 +196,16 @@ another pass of the existing harness.
   server named `quarry` exposing a `mcp__quarry__*` namespace is exactly the structural
   leak the blinding constraint forbids — a `none` agent must not be able to observe that
   quarry exists, and denying the tools still advertises the name. Each run's process working
-  directory is its own task worktree under `/tmp`, never this quarry repository, so no run
-  of any config can read quarry's source, docs, or `.mcp.json`.
+  directory is its own task worktree under `/tmp`, never this quarry repository, so nothing
+  in a run's ambient context points at quarry's source, docs, or `.mcp.json`.
+
+  That cwd choice removes the *invitation*, not the *capability*: Bash is in the allow-set
+  and cwd does not bound what an absolute path can read, so a `none` agent that went looking
+  could still reach this repo. The blinding is therefore enforced by detection, not by
+  construction — the per-run gate rejecting any `none` run whose transcript contains a
+  `mcp__quarry__*` tool or the string "quarry" is what actually holds the constraint, and a
+  run that trips it is invalidated. This is a weaker guarantee than #006's structural
+  blinding claim and is stated as such rather than overclaimed.
 
   **Run environment, pinned identically across all 45 runs:**
   - `--model` is pinned to one explicit model id for the entire matrix and recorded in
@@ -283,7 +303,8 @@ another pass of the existing harness.
 - Decision: every run in the 42-run main matrix executes against a **pre-warmed** quarry
   daemon and a pre-built worktree, warmed by the harness before the run's process starts.
   Warmth is a controlled constant, not a ladder dimension. Separately, one dedicated cell
-  runs config A5 (`bundle`, task 01) N = 3 more times against a **cold** daemon, giving a
+  runs config `a5-bundle-cold` — the same tool set and task as `a5-bundle` — N = 3 times
+  against a **cold** daemon, giving a
   clean warm-vs-cold contrast at n = 3 per side with blind agents on both sides.
 
   **How the cold cell is actually made cold.** quarry keys its daemon per absolute
@@ -326,6 +347,17 @@ another pass of the existing harness.
   `workspaceKey` and either would silently collapse all three cold runs onto one shared key.
   If the native fallback turns out to be unavoidable on the operator's machine, the cold
   cell is reported as not-run rather than reported with numbers that cannot be trusted.
+
+  **The cold cell runs last, and its daemons are drained between runs.** A supervised cold
+  run leaves a gopls daemon resident for `daemonIdleTimeout` (10 minutes,
+  `internal/quarryengine/daemon/ensureserver.go`) against a worktree the harness then
+  deletes. Placing the cold cell after the entire main matrix means no leaked daemon can
+  ever be resident during a timed main-matrix run; and between the three cold runs the
+  harness waits for the previous run's daemon to exit before starting the next, so no cold
+  run is timed alongside a resident daemon from its predecessor either. Ordering it last
+  rather than first also avoids the alternative failure: run first, and its three daemons
+  would be resident through the opening minutes of the main matrix, loading exactly the
+  `duration_ms` figures the separation rule reads.
 - Rationale: #006's scorecards leave warm-vs-cold genuinely unresolved (n = 1 blind, and
   the apparently decisive warm numbers were retracted as contaminated), and both task 03
   and task 04 scorecards name this task as the place to settle it. Making warmth a second
@@ -350,7 +382,8 @@ another pass of the existing harness.
 
 ### Runs dispatch sequentially
 
-- Decision: all 45 runs execute one at a time, in a defined order, never concurrently. Each
+- Decision: all 45 runs execute one at a time, never concurrently, in this order: the whole
+  42-run main matrix first, then the 3 cold-cell runs last. Each
   run owns a directory under `results/<date>/raw/<config-id>/<n>/`, and its terminal state
   is recorded in a `run.json` written there **only after** the run's answer parsed, its
   `usage.json` extracted, and its validation gates passed. Re-invocation skips a run iff
@@ -545,8 +578,9 @@ another pass of the existing harness.
 
   Scoring is driven by `run_ladder.py` immediately after each run's metrics are extracted,
   by invoking `score_run.py` for that run. `score_run.py` dispatches one blinded scoring
-  call — it is handed only the run's `answer.json` and the task's fasit `c.json`, never the
-  config id, the tool set, or any other run — and writes `score.json`. **A run is not
+  call under the three-input contract defined in the scoring decision above — the run's
+  `answer.json`, the task's fasit `c.json`, and the task's `<TASK TEXT>`, and nothing else —
+  and writes `score.json`. **A run is not
   complete until it is scored:** `run.json` is written only after the answer parsed, metrics
   extracted, gates passed, *and* `score.json` exists, so a resumed matrix re-runs anything
   whose scoring failed rather than silently summarising unscored cells.
@@ -694,6 +728,16 @@ exposure-independent guidance worth keeping from the CLI template: prefer quarry
 do not re-verify a quarry answer with grep, and pass a known `file:line:character` position
 instead of a bare symbol name when one is already in hand.
 
+**The parallel-tool-calls block is carried into every generated preamble, verbatim.** Both
+committed preambles open with `USE PARALLEL TOOL CALLS` and close with the
+`<use_parallel_tool_calls>` block, and the `none` configs keep it by using the B preamble
+unchanged. Dropping it from the rewritten A preamble would leave every quarry rung
+batching-unsteered against a batching-steered control — a second confound landing squarely
+on `num_turns` and `duration_ms`, the metrics the disjoint-range benefit rule leans on
+hardest, and one with no justification behind it (unlike the anti-grep steering, which is
+deliberately quarry-specific). It is exposure-independent text, so it is carried over
+unchanged and asserted in the preamble-generation tests.
+
 **The control's preamble differs in steering, not only in tools — and that confound is
 recorded, not papered over.** The B preamble gives standard tools with no steering, while
 every quarry rung's A preamble says "prefer quarry over grep, do not re-verify with grep".
@@ -798,8 +842,11 @@ silently summarised from two runs.
 **Preamble generation.** Assert that a rung's generated A-preamble names exactly the
 `mcp__quarry__*` tools that rung allows and no others; that it contains no binary path and
 no CLI verb syntax (`/tmp/quarry-bench`, `quarry toc dir`, `--target-dir`, and the like), so
-the CLI template can never leak back in; and — as a distinct assertion — that every `none`
-config's prompt contains no occurrence of "quarry" anywhere.
+the CLI template can never leak back in; that it forbids setting `targetDir`/`buildTags`;
+that it carries the `USE PARALLEL TOOL CALLS` opening and the `<use_parallel_tool_calls>`
+block verbatim, exactly as the `none` control's B preamble does (this is the batching-steer
+parity the `num_turns`/`duration_ms` comparison depends on); and — as a distinct assertion —
+that every `none` config's prompt contains no occurrence of "quarry" anywhere.
 
 **Cold-cell coldness.** Assert that the three cold runs each resolve to a distinct
 target-dir path and therefore a distinct daemon key; that no pre-warm step runs for them;
@@ -969,13 +1016,12 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
   nothing, which makes its post-run presence the only source-grounded positive confirmation
   available.
 - **Q:** The shared task worktree is described as read-only — is it? **A:** [auto-pick] No,
-  it's an ordinary writable checkout and every run has Bash, so cleanliness is enforced:
-  `git status --porcelain` after each main-matrix run, dirty tree invalidates that run, and
-  the worktree is hard-restored before the next. **Why:** a run that drops a scratch file or
-  populates a build cache leaves state visible to the next 17 runs of that task — the exact
-  cross-run contamination the blind-process decision exists to eliminate. Invalidating
-  rather than only restoring matters because a run that mutated its target may have read
-  back what it wrote.
+  it's an ordinary writable checkout and every run has Bash, so the harness hard-restores it
+  after every main-matrix run unconditionally. **Why:** a run that drops a scratch file or
+  populates a build cache would otherwise leave state visible to the next 17 runs of that
+  task — the exact cross-run contamination the blind-process decision exists to eliminate.
+  (Whether dirtying the tree also *invalidates* the run is settled separately below: it does
+  not.)
 - **Q:** Where does scoring actually happen, and is a run complete before it's scored?
   **A:** [auto-pick] `run_ladder.py` invokes `score_run.py` right after metrics extraction;
   it writes `score.json` per run; and a run is **not** complete until `score.json` exists.
@@ -1035,6 +1081,31 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
   `session_id`. **Why:** locating a session file after the fact depends on client on-disk
   layout this suite does not control, and streaming means even a run that dies mid-way
   leaves a diagnosable transcript.
+- **Q:** Are config ids unique across the two ladders? **A:** [auto-pick] Yes —
+  ladder-qualified (`a0-none`, `b0-none`, `a5-bundle`, `b7-bundle`, cold cell
+  `a5-bundle-cold`), and `ladder.yaml`'s `id` is the unique key, with a separate
+  `ladder: a|b` field for control lookup. **Why:** bare `none`/`bundle` ids collide two
+  ladders' runs into one `raw/<config-id>/<n>/` directory and break the `run.json` resume
+  key, `summarize.py`'s grouping, and the "3 complete runs per config" gate; the cold cell
+  needs its own id for the same reason.
+- **Q:** Does the rewritten A preamble keep the parallel-tool-calls directive? **A:**
+  [auto-pick] Yes, verbatim, and it is asserted in the preamble tests. **Why:** both
+  committed preambles carry it and the `none` control keeps it via the unchanged B preamble,
+  so dropping it would leave every quarry rung batching-unsteered against a batching-steered
+  control — a second confound landing directly on `num_turns` and `duration_ms`, and unlike
+  the anti-grep steering it has no quarry-specific justification for differing.
+- **Q:** Where does the cold cell sit in the run order? **A:** [auto-pick] Last, after the
+  entire 42-run main matrix, with each cold run's daemon drained before the next starts.
+  **Why:** a supervised cold run leaves a gopls daemon resident for the 10-minute idle
+  timeout against a worktree the harness then deletes; running the cell first would leave up
+  to three of them resident through the opening of the main matrix, loading the very
+  `duration_ms` figures the separation rule reads.
+- **Q:** Is the `none` arms' blinding structural? **A:** [auto-pick] No — cwd removes the
+  invitation but not the capability, since Bash can read absolute paths; the enforcement is
+  the per-run transcript gate rejecting any `none` run mentioning quarry. **Why:** claiming
+  structural blinding when the guard is detection-based would overstate the guarantee
+  relative to #006's, and the conclusion has to be able to describe what was actually
+  enforced.
 - **Q:** If the review rounds hit the configured cap without converging, block or hand
   off? **A:** Hand off anyway (operator instruction, given mid-session). **Why:** the
   operator explicitly overrode auto-mode's block-on-non-progress behaviour for this task.
