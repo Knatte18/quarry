@@ -148,6 +148,21 @@ another pass of the existing harness.
   enumeration with a deliberate interface-conflation decoy (04). Task 02 has no fasit and
   was never executed; task 03's postmortem in its own scorecard established it cannot
   discriminate.
+
+  **Ladder B is expected to discriminate on efficiency, not correctness, and that is not
+  the same defect that excluded task 03.** Task 04's committed scorecard records both #006
+  arms at 100% recall/precision with the decoy correctly excluded by both, and calls their
+  cost "statistically indistinguishable" — so Ladder B's correctness axis is likely
+  saturated across all 8 rungs, and its 24 runs will mostly be read as an efficiency and
+  process comparison (tool calls, turns, tokens, duration, how far each rung has to route
+  around its own restriction via grep). The asymmetry with task 03 is deliberate: task 03
+  was excluded because `go build` answers its question outright, so *no* arm's process
+  differs meaningfully — there is nothing left to measure. Task 04's arms reach the same
+  answer by visibly different routes, which is exactly what the per-capability question is
+  about. This is also stated so the conclusion cannot later present a saturated correctness
+  axis as evidence that every Ladder B rung "works": if all 8 rungs including `none` score
+  100%, the honest reading is that this task cannot separate them on correctness, and any
+  claim about a rung must then rest on its efficiency ranges alone.
 - Rejected: authoring new, narrower tasks per rung (each would need its own fasit run,
   and a task shaped to make one capability shine is a rigged measurement — the honest
   question is how much of a *realistic* task each capability can carry alone). Including
@@ -159,9 +174,43 @@ another pass of the existing harness.
 - Decision: each run executes as its own headless `claude -p` subprocess, launched with an
   explicit `--mcp-config` pointing at the repo's quarry server and an explicit
   `--settings <generated>` file whose `permissions.deny` array names every
-  `mcp__quarry__<tool>` **not** in that config's allowed set. The `none` configs deny all
-  seven. The deny file is generated per config by the harness from a single declarative
-  ladder definition, so the deny-list can never drift out of sync with the config table.
+  `mcp__quarry__<tool>` **not** in that config's allowed set. The deny file is generated per
+  config by the harness from a single declarative ladder definition, so the deny-list can
+  never drift out of sync with the config table.
+
+  **The `none` configs get no `--mcp-config` at all.** They are launched without the quarry
+  server declared, rather than with it declared and all seven tools denied. A declared
+  server named `quarry` exposing a `mcp__quarry__*` namespace is exactly the structural
+  leak the blinding constraint forbids — a `none` agent must not be able to observe that
+  quarry exists, and denying the tools still advertises the name. Each run's process working
+  directory is its own task worktree under `/tmp`, never this quarry repository, so no run
+  of any config can read quarry's source, docs, or `.mcp.json`.
+
+  **Run environment, pinned identically across all 45 runs:**
+  - `--model` is pinned to one explicit model id for the entire matrix and recorded in
+    `ladder.yaml` and in every `usage.json`. Every headline metric this suite reports —
+    `duration_ms`, all four token classes, `cost_usd`, `num_turns` — is model-dependent, so
+    an unpinned or drifting model would make cells incomparable and the matrix
+    unreproducible. If the matrix ever has to be re-run on a different model, that is a new
+    dated results directory, not a mixed one.
+  - The generated settings file also carries the `permissions.allow` entries the non-quarry
+    toolset needs (Read, Grep, Glob, and Bash), and the harness runs each subprocess in a
+    non-interactive permission mode, so a headless run can use its standard tools without
+    blocking on a prompt. The allow-set is identical across all 45 runs; only the quarry
+    deny-list varies.
+  - `QUARRY_STATE_DIR` is cleared and `--state-dir` is never passed, for every run. See the
+    warmth decision for why this matters to the daemon key.
+
+  **`denied_tool_attempts` rests on an unverified premise.** Whether `permissions.deny`
+  hides a denied tool from the advertised tool list or advertises it and rejects the call
+  decides whether that metric can ever be non-zero: if denied tools are filtered out of what
+  the model sees, the count is identically zero in every restricted rung and measures
+  nothing. The harness must establish which semantics apply with a single throwaway probe
+  run before the matrix starts, and record the answer in the results directory. If denied
+  tools are hidden, `denied_tool_attempts` is dropped from the reported metrics rather than
+  reported as a meaningless column of zeros — and the enforcement is if anything stronger,
+  since a hidden tool cannot be attempted at all. Either outcome is fine; silently reporting
+  zeros as if they were evidence is not.
 - Rationale: the task body is explicit that instruction alone is not reliable — this
   session's predecessor observed tasks nominally scoped to one verb where the agent used
   three. A deny-list makes the restriction structural: a denied tool call fails rather
@@ -230,9 +279,25 @@ another pass of the existing harness.
   freshly-built disposable worktree at a distinct path**
   (`/tmp/loomyard-eval-01-cold-<n>`), which yields a distinct `workspaceKey` and therefore
   a genuinely unstarted daemon, and that worktree is removed immediately after its run so
-  the path is never reused. The harness asserts coldness rather than assuming it: before
-  each cold run it verifies no daemon state exists for that key, and the run is invalidated
-  and redone if one does. No pre-warm step is performed for these three runs.
+  the path is never reused. No pre-warm step is performed for these three runs.
+
+  **Per-path keying holds only on the supervised strategy, so the cold cell must assert
+  it.** `workspaceKey` derives the state directory, and the state directory derives the
+  socket, only for `ensureSupervised`. `EnsureServer` falls back to `ensureNative`, whose
+  own `nativeArgv` doc comment states plainly that gopls — not quarry — picks the shared
+  `-remote=auto` daemon address and that "that address is not a function of the state
+  directory at all" (`internal/quarryengine/daemon/ensureserver.go`, `nativeArgv`'s comment).
+  On that path a distinct worktree path buys nothing: three "cold" runs could all join one
+  already-warm shared gopls daemon, and because the native path writes no `daemon.json`, a
+  naive "no state exists for this key" check would pass vacuously and report contamination
+  as coldness. The harness therefore, per cold run: (1) confirms from the server's own
+  stderr/state that the connection is **supervised**, treating a native fallback as an
+  invalidated run rather than a cold one; (2) confirms no pre-existing state directory for
+  that key; and (3) runs with `QUARRY_STATE_DIR` cleared and no `--state-dir`, since
+  `ResolveStateDir` (`internal/cli/paths.go`) gives both of those precedence over
+  `workspaceKey` and either would silently collapse all three cold runs onto one shared key.
+  If the native fallback turns out to be unavoidable on the operator's machine, the cold
+  cell is reported as not-run rather than reported with numbers that cannot be trusted.
 - Rationale: #006's scorecards leave warm-vs-cold genuinely unresolved (n = 1 blind, and
   the apparently decisive warm numbers were retracted as contaminated), and both task 03
   and task 04 scorecards name this task as the place to settle it. Making warmth a second
@@ -257,8 +322,14 @@ another pass of the existing harness.
 
 ### Runs dispatch sequentially
 
-- Decision: all 45 runs execute one at a time, in a defined order, never concurrently. The
-  harness records each completed run and skips it on re-invocation.
+- Decision: all 45 runs execute one at a time, in a defined order, never concurrently. Each
+  run owns a directory under `results/<date>/raw/<config-id>/<n>/`, and its terminal state
+  is recorded in a `run.json` written there **only after** the run's answer parsed, its
+  `usage.json` extracted, and its validation gates passed. Re-invocation skips a run iff
+  that `run.json` exists and records `state: "complete"`. Invalidating a cell (a failed
+  gate, a native-fallback cold run, a missing answer block) deletes that run's `run.json`
+  and moves its directory aside to `<n>.invalid-<k>/`, so the next invocation re-runs it and
+  the discarded attempt is still inspectable.
 - Rationale: `duration_ms` is the metric the disjoint-range separation rule leans on
   hardest, and concurrent runs contend for CPU, for the gopls daemon backing a shared
   worktree, and for model-side rate limits — any of which would make wall-clock
@@ -288,11 +359,18 @@ another pass of the existing harness.
     quarry and non-quarry alike (`toc_file`, `workspace_symbol`, `Read`, `Grep`, `Bash`,
     …), so "which tools were actually used" is answerable directly rather than inferred.
   - `quarry_tool_uses` — the subtotal across `mcp__quarry__*` tools.
-  - `grep_fallback_count` — Grep tool calls plus Bash invocations containing `grep`/`rg`,
-    matching #006's definition so the numbers stay comparable.
+  - `bash_grep_count` — Bash invocations whose command matches `grep`/`rg`. This is
+    exactly #006's `grep_fallback_count` definition (README "Dispatch protocol" step 4
+    greps the transcript's Bash `"command"` fields only), and is the field used for any
+    comparison against #006's numbers.
+  - `grep_tool_count` — calls to the native Grep tool, which #006's definition does not
+    cover. Reported as its own field and never silently folded into the one above; a
+    combined `grep_fallback_total` is derived from the two for within-suite comparisons
+    only, where it is the more honest signal of routing-around behaviour.
   - `denied_tool_attempts` — attempts to call a tool the rung's deny-list blocked. A
-    non-zero value is itself a finding (the agent wanted that capability), and a zero value
-    across a rung confirms the restriction was not fighting the agent.
+    non-zero value is itself a finding (the agent wanted that capability). Reported only if
+    the probe described in the enforcement decision shows denied tools are advertised
+    rather than hidden; otherwise dropped.
   - `session_id` and the transcript path, so any number can be re-derived.
 
   Every one of these is extracted programmatically from the run's transcript JSONL by a
@@ -313,10 +391,39 @@ another pass of the existing harness.
 ### Correctness scoring against the existing fasit
 
 - Decision: each run's answer JSON is scored against its task's existing tracked
-  `c.json`, using the recall/precision definitions already written in
-  `bench/loomyard-eval/README.md`'s "Scoring" section. Scoring is done by a dedicated
-  scoring agent per run, which sees only that run's answer and the fasit — never the
-  config id, never the rung's tool set, never another run's answer.
+  `c.json` by a dedicated scoring agent per run, which sees only that run's answer and the
+  fasit — never the config id, never the rung's tool set, never another run's answer.
+
+  **Ladder A (task 01, exploration schema)** uses the exploration rule already written in
+  `bench/loomyard-eval/README.md`'s "Scoring" section unchanged: recall = C's
+  `relevant_files`/`key_symbols` also present in the run's, over C's total; precision = the
+  run's entries corroborated by C, over the run's total; plus a qualitative judgement of
+  whether `summary` describes the same mechanism C found.
+
+  **Ladder B (task 04, impact-analysis schema)** has no rule in that section — it defines
+  only exploration and code review, and #006 scored task 04 ad hoc. Its rule is therefore
+  stated here, and applies to all 24 Ladder B runs:
+  - **Recall** = C's `callers_to_update` entries (file+line) also present in the run's, over
+    C's total. Line numbers must match the same call site, not the same file.
+  - **Precision** = the run's `callers_to_update` entries corroborated by C, over the run's
+    total.
+  - **Decoy penalty, scored separately and reported as its own column.** Task 04 exists to
+    test one specific mistake: listing the `burler.go:373` same-named-but-unrelated call
+    site as a real caller. Any run whose `callers_to_update` contains a call site C
+    identifies as a lookalike is marked `decoy_admitted: true`. This is not folded into
+    precision, because it is the finding the task was built for and averaging it away into a
+    ratio would hide it.
+  - **`excluded_lookalikes` is scored as credit, never as a requirement.** C's own
+    unbounded-effort answer lists lookalikes (e.g. `webster.go:75`) that #006's scorecard
+    explicitly declined to penalise the bounded arms for missing, since they sit outside the
+    literal ask. A run that names a lookalike C also names is recorded as
+    `lookalikes_matched: N` for qualitative comparison; a run that names none loses no
+    points.
+- Rationale for the split: reusing #006's exploration rule verbatim keeps Ladder A's numbers
+  comparable to the committed 2026-08-28 scorecards. Ladder B needs its own rule because
+  none exists, and writing it here rather than leaving it to the harness author is what
+  stops 24 of 45 runs from being scored by improvised judgement. Separating the decoy from
+  the ratios reflects what the task actually measures.
 - Rationale: matching "the same real finding" across two independently-worded answers needs
   semantic judgement, which is why #006 made it an agent call rather than string equality;
   reusing that definition keeps this suite's numbers comparable to #006's. Blinding the
@@ -440,6 +547,16 @@ warm-start path — `go build -o quarry-mcp ./cmd/quarry-mcp` once, then point e
 `--mcp-config` at the built binary with an explicit `--target-dir` for that run's worktree —
 rather than `go run`. The built binary is already gitignored (`/quarry-mcp`).
 
+**`--target-dir` is an instructed pin, not a structural one.** Every tool's call-wide input
+carries an optional `targetDir` that overrides the launch default for that call (e.g.
+`assertInput.TargetDir`, `internal/mcpserver/tools_assert.go`), so a model can retarget the
+server per call. The generated preamble must therefore state that `targetDir` is never to be
+set — the launch default is already correct — and the validation gates must check no run's
+transcript contains a tool call carrying a `targetDir`. A run that retargets is invalidated,
+since it breaks both the pinned-worktree constraint and, for the cold cell, the daemon key
+the coldness argument depends on. The same applies to `buildTags`, which partitions the
+state directory (`ResolveStateDir`) and would likewise split the key.
+
 **Target codebase and pins.** Loomyard at `/home/knatte/Code/loomyard/wts/loomyard`. Task
 01 pins to `975578cda8d6f3a81580bd4e73725e060211b766`; task 04 pins to the same SHA. Each
 task's `Setup` section builds a disposable `git worktree` at its pin
@@ -501,6 +618,11 @@ place for this repo's own ephemeral files. There is no `CONSTRAINTS.md` and no r
 - 45 headless agent runs is a real cost. The harness must be resumable: if a run fails or
   the batch is interrupted, re-invoking it must skip already-completed runs rather than
   re-running the whole matrix.
+- One model, pinned identically across all 45 runs and recorded in the results. A matrix
+  spanning two models is not a matrix.
+- `QUARRY_STATE_DIR` cleared and `--state-dir` never passed, for every run — both take
+  precedence over `workspaceKey` in `ResolveStateDir` and would collapse the daemon keying
+  the cold cell depends on.
 
 ## Testing
 
@@ -542,12 +664,15 @@ target-dir path and therefore a distinct daemon key, that no pre-warm step runs 
 and that the harness's coldness check rejects a target-dir whose daemon state already
 exists rather than proceeding.
 
-**Protocol validation gates, checked before the matrix is treated as valid.** These are
-verification steps over the produced data, not unit tests: every one of the 45 runs
-produced a parseable answer block and a `usage.json`; no run's transcript shows a
-successful call to a tool its config denied; each config has exactly 3 completed runs; no
-run's numbers came from a self-report field. A failure in any gate invalidates the affected
-cell, which is re-run rather than reported.
+**Protocol validation gates, checked per run before its `run.json` is written.** These are
+verification steps over the produced data, not unit tests: the run produced a parseable
+answer block and a `usage.json`; its transcript shows no successful call to a tool its
+config denied; no tool call in it carries `targetDir` or `buildTags`; it ran under the
+pinned model; a `none` run's transcript contains no `mcp__quarry__*` tool and no occurrence
+of "quarry"; a cold-cell run confirmed a supervised connection and a previously-absent state
+directory. Across the matrix: each config has exactly 3 complete runs, and no reported
+number came from a self-report field. A failed gate invalidates that run per the
+resumability decision — it is re-run, never reported.
 
 **Not tested:** quarry's own behaviour (out of scope), the wording of the conclusion, and
 anything requiring network or live model calls inside the unit-test suite — the harness's
@@ -633,6 +758,57 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
   syntax, no MCP tool names anywhere in the README), so trimming its verb list would still
   point agents at a binary this task's scope forbids building; #006's actual MCP preamble
   only ever existed in an uncommitted scratch runbook that is gone.
+- **Q:** Which model and permission configuration do the 45 headless runs use? **A:**
+  [auto-pick] One model id pinned identically across all 45 and recorded in `ladder.yaml`
+  and every `usage.json`; an identical `permissions.allow` set for Read/Grep/Glob/Bash in a
+  non-interactive permission mode; `QUARRY_STATE_DIR` cleared and `--state-dir` never
+  passed. **Why:** every headline metric — duration, all four token classes, cost, turns —
+  is model-dependent, so an unpinned model makes cells incomparable and the matrix
+  unreproducible; the state-dir vars take precedence over `workspaceKey` and would collapse
+  the cold cell's daemon keying.
+- **Q:** How are Ladder B's 24 runs scored, given the README defines recall/precision only
+  for exploration and code review? **A:** [auto-pick] An explicit impact-analysis rule
+  written into this discussion: recall/precision over `callers_to_update` matched on
+  file+line, with the `burler.go:373`-style decoy scored as its own `decoy_admitted` column
+  rather than folded into precision, and `excluded_lookalikes` credited but never required.
+  **Why:** no rule exists (#006 scored task 04 ad hoc), and leaving it to the harness author
+  would mean 24 of 45 runs scored by improvised judgement; the decoy is the finding the task
+  was built for, so averaging it into a ratio would hide it.
+- **Q:** Do the `none` arms still get `--mcp-config` with all seven tools denied? **A:**
+  [auto-pick] No — they are launched with no quarry server declared at all, and every run's
+  cwd is its own task worktree, never this repo. **Why:** a declared server named `quarry`
+  exposing a `mcp__quarry__*` namespace is precisely the structural leak the blinding
+  constraint forbids; denying the tools still advertises the name.
+- **Q:** Can `denied_tool_attempts` actually be non-zero? **A:** [auto-pick] Unknown until
+  probed — a throwaway probe run before the matrix establishes whether `permissions.deny`
+  hides denied tools or advertises and rejects them, and the metric is dropped rather than
+  reported if they are hidden. **Why:** if denied tools never reach the model, the column is
+  identically zero everywhere and measures nothing; reporting those zeros as evidence would
+  be worse than not reporting the metric.
+- **Q:** Is per-worktree-path keying enough to guarantee the cold cell is cold? **A:**
+  [auto-pick] No — the harness must also assert a supervised connection per cold run and
+  treat a native fallback as invalidated. **Why:** `workspaceKey` derives the socket only on
+  the supervised strategy; `nativeArgv`'s own comment states gopls picks the shared
+  `-remote=auto` address and that it "is not a function of the state directory at all", and
+  the native path writes no `daemon.json`, so a state-absence check would pass vacuously
+  while three "cold" runs all joined one warm daemon.
+- **Q:** How does a resumed run distinguish a completed run from an invalidated one? **A:**
+  [auto-pick] A `run.json` written only after the answer parsed, usage extracted, and gates
+  passed; invalidation deletes it and moves the attempt to `<n>.invalid-<k>/`. **Why:**
+  "skip already-completed runs" and "invalidate and re-run a failed cell" are
+  indistinguishable on disk without an explicit terminal-state marker.
+- **Q:** Is `--target-dir` a structural pin? **A:** [auto-pick] No — every tool's call-wide
+  input carries an optional `targetDir` overriding the launch default, so the preamble must
+  forbid setting it (and `buildTags`) and a validation gate must invalidate any run whose
+  transcript sets either. **Why:** a retargeting call breaks both the pinned-worktree
+  constraint and the daemon key the cold cell's coldness argument rests on.
+- **Q:** Task 04's committed scorecard shows both #006 arms at 100% — doesn't that make it
+  non-discriminative, the same reason task 03 was excluded? **A:** [auto-pick] No, but state
+  it explicitly: Ladder B is expected to discriminate on efficiency, not correctness. **Why:**
+  task 03 was excluded because `go build` answers its question outright, leaving no arm's
+  process meaningfully different; task 04's arms reach the same answer by visibly different
+  routes, which is the per-capability question. Saying so up front also stops the conclusion
+  from later reading a saturated correctness axis as evidence that every rung "works".
 - **Q:** If the review rounds hit the configured cap without converging, block or hand
   off? **A:** Hand off anyway (operator instruction, given mid-session). **Why:** the
   operator explicitly overrode auto-mode's block-on-non-progress behaviour for this task.
