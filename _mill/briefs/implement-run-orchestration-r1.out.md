@@ -1,0 +1,11 @@
+{"status":"success","commit_sha":"0e22f8a996486224e3adc52372fa834a0c11bc2a","session_id":"d12aad87-761f-45a7-b569-e3f0765ea84e","cards_done":[16,17,18,19,20,21,22]}
+
+All 7 cards (16 through 22) in batch `06-run-orchestration.md` are committed — 7 of 7, complete. The batch's `verify:` command (`uv run --no-project --with pytest --with pyyaml python -m pytest bench/loomyard-eval/ladder/tests/test_run_ladder.py -q`) passes with 24/24 tests green, and `ruff check` on both touched files passes clean.
+
+Files touched:
+- `/home/knatte/Code/quarry/wts/mcp-capability-bench/bench/loomyard-eval/ladder/scripts/run_ladder.py` (new, ~1115 lines) — the harness entry point: worktree lifecycle (`build_worktree`/`restore_worktree`/`ensure_task_worktrees`), server build + MCP config + warm-up (`build_server`/`mcp_call`/`warm_daemon`), the preflight denial probe (`run_probe`), per-run execution (`task_text_for`/`schema_for`/`build_argv`/`execute_run`/`launch_run`), the sequential matrix driver (`plan_runs`/`main_runs`/`cold_runs`/`pending_runs`/`run_matrix`), the cold-cell driver (`run_cold_cell`), and the CLI (`run_stage`, `if __name__ == "__main__":`).
+- `/home/knatte/Code/quarry/wts/mcp-capability-bench/bench/loomyard-eval/ladder/tests/test_run_ladder.py` (new, 24 tests) — covers run ordering/partitioning, resume-skip logic, argv assembly, env scrubbing, task-text boundary extraction (with the burler.go:373/fasit leak-free assertion for both tasks), worktree adoption against an injected git runner, the probe-skip decision, the `--stage` selector, and `run_matrix`'s warm-up-per-dispatch and three-attempt accounting — all via injected seams or monkeypatched module functions, no subprocess/worktree/model call.
+
+One judgment call worth flagging: `run_probe` (Card 18) and `run_cold_cell`/`run_matrix` (Cards 20-21) call `launch_run`/`warm_daemon`/`execute_run` by bare name before those functions exist in the file at their own commit's point in history — a normal Python forward-reference pattern (resolved at call time, not def time), consistent with how the plan sequences these cards to build one cohesive module across a DAG of dependent cards.
+
+{"status":"success","commit_sha":"0e22f8a996486224e3adc52372fa834a0c11bc2a","session_id":"d12aad87-761f-45a7-b569-e3f0765ea84e","cards_done":[16,17,18,19,20,21,22]}
