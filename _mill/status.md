@@ -67,7 +67,9 @@ batches:
     commit_sha: f336b0b4dfd71f674f46b27f68d1f11b0ea47410
     verify_baseline_failures: []
   - name: summarize-and-separation
-    state: pending
+    state: running
+    implementer_session: eedb1a0a-244a-4ac2-9c76-bff9affd80df
+    start_sha: e409060984d31b10f64e4ee4a3766b2e1b982ce3
     verify_baseline_failures: []
   - name: run-orchestration
     state: pending
