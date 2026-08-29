@@ -87,6 +87,9 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 	if err := registerImpactTool(s, cfg); err != nil {
 		return nil, err
 	}
+	if err := registerAssertTool(s, cfg); err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }
