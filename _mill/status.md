@@ -74,7 +74,9 @@ batches:
     commit_sha: 36d8c081db30cc7ac5a8307072d4f6578ccdf84f
     verify_baseline_failures: []
   - name: run-orchestration
-    state: pending
+    state: running
+    implementer_session: d12aad87-761f-45a7-b569-e3f0765ea84e
+    start_sha: 6f43d8bcfa5f7d9f6b02641f120ae75150052037
     verify_baseline_failures: []
   - name: protocol-readme
     state: pending
