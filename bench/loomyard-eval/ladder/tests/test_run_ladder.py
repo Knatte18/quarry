@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 import run_ladder
+import summarize
 from gates import GateFinding
 from ladder_config import (
     DAEMON_BACKED_TOOLS,
@@ -37,6 +38,7 @@ from run_ladder import (
     mcp_config_document,
     pending_runs,
     plan_runs,
+    run_cold_cell,
     run_env,
     run_matrix,
     run_stage,
@@ -409,3 +411,43 @@ def test_run_matrix_recovers_after_two_failures_and_keeps_running(tmp_path, monk
     run_matrix(ladder, tmp_path / "results", worktrees, "/bin/server", "/repo", "/cache")
 
     assert len(attempts) == MAX_ATTEMPTS
+
+
+""" CARD 21/25: run_cold_cell's disposition vocabulary, cross-checked against summarize.py """
+
+
+def test_run_cold_cell_not_run_disposition_excludes_cell_from_build_summary_incomplete(tmp_path, monkeypatch, real_ladder):
+    """
+    Drives run_cold_cell through its real disposition-assignment branch
+    (every attempt exhausts MAX_ATTEMPTS on the native-fallback branch) and
+    feeds the cold_cell.json it actually writes into summarize.build_summary
+    -- the two modules must agree on the disposition string, or the cold
+    cell wrongly lands in `incomplete` and the CLI wrongly exits non-zero on
+    a matrix that finished exactly as designed.
+    """
+    results_root = tmp_path / "results"
+    results_root.mkdir()
+
+    monkeypatch.setattr(run_ladder, "wait_for_daemon_exit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "build_worktree", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "clear_state_dir", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "gate_cold_before", lambda *args, **kwargs: False)
+    monkeypatch.setattr(run_ladder, "remove_worktree", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_ladder, "invalidate", lambda a_run_dir: a_run_dir)
+
+    def always_exhausts_native_fallback(ladder_arg, config_arg, n, a_run_dir, target_dir, server_path, repo_root, cache_dir, executor=None):
+        return RunOutcome(
+            status="failed", config_id=config_arg.id, n=n,
+            findings=(GateFinding("gate_cold_after", "native fallback taken", fatal=True),),
+        )
+
+    monkeypatch.setattr(run_ladder, "execute_run", always_exhausts_native_fallback)
+
+    record = run_cold_cell(real_ladder, results_root, "/bin/server", "/repo", "/cache")
+
+    assert record["disposition"] == "not-run"
+
+    summary = summarize.build_summary(real_ladder, results_root)
+
+    cold_config = next(config for config in real_ladder.configs if config.cold)
+    assert cold_config.id not in summary["incomplete"]

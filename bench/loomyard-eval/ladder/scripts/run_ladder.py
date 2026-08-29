@@ -943,7 +943,7 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
     whatever its outcome.
 
     Persists <results_root>/cold_cell.json recording one of four
-    dispositions -- confirmed_cold, not_run, no_daemon_signal, or
+    dispositions -- confirmed-cold, not-run, no-daemon-signal, or
     partial -- and the number of confirmed-cold repetitions, so a not-run
     or partial cell is never mistaken for an interrupted one.
     """
@@ -1005,7 +1005,7 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
     total_reps = len(all_pairs)
 
     if reps_confirmed_cold >= 1 and reps_not_run == 0:
-        disposition = "confirmed_cold"
+        disposition = "confirmed-cold"
         reason = f"{reps_confirmed_cold} of {total_reps} repetitions confirmed cold"
     elif reps_confirmed_cold >= 1 and reps_not_run >= 1:
         disposition = "partial"
@@ -1014,13 +1014,13 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
             f"{reps_not_run} exhausted attempts on the native-fallback branch"
         )
     elif reps_confirmed_cold == 0 and reps_not_run == total_reps:
-        disposition = "not_run"
+        disposition = "not-run"
         reason = (
             "the supervised daemon strategy is unavailable on this machine -- every "
             "repetition exhausted its attempts on the native-fallback branch"
         )
     else:
-        disposition = "no_daemon_signal"
+        disposition = "no-daemon-signal"
         reason = "every repetition completed validly but none invoked a daemon-backed tool"
 
     record = {
