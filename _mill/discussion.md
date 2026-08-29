@@ -52,7 +52,8 @@ another pass of the existing harness.
   calls, per-tool call breakdown, and non-quarry fallback counts — all extracted from the
   run's own transcript JSONL, never from an agent's self-report.
 - Correctness scoring of every run against the existing tracked `c.json` fasit for its
-  task, using #006's recall/precision definitions.
+  task — #006's exploration rule for Ladder A, and a new impact-analysis rule, written in
+  this discussion, for Ladder B.
 - A git-tracked written conclusion synthesising the whole matrix.
 - A `.gitignore` entry making raw per-run artifacts untracked.
 
@@ -188,7 +189,13 @@ another pass of the existing harness.
 
   **Run environment, pinned identically across all 45 runs:**
   - `--model` is pinned to one explicit model id for the entire matrix and recorded in
-    `ladder.yaml` and in every `usage.json`. Every headline metric this suite reports —
+    `ladder.yaml` and in every `usage.json`. **The operator sets that id in `ladder.yaml`
+    once, before the matrix starts; it is deliberately not fixed in this discussion.** The
+    right choice depends on 45-run cost and on what the operator wants comparability
+    against, and hard-coding a model id into a design document would rot the moment the
+    available models change. The harness refuses to start if the field is unset, and a
+    validation gate rejects any run whose transcript reports a different model than the
+    pinned one. Every headline metric this suite reports —
     `duration_ms`, all four token classes, `cost_usd`, `num_turns` — is model-dependent, so
     an unpinned or drifting model would make cells incomparable and the matrix
     unreproducible. If the matrix ever has to be re-run on a different model, that is a new
@@ -239,7 +246,7 @@ another pass of the existing harness.
   around a denied MCP tool.
 - Rationale: this matches #006's arms and keeps the comparison honest — the real question
   is not "can an agent work with only `toc_file`" but "does having `toc_file` improve an
-  agent that also has grep". It also preserves `grep_fallback_count` as a live signal:
+  agent that also has grep". It also preserves the grep-fallback counts as a live signal:
   when a rung's agent routes around its missing capability with grep, that shows up as a
   measurable number, which is itself evidence about that capability's value. Denying grep
   would produce artificially large deltas that say nothing about real use.
@@ -290,10 +297,22 @@ another pass of the existing harness.
   On that path a distinct worktree path buys nothing: three "cold" runs could all join one
   already-warm shared gopls daemon, and because the native path writes no `daemon.json`, a
   naive "no state exists for this key" check would pass vacuously and report contamination
-  as coldness. The harness therefore, per cold run: (1) confirms from the server's own
-  stderr/state that the connection is **supervised**, treating a native fallback as an
-  invalidated run rather than a cold one; (2) confirms no pre-existing state directory for
-  that key; and (3) runs with `QUARRY_STATE_DIR` cleared and no `--state-dir`, since
+  as coldness.
+
+  **Supervised-vs-native is detected from the state directory, because nothing else is
+  observable.** `cmd/quarry-mcp/main.go` writes exactly one stderr line (the resolved
+  target directory) and nothing under `internal/` writes to stderr at all; `ConnKind`
+  (`internal/quarryengine/daemon/ensureserver.go`) is never surfaced to a client. Since
+  quarry may not be modified, the only source-grounded signal available is the state
+  artifact: the supervised strategy writes `<stateDir>/<lang>/daemon.json`
+  (`internal/quarryengine/daemon/daemonstate.go`), the native strategy writes nothing there.
+  So per cold run the harness: (1) resolves the run's expected state directory the same way
+  `ResolveStateDir` does, and asserts it holds no `daemon.json` **before** the run —
+  otherwise the daemon is already warm and the run is invalidated; (2) asserts a
+  `daemon.json` **appeared** there after the run, which is the positive confirmation the
+  connection was supervised — its absence means the native fallback was taken and the run
+  is invalidated rather than reported as cold; and (3) runs with `QUARRY_STATE_DIR` cleared
+  and no `--state-dir`, since
   `ResolveStateDir` (`internal/cli/paths.go`) gives both of those precedence over
   `workspaceKey` and either would silently collapse all three cold runs onto one shared key.
   If the native fallback turns out to be unavoidable on the operator's machine, the cold
@@ -463,12 +482,26 @@ another pass of the existing harness.
                            # worktrees, warms (or asserts cold), dispatches sequentially,
                            # collects raw, resumes by skipping completed runs
       extract_usage.py     # transcript JSONL -> usage.json
+      score_run.py         # drives one blinded scoring call -> score.json
       summarize.py         # per-config medians/ranges -> the summary table
     results/<YYYY-MM-DD>/
       conclusion.md        # TRACKED — the synthesis
       summary.json         # TRACKED — per-config medians/ranges backing every claim
-      raw/                 # UNTRACKED — per-run answer json, usage.json, transcripts
+      raw/<config-id>/<n>/ # UNTRACKED — per-run artifacts:
+        answer.json        #   the run's parsed output block
+        usage.json         #   extracted metrics
+        score.json         #   recall/precision/decoy_admitted/lookalikes_matched
+        run.json           #   terminal-state marker
+        transcript.jsonl   #   the raw session transcript
   ```
+
+  Scoring is driven by `run_ladder.py` immediately after each run's metrics are extracted,
+  by invoking `score_run.py` for that run. `score_run.py` dispatches one blinded scoring
+  call — it is handed only the run's `answer.json` and the task's fasit `c.json`, never the
+  config id, the tool set, or any other run — and writes `score.json`. **A run is not
+  complete until it is scored:** `run.json` is written only after the answer parsed, metrics
+  extracted, gates passed, *and* `score.json` exists, so a resumed matrix re-runs anything
+  whose scoring failed rather than silently summarising unscored cells.
 
   `ladder.yaml` is the single source of truth for the config table: `run_ladder.py`
   derives each run's deny-list from it, and the README's tables are kept consistent with it.
@@ -565,9 +598,19 @@ point at the live main checkout. Note the repo-wide instruction against writing 
 temp directories applies to *this* repo's own scratch files, not to the disposable Loomyard
 worktrees, whose paths are fixed by the already-committed task files and must not be
 changed. For the 42 main-matrix runs the harness builds each task's worktree **once** and
-shares it read-only across that task's runs rather than creating and removing it per run;
-the 3 cold-cell runs are the deliberate exception and each get their own disposable
-worktree at a distinct path, for the daemon-key reason given in the warmth decision.
+shares it across that task's runs rather than creating and removing it per run; the 3
+cold-cell runs are the deliberate exception and each get their own disposable worktree at a
+distinct path, for the daemon-key reason given in the warmth decision.
+
+**The shared worktree is writable, so cleanliness is enforced, not assumed.** Every run has
+Bash in its allow-set and the worktree is an ordinary checkout — a run that drops a scratch
+file, or runs `go build` and populates a cache, leaves state visible to the next 17 runs of
+that task, which is the same cross-run contamination the blind-process decision exists to
+eliminate. The harness therefore checks `git -C <worktree> status --porcelain` (including
+untracked files) after every main-matrix run: a clean tree passes; a dirty tree invalidates
+that run and the worktree is hard-restored before the next one. Invalidating rather than
+silently restoring matters — a run that mutated its own target may have read back what it
+wrote, so its numbers are suspect even though the *next* run can be made safe.
 
 **Reusable assets from #006.** The output schemas in `bench/loomyard-eval/README.md`
 ("Exploration tasks", "Impact-analysis tasks") and the **Agent B preamble** are used
@@ -633,11 +676,13 @@ protocol. The runs themselves are not tests and must not be asserted on.
 **`extract_usage.py` — the strongest TDD candidate.** Its whole job is turning transcript
 JSONL into numbers that #006 proved cannot be trusted when produced by hand. Write it
 against committed fixture transcripts before writing the extractor. Scenarios: per-tool
-call counting across mixed quarry and non-quarry tools; the `grep_fallback_count`
-definition (Grep tool calls *plus* Bash commands containing `grep`/`rg`) matching #006's;
-counting a denied tool attempt as an attempt, not as a successful call; every token class
-extracted separately with none silently summed; a run with zero tool calls; a transcript
-containing an errored tool result.
+call counting across mixed quarry and non-quarry tools; `bash_grep_count` counting Bash
+commands matching `grep`/`rg` and **nothing else** (this is the #006-comparable field, so a
+Grep tool call must not increment it); `grep_tool_count` counting native Grep tool calls and
+nothing else; `grep_fallback_total` deriving as the sum of the two and never being conflated
+with either; counting a denied tool attempt as an attempt, not as a successful call; every
+token class extracted separately with none silently summed; a run with zero tool calls; a
+transcript containing an errored tool result.
 
 **Deny-list generation — the second TDD candidate.** Given a config's allowed set from
 `ladder.yaml`, the generated `permissions.deny` must be exactly the seven
@@ -660,18 +705,25 @@ the CLI template can never leak back in; and — as a distinct assertion — tha
 config's prompt contains no occurrence of "quarry" anywhere.
 
 **Cold-cell coldness.** Assert that the three cold runs each resolve to a distinct
-target-dir path and therefore a distinct daemon key, that no pre-warm step runs for them,
-and that the harness's coldness check rejects a target-dir whose daemon state already
-exists rather than proceeding.
+target-dir path and therefore a distinct daemon key; that no pre-warm step runs for them;
+that a pre-existing `daemon.json` under the resolved state directory rejects the run rather
+than proceeding; and that a run finishing with **no** `daemon.json` present is invalidated
+as a native-fallback rather than reported as cold.
+
+**Resumability.** Assert that a run directory with a `state: "complete"` `run.json` is
+skipped; that one without it is re-run; that invalidation removes `run.json` and moves the
+attempt to `<n>.invalid-<k>/` without destroying it; and that a run whose `score.json` is
+missing is treated as incomplete even when its answer and usage files are present.
 
 **Protocol validation gates, checked per run before its `run.json` is written.** These are
 verification steps over the produced data, not unit tests: the run produced a parseable
 answer block and a `usage.json`; its transcript shows no successful call to a tool its
 config denied; no tool call in it carries `targetDir` or `buildTags`; it ran under the
 pinned model; a `none` run's transcript contains no `mcp__quarry__*` tool and no occurrence
-of "quarry"; a cold-cell run confirmed a supervised connection and a previously-absent state
-directory. Across the matrix: each config has exactly 3 complete runs, and no reported
-number came from a self-report field. A failed gate invalidates that run per the
+of "quarry"; a main-matrix run left its shared worktree clean per `git status --porcelain`;
+a cold-cell run's state directory held no `daemon.json` before and did hold one after; and
+a `score.json` exists. Across the matrix: each config has exactly 3 complete runs, and no
+reported number came from a self-report field. A failed gate invalidates that run per the
 resumability decision — it is re-run, never reported.
 
 **Not tested:** quarry's own behaviour (out of scope), the wording of the conclusion, and
@@ -704,7 +756,7 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
 - **Q:** Do quarry-restricted arms keep Grep/Bash/Read? **A:** [auto-pick] Yes, in every
   arm including the controls; only quarry MCP tools are ever denied, and no quarry CLI
   binary is built for the runs. **Why:** the real question is whether a capability improves
-  an agent that also has grep, and keeping grep preserves `grep_fallback_count` as a live
+  an agent that also has grep, and keeping grep preserves the grep-fallback counts as a live
   signal about how much agents route around a missing capability.
 - **Q:** Warm or cold daemon? **A:** [auto-pick] Warm everywhere in the main matrix, plus
   one dedicated 3-run cold cell on task 01's `bundle` config. **Why:** warmth as a second
@@ -714,7 +766,8 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
 - **Q:** What exactly does each run report? **A:** [auto-pick] Full benchmark accounting —
   duration, every token class separately, cost, turns, total tool calls, a per-tool
   breakdown covering quarry and non-quarry tools alike, quarry subtotal,
-  `grep_fallback_count`, and `denied_tool_attempts` — all extracted programmatically from
+  `bash_grep_count` / `grep_tool_count`, and `denied_tool_attempts` — all extracted
+  programmatically from
   the run's transcript JSONL. **Why:** #006 caught self-report discrepancies twice, and
   its own note records that a single collapsed token figure made its two run dates
   incomparable; 45 runs is far past what hand-verification can cover.
@@ -809,6 +862,33 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
   process meaningfully different; task 04's arms reach the same answer by visibly different
   routes, which is the per-capability question. Saying so up front also stops the conclusion
   from later reading a saturated correctness axis as evidence that every rung "works".
+- **Q:** How does the harness detect supervised-vs-native for a cold run, given quarry
+  can't be modified? **A:** [auto-pick] From the state directory: assert no
+  `<stateDir>/<lang>/daemon.json` before the run, and assert one appeared after. **Why:**
+  `cmd/quarry-mcp/main.go` writes exactly one stderr line (the resolved target dir) and
+  `ConnKind` is never surfaced to a client, so there is no stderr signal to read; the
+  supervised strategy writes `daemon.json` (`daemonstate.go`) and the native strategy writes
+  nothing, which makes its post-run presence the only source-grounded positive confirmation
+  available.
+- **Q:** The shared task worktree is described as read-only — is it? **A:** [auto-pick] No,
+  it's an ordinary writable checkout and every run has Bash, so cleanliness is enforced:
+  `git status --porcelain` after each main-matrix run, dirty tree invalidates that run, and
+  the worktree is hard-restored before the next. **Why:** a run that drops a scratch file or
+  populates a build cache leaves state visible to the next 17 runs of that task — the exact
+  cross-run contamination the blind-process decision exists to eliminate. Invalidating
+  rather than only restoring matters because a run that mutated its target may have read
+  back what it wrote.
+- **Q:** Where does scoring actually happen, and is a run complete before it's scored?
+  **A:** [auto-pick] `run_ladder.py` invokes `score_run.py` right after metrics extraction;
+  it writes `score.json` per run; and a run is **not** complete until `score.json` exists.
+  **Why:** without a named producer, storage location, and completion semantics, a resumed
+  matrix would skip unscored runs and summarise cells that were never scored.
+- **Q:** Which model id, concretely? **A:** [auto-pick] The operator sets it in
+  `ladder.yaml` once before the matrix starts; the harness refuses to run with it unset, and
+  a gate rejects any run reporting a different model. **Why:** the right id depends on
+  45-run cost and on what the operator wants comparability against, and a model id
+  hard-coded into a design document rots as soon as the available models change — the
+  pinning mechanism is what matters, not the particular value.
 - **Q:** If the review rounds hit the configured cap without converging, block or hand
   off? **A:** Hand off anyway (operator instruction, given mid-session). **Why:** the
   operator explicitly overrode auto-mode's block-on-non-progress behaviour for this task.
