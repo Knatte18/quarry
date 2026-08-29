@@ -80,6 +80,8 @@ batches:
     commit_sha: edf3903ea25227ed37a45d291531498634546aa4
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: integration-and-docs
-    state: pending
+    state: running
+    implementer_session: a3abd676-5d17-4237-a7a4-40ec6bc9231b
+    start_sha: c98952986e23a2e1f33c86500cd9addea54f824e
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
 ```
