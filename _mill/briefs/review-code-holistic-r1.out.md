@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: Add an MCP wrapper for quarry — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-08-29
+```
+
+## Findings
+
+### [NIT:consistency] clearAdditionalProperties doc overstates recursion into AdditionalProperties
+**Location:** `internal/mcpserver/schema.go:73-93`
+**Issue:** The doc comment says the walk covers "Properties, Items, and AdditionalProperties recursively", but `clearAdditionalPropertiesVisited` sets `s.AdditionalProperties = nil` before ever inspecting its prior value, so a nested schema reachable only through a map-typed field's `AdditionalProperties` (e.g. a hypothetical `map[string]SomeStruct`) would never have its own descendants' `AdditionalProperties` cleared. Currently inert: every map-typed field in this codebase (`impactEntry.Result map[string]any`, `tocFileEntry.Result map[string]any`, `tocDirEntry.Files []any`) has an `any` value type whose inferred schema carries no further nested object needing the same treatment, so no tool's schema is actually wrong today, and `schema_test.go`'s fixtures never exercise a map-of-struct case either.
+**Fix:** Either recurse into the pre-nil value of `s.AdditionalProperties` before clearing it, or reword the comment to state that only `Properties`/`Items` are walked and `AdditionalProperties` is merely zeroed at each visited node.
+
+## Verdict
+
+APPROVE
+All seven batches, shared decisions, and cross-batch contracts are implemented consistently with no blocking issues found.
+MILL_REVIEW_END
