@@ -1,4 +1,4 @@
-// paths_test.go exercises resolveConfigPath and resolveStateDir's precedence chains, workspaceKey's
+// paths_test.go exercises ResolveConfigPath and ResolveStateDir's precedence chains, workspaceKey's
 // determinism and collision-avoidance, and the socket-path-length guard the supervised daemon
 // strategy depends on.
 
@@ -66,13 +66,13 @@ func TestResolveConfigPath_Precedence(t *testing.T) {
 			tempConfigDir := withTempUserConfigDir(t)
 			t.Setenv("QUARRY_CONFIG", tt.envValue)
 
-			got, err := resolveConfigPath(tt.flagValue)
+			got, err := ResolveConfigPath(tt.flagValue)
 			if err != nil {
-				t.Fatalf("resolveConfigPath(%q) error = %v; want nil", tt.flagValue, err)
+				t.Fatalf("ResolveConfigPath(%q) error = %v; want nil", tt.flagValue, err)
 			}
 			want := tt.wantFn(tempConfigDir)
 			if got != want {
-				t.Errorf("resolveConfigPath(%q) = %q; want %q", tt.flagValue, got, want)
+				t.Errorf("ResolveConfigPath(%q) = %q; want %q", tt.flagValue, got, want)
 			}
 		})
 	}
@@ -87,9 +87,9 @@ func TestResolveConfigPath_UserConfigDirError(t *testing.T) {
 	userConfigDir = func() (string, error) { return "", wantErr }
 	t.Cleanup(func() { userConfigDir = original })
 
-	_, err := resolveConfigPath("")
+	_, err := ResolveConfigPath("")
 	if err == nil {
-		t.Fatal("resolveConfigPath(\"\") error = nil; want non-nil when userConfigDir() errors")
+		t.Fatal("ResolveConfigPath(\"\") error = nil; want non-nil when userConfigDir() errors")
 	}
 }
 
@@ -151,13 +151,13 @@ func TestResolveBuildTags_Precedence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("QUARRY_BUILD_TAGS", tt.envValue)
 
-			got := resolveBuildTags(tt.flagValue)
+			got := ResolveBuildTags(tt.flagValue)
 			if len(got) != len(tt.want) {
-				t.Fatalf("resolveBuildTags(%q) = %v; want %v", tt.flagValue, got, tt.want)
+				t.Fatalf("ResolveBuildTags(%q) = %v; want %v", tt.flagValue, got, tt.want)
 			}
 			for i := range tt.want {
 				if got[i] != tt.want[i] {
-					t.Errorf("resolveBuildTags(%q)[%d] = %q; want %q", tt.flagValue, i, got[i], tt.want[i])
+					t.Errorf("ResolveBuildTags(%q)[%d] = %q; want %q", tt.flagValue, i, got[i], tt.want[i])
 				}
 			}
 		})
@@ -167,7 +167,7 @@ func TestResolveBuildTags_Precedence(t *testing.T) {
 // TestResolveStateDir_Precedence covers the three precedence tiers with an empty build-tag set —
 // the back-compat assertion the empty-tag-set-is-a-uniform-no-op Shared Decision requires,
 // written first: this table pins that today's resolved state directories, at all three tiers, are
-// byte-for-byte unchanged from resolveStateDir's pre-build-tags behaviour.
+// byte-for-byte unchanged from ResolveStateDir's pre-build-tags behaviour.
 func TestResolveStateDir_Precedence(t *testing.T) {
 	const targetDir = "/some/project/dir"
 
@@ -203,13 +203,13 @@ func TestResolveStateDir_Precedence(t *testing.T) {
 			tempCacheDir := withTempUserCacheDir(t)
 			t.Setenv("QUARRY_STATE_DIR", tt.envValue)
 
-			got, err := resolveStateDir(tt.flagValue, targetDir, nil)
+			got, err := ResolveStateDir(tt.flagValue, targetDir, nil)
 			if err != nil {
-				t.Fatalf("resolveStateDir(%q, %q, nil) error = %v; want nil", tt.flagValue, targetDir, err)
+				t.Fatalf("ResolveStateDir(%q, %q, nil) error = %v; want nil", tt.flagValue, targetDir, err)
 			}
 			want := tt.wantFn(tempCacheDir)
 			if got != want {
-				t.Errorf("resolveStateDir(%q, %q, nil) = %q; want %q", tt.flagValue, targetDir, got, want)
+				t.Errorf("ResolveStateDir(%q, %q, nil) = %q; want %q", tt.flagValue, targetDir, got, want)
 			}
 		})
 	}
@@ -238,35 +238,35 @@ func TestResolveStateDir_NonEmptyBuildTagsAppendsDistinctSegmentAtEveryTier(t *t
 			withTempUserCacheDir(t)
 			t.Setenv("QUARRY_STATE_DIR", tt.envValue)
 
-			withoutTags, err := resolveStateDir(tt.flagValue, targetDir, nil)
+			withoutTags, err := ResolveStateDir(tt.flagValue, targetDir, nil)
 			if err != nil {
-				t.Fatalf("resolveStateDir(%q, %q, nil) error = %v; want nil", tt.flagValue, targetDir, err)
+				t.Fatalf("ResolveStateDir(%q, %q, nil) error = %v; want nil", tt.flagValue, targetDir, err)
 			}
-			withTags, err := resolveStateDir(tt.flagValue, targetDir, buildTags)
+			withTags, err := ResolveStateDir(tt.flagValue, targetDir, buildTags)
 			if err != nil {
-				t.Fatalf("resolveStateDir(%q, %q, %v) error = %v; want nil", tt.flagValue, targetDir, buildTags, err)
+				t.Fatalf("ResolveStateDir(%q, %q, %v) error = %v; want nil", tt.flagValue, targetDir, buildTags, err)
 			}
 
 			if withTags == withoutTags {
-				t.Fatalf("resolveStateDir(%q, %q, %v) = %q; want a path distinct from the empty-tag-set path %q", tt.flagValue, targetDir, buildTags, withTags, withoutTags)
+				t.Fatalf("ResolveStateDir(%q, %q, %v) = %q; want a path distinct from the empty-tag-set path %q", tt.flagValue, targetDir, buildTags, withTags, withoutTags)
 			}
 
 			wantLeaf := filepath.Join(withoutTags, buildTagsSegment(buildTags))
 			if withTags != wantLeaf {
-				t.Errorf("resolveStateDir(%q, %q, %v) = %q; want %q", tt.flagValue, targetDir, buildTags, withTags, wantLeaf)
+				t.Errorf("ResolveStateDir(%q, %q, %v) = %q; want %q", tt.flagValue, targetDir, buildTags, withTags, wantLeaf)
 			}
 
 			segment := filepath.Base(withTags)
 			if !strings.HasPrefix(segment, "tags-") {
-				t.Fatalf("resolveStateDir(%q, %q, %v) appended segment %q; want a \"tags-\" prefix", tt.flagValue, targetDir, buildTags, segment)
+				t.Fatalf("ResolveStateDir(%q, %q, %v) appended segment %q; want a \"tags-\" prefix", tt.flagValue, targetDir, buildTags, segment)
 			}
 			hexPart := strings.TrimPrefix(segment, "tags-")
 			if len(hexPart) != 12 {
-				t.Errorf("resolveStateDir(%q, %q, %v) appended segment %q; want exactly 12 hex characters after \"tags-\", got %d", tt.flagValue, targetDir, buildTags, segment, len(hexPart))
+				t.Errorf("ResolveStateDir(%q, %q, %v) appended segment %q; want exactly 12 hex characters after \"tags-\", got %d", tt.flagValue, targetDir, buildTags, segment, len(hexPart))
 			}
 			for _, r := range hexPart {
 				if !strings.ContainsRune("0123456789abcdef", r) {
-					t.Errorf("resolveStateDir(%q, %q, %v) appended segment %q; %q is not a lowercase hex character", tt.flagValue, targetDir, buildTags, segment, r)
+					t.Errorf("ResolveStateDir(%q, %q, %v) appended segment %q; %q is not a lowercase hex character", tt.flagValue, targetDir, buildTags, segment, r)
 					break
 				}
 			}
@@ -281,16 +281,16 @@ func TestResolveStateDir_BuildTagsOrderIndependent(t *testing.T) {
 	t.Setenv("QUARRY_STATE_DIR", "")
 	const targetDir = "/some/project/dir"
 
-	ab, err := resolveStateDir("", targetDir, []string{"a", "b"})
+	ab, err := ResolveStateDir("", targetDir, []string{"a", "b"})
 	if err != nil {
-		t.Fatalf("resolveStateDir(\"\", %q, [a b]) error = %v; want nil", targetDir, err)
+		t.Fatalf("ResolveStateDir(\"\", %q, [a b]) error = %v; want nil", targetDir, err)
 	}
-	ba, err := resolveStateDir("", targetDir, []string{"b", "a"})
+	ba, err := ResolveStateDir("", targetDir, []string{"b", "a"})
 	if err != nil {
-		t.Fatalf("resolveStateDir(\"\", %q, [b a]) error = %v; want nil", targetDir, err)
+		t.Fatalf("ResolveStateDir(\"\", %q, [b a]) error = %v; want nil", targetDir, err)
 	}
 	if ab != ba {
-		t.Errorf("resolveStateDir(..., [a b]) = %q; resolveStateDir(..., [b a]) = %q; want identical paths once normalized", ab, ba)
+		t.Errorf("ResolveStateDir(..., [a b]) = %q; ResolveStateDir(..., [b a]) = %q; want identical paths once normalized", ab, ba)
 	}
 }
 
@@ -303,9 +303,9 @@ func TestResolveStateDir_UserCacheDirError(t *testing.T) {
 	userCacheDir = func() (string, error) { return "", wantErr }
 	t.Cleanup(func() { userCacheDir = original })
 
-	_, err := resolveStateDir("", "/some/project", nil)
+	_, err := ResolveStateDir("", "/some/project", nil)
 	if err == nil {
-		t.Fatal("resolveStateDir(\"\", ...) error = nil; want non-nil when userCacheDir() errors")
+		t.Fatal("ResolveStateDir(\"\", ...) error = nil; want non-nil when userCacheDir() errors")
 	}
 }
 
@@ -356,9 +356,9 @@ func TestResolveStateDir_SocketPathStaysUnderSockaddrUnLimit(t *testing.T) {
 	// discarding everything else about the path's shape.
 	targetDir := filepath.Join("/home", "developer", "workspaces", "engineering", "monorepo-checkouts", "backend-service")
 
-	stateDir, err := resolveStateDir("", targetDir, nil)
+	stateDir, err := ResolveStateDir("", targetDir, nil)
 	if err != nil {
-		t.Fatalf("resolveStateDir(\"\", %q) error = %v; want nil", targetDir, err)
+		t.Fatalf("ResolveStateDir(\"\", %q) error = %v; want nil", targetDir, err)
 	}
 	socketPath := filepath.Join(stateDir, "go", "daemon.sock")
 	if len(socketPath) >= sockaddrUnLimit {

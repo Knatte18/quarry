@@ -21,7 +21,7 @@ import (
 // LSP.
 //
 // Declaration exclusion: every entry in declaration is excluded from the reported callers, using
-// the same set-membership rule internal/cli's filterUnexpectedCallers applies for
+// the same set-membership rule internal/cli's FilterUnexpectedCallers applies for
 // assert-no-callers, re-implemented here because the seam guard bans the engine from importing any
 // internal/*cli package. Only that set is excluded — a recursive call inside the target's own body
 // is an ordinary caller whose enclosing symbol is the target itself, and is kept.

@@ -1,7 +1,7 @@
 // resolve_test.go covers resolveContext, the function that replaced lookupContext's in-hub/
 // out-of-hub branching once quarry dropped the lyx hub concept entirely: this is the end-to-end
 // half of TDD candidates 1 and 2, wiring the two path-resolution tiers paths_test.go already
-// covers in isolation (resolveConfigPath, resolveStateDir) into a real registry load.
+// covers in isolation (ResolveConfigPath, ResolveStateDir) into a real registry load.
 // It needs no build tag -- unlike the hubforge fixture its Loomyard predecessor
 // (cli_integration_test.go) built, nothing here spawns a process, touches the network, or shells
 // out to git.

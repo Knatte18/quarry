@@ -1,5 +1,5 @@
 // tocconfig_test.go exercises resolveTOCConfigPath's precedence, loadTOCConfig's file handling,
-// parseDocSentences's value grammar, and resolveDocSentences's end-to-end chain, all over files
+// ParseDocSentences's value grammar, and ResolveDocSentences's end-to-end chain, all over files
 // written into a t.TempDir().
 //
 // None of the subtests here are marked t.Parallel(): several use t.Setenv to redirect
@@ -168,21 +168,21 @@ func TestParseDocSentences(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.raw, func(t *testing.T) {
-			got, err := parseDocSentences(tt.raw)
+			got, err := ParseDocSentences(tt.raw)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatalf("parseDocSentences(%q) error = nil; want an error", tt.raw)
+					t.Fatalf("ParseDocSentences(%q) error = nil; want an error", tt.raw)
 				}
 				if !strings.Contains(err.Error(), "all") || !strings.Contains(err.Error(), "non-negative") {
-					t.Errorf("parseDocSentences(%q) error = %q; want it to name both valid forms", tt.raw, err.Error())
+					t.Errorf("ParseDocSentences(%q) error = %q; want it to name both valid forms", tt.raw, err.Error())
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("parseDocSentences(%q) error = %v; want nil", tt.raw, err)
+				t.Fatalf("ParseDocSentences(%q) error = %v; want nil", tt.raw, err)
 			}
 			if got != tt.want {
-				t.Errorf("parseDocSentences(%q) = %d; want %d", tt.raw, got, tt.want)
+				t.Errorf("ParseDocSentences(%q) = %d; want %d", tt.raw, got, tt.want)
 			}
 		})
 	}
@@ -192,12 +192,12 @@ func TestResolveDocSentences_Precedence(t *testing.T) {
 	t.Run("no file, no env, no flag: default", func(t *testing.T) {
 		t.Setenv("QUARRY_TOC_CONFIG", "")
 		targetDir := t.TempDir()
-		got, err := resolveDocSentences("", targetDir)
+		got, err := ResolveDocSentences("", targetDir)
 		if err != nil {
-			t.Fatalf("resolveDocSentences(\"\", %q) error = %v; want nil", targetDir, err)
+			t.Fatalf("ResolveDocSentences(\"\", %q) error = %v; want nil", targetDir, err)
 		}
 		if got != 1 {
-			t.Errorf("resolveDocSentences(\"\", %q) = %d; want 1", targetDir, got)
+			t.Errorf("ResolveDocSentences(\"\", %q) = %d; want 1", targetDir, got)
 		}
 	})
 
@@ -205,12 +205,12 @@ func TestResolveDocSentences_Precedence(t *testing.T) {
 		t.Setenv("QUARRY_TOC_CONFIG", "")
 		targetDir := t.TempDir()
 		writeQuarryYAML(t, targetDir, "toc:\n  doc_sentences: 3\n")
-		got, err := resolveDocSentences("", targetDir)
+		got, err := ResolveDocSentences("", targetDir)
 		if err != nil {
-			t.Fatalf("resolveDocSentences error = %v; want nil", err)
+			t.Fatalf("ResolveDocSentences error = %v; want nil", err)
 		}
 		if got != 3 {
-			t.Errorf("resolveDocSentences = %d; want 3", got)
+			t.Errorf("ResolveDocSentences = %d; want 3", got)
 		}
 	})
 
@@ -218,12 +218,12 @@ func TestResolveDocSentences_Precedence(t *testing.T) {
 		t.Setenv("QUARRY_TOC_CONFIG", "")
 		targetDir := t.TempDir()
 		writeQuarryYAML(t, targetDir, "toc:\n  doc_sentences: all\n")
-		got, err := resolveDocSentences("", targetDir)
+		got, err := ResolveDocSentences("", targetDir)
 		if err != nil {
-			t.Fatalf("resolveDocSentences error = %v; want nil", err)
+			t.Fatalf("ResolveDocSentences error = %v; want nil", err)
 		}
 		if got != quarry.TOCAllSentences {
-			t.Errorf("resolveDocSentences = %d; want %d (TOCAllSentences)", got, quarry.TOCAllSentences)
+			t.Errorf("ResolveDocSentences = %d; want %d (TOCAllSentences)", got, quarry.TOCAllSentences)
 		}
 	})
 
@@ -231,12 +231,12 @@ func TestResolveDocSentences_Precedence(t *testing.T) {
 		t.Setenv("QUARRY_TOC_CONFIG", "")
 		targetDir := t.TempDir()
 		writeQuarryYAML(t, targetDir, "toc:\n  doc_sentences: 0\n")
-		got, err := resolveDocSentences("", targetDir)
+		got, err := ResolveDocSentences("", targetDir)
 		if err != nil {
-			t.Fatalf("resolveDocSentences error = %v; want nil", err)
+			t.Fatalf("ResolveDocSentences error = %v; want nil", err)
 		}
 		if got != 0 {
-			t.Errorf("resolveDocSentences = %d; want 0", got)
+			t.Errorf("ResolveDocSentences = %d; want 0", got)
 		}
 	})
 
@@ -251,12 +251,12 @@ func TestResolveDocSentences_Precedence(t *testing.T) {
 		}
 		t.Setenv("QUARRY_TOC_CONFIG", envPath)
 
-		got, err := resolveDocSentences("", targetDir)
+		got, err := ResolveDocSentences("", targetDir)
 		if err != nil {
-			t.Fatalf("resolveDocSentences error = %v; want nil", err)
+			t.Fatalf("ResolveDocSentences error = %v; want nil", err)
 		}
 		if got != 5 {
-			t.Errorf("resolveDocSentences = %d; want 5 (the $QUARRY_TOC_CONFIG file, not the target directory's own)", got)
+			t.Errorf("ResolveDocSentences = %d; want 5 (the $QUARRY_TOC_CONFIG file, not the target directory's own)", got)
 		}
 	})
 
@@ -271,12 +271,12 @@ func TestResolveDocSentences_Precedence(t *testing.T) {
 		}
 		t.Setenv("QUARRY_TOC_CONFIG", envPath)
 
-		got, err := resolveDocSentences("0", targetDir)
+		got, err := ResolveDocSentences("0", targetDir)
 		if err != nil {
-			t.Fatalf("resolveDocSentences error = %v; want nil", err)
+			t.Fatalf("ResolveDocSentences error = %v; want nil", err)
 		}
 		if got != 0 {
-			t.Errorf("resolveDocSentences(\"0\", ...) = %d; want 0 (the flag)", got)
+			t.Errorf("ResolveDocSentences(\"0\", ...) = %d; want 0 (the flag)", got)
 		}
 	})
 
@@ -293,12 +293,12 @@ func TestResolveDocSentences_Precedence(t *testing.T) {
 			t.Fatalf("os.Mkdir(%q) failed: %v", targetDir, err)
 		}
 
-		got, err := resolveDocSentences("", targetDir)
+		got, err := ResolveDocSentences("", targetDir)
 		if err != nil {
-			t.Fatalf("resolveDocSentences error = %v; want nil", err)
+			t.Fatalf("ResolveDocSentences error = %v; want nil", err)
 		}
 		if got != 1 {
-			t.Errorf("resolveDocSentences = %d; want the default 1 — the parent directory's .quarry.yaml must be ignored", got)
+			t.Errorf("ResolveDocSentences = %d; want the default 1 — the parent directory's .quarry.yaml must be ignored", got)
 		}
 	})
 }

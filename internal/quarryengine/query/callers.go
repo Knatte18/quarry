@@ -19,7 +19,7 @@ import (
 // reference sets: references, the verified caller list (or every raw reference, unfiltered, when
 // opts.SkipVerification is set or verification cannot run — see callersFromClient), and
 // declaration, the definition-only result at the query position — never the widened match set
-// verification builds internally, since internal/cli's filterUnexpectedCallers removes every
+// verification builds internally, since internal/cli's FilterUnexpectedCallers removes every
 // returned declaration from the violation list, and returning the widened union would silently
 // exclude every implementer's own declaration site from the gate.
 func Callers(ctx context.Context, opts Options) (references []Reference, declaration []Reference, err error) {

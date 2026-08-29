@@ -30,6 +30,22 @@ Or run directly without a separate build step:
 go run ./cmd/quarry refs mySymbol
 ```
 
+## Third exposure layer: MCP
+
+Beside the engine (`quarry/`) and the CLI (`cmd/quarry`),
+`cmd/quarry-mcp` exposes quarry's seven tools — `textDocument_definition`, `textDocument_references`,
+`workspace_symbol`, `assert_no_callers`, `impact`, `toc_file`, and `toc_dir` — over the Model Context
+Protocol.
+
+```
+go build -o quarry-mcp ./cmd/quarry-mcp
+```
+
+A Claude Code session opened in this repository connects through the committed `.mcp.json` once the
+one-time project-server trust prompt is accepted.
+See [`docs/mcp-setup.md`](docs/mcp-setup.md) for cold-start behaviour, the warm-start alternative
+above, and the launch-only flags.
+
 ### Build dependency: cgo and a C toolchain
 
 The `toc` verbs' tree-sitter backend is a cgo binding.

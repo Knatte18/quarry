@@ -406,7 +406,7 @@ func TestCallersFromClient_SkipVerificationKeepsEveryReferenceNoPerRefCalls(t *t
 // is the definition-only result, never the widened match-set union: an implementation result that
 // is not in the definition result must not appear in declaration, while the declaration site itself
 // must both survive verification and be present in the returned reference set, since
-// filterUnexpectedCallers depends on being able to remove it.
+// FilterUnexpectedCallers depends on being able to remove it.
 func TestCallersFromClient_DeclarationIsDefinitionOnlyNotUnion(t *testing.T) {
 	fileURI := "file:///tmp/example/query.go"
 	pos := lsp.Position{Line: 5, Character: 2}
