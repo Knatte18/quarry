@@ -45,7 +45,9 @@ batches:
     commit_sha: 010187c71bb72765c1f47c59be7dfa7c17470694
     verify_baseline_failures: []
   - name: mcpserver-foundation
-    state: pending
+    state: running
+    implementer_session: 193e3330-3228-4f1f-a4b6-75ccee006bd9
+    start_sha: 79b53a2ea766abb0256a0e463ef565005bb9c5c8
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: lsp-mirrored-tools
     state: pending
