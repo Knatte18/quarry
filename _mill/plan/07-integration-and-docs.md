@@ -82,8 +82,9 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Requirements:** Create `.mcp.json` at the repository root in the project-scope
   form: a single top-level `mcpServers` object whose one key is `quarry`, whose value sets
   `"command": "go"` and `"args": ["run", "./cmd/quarry-mcp"]`, with no `--target-dir` argument. The
-  top-level key is `mcpServers` and not a bare server map — the bare-map form belongs to a plugin's
-  own `.claude-plugin/` directory, which this repository does not have, and a wrong top-level shape
+  top-level key is `mcpServers` and not a bare server map — the bare-map form belongs at a plugin's
+  own root, beside its `.claude-plugin/plugin.json`, which this repository has no equivalent of, and
+  a wrong top-level shape
   has no detector anywhere in this plan because `.mcp.json` correctness is verified by dogfooding
   rather than by a test. Add a plain `/quarry-mcp` line to `.gitignore` inside the existing
   hand-written block above the mill-managed section, with a one-line comment noting that it covers

@@ -47,6 +47,8 @@ has no MCP caller at all because target-dir resolution hands every handler an ab
   `ResolveStateDir`, and `resolveBuildTags` to `ResolveBuildTags` in `internal/cli/paths.go`,
   keeping each signature, body, and doc comment semantics unchanged (update the identifier
   spelling inside the doc comments and inside the file's own header comment where they are named).
+  Update the prose in `resolveContext`'s doc comment in `internal/cli/cli.go`, which names
+  `resolveConfigPath` and `resolveStateDir` in three places.
   Update every call site: `resolveContext` in `internal/cli/cli.go` calls `ResolveConfigPath` and
   `ResolveStateDir`; the `RunE` bodies in `internal/cli/cli.go` and `internal/cli/impact.go` call
   `ResolveBuildTags`. Update the test call sites in `internal/cli/paths_test.go` and
@@ -72,9 +74,13 @@ has no MCP caller at all because target-dir resolution hands every handler an ab
 - **Moves:** none
 - **Requirements:** Rename `absOrJoin` to `AbsOrJoin`, `filterWithin` to `FilterWithin`, and
   `filterUnexpectedCallers` to `FilterUnexpectedCallers` in `internal/cli/cli.go`, keeping each
-  signature and body unchanged. Update the call sites in `parseQuery` and `inFileQuery` (for
-  `AbsOrJoin`) and in `assertNoCallersCommand`'s `RunE` (for `FilterWithin` and
-  `FilterUnexpectedCallers`). `isWithinDir` stays unexported and is not renamed. Update the prose
+  signature and body unchanged. Update **every** call site of all three in
+  `internal/cli/cli.go`, not only the ones named here: `AbsOrJoin` is called from
+  `definitionCommand`'s `RunE`, `parseQuery`, and `inFileQuery`; `FilterWithin` is called from
+  `refsCommand`'s `RunE` (twice), `definitionCommand`'s `RunE` (three times), and
+  `assertNoCallersCommand`'s `RunE`; `FilterUnexpectedCallers` is called from
+  `assertNoCallersCommand`'s `RunE`. Grep the file for each old spelling and leave none behind —
+  a missed site is a compile failure, not a silent divergence. `isWithinDir` stays unexported and is not renamed. Update the prose
   references to the old spellings in the doc comments of `resolveTOCPath` in
   `internal/cli/toc.go`, of `filterImpactWithin` in `internal/cli/impact.go`, and in
   `internal/cli/cli_test.go` (call sites, test names, failure-message strings) and
@@ -97,8 +103,10 @@ has no MCP caller at all because target-dir resolution hands every handler an ab
 - **Requirements:** Rename `filterImpactWithin` to `FilterImpactWithin` in
   `internal/cli/impact.go`, keeping its signature and body unchanged, including the guarantee that
   the returned `Callers` slice is non-nil so it marshals as `[]`. Update the two call sites in
-  `impactCommand`'s `RunE` (the single-argument branch and the `runBatch` closure). Update the call
-  sites, test names, and failure-message strings in `internal/cli/impact_test.go`.
+  `impactCommand`'s `RunE` (the single-argument branch and the `runBatch` closure). Update
+  `internal/cli/impact.go`'s own file header comment, which names `filterImpactWithin` in its list
+  of the file's functions. Update the call sites, test names, and failure-message strings in
+  `internal/cli/impact_test.go`.
 - **Commit:** `refactor(cli): export FilterImpactWithin`
 
 ### Card 4: Export `ParseDocSentences` and `ResolveDocSentences`
@@ -141,7 +149,8 @@ has no MCP caller at all because target-dir resolution hands every handler an ab
   `StructToFields`; `tocDirOne` calls `TOCDirEntries`. Update the call sites in
   `internal/cli/impact.go`: `emitImpactResult` and `classifyImpactError` call `StructToFields`, and
   the doc comments of `emitImpactResult`, `classifyImpactError`, and `rewordImpactMarshalFailure`
-  name it in prose. Update the call sites, test names, and failure-message strings in
+  name it in prose. Update the prose inside `internal/cli/toc.go` too, where `TOCDirEntries`' own
+  doc comment names `structToFields` twice. Update the call sites, test names, and failure-message strings in
   `internal/cli/toc_test.go`.
 - **Commit:** `refactor(cli): export StructToFields, ResolveTOCPath, ValidateTOCLang, TOCDirEntries`
 

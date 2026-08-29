@@ -1,0 +1,38 @@
+MILL_REVIEW_BEGIN
+# Review: Add an MCP wrapper for quarry — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: claude-opus-5 (Anthropic), self-assessed
+reviewed_file: plan/
+date: 2026-08-29
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 2's call-site enumeration misses four sites
+**Location:** batch 1 / card 2
+**Issue:** `filterWithin` has six call sites in `internal/cli/cli.go` (refsCommand L197; definitionCommand L356, L373, L386; assertNoCallersCommand L689) and `absOrJoin` has three (definitionCommand L350, parseQuery L861, inFileQuery L876), but the card names only `assertNoCallersCommand`'s `RunE` and `parseQuery`/`inFileQuery`; combined with the `renaming-is-rename-only` Decision, an implementer working the enumeration literally leaves refs/definition untouched and the package does not compile.
+**Fix:** name all six `FilterWithin` and all three `AbsOrJoin` call sites, or state "every call site in `internal/cli/cli.go`" as card 1 does.
+
+### [BLOCKING:consistency] Shared Decision pins `For[T](nil)`, card 10 needs options
+**Location:** `## Shared Decisions` / `schema-derivation-and-patching` vs batch 2 / card 10
+**Issue:** the Decision states schemas are derived with `jsonschema.For[T](nil)`, while card 10 requires `jsonschema.For[T]` called with a non-nil `jsonschema.ForOptions{TypeSchemas: {reflect.TypeFor[docSentences](): docSentencesSchema}}`; following the Decision's literal call form makes `docSentences` (a struct whose only field is unexported) infer as a property-less object, so `{"docSentences": 3}` and `"all"` fail call-level validation before `tocPreflight` ever runs.
+**Fix:** restate the Decision as "`jsonschema.For[T]` with the package's `ForOptions`" so the two artefacts name one call form.
+
+### [NIT:consistency] Doc-comment prose updates enumerated unevenly
+**Location:** batch 1 / cards 1, 3, 5
+**Issue:** the `engine-comment-references` Decision treats a stale identifier in prose as a defect this task introduces, and cards 1/2 enumerate prose sites explicitly, but three in-repo prose references go unnamed: `resolveContext`'s doc comment in `internal/cli/cli.go` names `resolveConfigPath`/`resolveStateDir` (card 1 scopes its doc-comment clause to `paths.go` only), `internal/cli/impact.go`'s file header comment names `filterImpactWithin` (card 3), and `tocDirEntries`' doc comment in `internal/cli/toc.go` names `structToFields` twice (card 5 covers only `impact.go`'s doc comments).
+**Fix:** add those three prose sites to the cards that own the corresponding rename.
+
+### [NIT:consistency] Card 28's `.claude-plugin/` claim is inaccurate
+**Location:** batch 7 / card 28
+**Issue:** verified against `~/.claude/plugins/marketplaces/claude-plugins-official/`: the operative choice is right — fourteen project/external `.mcp.json` files use the top-level `mcpServers` object — but the bare-server-map form appears at a plugin's *root* (`plugins/example-plugin/.mcp.json`, beside `.claude-plugin/plugin.json`), not inside `.claude-plugin/` as the card's rationale states.
+**Fix:** reword the rationale to "a plugin's own root, beside `.claude-plugin/plugin.json`", leaving the `mcpServers` decision unchanged.
+
+## Verdict
+
+REQUEST_CHANGES
+Two blocking: an incomplete rename enumeration and a schema-derivation Decision that contradicts card 10.
+MILL_REVIEW_END

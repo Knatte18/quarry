@@ -71,7 +71,10 @@ _Cross-cutting decisions every batch inherits._
 ### Decision: schema-derivation-and-patching
 
 - **Decision:** input and output schemas are derived from Go types with
-  `jsonschema.For[T](nil)` (`github.com/google/jsonschema-go`), then patched by the shared helpers
+  `jsonschema.For[T]` (`github.com/google/jsonschema-go`), called with the package's own
+  `jsonschema.ForOptions` value — never `nil`, because the `docSentences` type schema is registered
+  through its `TypeSchemas` map and inference would otherwise reduce that type to a property-less
+  object — then patched by the shared helpers
   in `internal/mcpserver/schema.go` before being assigned to `mcp.Tool.InputSchema` /
   `mcp.Tool.OutputSchema`. Three patches are mandatory and are the reason raw inference is never
   used as-is:
