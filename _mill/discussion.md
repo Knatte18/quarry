@@ -29,7 +29,7 @@ That maps directly onto the friction observed and fixed this session.
 
 - New `internal/mcpserver/` package implementing an MCP server over stdio, exposing seven tools.
 - New `cmd/quarry-mcp/` binary — a thin `main.go` that constructs and runs the server.
-- Nine newly-exported helpers in `internal/cli` (full inventory and per-helper justification under export-inventory) so the MCP layer reuses the CLI's exact state-directory keying, `within` semantics, caller-exclusion, doc-sentence resolution, and struct marshalling rather than reimplementing them.
+- Thirteen newly-exported helpers in `internal/cli` (full inventory and per-helper justification under export-inventory) so the MCP layer reuses the CLI's exact state-directory keying, `within` semantics, caller-exclusion, doc-sentence resolution, and struct marshalling rather than reimplementing them.
 - An injectable facade seam in `internal/mcpserver` (package-level function variables defaulting to the `quarry.*` facade functions) so handlers are testable without gopls.
 - A translation layer: `file://` URI acceptance on input, 0-based↔1-based line/character conversion for the LSP-mirrored tools only.
 - `go.mod` dependency on `github.com/modelcontextprotocol/go-sdk`.
@@ -104,18 +104,19 @@ That maps directly onto the friction observed and fixed this session.
 
 ### export-inventory
 
-- Decision: the complete list of `internal/cli` identifiers exported for `internal/mcpserver`, derived by walking every handler's call chain including both toc handlers — twelve:
+- Decision: the complete list of `internal/cli` identifiers exported for `internal/mcpserver`, derived by walking every handler's call chain including both toc handlers — thirteen:
 
   | Exported as | Currently | Needed by |
   | --- | --- | --- |
   | `ResolveConfigPath` | `paths.go:38` | every LSP-backed handler |
-  | `ResolveStateDir` | `paths.go:119` | every LSP-backed handler |
-  | `ResolveBuildTags` | `paths.go:63` | every LSP-backed handler |
+  | `ResolveStateDir` | `paths.go:118` | every LSP-backed handler |
+  | `ResolveBuildTags` | `paths.go:61` | every LSP-backed handler |
   | `AbsOrJoin` | `cli.go:885` | every handler taking a path |
   | `FilterWithin` | `cli.go:757` | `textDocument_references`, `textDocument_definition`, `assert_no_callers` |
   | `FilterImpactWithin` | `impact.go:275` | `impact` |
   | `FilterUnexpectedCallers` | `cli.go:737` | `assert_no_callers` (declaration-site exclusion) |
-  | `ResolveDocSentences` | `tocconfig.go:105` | `toc_file` (composes `loadTOCConfig` `:47` and `parseDocSentences` `:83`) |
+  | `ResolveDocSentences` | `tocconfig.go:105` | `toc_file` (composes `loadTOCConfig` `:47` and `ParseDocSentences`) |
+  | `ParseDocSentences` | `tocconfig.go:83` | `toc_file` — the CLI calls it **directly** at `toc.go:127` for the up-front flag validation, not only through `ResolveDocSentences` |
   | `StructToFields` | `toc.go:401` | `impact`, `toc_file`, `toc_dir` |
   | `ResolveTOCPath` | `toc.go:253` | `toc_file`, `toc_dir` |
   | `ValidateTOCLang` | `toc.go:239` | `toc_file`, `toc_dir` |
@@ -123,8 +124,13 @@ That maps directly onto the friction observed and fixed this session.
 
   `TOCDirEntries` is the one that must not be skipped: `toc.DirEntry.Name` carries `json:"-"` (`toc/types.go:80`), so `StructToFields(TOCDirResult)` on its own produces `files` entries with **neither** `name` nor `path`.
   The `filepath.Join(arg, Files[i].Name)` composition is not a convenience — without it, `toc_dir` returns entries that cannot be fed into anything.
-  `isWithinDir` (`cli.go:784`), `loadTOCConfig`, `parseDocSentences`, `resolveTOCConfigPath`, and `workspaceKey`/`buildTagsSegment` stay unexported — each is reached only through one of the twelve above, so exporting them would widen the surface without adding a caller.
-  `classifyTOCError` is reimplemented rather than exported, for the type reason given under error-mapping.
+  `isWithinDir` (`cli.go:784`), `loadTOCConfig` (`tocconfig.go:47`), `resolveTOCConfigPath`, and `workspaceKey`/`buildTagsSegment` stay unexported — each is reached only through one of the thirteen above, so exporting them would widen the surface without adding a caller.
+  `resolveTOCBaseDir` is not needed at all: it exists to default a relative `--target-dir` against the seam cwd, and target-dir-resolution already hands every handler an absolute directory.
+- **Deliberately reimplemented, named individually** (each is a mapping into the MCP envelope, not shared logic):
+  - `classifyTOCError` (`toc.go:428`) — additionally *cannot* be exported; see error-mapping.
+  - `classifyLookupError` (`cli.go:942`), `classifySymbolError` (`cli.go:963`), `classifyImpactError` (`impact.go:234`) — all three return the unexported `batchStatus`, and `classifyImpactError` also injects the `resolution` marker and the marshal-failure reword, both of which the MCP layer decides for itself.
+  - `referenceFields` (`cli.go:835`), `symbolMatchFields` (`cli.go:793`) — three- and five-key `map[string]any` builders, trivially rewritten, and the MCP layer emits them under its own entry keys.
+  - `rewordImpactMarshalFailure` (`impact.go:261`) — the MCP layer needs the same `"toc: "`→`"impact: "` rewrite but applied to its own error text.
 - **Deliberately reimplemented, not exported:** the per-entry status classification.
   `classifyLookupError` (`cli.go:942`) and `classifySymbolError` (`cli.go:963`) return a `batchStatus` plus fields shaped for the CLI's own envelope, which is not the MCP envelope (no `target` key, no `structuredContent`, and the CLI's `statusRank` exit-code machinery has no MCP counterpart).
   `internal/mcpserver` writes its own classification.
@@ -290,12 +296,50 @@ That maps directly onto the friction observed and fixed this session.
 - Decision: each tool declares a JSON output schema and returns `structuredContent` carrying a batch envelope (`{"results": [{"target": ..., "status": ..., ...}]}`), plus a text content block rendering the same JSON.
 - Rationale: schema-typed output rests on the same argument as schema-typed input, and it is cheap to do both.
   The text block costs nothing and keeps clients that ignore `structuredContent` working.
-- Rejected: text content only carrying byte-identical CLI JSON (zero new surface, but discards half the "native typed tool" advantage this task is betting on); `structuredContent` only (cleanest, invisible on clients that do not render it).
+- **The per-entry object, pinned.**
+  Two keys are present on every entry of every tool at every status:
+  - `target` — the input entry echoed back verbatim, so a result is attributable without positional counting
+  - `status` — `found` / `not_found` / `ambiguous` / `error`
+
+  Every other key is optional and status- or tool-determined:
+
+  | Key | Appears on | Type |
+  | --- | --- | --- |
+  | `resolution` | `found`, on `textDocument_definition` / `textDocument_references` / `impact` only | `"complete"` |
+  | `references` | `found`, `textDocument_references` | array of `{file, line, character}` |
+  | `definitions` | `found`, `textDocument_definition` | array of `{file, line, character}` |
+  | `symbols` | `found`, `workspace_symbol` | array of `{name, kind, file, line, character}` |
+  | `target`/`definition`/`callers` | `found`, `impact` | the marshalled `quarry.ImpactResult` fields |
+  | `violation`, `callers` | `found`, `assert_no_callers` | `bool`, array of `{file, line, character}` |
+  | `files` | `found`, `toc_dir` | array of dir entries, each carrying the caller-relative `path` |
+  | (toc file fields) | `found`, `toc_file` | the marshalled `quarry.TOCFileResult` |
+  | `candidates` | `ambiguous` | array of candidate descriptors from `*quarry.ErrAmbiguousSymbol` |
+  | `error` | `error`, and `not_found` where the CLI carries a message (toc) | string |
+
+  Note `impact`'s marshalled result has its own `target` field; inside an `impact` entry it is nested under the result, never colliding with the envelope's `target` key.
+- **Schema strictness: permissive, and per-tool.**
+  Each tool's output schema declares `target` and `status` as required, every key above that the *that tool* can emit as optional, and no key it cannot.
+  `additionalProperties` is not set to `false`, and the schema is **not** a discriminated `oneOf` over status.
+- Rationale for permissiveness: a strict per-status union would have to validate a legitimately mixed batch — one `found`, one `ambiguous`, one `error` — against every branch, and a client with a strict validator would then reject a partial result as a protocol-level failure.
+  That is precisely the outcome error-mapping's partial-results decision exists to prevent, and it would be reintroduced through the schema instead of through `isError`.
+  Declaring only the keys a given tool can emit keeps the schema informative (a caller reading `toc_dir`'s schema never sees `candidates`) without making it brittle.
+- Rejected: text content only carrying byte-identical CLI JSON (zero new surface, but discards half the "native typed tool" advantage this task is betting on); `structuredContent` only (cleanest, invisible on clients that do not render it); a strict `oneOf`-per-status schema (maximally precise, but turns partial success into protocol failure).
 
 ### error-mapping
 
 - Decision: per-entry `status` (`found` / `not_found` / `ambiguous` / `error`) inside an otherwise-successful result for anything target-specific.
-  Tool-level `isError` is reserved for failures that occur **before any entry runs**, and that set is closed: schema validation (including the array bounds), `targetDir` absolutisation failure, and the three pre-flight steps inside `resolveContext` — config-path resolution, `quarry.LoadRegistry`, and state-dir resolution.
+  Tool-level `isError` is reserved for failures that occur **before any entry runs**, and that set is closed — but it is **not the same set for all seven tools**, because the toc tools do not share the LSP tools' pre-flight path:
+
+  | Whole-call failure | LSP-backed five | `toc_file` / `toc_dir` |
+  | --- | --- | --- |
+  | Schema validation (incl. `minItems`/`maxItems`) | yes | yes |
+  | `targetDir` absolutisation failure | yes | yes |
+  | Config-path resolution, `quarry.LoadRegistry`, state-dir resolution (`resolveContext`) | yes | **no** |
+  | `ValidateTOCLang` failure (`toc.go:115`) | n/a | yes |
+  | `ParseDocSentences` failure on a non-empty `docSentences` (`toc.go:127`) | n/a | yes |
+
+  `tocFileCommand`/`tocDirCommand` never call `resolveContext`, `LoadRegistry`, or `resolveStateDir` (`toc.go:104-140`), so a malformed `servers.yaml` must **not** fail a `toc_file` call — the CLI succeeds there, and failing would be a behavioural divergence.
+  Conversely toc has two up-front validations of its own that the CLI performs once, before any argument is processed, and they belong in the whole-call set for exactly that reason.
   Everything surfacing from a per-entry facade call is per-entry `status: "error"` — **including daemon spawn failures** (`ErrServerNotFound`, `ErrServerSpawnTimeout`, `ErrServerTimeout`).
 - Rationale: reuses `classifyLookupError`/`classifySymbolError`'s **error predicates** exactly (see export-inventory — the classification itself is reimplemented for a different envelope), and preserves partial results.
   This matters far more under array batching than it would have for single-target calls: with arrays, `isError` on one bad target would discard every good answer in the same call.
@@ -459,8 +503,7 @@ Ambiguity surfaces as `{"candidates": [...]}` from `*quarry.ErrAmbiguousSymbol`;
 
 **`within` filtering is CLI-side, not engine-side.**
 `filterWithin`/`isWithinDir` in `cli.go` and `filterImpactWithin` in `impact.go` post-filter results.
-The MCP layer needs equivalent filtering; reusing these means exporting them too, or reimplementing the (short) logic in `internal/mcpserver`.
-Prefer exporting if the logic is non-trivial, to keep one definition of "within".
+The MCP layer needs the identical filtering, and this is settled by decision, not left open: see within-filter-helpers and export-inventory — `FilterWithin` and `FilterImpactWithin` are exported and called, never reimplemented.
 
 **`toc` specifics.** `toc file` resolves an optional per-directory config via `resolveTOCConfigPath(targetDir)` — `$QUARRY_TOC_CONFIG`, else `<targetDir>/.quarry.yaml`, looked up in that directory only with no upward walk.
 **Critical: that `targetDir` is not the CLI's `--target-dir`.**
@@ -499,7 +542,7 @@ Constraints established during this discussion:
   Add a small `internal/mcpserver/layering_test.go` that walks the package's own imports and fails on any `github.com/Knatte18/quarry/internal/quarryengine` prefix.
   `internal/cli` is an allowed import (that is the whole point of export-inventory); the engine is not.
 - **No changes to CLI behaviour**, including output shapes, flag names, and exit codes.
-  The only permitted edit to `internal/cli` is exporting the nine helpers named under export-inventory — which means renaming the identifier and updating its call sites, never changing its logic.
+  The only permitted edit to `internal/cli` is exporting the thirteen helpers named under export-inventory — which means renaming the identifier and updating its call sites, never changing its logic.
 - **Two positional conventions coexist by design** (0-based LSP-mirrored, 1-based quarry-native).
   Each tool description must state its own convention explicitly.
 
@@ -530,7 +573,8 @@ The stubs are what make the status and error-mapping assertions below reachable 
 - **Array batching**: a multi-entry call returns one entry per input, in order, with the right per-entry `status`.
 - **Error mapping**: a mixed call — one resolvable target, one not-found, one ambiguous — returns `isError: false` with three distinct per-entry statuses and the good result intact.
   This is the regression that matters most under array batching.
-- Whole-call failure (unusable `targetDir`, malformed `servers.yaml`) returns `isError: true`.
+- Whole-call failure returns `isError: true` — and the toc split is asserted explicitly: a malformed `servers.yaml` fails an LSP-backed tool wholly but leaves `toc_file`/`toc_dir` succeeding, while an invalid `lang` or `docSentences` fails a toc call wholly.
+- Every entry carries `target` and `status`; a mixed batch validates against the tool's declared output schema without any entry being rejected.
 - `structuredContent` and the text fallback carry the same payload.
 - `resolution: "complete"` is present on `found` entries of `textDocument_definition`, `textDocument_references`, and `impact`, and **absent** from `workspace_symbol`, `assert_no_callers`, `toc_file`, and `toc_dir` — assert both halves, since the failure mode is adding it everywhere.
 - Concurrent `tools/call` requests both complete correctly and neither blocks the other (no global mutex).
