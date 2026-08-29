@@ -59,7 +59,9 @@ batches:
     commit_sha: 14a32eb0bcc16fe817f925d6bf19c09a3f2df087
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: quarry-native-lsp-tools
-    state: pending
+    state: running
+    implementer_session: b33b3db3-3a54-4d5d-91af-ec8f0e7f12e5
+    start_sha: defdb58b5eed4ac336d94ea23c17bab5090074c0
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: toc-tools
     state: pending
