@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-server-binary-and-transport-tests
+phase: approved-integration-and-docs
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-lsp-mirrored-tools  '2026-08-29T08:01:36Z'
 approved-quarry-native-lsp-tools  '2026-08-29T10:05:54Z'
 approved-toc-tools  '2026-08-29T10:13:29Z'
 approved-server-binary-and-transport-tests  '2026-08-29T10:20:22Z'
+approved-integration-and-docs  '2026-08-29T10:26:00Z'
 ```
 
 ## Batches
@@ -80,8 +81,9 @@ batches:
     commit_sha: edf3903ea25227ed37a45d291531498634546aa4
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: integration-and-docs
-    state: running
+    state: approved
     implementer_session: a3abd676-5d17-4237-a7a4-40ec6bc9231b
     start_sha: c98952986e23a2e1f33c86500cd9addea54f824e
+    commit_sha: def1940b7a3e9e09e9b524e13ef4df15b47d88d0
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
 ```
