@@ -186,9 +186,9 @@ those whose file lies within <dir> (relative to --target-dir, or absolute):
 // errors.As emits "candidates" through output.Ok and forces exit 2; every other error (including
 // quarry.ErrSymbolNotFoundSentinel, which is deliberately not special-cased here either) falls
 // through to output.Err's hardcoded exit 1.
-// On success, result is marshalled through structToFields and "resolution":"complete" is added to
-// the returned map before it is emitted through output.Ok. A structToFields failure is itself an
-// output.Err exit 1, but reworded off structToFields' own "toc: " prefix — see
+// On success, result is marshalled through StructToFields and "resolution":"complete" is added to
+// the returned map before it is emitted through output.Ok. A StructToFields failure is itself an
+// output.Err exit 1, but reworded off StructToFields' own "toc: " prefix — see
 // rewordImpactMarshalFailure — so this verb's error envelope never names a verb the caller never
 // invoked.
 func emitImpactResult(ctx context.Context, out io.Writer, result quarry.ImpactResult, err error) {
@@ -207,7 +207,7 @@ func emitImpactResult(ctx context.Context, out io.Writer, result quarry.ImpactRe
 		return
 	}
 
-	fields, marshalErr := structToFields(result)
+	fields, marshalErr := StructToFields(result)
 	if marshalErr != nil {
 		SetExit(ctx, output.Err(out, rewordImpactMarshalFailure(marshalErr)))
 		return
@@ -226,7 +226,7 @@ func emitImpactResult(ctx context.Context, out io.Writer, result quarry.ImpactRe
 // anything else routes to statusError with an "error" field. No fourth branch is added to that
 // incoming-error routing and the three are never reordered.
 // The nil-error branch yields statusFound carrying the marshalled result and the same
-// "resolution":"complete" marker every found entry gets — unless structToFields itself fails, in
+// "resolution":"complete" marker every found entry gets — unless StructToFields itself fails, in
 // which case that same nil-error branch returns statusError with the reworded message under an
 // "error" key. This is not a fourth error branch: it is the same disposition tocFileOne already
 // uses for exactly this failure, inside its own nil-error branch, so batch mode's behaviour on a
@@ -245,7 +245,7 @@ func classifyImpactError(err error, result quarry.ImpactResult) (batchStatus, ma
 		return statusError, map[string]any{"error": err.Error()}
 	}
 
-	fields, marshalErr := structToFields(result)
+	fields, marshalErr := StructToFields(result)
 	if marshalErr != nil {
 		return statusError, map[string]any{"error": rewordImpactMarshalFailure(marshalErr)}
 	}
@@ -253,8 +253,8 @@ func classifyImpactError(err error, result quarry.ImpactResult) (batchStatus, ma
 	return statusFound, fields
 }
 
-// rewordImpactMarshalFailure reworks a structToFields failure into an impact-specific marshalling
-// message. structToFields wraps both of its failure modes with a literal "toc: " prefix, because it
+// rewordImpactMarshalFailure reworks a StructToFields failure into an impact-specific marshalling
+// message. StructToFields wraps both of its failure modes with a literal "toc: " prefix, because it
 // was written for the toc verbs; that prefix is stripped and replaced with "impact: " here so the
 // single-argument (emitImpactResult) and batch (classifyImpactError) shapes carry the identical,
 // correctly-attributed message rather than naming a verb the caller never invoked.

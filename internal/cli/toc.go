@@ -112,7 +112,7 @@ default of 1.`,
 			}
 			dir := resolveTOCBaseDir(cwd, targetDir)
 
-			if err := validateTOCLang(lang); err != nil {
+			if err := ValidateTOCLang(lang); err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
@@ -199,7 +199,7 @@ The process exit code is set to the worst status present across the batch.`,
 			}
 			dir := resolveTOCBaseDir(cwd, targetDir)
 
-			if err := validateTOCLang(lang); err != nil {
+			if err := ValidateTOCLang(lang); err != nil {
 				SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
@@ -227,7 +227,7 @@ The process exit code is set to the worst status present across the batch.`,
 	return cmd
 }
 
-// validateTOCLang reports an error naming toc's own valid --lang values when lang is non-empty and
+// ValidateTOCLang reports an error naming toc's own valid --lang values when lang is non-empty and
 // not one of them; a nil error means either lang is empty (no override requested) or lang is
 // valid.
 //
@@ -236,7 +236,7 @@ The process exit code is set to the worst status present across the batch.`,
 // toc never calls resolveContext (see this file's header comment) and so never loads that
 // registry; validating against it here would require loading it just for this one check, defeating
 // the reason toc bypasses resolveContext in the first place.
-func validateTOCLang(lang string) error {
+func ValidateTOCLang(lang string) error {
 	if lang == "" {
 		return nil
 	}
@@ -248,9 +248,9 @@ func validateTOCLang(lang string) error {
 	return fmt.Errorf("toc: unrecognised --lang %q; valid languages: %s", lang, strings.Join(quarry.TOCLanguages(), ", "))
 }
 
-// resolveTOCPath joins arg onto baseDir unless arg is already absolute, mirroring AbsOrJoin's
+// ResolveTOCPath joins arg onto baseDir unless arg is already absolute, mirroring AbsOrJoin's
 // resolution rule for a toc positional argument.
-func resolveTOCPath(baseDir, arg string) string {
+func ResolveTOCPath(baseDir, arg string) string {
 	if filepath.IsAbs(arg) {
 		return filepath.Clean(arg)
 	}
@@ -289,7 +289,7 @@ func resolveTOCBaseDir(cwd, targetDir string) string {
 // any config file — the caller has already validated the flag once, up front, before any
 // argument was processed.
 func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[string]any) {
-	abs := resolveTOCPath(baseDir, arg)
+	abs := ResolveTOCPath(baseDir, arg)
 
 	info, err := os.Stat(abs)
 	if err != nil {
@@ -314,7 +314,7 @@ func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[strin
 		return status, map[string]any{"error": msg}
 	}
 
-	fields, err := structToFields(result)
+	fields, err := StructToFields(result)
 	if err != nil {
 		return statusError, map[string]any{"error": err.Error()}
 	}
@@ -323,14 +323,14 @@ func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[strin
 
 // tocDirOne resolves arg (a "toc dir" positional argument) against baseDir, validates it names an
 // existing directory, calls quarry.TOCDir, composes each listed file's caller-relative "path" via
-// tocDirEntries, and returns the batch outcome.
+// TOCDirEntries, and returns the batch outcome.
 //
 // baseDir is cwd unless --target-dir was given (see resolveTOCBaseDir).
 //
 // Both the single-argument RunE above and runPathBatch's per-argument closure call this function,
 // so the two call paths cannot drift apart.
 func tocDirOne(baseDir, arg, lang string) (batchStatus, map[string]any) {
-	abs := resolveTOCPath(baseDir, arg)
+	abs := ResolveTOCPath(baseDir, arg)
 
 	info, err := os.Stat(abs)
 	if err != nil {
@@ -349,20 +349,20 @@ func tocDirOne(baseDir, arg, lang string) (batchStatus, map[string]any) {
 		return status, map[string]any{"error": msg}
 	}
 
-	files, err := tocDirEntries(arg, result)
+	files, err := TOCDirEntries(arg, result)
 	if err != nil {
 		return statusError, map[string]any{"error": err.Error()}
 	}
 	return statusFound, map[string]any{"files": files}
 }
 
-// tocDirEntries builds the []any "files" entries "toc dir" emits for one directory argument as the
+// TOCDirEntries builds the []any "files" entries "toc dir" emits for one directory argument as the
 // caller wrote it (never the absolutised form), so each entry's composed "path" round-trips
 // straight into a follow-up "toc file" call from the same working directory.
 //
 // quarry.TOCDirResult.Files carries each file's base name, but DirEntry.Name is tagged json:"-"
 // specifically because internal/cli, not the engine, composes the caller-relative path — so after
-// structToFields marshals result through encoding/json, the decoded files no longer carry it. This
+// StructToFields marshals result through encoding/json, the decoded files no longer carry it. This
 // function zips the decoded array back to result.Files by index (the marshal preserves slice
 // order, so element i of the decoded array is result.Files[i]) and injects "path" from the typed
 // entry while walking the pair, asserting the two lengths match before the loop rather than
@@ -373,8 +373,8 @@ func tocDirOne(baseDir, arg, lang string) (batchStatus, map[string]any) {
 // with no per-file "path" — the one thing the batch path cannot inherit from runPathBatch itself,
 // which only ever writes the entry-level "path" key (the argument), never the per-file path inside
 // "files".
-func tocDirEntries(arg string, result quarry.TOCDirResult) ([]any, error) {
-	fields, err := structToFields(result)
+func TOCDirEntries(arg string, result quarry.TOCDirResult) ([]any, error) {
+	fields, err := StructToFields(result)
 	if err != nil {
 		return nil, err
 	}
@@ -394,11 +394,11 @@ func tocDirEntries(arg string, result quarry.TOCDirResult) ([]any, error) {
 	return rawFiles, nil
 }
 
-// structToFields re-marshals v — a struct carrying the json tags that fix toc's emitted key set —
+// StructToFields re-marshals v — a struct carrying the json tags that fix toc's emitted key set —
 // into a map[string]any via encoding/json, so output.Ok's map[string]any parameter is fed exactly
 // the keys the struct tags define and every omitempty rule is honoured in this one place rather
 // than restated by hand at each call site.
-func structToFields(v any) (map[string]any, error) {
+func StructToFields(v any) (map[string]any, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("toc: marshal result: %w", err)

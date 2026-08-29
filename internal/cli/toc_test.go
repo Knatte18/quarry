@@ -570,7 +570,7 @@ func TestRunCLI_TocBatch_KeyIsPathNotSymbol(t *testing.T) {
 // TestRunCLI_TocDirBatch_EveryFileEntryCarriesItsOwnPath verifies batch mode on "toc dir" with two
 // directory arguments composes every element of each entry's "files" array with its own "path",
 // derived from that entry's own argument as written. This is the assertion that fails if the
-// batch closure skips tocDirEntries.
+// batch closure skips TOCDirEntries.
 func TestRunCLI_TocDirBatch_EveryFileEntryCarriesItsOwnPath(t *testing.T) {
 	t.Parallel()
 
