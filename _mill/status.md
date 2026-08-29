@@ -86,8 +86,4 @@ batches:
     implementer_session: a7b266a3-6873-4835-9585-a19de8d2bbc7
     start_sha: 5c4811d691bda1954262c1eed0900798ee7967b8
     commit_sha: 2293c4bf1b5add5ac13bfc072e0804aaaaf4d3d0
-  - name: execute-matrix
-    state: pending
-  - name: conclusion
-    state: pending
 ```

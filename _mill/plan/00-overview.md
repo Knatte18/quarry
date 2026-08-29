@@ -52,16 +52,6 @@ batches:
     file: 07-protocol-readme.md
     depends-on: [1, 6]
     verify: null
-  - number: 8
-    name: execute-matrix
-    file: 08-execute-matrix.md
-    depends-on: [6, 7]
-    verify: null
-  - number: 9
-    name: conclusion
-    file: 09-conclusion.md
-    depends-on: [8]
-    verify: null
 ```
 
 ## Shared Decisions
@@ -144,6 +134,12 @@ batches:
 - **Rationale:** a plan cannot know the execution date, but the validator and the reviewer need concrete paths. Pinning one literal and stating the substitution rule keeps both true. Re-running the matrix on a different model or a later date is a new dated directory, never a mixed one.
 - **Applies to:** batch 8, batch 9
 
+### Decision: batches 8 and 9 descoped — matrix execution moves outside this task
+
+- **Decision:** batches 8 (`execute-matrix`) and 9 (`conclusion`) are dropped from this plan's Batch Index, not deferred with the same design. This task's deliverable ends at batch 7: the harness (`ladder_config.py`, `gates.py`, `extract_usage.py`, `score_run.py`, `summarize.py`, `run_ladder.py`, `ladder.yaml`, the pytest suite, and the README) is what gets finalized and merged. The archived card text for the dropped batches lives at `_mill/plan/descoped/08-execute-matrix.md` and `_mill/plan/descoped/09-conclusion.md`, kept for reference, not for execution by this task.
+- **Rationale:** batch 8 was designed to drive the 46-run paid matrix and 45 scoring calls through `run_ladder.py`'s subprocess-dispatch path (`launch_run`, called from `run_stage --stage main|cold`), running as one long sequential implementer-driven shell invocation with no human watching each run live. The operator decided against this mechanism independent of any bug: a human supervising one Agent-tool call per run — able to watch and kill a stalled run immediately — beats a blind wall-clock guess. Concretely reinforcing that call, `launch_run`'s `subprocess.run` carries no `timeout=`; the only bound on a single run is `--max-turns` (turns, not wall-clock), so a stalled or looping run would block the sequential matrix driver indefinitely with nothing to kill it automatically. `launch_run` and the rest of the `run_stage` CLI path remain in `run_ladder.py` as shipped, tested, documented code (batch 6) — this decision does not remove them, since they are reachable via the documented `--stage probe|main|cold` CLI and covered by `test_run_ladder.py`; it only removes this task's own use of that path to run the paid matrix. The actual 46-run matrix and its written conclusion happen later, in a separate session, driven by the operator via direct Agent-tool dispatch per run.
+- **Applies to:** none (batches 8 and 9 no longer exist in this plan)
+
 ### Decision: Python style for the suite
 
 - **Decision:** all six scripts target the system Python 3 already present (3.14), use only the standard library plus `PyYAML`, carry module-level docstrings in the shape `bench/loomyard-eval/scripts/gen_compact_toc.py` already uses (summary line, then a `Usage:` block), guard every executable entry point behind `if __name__ == "__main__":`, and expose their deterministic units as module-level functions so the tests import them without triggering any dispatch.
@@ -155,10 +151,6 @@ batches:
 - `.gitignore`
 - `bench/loomyard-eval/ladder/README.md`
 - `bench/loomyard-eval/ladder/ladder.yaml`
-- `bench/loomyard-eval/ladder/results/2026-08-29/cold_cell.json`
-- `bench/loomyard-eval/ladder/results/2026-08-29/conclusion.md`
-- `bench/loomyard-eval/ladder/results/2026-08-29/probe.json`
-- `bench/loomyard-eval/ladder/results/2026-08-29/summary.json`
 - `bench/loomyard-eval/ladder/scripts/extract_usage.py`
 - `bench/loomyard-eval/ladder/scripts/gates.py`
 - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
