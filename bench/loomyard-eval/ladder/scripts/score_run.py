@@ -32,7 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ladder_config import QUARRY_TOOLS, config_by_id, load_ladder, mcp_name
+from ladder_config import QUARRY_TOOLS, config_by_id, extract_fenced_json, load_ladder, mcp_name
 
 # Placeholder every redacted tool-provenance mention is replaced with.
 REDACTION_TOKEN = "<tool>"
@@ -246,17 +246,15 @@ def build_scorer_prompt(ladder, config, redacted_answer, fasit, task_text):
 """
 
 
-_FENCED_JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
-
-
 def _extract_fenced_json(reply):
     """Parses the first fenced json code block out of a scorer reply.
     Raises ScoringError when none is present or it does not parse."""
-    match = _FENCED_JSON_RE.search(reply)
-    if match is None:
+    found = extract_fenced_json(reply, which="first")
+    if found is None:
         raise ScoringError("scorer reply carried no fenced json block")
+    _block_text, inner_text = found
     try:
-        return json.loads(match.group(1))
+        return json.loads(inner_text)
     except json.JSONDecodeError as exc:
         raise ScoringError(f"scorer reply's fenced json block did not parse: {exc}") from exc
 

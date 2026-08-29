@@ -19,7 +19,6 @@ Usage:
 import argparse
 import json
 import os
-import re
 import select
 import shutil
 import subprocess
@@ -46,6 +45,7 @@ from gates import (
 )
 from gates import run_dir as run_dir_for
 from ladder_config import (
+    extract_fenced_json,
     load_ladder,
     mcp_name,
     preamble_for,
@@ -540,16 +540,14 @@ def task_text_for(ladder, task_key):
     return "\n".join(body_lines)
 
 
-_FENCED_JSON_BLOCK_RE = re.compile(r"```json\n.*?\n```", re.DOTALL)
-
-
 def _first_fenced_json_block(text):
     """Returns the first ```json ... ``` fenced block found in text, fences
     included. Raises HarnessError when none is present."""
-    match = _FENCED_JSON_BLOCK_RE.search(text)
-    if match is None:
+    found = extract_fenced_json(text, which="first")
+    if found is None:
         raise HarnessError("schema_for: no fenced json block found in the expected section")
-    return match.group(0)
+    block_text, _inner_text = found
+    return block_text
 
 
 def _section(text, heading):
@@ -659,9 +657,6 @@ def launch_run(argv, cwd, env, transcript_path):
         )
 
 
-_FENCED_JSON_ANSWER_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
-
-
 def _extract_answer(result_payload):
     """
     Parses the final fenced json block out of the result event's "result"
@@ -669,11 +664,12 @@ def _extract_answer(result_payload):
     parse.
     """
     text = result_payload.get("result", "")
-    matches = _FENCED_JSON_ANSWER_RE.findall(text)
-    if not matches:
+    found = extract_fenced_json(text, which="last")
+    if found is None:
         raise HarnessError("execute_run: result event's result field carried no fenced json block")
+    _block_text, inner_text = found
     try:
-        return json.loads(matches[-1])
+        return json.loads(inner_text)
     except json.JSONDecodeError as exc:
         raise HarnessError(f"execute_run: final fenced json block did not parse: {exc}") from exc
 

@@ -11,6 +11,7 @@ Usage:
     ladder = load_ladder("bench/loomyard-eval/ladder/ladder.yaml")
 """
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -413,3 +414,29 @@ def preamble_for(ladder, config, target_dir, task_text, schema_json):
         body = B_PREAMBLE_BODY.replace("<TARGET_DIR>", target_dir)
 
     return "\n\n".join([PARALLEL_OPENING, body, task_text, PARALLEL_BLOCK, _CLOSING_SENTENCE, schema_json])
+
+
+""" SHARED FENCED-JSON EXTRACTION """
+
+# The one ```json ... ``` regex this suite compiles. score_run.py (scorer
+# replies), run_ladder.py's schema_for (task-file/README schema blocks),
+# and run_ladder.py's execute_run (a run's final answer) each select a
+# different match by position -- see extract_fenced_json's which argument
+# -- rather than re-deriving this pattern per call site.
+_FENCED_JSON_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
+
+
+def extract_fenced_json(text, which="first"):
+    """
+    Finds every ```json ... ``` fenced block in text and returns the one
+    selected by which -- "first" or "last" -- as (block_text, inner_text):
+    block_text includes the fences, inner_text is json.loads-ready content
+    between them. Returns None when text carries no fenced json block at
+    all, so each call site raises its own contextually-worded error rather
+    than a generic one from here.
+    """
+    matches = list(_FENCED_JSON_RE.finditer(text))
+    if not matches:
+        return None
+    match = matches[0] if which == "first" else matches[-1]
+    return match.group(0), match.group(1)
