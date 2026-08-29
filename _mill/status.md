@@ -60,7 +60,9 @@ batches:
     commit_sha: 687ed5b3c7184bc17ba614ca7db098d2decd0353
     verify_baseline_failures: []
   - name: validation-gates
-    state: pending
+    state: running
+    implementer_session: 3580c366-9165-4b27-8f3d-0b47dc708e87
+    start_sha: eaebd082a02031a553879afbcc33fb6c9acaad22
     verify_baseline_failures: []
   - name: summarize-and-separation
     state: pending
