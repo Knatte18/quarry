@@ -46,7 +46,9 @@ batches:
     commit_sha: 242a0de8d080328cb4c86d159f73ff5c172171e9
     verify_baseline_failures: []
   - name: usage-extraction
-    state: pending
+    state: running
+    implementer_session: 3d76e136-8443-4c91-88da-9c2cb0513f1e
+    start_sha: bc71c997e98c413319f1996eb71925bc158bd792
     verify_baseline_failures: []
   - name: blinded-scoring
     state: pending
