@@ -53,7 +53,9 @@ batches:
     commit_sha: 444e077bed1a66b909047e0129137ea02f4d791d
     verify_baseline_failures: []
   - name: blinded-scoring
-    state: pending
+    state: running
+    implementer_session: a14e9f92-405e-4605-9f53-4037542bdcb9
+    start_sha: b4409ffa87797c13a8ede57d8cfa01596da24986
     verify_baseline_failures: []
   - name: validation-gates
     state: pending
