@@ -16,6 +16,7 @@ Usage:
     python run_ladder.py bench/loomyard-eval/ladder/ladder.yaml \
         bench/loomyard-eval/ladder/results/2026-08-29 --stage all
 """
+import argparse
 import json
 import os
 import re
@@ -37,12 +38,19 @@ from gates import (
     invalidate,
     is_complete,
     resolve_state_dir,
-    run_dir as run_dir_for,
     run_gates,
+    user_cache_dir,
     wait_for_daemon_exit,
     write_run_json,
 )
-from ladder_config import mcp_name, preamble_for, write_settings
+from gates import run_dir as run_dir_for
+from ladder_config import (
+    load_ladder,
+    mcp_name,
+    preamble_for,
+    require_pins,
+    write_settings,
+)
 from score_run import ScoringError, score_run
 
 
@@ -186,6 +194,7 @@ def build_server(repo_root):
         env=build_env,
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         raise HarnessError(
@@ -668,7 +677,9 @@ def launch_run(argv, cwd, env, transcript_path):
     executor rather than a model.
     """
     with open(transcript_path, "w") as transcript_file:
-        subprocess.run(argv, cwd=str(cwd), env=env, stdout=transcript_file, stderr=subprocess.PIPE, text=True)
+        subprocess.run(
+            argv, cwd=str(cwd), env=env, stdout=transcript_file, stderr=subprocess.PIPE, text=True, check=False
+        )
 
 
 _FENCED_JSON_ANSWER_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
@@ -1023,3 +1034,88 @@ def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, execu
         json.dump(record, f, indent=2)
         f.write("\n")
     return record
+
+
+""" THE CLI ENTRY POINT """
+
+
+def _run_probe_if_needed(ladder, repo_root, results_root, worktrees, server_path, prober=run_probe):
+    """
+    Runs the preflight probe unless results_root already holds a
+    probe.json recording a passing probe (denial_blocks: true) -- the CLI
+    is re-invoked on every resume, and without this skip each resume
+    would spend a paid run re-probing and overwrite an already-committed
+    probe record.
+    """
+    results_root = Path(results_root)
+    probe_path = results_root / "probe.json"
+    if probe_path.exists():
+        with open(probe_path) as f:
+            existing = json.load(f)
+        if existing.get("denial_blocks"):
+            return existing
+
+    target_dir = worktrees[next(iter(ladder.tasks))]
+    return prober(ladder, repo_root, results_root, target_dir, server_path)
+
+
+def run_stage(ladder, results_root, worktrees, server_path, repo_root, cache_dir, stage,
+              prober=run_probe, matrix_runner=run_matrix, cold_runner=run_cold_cell):
+    """
+    Runs the CLI's stage-selection logic against already-resolved
+    dependencies (a loaded Ladder, established task worktrees, and a
+    built server binary), with the probe/main-matrix/cold-cell drivers
+    injectable so tests exercise the selector without dispatching any of
+    them for real.
+
+    "probe" runs the probe (skipped when already recorded passing) and
+    stops. "main" runs only the main matrix. "cold" runs only the cold
+    cell. "all" runs the probe, then the main matrix, then the cold cell,
+    in that order.
+    """
+    if stage in ("probe", "all"):
+        _run_probe_if_needed(ladder, repo_root, results_root, worktrees, server_path, prober=prober)
+
+    if stage == "main":
+        matrix_runner(ladder, results_root, worktrees, server_path, repo_root, cache_dir)
+    elif stage == "cold":
+        cold_runner(ladder, results_root, server_path, repo_root, cache_dir)
+    elif stage == "all":
+        matrix_runner(ladder, results_root, worktrees, server_path, repo_root, cache_dir)
+        cold_runner(ladder, results_root, server_path, repo_root, cache_dir)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description=(
+            "Drive the quarry-mcp capability ladder benchmark: task worktrees, the "
+            "preflight probe, the sequential main matrix, and the cold-daemon "
+            "comparison cell."
+        )
+    )
+    parser.add_argument("ladder_path", help="path to ladder.yaml")
+    parser.add_argument("results_root", help="results directory this invocation writes into")
+    parser.add_argument(
+        "--stage",
+        choices=["probe", "main", "cold", "all"],
+        default="all",
+        help="which stage(s) to run (default: all)",
+    )
+    cli_args = parser.parse_args()
+
+    cli_ladder = load_ladder(cli_args.ladder_path)
+    require_pins(cli_ladder)
+
+    cli_repo_root = Path.cwd()
+    cli_results_root = Path(cli_args.results_root)
+    cli_results_root.mkdir(parents=True, exist_ok=True)
+    cli_cache_dir = user_cache_dir()
+
+    cli_server_path = build_server(cli_repo_root)
+    cli_worktrees = ensure_task_worktrees(cli_ladder)
+
+    run_stage(
+        cli_ladder, cli_results_root, cli_worktrees, cli_server_path, cli_repo_root, cli_cache_dir, cli_args.stage
+    )
+
+    print(f"done -- point summarize.py at {cli_results_root}")
