@@ -29,7 +29,9 @@ from pathlib import Path
 from extract_usage import extract_usage, init_event, read_transcript, result_event
 from gates import (
     GateFinding,
+    clear_state_dir,
     daemon_state_file,
+    gate_cold_before,
     gate_run_complete_artifacts,
     gate_worktree_neutralised,
     invalidate,
@@ -37,6 +39,7 @@ from gates import (
     resolve_state_dir,
     run_dir as run_dir_for,
     run_gates,
+    wait_for_daemon_exit,
     write_run_json,
 )
 from ladder_config import mcp_name, preamble_for, write_settings
@@ -889,3 +892,134 @@ def run_matrix(ladder, results_root, worktrees, server_path, repo_root, cache_di
                     f"run_matrix: config {config.id!r} rep {n} failed {MAX_ATTEMPTS} "
                     f"attempts; last findings: {[(f.gate, f.message) for f in outcome.findings]}"
                 )
+
+
+""" THE COLD-CELL DRIVER """
+
+# The daemon's own 10-minute idle timeout plus a minute of margin, so no
+# cold run is timed alongside a resident daemon from a predecessor.
+DAEMON_EXIT_TIMEOUT_S = 660
+
+
+def _rep_disposition_from_run_json(a_run_dir):
+    """
+    Reads a completed cold-cell repetition's run.json and returns "cold"
+    when its gate observations confirm a supervised connection, or
+    "no_daemon_signal" when it recorded cold_no_daemon_backed_call.
+    """
+    with open(Path(a_run_dir) / "run.json") as f:
+        record = json.load(f)
+    gate_names = {observation["gate"] for observation in record.get("observations", [])}
+    if "cold_no_daemon_backed_call" in gate_names:
+        return "no_daemon_signal"
+    return "cold"
+
+
+def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, executor=launch_run, git=run_git):
+    """
+    Runs the cold-daemon comparison cell, executed after the entire main
+    matrix.
+
+    Before the first repetition, drains the daemons the main matrix left
+    resident on every shared task worktree. For each of the cold config's
+    repetitions: builds a fresh worktree at cold_worktree_template with
+    {n} substituted; clears the resolved state directory and asserts
+    gate_cold_before before every attempt (including retries), since a
+    failed attempt's daemon.json would otherwise fail the precondition
+    deterministically; runs no warm-up step; executes through
+    execute_run, whose internal run_gates call asserts gate_cold_after
+    for a cold config; and removes the worktree after the final attempt
+    whatever its outcome.
+
+    Persists <results_root>/cold_cell.json recording one of four
+    dispositions -- confirmed_cold, not_run, no_daemon_signal, or
+    partial -- and the number of confirmed-cold repetitions, so a not-run
+    or partial cell is never mistaken for an interrupted one.
+    """
+    results_root = Path(results_root)
+    env = run_env()
+
+    # Drain the daemons the main matrix left resident before the first
+    # cold repetition starts, so neither task daemon competes with the
+    # cold runs for CPU.
+    for task in ladder.tasks.values():
+        wait_for_daemon_exit(task.worktree, cache_dir, env, DAEMON_EXIT_TIMEOUT_S)
+
+    all_pairs = cold_runs(ladder)
+    pending = pending_runs(all_pairs, results_root)
+    pending_ns = {n for _config, n in pending}
+
+    dispositions = {}
+    for config, n in all_pairs:
+        if n not in pending_ns:
+            dispositions[n] = _rep_disposition_from_run_json(run_dir_for(results_root, config.id, n))
+
+    for config, n in pending:
+        target_dir = ladder.cold_worktree_template.format(n=n)
+        a_run_dir = run_dir_for(results_root, config.id, n)
+        task_sha = ladder.tasks[config.task].pinned_sha
+
+        rep_disposition = "not_run"
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            build_worktree(ladder, target_dir, task_sha, git=git)
+            clear_state_dir(target_dir, cache_dir, env)
+
+            if gate_cold_before(target_dir, cache_dir, env):
+                # A genuinely live daemon means this attempt cannot be
+                # cold -- discard it and retry rather than reporting it
+                # as cold.
+                remove_worktree(ladder, target_dir, git=git)
+                continue
+
+            outcome = execute_run(ladder, config, n, a_run_dir, target_dir, server_path, repo_root, cache_dir, executor=executor)
+            remove_worktree(ladder, target_dir, git=git)
+
+            if outcome.status == "truncated":
+                raise HarnessError(
+                    f"run_cold_cell: config {config.id!r} rep {n} was truncated at "
+                    f"max_turns={ladder.max_turns}; halting -- raise max_turns and "
+                    "re-run into a new dated results directory"
+                )
+            if outcome.status == "complete":
+                rep_disposition = _rep_disposition_from_run_json(a_run_dir)
+                break
+
+            invalidate(a_run_dir)
+
+        dispositions[n] = rep_disposition
+        wait_for_daemon_exit(target_dir, cache_dir, env, DAEMON_EXIT_TIMEOUT_S)
+
+    reps_confirmed_cold = sum(1 for status in dispositions.values() if status == "cold")
+    reps_not_run = sum(1 for status in dispositions.values() if status == "not_run")
+    total_reps = len(all_pairs)
+
+    if reps_confirmed_cold >= 1 and reps_not_run == 0:
+        disposition = "confirmed_cold"
+        reason = f"{reps_confirmed_cold} of {total_reps} repetitions confirmed cold"
+    elif reps_confirmed_cold >= 1 and reps_not_run >= 1:
+        disposition = "partial"
+        reason = (
+            f"{reps_confirmed_cold} of {total_reps} repetitions confirmed cold; "
+            f"{reps_not_run} exhausted attempts on the native-fallback branch"
+        )
+    elif reps_confirmed_cold == 0 and reps_not_run == total_reps:
+        disposition = "not_run"
+        reason = (
+            "the supervised daemon strategy is unavailable on this machine -- every "
+            "repetition exhausted its attempts on the native-fallback branch"
+        )
+    else:
+        disposition = "no_daemon_signal"
+        reason = "every repetition completed validly but none invoked a daemon-backed tool"
+
+    record = {
+        "disposition": disposition,
+        "reason": reason,
+        "confirmed_cold_reps": reps_confirmed_cold,
+        "reps": total_reps,
+        "per_repetition": dispositions,
+    }
+    with open(results_root / "cold_cell.json", "w") as f:
+        json.dump(record, f, indent=2)
+        f.write("\n")
+    return record
