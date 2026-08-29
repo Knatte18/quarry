@@ -21,7 +21,7 @@ every handler batch that follows.
 
 The external interface batches 3, 4, and 5 consume: `Config`, `NewServer`, the seven `*Fn`
 variables, `resolveEntryFile`/`toOneBased`/`toZeroBased`, the `status*` constants and the
-`classifyLSPError`/`classifyTOCError` helpers, `inputSchemaFor`/`outputSchemaFor`/`unknownEntryKeys`,
+`classifyLSPError`/`classifySymbolError`/`classifyTOCError` helpers, `inputSchemaFor`/`outputSchemaFor`/`unknownEntryKeys`,
 and `effectiveTargetDir`/`resolveCall`.
 
 Batch-local decision beyond `## Shared Decisions`: `NewServer` registers no tools yet. Each
@@ -45,8 +45,10 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
 - **Moves:** none
 - **Requirements:** Add `github.com/modelcontextprotocol/go-sdk v1.7.0` and
   `github.com/google/jsonschema-go v0.4.3` as direct requirements by running
-  `go get github.com/modelcontextprotocol/go-sdk@v1.7.0`, then `go mod tidy` after the new file
-  below exists. Create `internal/mcpserver/mcpserver.go` with a package doc comment stating that
+  `go get github.com/modelcontextprotocol/go-sdk@v1.7.0` and then
+  `go get github.com/google/jsonschema-go@v0.4.3` — the second is required because the SDK
+  pulls `jsonschema-go` in only as an indirect requirement, while card 10 imports it directly —
+  followed by `go mod tidy` after the new file below exists. Create `internal/mcpserver/mcpserver.go` with a package doc comment stating that
   this package binds `quarry/facade.go` onto MCP tools and imports `internal/cli` for resolution
   helpers but never `internal/quarryengine`. Declare `const serverVersion = "0.1.0"`. Declare
   `const minTargets = 1` and `const maxTargets = 64`. Declare
@@ -124,6 +126,7 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   - `internal/cli/cli.go`
   - `internal/cli/impact.go`
   - `internal/cli/toc.go`
+  - `internal/quarryengine/query/symbol.go`
   - `quarry/facade.go`
 - **Edits:** none
 - **Creates:**
@@ -135,7 +138,10 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   `const statusFound = "found"`, `statusNotFound = "not_found"`, `statusAmbiguous = "ambiguous"`,
   and `statusError = "error"`, plus `const resolutionComplete = "complete"`. Declare
   `type referenceField struct { File string; Line int; Character int }` and
-  `type symbolField struct { Name string; Kind string; File string; Line int; Character int }`,
+  `type symbolField struct { Name string; Kind int; File string; Line int; Character int }` —
+  `Kind` is an `int` because `quarry.SymbolMatch.Kind` is the numeric LSP `SymbolKind` and
+  `symbolMatchFields` in `internal/cli/cli.go` emits it unchanged, so typing it `string` here
+  would silently change the JSON type the CLI emits for the identical query —
   both with lower-case JSON tags matching `referenceFields` and `symbolMatchFields` in
   `internal/cli/cli.go`. Declare `referenceFieldsWire(refs []quarry.Reference) []referenceField`
   and `symbolFieldsWire(matches []quarry.SymbolMatch) []symbolField`, each applying
@@ -149,7 +155,15 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   `*quarry.ErrAmbiguousSymbol` yields `statusAmbiguous` with the candidates;
   `errors.Is(err, quarry.ErrSymbolNotFoundSentinel)` yields `statusNotFound` with no message;
   anything else yields `statusError` carrying `err.Error()`. Declare
-  `classifyTOCError(err error) (status string, message string)` implementing toc's own rule
+  `classifySymbolError(err error) (status string, message string)` implementing
+  `classifySymbolError`'s own two predicates from `internal/cli/cli.go` instead — nil yields
+  `statusFound`, `errors.Is(err, quarry.ErrSymbolNotFoundSentinel)` yields `statusNotFound`,
+  and anything else yields `statusError` — with no `ambiguous` branch, because
+  `symbolFromClient` in `internal/quarryengine/query/symbol.go` deliberately returns every
+  match rather than collapsing multiple candidates to `quarry.ErrAmbiguousSymbol`, so
+  `quarry.Symbol` never produces that error and an `ambiguous` branch here would be dead code
+  that also forces a `candidates` key onto a tool whose CLI counterpart cannot emit one.
+  Declare `classifyTOCError(err error) (status string, message string)` implementing toc's own rule
   instead: `errors.Is(err, quarry.ErrLanguageUnsupported)` yields `statusError` with a message
   worded from `quarry.TOCImplemented()` exactly as `internal/cli/toc.go` words it, and anything
   else yields `statusError` with `err.Error()`; document that the LSP predicates must never be
@@ -158,7 +172,8 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   `rewordMarshalFailure(err error) string` returning `fmt.Sprintf("impact: %s", strings.TrimPrefix(err.Error(), "toc: "))`,
   mirroring `rewordImpactMarshalFailure` in `internal/cli/impact.go`. Create
   `internal/mcpserver/result_test.go` asserting each predicate against a constructed sentinel and
-  wrapped sentinel, that the toc classifier does not borrow the LSP predicates, that the wire
+  wrapped sentinel, that `classifySymbolError` has no `ambiguous` branch, that the toc
+  classifier does not borrow the LSP predicates, that the wire
   converters subtract one and the native converters do not, that both return `[]` rather than nil
   for an empty input, and that `rewordMarshalFailure` replaces the `toc: ` prefix.
 - **Commit:** `feat(mcpserver): add the shared per-entry status and field vocabulary`
@@ -167,6 +182,7 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
 
 - **Context:**
   - `internal/mcpserver/mcpserver.go`
+  - `internal/cli/tocconfig.go`
 - **Edits:** none
 - **Creates:**
   - `internal/mcpserver/schema.go`

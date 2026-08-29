@@ -88,8 +88,11 @@ Batch-local decisions beyond `## Shared Decisions`:
   `toc_dir` declares no `docSentences`, and `noVerify` appears on `assert_no_callers` alone; a
   malformed **call** is rejected before any handler runs and comes back with the result's error
   flag set — assert this for a zero-length `targets` array, a 65-entry `targets` array, and a
-  `targets` value of the wrong JSON type, and assert each message names the bound and the received
-  length rather than silently truncating; a malformed **entry** instead yields that entry's
+  `targets` value of the wrong JSON type. Assert only the observable contract for these — the
+  result's error flag set and no handler run, checked by a facade stub that records whether it
+  was called — never the validation message's wording, which the SDK's schema validator owns
+  and this plan neither generates nor specifies. What matters is that the call is rejected
+  whole rather than silently truncated to the cap or returned as an empty `results` array; a malformed **entry** instead yields that entry's
   `status: "error"` with every other entry's result intact — assert both in the same test file,
   since conflating the two is the failure mode; a multi-entry call returns one entry per input in
   input order; every entry carries `target` and `status`; a mixed batch validates against the

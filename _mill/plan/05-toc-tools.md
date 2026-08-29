@@ -121,7 +121,11 @@ Batch-local decisions beyond `## Shared Decisions`:
   `tocStat(abs, true)`, then `tocDirFn(abs, in.Lang)`, mapping an error through `classifyTOCError`
   and a success through `cli.TOCDirEntries(arg, result)` under the entry's `Files` key — passing
   the argument as the caller wrote it, never `abs`, so each file's composed `path` stays
-  caller-relative and round-trips into a following `toc_file` call. `cli.TOCDirEntries` is
+  caller-relative and round-trips into a following `toc_file` call. A `cli.StructToFields` or
+  `cli.TOCDirEntries` failure is that entry's `status: statusError` carrying the error's own
+  message verbatim, exactly as `tocFileOne` and `tocDirOne` dispose of the same failure;
+  `rewordMarshalFailure` is `impact`-only and must not be applied here, because the `toc: `
+  prefix is correctly attributed for a toc call. `cli.TOCDirEntries` is
   mandatory here and `cli.StructToFields` alone is not sufficient, because `toc.DirEntry.Name`
   carries `json:"-"` and the marshalled entries would otherwise carry neither `name` nor `path`.
   Each entry's `Target` echoes the input path string verbatim. Each tool's `Description` opens with
@@ -157,7 +161,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   `toc_file` call; `toc_file` resolves its `.quarry.yaml` against the target file's own parent
   directory and not against the call's `targetDir`, verified with two fixture directories carrying
   different `doc_sentences` values; `docSentences` sent as `3` and as `"all"` both succeed;
-  `toc_file`'s `result` wrapper key carries the marshalled `quarry.TOCFileResult`; an invalid
+  `toc_file`'s `result` wrapper key carries the marshalled `quarry.TOCFileResult`; a marshal
+  failure is a per-entry `error` carrying the message verbatim, with no `impact: ` rewording; an invalid
   `lang` and an invalid `docSentences` each fail the whole call; and a `Config.ConfigPath` pointing
   at a malformed `servers.yaml` leaves both toc tools succeeding, because neither loads the
   registry.

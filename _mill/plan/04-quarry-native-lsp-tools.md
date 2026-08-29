@@ -55,8 +55,10 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Create `internal/mcpserver/nativeentry.go` declaring
-  `type nativeEntry struct { entryRaw; File string; Line *int; Character *int; Symbol string; Within string; Except []string }`
-  with json tags `file,omitempty`, `line,omitempty`, `character,omitempty`, `symbol,omitempty`,
+  `type nativeEntry struct { raw json.RawMessage; File string; Line *int; Character *int; Symbol string; Within string; Except []string }`,
+  following card 13's per-type `UnmarshalJSON` convention — its own method records the incoming
+  bytes into the unexported `raw` field and then decodes into a locally-declared `type alias nativeEntry`,
+  never an embedded helper whose promoted method would hijack the decode — with json tags `file,omitempty`, `line,omitempty`, `character,omitempty`, `symbol,omitempty`,
   `within,omitempty`, `except,omitempty`, each with a `jsonschema` tag describing the property and
   naming which entry forms it participates in. Declare
   `func (e nativeEntry) query(targetDir string) (quarry.Query, error)` implementing the flat

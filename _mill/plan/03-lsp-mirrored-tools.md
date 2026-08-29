@@ -17,9 +17,9 @@ because all three share one entry-parsing file, one call-wide parameter set
 (`lang`, `buildTags`, `targetDir`), and one sequential batching loop; splitting them would fork
 that shared parsing across two contexts.
 
-The external interface batches 4, 5, and 6 consume: `entryRaw` and its `UnmarshalJSON` convention
-for capturing an entry's original JSON, `runTargets` (the shared sequential batching loop), and the
-three `register*` functions now called from `NewServer`.
+The external interface batches 4, 5, and 6 consume: the per-type `raw json.RawMessage` plus
+own-`UnmarshalJSON` convention for capturing an entry's original JSON, `runTargets` (the shared
+sequential batching loop), and the three `register*` functions now called from `NewServer`.
 
 Batch-local decisions beyond `## Shared Decisions`:
 
@@ -47,15 +47,22 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Create `internal/mcpserver/lspentry.go` declaring
-  `type entryRaw struct { raw json.RawMessage }` with an `UnmarshalJSON` method that records the
-  entry's original bytes, and document that every entry type in this package embeds it so the
+  the raw-capture convention every entry type in this package follows, in the one form that does
+  not break decoding: each entry type carries its own unexported `raw json.RawMessage` field and
+  its own `UnmarshalJSON` method, which records the incoming bytes into `raw` and then decodes into
+  a locally-declared alias of the same struct — `type alias lspEntry` — so the method is not
+  invoked recursively and every exported field is still populated. Do not put `UnmarshalJSON` on a
+  shared embedded helper type: Go promotes a method from an embedded field to the outer type, so an
+  embedded raw-capture type would hijack the outer entry's decode and leave every declared field at
+  its zero value, making every entry parse as "no accepted form". Document that `raw` exists so the
   handler can both echo the input verbatim and detect keys the tool does not declare. Declare
   `type textDocumentIdentifier struct { URI string }` with json tag `uri,omitempty`,
   `type lspPosition struct { Line *int; Character *int }` with json tags `line,omitempty` and
   `character,omitempty` — pointers so a missing field is distinguishable from zero and neither is
   inferred as required — and
-  `type lspEntry struct { entryRaw; TextDocument *textDocumentIdentifier; Position *lspPosition; Symbol string; Within string }`
-  with json tags `textDocument,omitempty`, `position,omitempty`, `symbol,omitempty`,
+  `type lspEntry struct { raw json.RawMessage; TextDocument *textDocumentIdentifier; Position *lspPosition; Symbol string; Within string }`
+  with `raw` unexported and therefore invisible to both `encoding/json` and schema inference, and
+  json tags `textDocument,omitempty`, `position,omitempty`, `symbol,omitempty`,
   `within,omitempty`, each carrying a `jsonschema` tag describing the property and naming which
   entry forms it participates in. Declare
   `func (e lspEntry) query(targetDir string) (quarry.Query, error)` implementing the three-form
@@ -76,8 +83,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   one-result-per-input-in-input-order contract trivially true. Create
   `internal/mcpserver/lspentry_test.go` covering each of the three legal forms mapping onto the
   right `quarry.Query` variant with the `+1` conversion applied to both axes, each illegal
-  combination returning an error rather than a silent guess, `entryRaw` preserving the original
-  bytes, and `runTargets` returning results in input order with one result per input.
+  combination returning an error rather than a silent guess, `lspEntry.UnmarshalJSON` populating
+  every exported field while also preserving the original bytes in `raw`, and `runTargets` returning results in input order with one result per input.
 - **Commit:** `feat(mcpserver): add LSP entry parsing and the sequential batching loop`
 
 ### Card 14: Add `textDocument_definition` and `textDocument_references`
@@ -145,22 +152,25 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Create `internal/mcpserver/tools_symbol.go` declaring
-  `type symbolEntry struct { entryRaw; Query string }` with json tag `query,omitempty` — the field
+  `type symbolEntry struct { raw json.RawMessage; Query string }`, following card 13's per-type
+  `UnmarshalJSON` convention, with json tag `query,omitempty` on `Query` — the field
   name LSP's own `WorkspaceSymbolParams` uses — and no other entry property, so the derived schema
   declares only `query`. Declare
   `type symbolInput struct { Targets []symbolEntry; Lang string; BuildTags string; TargetDir string }`
   with the same call-wide set as `lspInput` and no `within` property, because the CLI registers
   none for `symbol` and `query.Symbol` has nothing to filter per-file against. Declare
-  `type symbolMatchEntry struct { Target any; Status string; Symbols []symbolField; Candidates []string; Error string }`
+  `type symbolMatchEntry struct { Target any; Status string; Symbols []symbolField; Error string }`
   — no `resolution` key, because `classifySymbolError` in `internal/cli/cli.go` never sets the
-  marker and adding it would claim exhaustive language-server resolution the CLI does not claim —
+  marker and adding it would claim exhaustive language-server resolution the CLI does not
+  claim; and no `candidates` key either, because this tool never emits an `ambiguous` status —
   and `type symbolOutput struct { Results []symbolMatchEntry }`. Declare
   `registerSymbolTool(s *mcp.Server, cfg Config) error` following card 14's registration shape.
   Per entry the handler calls `unknownEntryKeys(entry.raw, "query")` first and reports any key it
   finds as that entry's `status: statusError` with a message naming `query` as the only accepted
   property; an empty `query` is the same per-entry error. Only then does it call `symbolFn` with
   `callContext.options(in.Lang, quarry.Query{Symbol: entry.Query})` and map the outcome with
-  `classifyLSPError`, emitting `symbolFieldsWire(...)` under `symbols` on a `found` entry. The
+  `classifySymbolError` — not `classifyLSPError`, which would add an `ambiguous` branch
+  `quarry.Symbol` never reaches — emitting `symbolFieldsWire(...)` under `symbols` on a `found` entry. The
   tool's `Description` opens with a sentence stating that results carry 0-based `line` and
   `character`, then states that `query` is the only accepted entry property. Edit `NewServer` in
   `internal/mcpserver/mcpserver.go` to call `registerSymbolTool(s, cfg)` and return its error.
@@ -187,7 +197,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   three-entry mixed call returns three entries in input order with `found`, `not_found`, and
   `ambiguous` statuses and the good result intact; every entry carries `target` echoing its input
   and `status`; a `found` `textDocument_definition` and `textDocument_references` entry carries
-  `resolution: "complete"` while a `found` `workspace_symbol` entry does not; results carry
+  `resolution: "complete"` while a `found` `workspace_symbol` entry does not, and no `workspace_symbol` entry ever carries
+  `candidates`; results carry
   0-based `line` and `character`; a `position` entry with no `textDocument` is that entry's
   `status: "error"` while its siblings still return their results; a `workspace_symbol` entry
   carrying `textDocument` and one carrying `position` are each that entry's `status: "error"` and
