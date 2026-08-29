@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from extract_usage import iter_tool_use_blocks
 from ladder_config import DAEMON_BACKED_TOOLS, MCP_PREFIX, deny_list_for, mcp_name
 
 
@@ -74,17 +75,6 @@ class GateReport:
 """ TRANSCRIPT-DERIVED GATES """
 
 
-def _tool_use_blocks(events):
-    """Yields (tool_use_id, name, input_dict) for every tool_use block in
-    every assistant event, in transcript order."""
-    for event in events:
-        if event.get("type") != "assistant":
-            continue
-        for block in event["message"]["content"]:
-            if block.get("type") == "tool_use":
-                yield block["id"], block["name"], block.get("input", {})
-
-
 def _tool_results_by_id(events):
     """Maps tool_use_id to its matching tool_result block, across every
     user event's content."""
@@ -108,7 +98,7 @@ def gate_denied_tools_not_used(events, denied_names):
     """
     findings = []
     results_by_id = _tool_results_by_id(events)
-    for tool_use_id, name, _tool_input in _tool_use_blocks(events):
+    for tool_use_id, name, _tool_input in iter_tool_use_blocks(events):
         if name not in denied_names:
             continue
         result = results_by_id.get(tool_use_id)
@@ -131,7 +121,7 @@ def gate_no_target_override(events):
     constraint and the cold cell's daemon key.
     """
     findings = []
-    for _tool_use_id, name, tool_input in _tool_use_blocks(events):
+    for _tool_use_id, name, tool_input in iter_tool_use_blocks(events):
         if not name.startswith(MCP_PREFIX):
             continue
         for key in ("targetDir", "buildTags"):
@@ -385,7 +375,7 @@ def used_daemon_backed_tool(events):
     no daemon and writes no state.
     """
     daemon_backed_names = {mcp_name(tool) for tool in DAEMON_BACKED_TOOLS}
-    return any(name in daemon_backed_names for _tool_use_id, name, _tool_input in _tool_use_blocks(events))
+    return any(name in daemon_backed_names for _tool_use_id, name, _tool_input in iter_tool_use_blocks(events))
 
 
 def gate_cold_after(events, target_dir, cache_dir, env):

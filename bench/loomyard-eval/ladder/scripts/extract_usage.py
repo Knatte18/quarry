@@ -57,17 +57,32 @@ def read_transcript(path):
     return events
 
 
-def iter_tool_uses(events):
+def iter_tool_use_blocks(events):
     """
-    Yields (name, input_dict) for every tool_use content block in every
-    assistant event, in transcript order.
+    Yields (tool_use_id, name, input_dict) for every tool_use content block
+    in every assistant event, in transcript order.
+
+    The one tool_use traversal this suite performs -- iter_tool_uses below
+    is a thin (name, input_dict) view over it for callers that only need
+    the token classes and breakdown counts, and gates.py's tool_use/
+    tool_result correlation gates import this id-carrying form directly
+    rather than re-parsing the transcript.
     """
     for event in events:
         if event.get("type") != "assistant":
             continue
         for block in event["message"]["content"]:
             if block.get("type") == "tool_use":
-                yield block["name"], block.get("input", {})
+                yield block["id"], block["name"], block.get("input", {})
+
+
+def iter_tool_uses(events):
+    """
+    Yields (name, input_dict) for every tool_use content block in every
+    assistant event, in transcript order.
+    """
+    for _tool_use_id, name, input_dict in iter_tool_use_blocks(events):
+        yield name, input_dict
 
 
 def init_event(events):
