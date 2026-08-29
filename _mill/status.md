@@ -39,17 +39,25 @@ implementing  '2026-08-29T13:42:16Z'
 ```yaml
 batches:
   - name: suite-skeleton-and-generation
-    state: pending
+    state: running
+    implementer_session: 8c7a710d-f135-4924-a3cb-419641388b62
+    start_sha: 57859a8caf4c1965f181176ba263082b6ac3aa73
+    verify_baseline_failures: []
   - name: usage-extraction
     state: pending
+    verify_baseline_failures: []
   - name: blinded-scoring
     state: pending
+    verify_baseline_failures: []
   - name: validation-gates
     state: pending
+    verify_baseline_failures: []
   - name: summarize-and-separation
     state: pending
+    verify_baseline_failures: []
   - name: run-orchestration
     state: pending
+    verify_baseline_failures: []
   - name: protocol-readme
     state: pending
   - name: execute-matrix
