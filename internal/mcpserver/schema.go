@@ -84,12 +84,14 @@ func clearAdditionalPropertiesVisited(s *jsonschema.Schema, visited map[*jsonsch
 	}
 	visited[s] = true
 
+	additionalProperties := s.AdditionalProperties
 	s.AdditionalProperties = nil
 
 	for _, prop := range s.Properties {
 		clearAdditionalPropertiesVisited(prop, visited)
 	}
 	clearAdditionalPropertiesVisited(s.Items, visited)
+	clearAdditionalPropertiesVisited(additionalProperties, visited)
 }
 
 // inputSchemaFor derives T's input schema via jsonschema.For, then applies the targets-property
