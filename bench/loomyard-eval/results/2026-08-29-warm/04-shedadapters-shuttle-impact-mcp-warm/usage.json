@@ -1,0 +1,11 @@
+{
+  "a": {
+    "tool_uses": 5,
+    "tool_uses_breakdown": {"toc_dir": 1, "toc_file": 1, "impact": 2, "textDocument_definition": 1, "Read": 3, "Bash_grep": 2},
+    "duration_ms": 92899,
+    "grep_fallback_count": 2,
+    "cli_fallback_count": 0,
+    "notes": "Self-report claimed 'one grep for .Run( across the package' -- transcript shows TWO distinct grep calls: `grep -rn \"\\.Run(\" *.go | grep -v _test.go` (the disclosed completeness check) and a second, undisclosed `grep -n \"Shuttle\" bouncer.go`. Correctness unaffected -- callers_to_update and excluded_lookalikes both exactly match ground truth, and this run additionally caught the webster.go:75 non-issue (a func-typed field, not a method) that earlier A-arm runs only flagged as an open question -- matching the 2026-08-28 fasit's (c.json) own fuller analysis more closely than any prior A run."
+  },
+  "_note": "WARM-DAEMON, BLIND-AGENT experiment (2026-08-29, session 5cb8f382). Compare against: cold-daemon same-orchestrator run (8 tool_uses, 93.0s) and this session's own warm-INFORMED rerun (2 tool_uses, 23.1s). This blind run's duration (92.9s) is statistically unchanged from the cold run (93.0s) -- daemon warmth produced no measurable speedup here once a genuinely blind agent's own exploration path (more tool calls, two grep detours) dominated the timing instead of an already-informed operator's minimal-call path."
+}

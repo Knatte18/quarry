@@ -1,0 +1,15 @@
+{
+  "callers_to_update": [
+    {"file": "internal/shedadapters/bouncer.go", "line": 466, "evidence": "quarry textDocument_definition on the `Run` symbol declared at internal/shedadapters/singlellm.go:39 (the Shuttle interface's Run method) resolved to that exact declaration. quarry textDocument_references on that declaration, scoped `within: internal/shedadapters`, returned this line (`result, err = b.cfg.Shuttle.Run(spec)` inside runSeedSpawn) as one of only three non-declaration call sites LSP resolves to it. `b.cfg.Shuttle` is statically typed `Shuttle` (via BouncerConfig), so this call dispatches to the interface method being changed."},
+    {"file": "internal/shedadapters/bouncer.go", "line": 580, "evidence": "Same quarry textDocument_references result on Shuttle.Run's declaration: this line (`result, runErr = b.cfg.Shuttle.Run(spec)` inside judgeCall) is a second call site LSP resolves to the same interface method, again through the statically-typed `b.cfg.Shuttle Shuttle` field."},
+    {"file": "internal/shedadapters/singlellm.go", "line": 143, "evidence": "Same quarry textDocument_references result: this line (`result, err := p.shuttle.Run(spec)` inside SingleLLMProducer.Call) is the third and last call site LSP resolves to Shuttle.Run. `p.shuttle` is statically typed `Shuttle` per SingleLLMProducer's struct field, confirmed by reading singlellm.go's toc_file entry for the type."}
+  ],
+  "excluded_lookalikes": [
+    {"file": "internal/shedadapters/burler.go", "line": 373, "reason": "This call (`result, runErr := p.runner.Run(profile, attemptOpts)` inside BurlerProducer's round-running helper) resolves to a completely different method: BurlerRunner.Run(p burlerengine.Profile, opts burlerengine.RunOpts) (burlerengine.Result, error), a distinct interface declared at burler.go:25-27 and implemented by *burlerengine.Engine (compile-time proof at burler.go:30). Verified via quarry textDocument_definition on `Run` scoped to burler.go, which resolved to this separate declaration (not Shuttle's), and a separate textDocument_references call on that declaration found exactly one call site — this one, at burler.go:373 — distinct from and non-overlapping with the three Shuttle.Run call sites above. `p.runner` is statically typed BurlerRunner, never Shuttle, so changing Shuttle.Run's signature has no effect on this call site."}
+  ],
+  "confidence": "high",
+  "open_questions": [
+    "internal/shedadapters/webster.go's WebsterProducer.Call drives a func-typed seam (WebsterRunner, called as `p.run(deps, opts)`), which has no method named Run at all and was confirmed by reading its Call body directly — not included as a lookalike since it never matched the name in the first place, only checked for completeness.",
+    "The task scoped the search to internal/shedadapters only, per instructions; other packages implementing or calling through the Shuttle interface (e.g. wherever shedrecipe.Env.Shuttle is wired up) were intentionally not searched and are out of scope for this answer."
+  ]
+}
