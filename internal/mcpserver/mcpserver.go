@@ -84,6 +84,9 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 	if err := registerSymbolTool(s, cfg); err != nil {
 		return nil, err
 	}
+	if err := registerImpactTool(s, cfg); err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }
