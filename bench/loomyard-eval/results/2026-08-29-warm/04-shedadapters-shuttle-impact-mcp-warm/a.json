@@ -1,0 +1,33 @@
+{
+  "callers_to_update": [
+    {
+      "file": "internal/shedadapters/singlellm.go",
+      "line": 143,
+      "evidence": "`result, err := p.shuttle.Run(spec)` inside SingleLLMProducer.Call, where `p.shuttle` is typed `Shuttle` (declared singlellm.go:38-41). Ran mcp__quarry__impact targeting the Shuttle.Run method (file internal/shedadapters/singlellm.go, symbol \"Run\") — its LSP-resolved caller list includes this exact call site (call_site_line 143, enclosing function SingleLLMProducer.Call), and the tool's `definition` field confirms it resolved to the Shuttle interface (singlellm.go:39-41), not some other Run."
+    },
+    {
+      "file": "internal/shedadapters/bouncer.go",
+      "line": 466,
+      "evidence": "`result, err = b.cfg.Shuttle.Run(spec)` inside Bouncer.runSeedSpawn, where `BouncerConfig.Shuttle` is declared with type `Shuttle` (bouncer.go:53), the identical interface singlellm.go declares. Confirmed by the same mcp__quarry__impact call against Shuttle.Run: its caller list names this exact call_site_line/character (466/31) with enclosing function `runSeedSpawn` on `*Bouncer`."
+    },
+    {
+      "file": "internal/shedadapters/bouncer.go",
+      "line": 580,
+      "evidence": "`result, runErr = b.cfg.Shuttle.Run(spec)` inside Bouncer.judgeCall, same `BouncerConfig.Shuttle Shuttle` field as the line-466 call. Confirmed by the same mcp__quarry__impact result: caller list includes call_site_line/character 580/34, enclosing function `judgeCall` on `*Bouncer`."
+    }
+  ],
+  "excluded_lookalikes": [
+    {
+      "file": "internal/shedadapters/burler.go",
+      "line": 373,
+      "reason": "`result, runErr := p.runner.Run(profile, attemptOpts)` calls `BurlerRunner.Run(burlerengine.Profile, burlerengine.RunOpts) (burlerengine.Result, error)` (interface declared burler.go:25-27), an entirely distinct interface from `Shuttle` with a different method signature (Profile+RunOpts vs shuttleengine.Spec). Verified by running mcp__quarry__impact targeting file internal/shedadapters/burler.go, symbol \"Run\": the tool resolved the definition to BurlerRunner (burler.go:24-27), not Shuttle (singlellm.go:22-41), and its only caller is BurlerProducer.Call at line 373 — confirming this call site is unrelated to the Shuttle.Run signature change."
+    },
+    {
+      "file": "internal/shedadapters/webster.go",
+      "line": 75,
+      "reason": "`result, err := p.run(p.deps, websterengine.RunOptions{Fresh: false})` invokes `p.run`, a field of func type `WebsterRunner` (`func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error)`, declared webster.go:23), defaulting to the free function `websterengine.Run` (webster.go:26,53). This is not a `.Run(` method call on any interface at all -- it is a lowercase field name `run` holding a function value -- so it has nothing to do with the `Shuttle.Run` interface method being changed; confirmed by grepping every `.Run(` call site in the package's non-test files, which does not include this line."
+    }
+  ],
+  "confidence": "high",
+  "open_questions": []
+}

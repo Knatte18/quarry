@@ -1,0 +1,11 @@
+{
+  "a": {
+    "tool_uses": 10,
+    "tool_uses_breakdown": {"workspace_symbol": 3, "toc_file": 2, "toc_dir": 1, "textDocument_references": 1, "textDocument_definition": 3, "Read": 2, "Bash_grep": 1, "Bash_go_build": 1},
+    "duration_ms": 89372,
+    "grep_fallback_count": 1,
+    "cli_fallback_count": 0,
+    "notes": "SELF-REPORT DISCREPANCY, not just undercounting: the agent's own final summary did not mention using grep for this task AT ALL, despite the runbook explicitly asking it to report exactly this. Transcript shows one Bash call: `grep -rn \"func attachArgv\" .../internal/ ; grep -n \"attachArgv\" .../run.go`, which is what actually located the dead call site at run.go:295. This grep use looks structurally justified (the deleted `attachArgv` free function no longer resolves as an LSP symbol at all -- textDocument_definition/references cannot return references to a symbol that no longer exists -- so a literal text search was the only way to find the stale call site), but the self-report's complete silence on it is the material problem, independent of whether the grep itself was reasonable."
+  },
+  "_note": "WARM-DAEMON, BLIND-AGENT experiment (2026-08-29, session 5cb8f382). Compare against: cold-daemon same-orchestrator run (9->4 tool_uses cold, 77.9s) AND this orchestrating session's own warm-but-INFORMED rerun (2 tool_uses, 13.8s, see scorecard.md) -- this blind run is dramatically slower than the informed warm run despite an identical warm daemon, which is the headline finding: daemon warmth alone did not reproduce the earlier speedup once a genuinely blind agent (more exploratory calls, an actual grep detour) was doing the work instead of an already-informed operator."
+}

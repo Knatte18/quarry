@@ -1,0 +1,13 @@
+{
+  "a": {
+    "tool_uses": 9,
+    "tool_uses_breakdown": {"toc_dir": 1, "toc_file": 1, "workspace_symbol": 2, "textDocument_references": 2, "Read": 3},
+    "output_tokens": 15102,
+    "cache_read_input_tokens": 2321355,
+    "cache_creation_input_tokens": 142807,
+    "duration_ms": 113936,
+    "grep_fallback_count": 0,
+    "cli_fallback_count": 0
+  },
+  "_note": "MCP arm, 2026-08-29. Counts extracted directly from this session's own transcript JSONL (assistant tool_use blocks + message usage fields between the task's worktree-add/worktree-remove Bash markers), NOT from the agent's self-reported summary -- the self-report undercounted toc_file calls (claimed 2 calls/11 targets, actually 1 call/8 targets) and Read calls (claimed twice, actually 3x). b/c reused unchanged from 2026-08-28 (same task, quarry exposure is the only variable). Token fields are not directly comparable to 2026-08-28's single 'tokens' figure (cache read/creation weren't broken out the same way there) -- duration_ms and tool_uses are the safer cross-run comparison. This run's tasks 01/03/04 ran sequentially in one continuous session rather than as three isolated fresh-agent dispatches (see runbook caveat) -- later tasks may look more efficient than a true cold start would."
+}

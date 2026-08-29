@@ -1,0 +1,11 @@
+{
+  "a": {
+    "tool_uses": 8,
+    "tool_uses_breakdown": {"toc_dir": 1, "workspace_symbol": 1, "toc_file": 3, "textDocument_references": 1, "Read": 2},
+    "duration_ms": 85812,
+    "grep_fallback_count": 0,
+    "cli_fallback_count": 0,
+    "notes": "one textDocument_references call errored (schema mistake: passed `within` as a top-level field instead of per-target -- 'unexpected additional properties [\"within\"]'); self-reported as such, confirmed in transcript."
+  },
+  "_note": "WARM-DAEMON, BLIND-AGENT experiment (2026-08-29, session 5cb8f382). Fresh agent, no prior context, worktree pre-built and pre-warmed by the orchestrating session before it started -- see .scratch/bench-mcp-runbook-warm.md. Counts verified directly against this session's own transcript JSONL, not the agent's self-report, which undercounted toc_file (claimed 2 calls/7 files, actually 3 calls/8 targets). Compare against: cold-daemon, same-orchestrator-executed run (../2026-08-29/01-reed-geometry-exploration-mcp/usage.json, 9 tool_uses/113.9s) and CLI-arm/baseline (../../2026-08-28/01-reed-geometry-exploration/usage.json)."
+}

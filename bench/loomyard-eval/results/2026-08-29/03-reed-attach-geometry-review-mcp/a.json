@@ -1,0 +1,12 @@
+{
+  "verdict": "unsafe",
+  "issues_found": [
+    {
+      "description": "internal/loomcli/run.go's `run` verb still calls the pre-rename free function `attachArgv(socket, session string) []string` with the old two-argument call shape (`attachArgv(c.reed.Socket(), c.reed.SessionName())`), but that free function no longer exists anywhere in the codebase — it was converted into the method `Engine.AttachArgv(cols, rows int) []string` on `*reedengine.Engine`, which has a completely different signature (terminal columns/rows, not socket/session strings) and is invoked as `c.reed.AttachArgv(cols, rows)` (see internal/reedcli/attach.go's own updated call site). This caller was never updated, so the package fails to compile.",
+      "location": "internal/loomcli/run.go:295",
+      "severity": "blocking",
+      "evidence": "quarry textDocument_definition on the `attachArgv` symbol at internal/loomcli/run.go returned status 'not_found'. A follow-up quarry workspace_symbol search for 'attachArgv' across the whole project returned only three matches — reedengine/attach.go's unexported helpers bareAttachArgv and chainedAttachArgv, and the exported method Engine.AttachArgv — none of which is a package-level `attachArgv(socket, session string) []string` reachable unqualified from package loomcli. I then independently confirmed this with `go build ./internal/loomcli/...`, which failed with: 'internal/loomcli/run.go:295:46: undefined: attachArgv' — an exact match for quarry's finding, at the same line."
+    }
+  ],
+  "confidence": "high"
+}
