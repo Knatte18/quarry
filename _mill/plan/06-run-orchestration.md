@@ -55,7 +55,9 @@ Batch-local decision: the dispatch layer is not mocked. Card 22's tests cover on
   - `cmd/quarry-mcp/main.go`
   - `.mcp.json`
   - `internal/mcpserver/tools_toc.go`
+  - `internal/mcpserver/tools_symbol.go`
   - `internal/quarryengine/daemon/ensureserver.go`
+  - `bench/loomyard-eval/ladder/scripts/gates.py`
 - **Edits:**
   - `bench/loomyard-eval/ladder/scripts/run_ladder.py`
 - **Creates:** none
@@ -153,7 +155,9 @@ Batch-local decision: the dispatch layer is not mocked. Card 22's tests cover on
   - Before starting the next repetition, call `wait_for_daemon_exit` on the finished run's own state directory with a bound of `DAEMON_EXIT_TIMEOUT_S = 660` — the daemon's own 10-minute idle timeout plus a minute of margin — so no cold run is timed alongside a resident daemon from its predecessor. The wait keys on the pid recorded in that run's `daemon.json`, because neither the state file nor the state directory is removed on exit. A run that recorded `cold_no_daemon_backed_call` started no daemon, so the wait returns immediately.
   - Remove the worktree.
 
-  Three dispositions, returned to the caller rather than raised. Confirmed-cold: at least one repetition was a supervised cold run. Not-run: the supervised strategy is unavailable on this machine, every attempt having failed `gate_cold_after` on the native-fallback branch — an environment limitation, not a fault, so the cell is reported as not run rather than with numbers that cannot be trusted, and the matrix is not halted. No-daemon-signal: all three repetitions completed validly but none invoked a daemon-backed tool, so the cell holds three good runs that say nothing about warmth. The third is distinct from the second precisely because the runs are valid and are still summarised — what is absent is the contrast, not the data.
+  The disposition is **persisted**, not merely returned: `run_cold_cell` writes `<results_root>/cold_cell.json` recording which of the three outcomes occurred, the number of confirmed-cold repetitions, and the reason. Returning it to the caller alone would leave a not-run cold cell on disk as a cell with zero complete runs, indistinguishable from one the operator interrupted — the summariser would list it as incomplete and exit non-zero, and the conclusion would have no way to say which of the two reasons applied.
+
+  Three dispositions, written to that record and also returned to the caller. Confirmed-cold: at least one repetition was a supervised cold run. Not-run: the supervised strategy is unavailable on this machine, every attempt having failed `gate_cold_after` on the native-fallback branch — an environment limitation, not a fault, so the cell is reported as not run rather than with numbers that cannot be trusted, and the matrix is not halted. No-daemon-signal: all three repetitions completed validly but none invoked a daemon-backed tool, so the cell holds three good runs that say nothing about warmth. The third is distinct from the second precisely because the runs are valid and are still summarised — what is absent is the contrast, not the data.
 - **Commit:** `feat(bench): run the cold-daemon comparison cell last, with coldness asserted`
 
 ### Card 22: orchestration tests and the CLI entry point
@@ -179,6 +183,7 @@ Batch-local decision: the dispatch layer is not mocked. Card 22's tests cover on
   - `task_text_for` stops at the next `## ` heading, strips the `> ` blockquote prefix, and raises when the heading is absent — with a dedicated assertion that neither task's extracted text contains `burler.go:373` or the word `fasit`, since over-reading the boundary would leak the answer key into every run.
   - `ensure_task_worktrees` builds a missing worktree, adopts an existing one whose `HEAD` matches the declared pin, and raises when an existing one is at a different SHA — asserted against an injected git runner, with no real worktree created.
   - The probe is skipped when the results root already holds a `probe.json` recording a passing probe, and is run when it holds none.
+  - `--stage probe` runs the probe and neither driver; `--stage main` runs only `run_matrix`; `--stage cold` runs only `run_cold_cell`; `--stage all` runs all three in order — asserted against injected drivers.
   - `WARM_UP_TOOL` is a member of `DAEMON_BACKED_TOOLS`, so a future edit cannot quietly make the warm-up a toc call.
   - `run_matrix` calls `warm_daemon` once before each main-matrix dispatch and never for a cold pair, asserted against injected seams.
   - `mcp_config_document` declares exactly one server, named `quarry`, whose args carry the run's own target dir.

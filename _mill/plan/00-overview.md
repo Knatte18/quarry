@@ -155,6 +155,7 @@ batches:
 - `.gitignore`
 - `bench/loomyard-eval/ladder/README.md`
 - `bench/loomyard-eval/ladder/ladder.yaml`
+- `bench/loomyard-eval/ladder/results/2026-08-29/cold_cell.json`
 - `bench/loomyard-eval/ladder/results/2026-08-29/conclusion.md`
 - `bench/loomyard-eval/ladder/results/2026-08-29/probe.json`
 - `bench/loomyard-eval/ladder/results/2026-08-29/summary.json`

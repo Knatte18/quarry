@@ -36,7 +36,7 @@ Every literal path here spells the results directory `bench/loomyard-eval/ladder
   2. The Loomyard checkout exists at the `source_repo` path the ladder declares. If it does not, stop and ask for the correct path rather than substituting another repository; the task files reference specific real files and commits at a specific pin.
   3. The quarry-mcp server builds, which requires `CGO_ENABLED=1` and a working C toolchain.
 
-  Then run the probe through the harness and commit its record. The probe establishes two things, in order: first that a denied `mcp__quarry__*` call does not succeed at all — if it does, halt before any matrix run, because every rung would silently be the full bundle and all 45 runs would be worthless; and second whether denied tools are advertised to the model or hidden from it, which decides whether `denied_tool_attempts` is a reportable metric or a column of meaningless zeros. Record both answers, the advertised tool list, and the probe's session id in the tracked probe record. A probe whose first assertion fails halts the batch; a probe that shows denied tools are hidden proceeds, with the metric dropped from the reported set.
+  Then run the probe — and only the probe — through the harness's `--stage probe` selector, and commit its record. The stage selector is what makes this card a boundary the operator can stop at: without it the harness would run straight on into the 42-run matrix. The probe establishes two things, in order: first that a denied `mcp__quarry__*` call does not succeed at all — if it does, halt before any matrix run, because every rung would silently be the full bundle and all 45 runs would be worthless; and second whether denied tools are advertised to the model or hidden from it, which decides whether `denied_tool_attempts` is a reportable metric or a column of meaningless zeros. Record both answers, the advertised tool list, and the probe's session id in the tracked probe record. A probe whose first assertion fails halts the batch; a probe that shows denied tools are hidden proceeds, with the metric dropped from the reported set.
 - **Commit:** `bench(ladder): record permission-deny probe result`
 
 ### Card 25: execute the 42-run main matrix
@@ -50,7 +50,7 @@ Every literal path here spells the results directory `bench/loomyard-eval/ladder
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Run the harness over the 14 main configs at three repetitions each, sequentially and never concurrently, into `results/2026-08-29/raw/`. Every artifact this card produces is gitignored, which is why it carries no commit.
+- **Requirements:** Run the harness with `--stage main` over the 14 main configs at three repetitions each, sequentially and never concurrently, into `results/2026-08-29/raw/`. Every artifact this card produces is gitignored, which is why it carries no commit.
 
   The harness owns the protocol; this card's job is to run it to completion and to react correctly to how it stops:
   - A run that fails a gate is invalidated and retried, up to three attempts. On a third failure the harness halts the whole matrix, naming the failing gate. That halt is a real stop: report the gate and the reason and leave the completed runs intact rather than deleting state or lowering a gate to get past it. A deterministic gate failure almost always invalidates the other cells' premises too.
@@ -70,11 +70,11 @@ Every literal path here spells the results directory `bench/loomyard-eval/ladder
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Run the cold cell after the entire main matrix has finished, never before and never interleaved. Each of its three runs gets its own freshly-built worktree at a distinct path, no warm-up, and its coldness asserted on both sides: no daemon state before, and daemon state present after. Between runs the harness waits for the previous run's daemon to exit.
+- **Requirements:** Run the harness with `--stage cold` after the entire main matrix has finished, never before and never interleaved. Each of its three runs gets its own freshly-built worktree at a distinct path, no warm-up, and its coldness asserted on both sides: no daemon state before, and daemon state present after. Between runs the harness waits for the previous run's daemon to exit.
 
   Three dispositions, and they are not the same thing. A cold run that **used a daemon-backed tool** and finishes with no daemon state present took the native fallback; it is invalidated and retried, and a persistent native fallback means the supervised strategy is unavailable on this machine — the cold cell is then reported as **not run**, an environment limitation, and the matrix is not halted. A cold run that used **no** daemon-backed tool is valid and is kept: `toc_file` and `toc_dir` never start a daemon, so its lack of daemon state is not a fallback; if all three repetitions are of this shape the cell holds three good runs that carry no warmth signal, which is a third outcome distinct from not-run. A different gate failing three times is a fault and does halt the matrix, exactly as in the main matrix.
 
-  Report which of the three outcomes occurred, so batch 9 knows whether it has a warm-vs-cold contrast to write about at all.
+  The harness records which of the three outcomes occurred in `results/2026-08-29/cold_cell.json`, and that record is what the summariser and the conclusion read — a disposition reported only in this card's output would leave a not-run cold cell indistinguishable on disk from an interrupted one. That file is untracked only if it lands under `raw/`; it does not, so it is committed with card 27's summary.
 - **Commit:** none
 
 ### Card 27: summarise the matrix
@@ -85,12 +85,13 @@ Every literal path here spells the results directory `bench/loomyard-eval/ladder
   - `bench/loomyard-eval/ladder/results/2026-08-29/probe.json`
 - **Edits:** none
 - **Creates:**
+  - `bench/loomyard-eval/ladder/results/2026-08-29/cold_cell.json`
   - `bench/loomyard-eval/ladder/results/2026-08-29/summary.json`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Run the summariser over the completed results root and commit the tracked summary. It must exit zero: a non-zero exit names cells that are not complete, and an incomplete cell is resolved by re-running the harness, never by summarising a partial matrix as if it were finished. The one exception is a cold cell reported as not run in card 26 — that cell is legitimately absent, and the summary records it as such rather than as a short cell to be re-run.
+- **Requirements:** Run the summariser over the completed results root and commit the tracked summary. It must exit zero: a non-zero exit names cells that are not complete, and an incomplete cell is resolved by re-running the harness, never by summarising a partial matrix as if it were finished. The one exception is a cold cell whose `cold_cell.json` records `not-run` — that cell is legitimately absent, the summariser excludes it from its incomplete list, and its exit code stays zero. Commit that record alongside the summary: it is what lets the conclusion say why a warm-versus-cold comparison is missing.
 
-  Confirm before committing that the summary carries: the pinned run model and scorer settings in its metadata, a stats record for every config, the `denied_tool_attempts_reported` boolean the probe established, the per-config dirtied-run and target-origin-mention counts, and comparison records of all three kinds. This file is tracked specifically so every claim the conclusion makes keeps its supporting numbers in the repository after the disposable raw artifacts are deleted.
+  Confirm before committing that the summary carries: the pinned run model and scorer settings in its metadata, the cold cell's disposition, a stats record for every config, the `denied_tool_attempts_reported` boolean the probe established, the per-config dirtied-run, decoy-admitted, and target-origin-mention counts, and comparison records of all three kinds. This file is tracked specifically so every claim the conclusion makes keeps its supporting numbers in the repository after the disposable raw artifacts are deleted.
 - **Commit:** `bench(ladder): record per-config medians, ranges, and separations`
 
 ## Batch Tests
