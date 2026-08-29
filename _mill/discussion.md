@@ -218,6 +218,15 @@ another pass of the existing harness.
   reported as a meaningless column of zeros — and the enforcement is if anything stronger,
   since a hidden tool cannot be attempted at all. Either outcome is fine; silently reporting
   zeros as if they were evidence is not.
+
+  **The same probe must first establish that denial blocks at all.** Before the
+  hidden-vs-advertised question is even meaningful, the probe run is given a deny-list and
+  instructed to call a denied `mcp__quarry__*` tool; the probe passes only if that call does
+  not succeed. This is the load-bearing premise of the entire suite — if `permissions.deny`
+  turned out not to block MCP tools, every rung would silently be the full bundle and all 45
+  runs would be worthless. It is checked once, up front, for the cost of one run, rather
+  than assumed across the matrix and discovered afterwards. A probe failure halts before any
+  matrix run starts.
 - Rationale: the task body is explicit that instruction alone is not reliable — this
   session's predecessor observed tasks nominally scoped to one verb where the agent used
   three. A deny-list makes the restriction structural: a denied tool call fails rather
@@ -349,6 +358,19 @@ another pass of the existing harness.
   gate, a native-fallback cold run, a missing answer block) deletes that run's `run.json`
   and moves its directory aside to `<n>.invalid-<k>/`, so the next invocation re-runs it and
   the discarded attempt is still inspectable.
+
+  **Re-runs are capped at 3 attempts per run.** Several gates can fail deterministically —
+  a `permissions.deny` that does not actually block, a model mismatch, a cold run that keeps
+  taking the native fallback — and an uncapped "invalidate and re-run" would burn paid runs
+  forever on a cell that can never pass. On the third failure the harness stops the whole
+  matrix (not just that cell), reports which gate failed and why, and leaves every completed
+  run intact so the matrix resumes once the cause is fixed. Halting the matrix rather than
+  marking one cell not-run is deliberate: a deterministic gate failure is almost always a
+  harness or environment fault that invalidates the other cells' premises too, and
+  discovering that after 40 more paid runs is worse than discovering it immediately. The
+  cold cell keeps its own separate disposition (reported as not-run when the supervised
+  strategy is unavailable on the operator's machine), because that is an environment
+  limitation rather than a fault.
 - Rationale: `duration_ms` is the metric the disjoint-range separation rule leans on
   hardest, and concurrent runs contend for CPU, for the gopls daemon backing a shared
   worktree, and for model-side rate limits — any of which would make wall-clock
@@ -392,9 +414,21 @@ another pass of the existing harness.
     rather than hidden; otherwise dropped.
   - `session_id` and the transcript path, so any number can be re-derived.
 
-  Every one of these is extracted programmatically from the run's transcript JSONL by a
-  script under `bench/loomyard-eval/ladder/scripts/`. No number in this suite is ever taken
-  from an agent's self-report.
+  - `worktree_dirtied` — whether the run left its shared worktree modified. Not a failure;
+    see the worktree decision in Technical context.
+
+  **How the transcript is obtained.** Each run is launched with
+  `--output-format stream-json`, and the harness captures that stream directly to
+  `raw/<config-id>/<n>/transcript.jsonl` as the process runs. It does not locate a session
+  file after the fact by `session_id` — that would depend on the client's on-disk session
+  layout, which this suite does not control and which could change underneath it. Capturing
+  the stream also means the transcript exists even for a run that dies mid-way, which is what
+  makes a failed run diagnosable rather than just absent. `extract_usage.py`'s fixtures are
+  therefore excerpts of this stream format, and that is the only format it needs to parse.
+
+  Every one of these is extracted programmatically from that transcript by a script under
+  `bench/loomyard-eval/ladder/scripts/`. No number in this suite is ever taken from an
+  agent's self-report.
 - Rationale: #006 caught real self-report discrepancies twice — undercounted `toc_file`
   and `Read` calls in the cold run, and an undisclosed grep call in the warm run. Both
   were only caught by transcript verification, which is why the task body makes transcript
@@ -410,8 +444,19 @@ another pass of the existing harness.
 ### Correctness scoring against the existing fasit
 
 - Decision: each run's answer JSON is scored against its task's existing tracked
-  `c.json` by a dedicated scoring agent per run, which sees only that run's answer and the
-  fasit — never the config id, never the rung's tool set, never another run's answer.
+  `c.json` by a dedicated scoring agent per run. Its input is exactly three things: the
+  run's `answer.json`, the task's fasit `c.json`, and the task's `<TASK TEXT>`. It never
+  sees the config id, the rung's tool set, the run's transcript, or any other run's answer.
+  The task text is included because Ladder A's rule requires judging whether `summary`
+  describes the same mechanism C found, which cannot be assessed without knowing what was
+  asked — and the task text is identical across every rung of a ladder, so it reveals
+  nothing about the config.
+
+  **The scorer is pinned exactly as the runs are.** Its model, effort, and prompt template
+  are fixed in `ladder.yaml` alongside the run model, and the resolved values are recorded
+  in every `score.json`. A scorer that drifted across the matrix would shift scores between
+  rungs graded at different times — the same defect as an unpinned run model, one axis over,
+  and harder to spot because it moves the correctness numbers rather than the cost ones.
 
   **Ladder A (task 01, exploration schema)** uses the exploration rule already written in
   `bench/loomyard-eval/README.md`'s "Scoring" section unchanged: recall = C's
@@ -476,7 +521,8 @@ another pass of the existing harness.
   ```
   bench/loomyard-eval/ladder/
     README.md              # self-contained protocol; ladder tables; how to re-run
-    ladder.yaml            # the 14 configs + warmth cell, declaratively: id, task, allowed tools
+    ladder.yaml            # the 14 configs + warmth cell, declaratively: id, task,
+                           # allowed tools, pinned run model, pinned scorer model/effort/prompt
     scripts/
       run_ladder.py        # generates deny-list settings + per-rung MCP preamble, builds
                            # worktrees, warms (or asserts cold), dispatches sequentially,
@@ -484,6 +530,8 @@ another pass of the existing harness.
       extract_usage.py     # transcript JSONL -> usage.json
       score_run.py         # drives one blinded scoring call -> score.json
       summarize.py         # per-config medians/ranges -> the summary table
+    tests/                 # TRACKED — pytest suite for the three deterministic units
+      fixtures/            # TRACKED — hand-trimmed transcript JSONL fixtures
     results/<YYYY-MM-DD>/
       conclusion.md        # TRACKED — the synthesis
       summary.json         # TRACKED — per-config medians/ranges backing every claim
@@ -602,15 +650,29 @@ shares it across that task's runs rather than creating and removing it per run; 
 cold-cell runs are the deliberate exception and each get their own disposable worktree at a
 distinct path, for the daemon-key reason given in the warmth decision.
 
-**The shared worktree is writable, so cleanliness is enforced, not assumed.** Every run has
-Bash in its allow-set and the worktree is an ordinary checkout — a run that drops a scratch
-file, or runs `go build` and populates a cache, leaves state visible to the next 17 runs of
-that task, which is the same cross-run contamination the blind-process decision exists to
-eliminate. The harness therefore checks `git -C <worktree> status --porcelain` (including
-untracked files) after every main-matrix run: a clean tree passes; a dirty tree invalidates
-that run and the worktree is hard-restored before the next one. Invalidating rather than
-silently restoring matters — a run that mutated its own target may have read back what it
-wrote, so its numbers are suspect even though the *next* run can be made safe.
+**The shared worktree is writable, so it is restored between runs — but mutating it is a
+legitimate route, not a disqualification.** Every run has Bash in its allow-set and the
+worktree is an ordinary checkout, so a run can drop scratch files, populate a build cache,
+or edit source. Leaving that state visible to the next 17 runs of the same task would be
+exactly the cross-run contamination the blind-process decision exists to eliminate, so the
+harness hard-restores the worktree (`git reset --hard` plus `git clean -fdx`) **after every
+main-matrix run**, unconditionally, and records `worktree_dirtied: true|false` for that run
+as an observation.
+
+It does **not** invalidate a run for dirtying the tree. Task 04's own fasit reaches its
+answer by a compiler experiment — `c.json`'s evidence fields record editing the interface
+and running `go build -gcflags=-e` to read off the broken call sites — and the task text
+frames the run as "you are about to change `Shuttle.Run`". Invalidating runs that do this
+would systematically discard exactly the runs a low-capability rung is most likely to
+produce (a `none` or `definition` rung has no other precise route), biasing the Ladder B
+comparison the ladder exists to make. The compiler experiment is a real strategy an agent
+may reasonably choose, and its cost is part of what this benchmark measures; `go build` is
+neither cheap nor free, and a rung that has to reach for it should show that in its
+duration and tool counts rather than vanishing from the sample.
+
+`worktree_dirtied` is therefore reported per run and summarised per config: a rung where
+most runs had to mutate the target to answer is a finding about that capability, and the
+conclusion must read a cluster of dirtied runs that way rather than as noise.
 
 **Reusable assets from #006.** The output schemas in `bench/loomyard-eval/README.md`
 ("Exploration tasks", "Impact-analysis tasks") and the **Agent B preamble** are used
@@ -630,7 +692,31 @@ no longer exists. So: for each quarry-enabled rung the harness generates a fresh
 mentions no binary path and no shell verb syntax, and carries over only the
 exposure-independent guidance worth keeping from the CLI template: prefer quarry over grep,
 do not re-verify a quarry answer with grep, and pass a known `file:line:character` position
-instead of a bare symbol name when one is already in hand. Tracked fasit for scoring:
+instead of a bare symbol name when one is already in hand.
+
+**The control's preamble differs in steering, not only in tools — and that confound is
+recorded, not papered over.** The B preamble gives standard tools with no steering, while
+every quarry rung's A preamble says "prefer quarry over grep, do not re-verify with grep".
+So a rung-vs-`none` delta mixes capability with prompt steering, and the grep counts are the
+worst affected: `bash_grep_count` and `grep_tool_count` are directly suppressed in quarry
+rungs by an instruction the control never receives. Two dispositions were available:
+neutralise the preambles, or record the confound. **This suite records it**, because the A
+preamble's anti-grep steering is not incidental scaffolding — #006 added it deliberately
+after observing task 01's first run spend a third of its Bash calls on grep despite having
+quarry, and removing it would benchmark a configuration nobody would actually ship. The
+consequences are binding on the conclusion:
+- Every rung-vs-`none` delta is reported as "capability + steering", never attributed to the
+  capability alone.
+- The grep counts are **never** compared between a quarry rung and `none`. They are compared
+  only *between quarry rungs*, which all share identical steering and differ only in tools —
+  where they do cleanly measure how far a restricted rung routes around its own missing
+  capability.
+- Rung-vs-rung comparisons within a ladder (e.g. `toc_file` vs `toc_pair`) are unaffected by
+  this confound entirely, since those preambles are identical except for the tool list. The
+  cleanest attribution claims this suite can make are therefore between quarry rungs, and
+  the `none` control is best read as a floor rather than as a matched pair.
+
+Tracked fasit for scoring:
 `bench/loomyard-eval/results/2026-08-28/01-reed-geometry-exploration/c.json` and
 `.../04-shedadapters-shuttle-impact/c.json`.
 
@@ -672,6 +758,17 @@ place for this repo's own ephemeral files. There is no `CONSTRAINTS.md` and no r
 This task's product is a benchmark harness plus a data-backed conclusion, so "tests" means
 unit tests on the deterministic harness pieces plus explicit validation gates on the run
 protocol. The runs themselves are not tests and must not be asserted on.
+
+**Infrastructure.** The repo has no Python test setup today (`bench/loomyard-eval/scripts/`
+holds one standalone script, and there is no `pyproject.toml`, `pytest.ini`, or `conftest.py`
+anywhere). This task adds a minimal one, scoped to the ladder directory: `pytest` tests under
+`bench/loomyard-eval/ladder/tests/`, run with `python -m pytest bench/loomyard-eval/ladder/tests`
+from the repo root, with a `conftest.py` there putting `scripts/` on the import path. Fixture
+transcripts live in `tests/fixtures/` and **are** git-tracked — they are small, hand-trimmed
+JSONL excerpts (a handful of representative lines each, not whole sessions), and the
+`results/**/raw/` untracking rule does not reach them. They are test inputs the suite cannot
+be re-verified without, which is the opposite of the disposable per-run artifacts that rule
+exists for.
 
 **`extract_usage.py` — the strongest TDD candidate.** Its whole job is turning transcript
 JSONL into numbers that #006 proved cannot be trusted when produced by hand. Write it
@@ -720,9 +817,10 @@ verification steps over the produced data, not unit tests: the run produced a pa
 answer block and a `usage.json`; its transcript shows no successful call to a tool its
 config denied; no tool call in it carries `targetDir` or `buildTags`; it ran under the
 pinned model; a `none` run's transcript contains no `mcp__quarry__*` tool and no occurrence
-of "quarry"; a main-matrix run left its shared worktree clean per `git status --porcelain`;
-a cold-cell run's state directory held no `daemon.json` before and did hold one after; and
-a `score.json` exists. Across the matrix: each config has exactly 3 complete runs, and no
+of "quarry"; a cold-cell run's state directory held no `daemon.json` before and did hold one
+after; and a `score.json` exists, produced by the pinned scorer. Worktree dirtiness is
+**recorded, not gated** — see the worktree decision. A run failing a gate is retried at most
+3 times, after which the matrix halts. Across the matrix: each config has exactly 3 complete runs, and no
 reported number came from a self-report field. A failed gate invalidates that run per the
 resumability decision — it is re-run, never reported.
 
@@ -889,6 +987,54 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
   45-run cost and on what the operator wants comparability against, and a model id
   hard-coded into a design document rots as soon as the available models change — the
   pinning mechanism is what matters, not the particular value.
+- **Q:** The `none` control gets the B preamble while every quarry rung gets a steering A
+  preamble — doesn't that confound every rung-vs-control delta? **A:** [auto-pick] Yes, and
+  it is recorded rather than neutralised: rung-vs-`none` deltas are reported as "capability
+  + steering", grep counts are never compared between a quarry rung and `none` (only between
+  quarry rungs, which share identical steering), and `none` is read as a floor rather than a
+  matched pair. **Why:** the anti-grep steering is not incidental — #006 added it after
+  watching task 01's first run spend a third of its Bash calls on grep despite having quarry
+  — so removing it would benchmark a configuration nobody would ship; rung-vs-rung
+  comparisons within a ladder are unaffected and are where the cleanest attribution lives.
+- **Q:** A run that edits the target and runs `go build` dirties the shared worktree — is it
+  invalidated? **A:** [auto-pick] No. The worktree is hard-restored after every run
+  unconditionally, and `worktree_dirtied` is recorded as an observation, not a gate. **Why:**
+  task 04's own fasit reaches its answer by exactly that compiler experiment
+  (`c.json`'s evidence fields cite `go build -gcflags=-e`), and the task text frames the run
+  as "you are about to change `Shuttle.Run`" — invalidating those runs would systematically
+  discard the ones low-capability rungs are most likely to produce, biasing the very
+  comparison Ladder B exists to make.
+- **Q:** What bounds the invalidate-and-re-run loop? **A:** [auto-pick] 3 attempts per run;
+  on the third failure the whole matrix halts with the failing gate reported, completed runs
+  intact. **Why:** several gates fail deterministically (denial not blocking, model
+  mismatch, persistent native fallback), so an uncapped loop burns paid runs forever; and
+  such a failure usually invalidates the other cells' premises too, making a full halt
+  better than discovering it 40 runs later.
+- **Q:** Does the probe verify that `permissions.deny` blocks MCP tools at all, or only
+  whether denied tools are hidden? **A:** [auto-pick] Both — it first asserts a denied
+  `mcp__quarry__*` call does not succeed, and halts before any matrix run if it does.
+  **Why:** this is the load-bearing premise of the whole suite; if denial did not block,
+  every rung would silently be the full bundle and all 45 runs would be worthless.
+- **Q:** Is the scoring agent pinned the way the runs are? **A:** [auto-pick] Yes — model,
+  effort, and prompt template fixed in `ladder.yaml` and recorded in every `score.json`; its
+  input is the run's answer, the fasit, and the task text, nothing else. **Why:** an
+  unpinned scorer drifting across the matrix shifts scores between rungs graded at different
+  times, which is the same defect as an unpinned run model but harder to spot, since it
+  moves the correctness numbers rather than the cost ones. The task text is needed to judge
+  whether `summary` describes the same mechanism, and is identical across a ladder's rungs,
+  so it reveals nothing about the config.
+- **Q:** Where do the tests and fixtures live, and how are they run? **A:** [auto-pick]
+  `pytest` under `bench/loomyard-eval/ladder/tests/` with a local `conftest.py`, fixtures
+  git-tracked in `tests/fixtures/`, run via `python -m pytest bench/loomyard-eval/ladder/tests`.
+  **Why:** the repo has no Python test infrastructure at all today, so it has to be named
+  rather than assumed; the fixtures are small hand-trimmed excerpts the suite cannot be
+  re-verified without, which is the opposite of the disposable raw run artifacts the
+  untracking rule targets.
+- **Q:** How is the transcript captured? **A:** [auto-pick] `--output-format stream-json`
+  captured directly to `transcript.jsonl` as each run executes, not located afterwards by
+  `session_id`. **Why:** locating a session file after the fact depends on client on-disk
+  layout this suite does not control, and streaming means even a run that dies mid-way
+  leaves a diagnosable transcript.
 - **Q:** If the review rounds hit the configured cap without converging, block or hand
   off? **A:** Hand off anyway (operator instruction, given mid-session). **Why:** the
   operator explicitly overrode auto-mode's block-on-non-progress behaviour for this task.
