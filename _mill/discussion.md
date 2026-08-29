@@ -35,6 +35,11 @@ That maps directly onto the friction observed and fixed this session.
 - `go.mod` dependency on `github.com/modelcontextprotocol/go-sdk`.
 - Three tiers of tests (unit / in-memory transport / real-binary stdio).
 - A committed `.mcp.json` at the repo root so a Claude Code session in quarry can connect to the server, plus a short `docs/mcp-setup.md` covering cold-start behaviour and the pre-built-binary alternative.
+- A `README.md` pointer to the MCP layer: a short section naming `cmd/quarry-mcp`, its `go build -o quarry-mcp ./cmd/quarry-mcp` line beside the existing `go build -o quarry ./cmd/quarry` (README:23), and a link to `docs/mcp-setup.md`.
+  The README currently documents the CLI as quarry's only entry point; leaving it that way would make the third layer undiscoverable from the front door.
+- A `.gitignore` entry for `/quarry-mcp`.
+  `.gitignore` ignores `/quarry` today with a `!/quarry/` re-include, because that name collides with the `quarry/` package directory.
+  `quarry-mcp` has no such collision, so a plain `/quarry-mcp` line is enough — but without it, the warm-start `go build -o` alternative documented in `docs/mcp-setup.md` leaves an untracked binary at the repo root.
 
 **Out:**
 
@@ -232,7 +237,7 @@ That maps directly onto the friction observed and fixed this session.
 ### input-schema-strictness
 
 - Decision: input schemas are **strict about the call, permissive about the entry.**
-  - Encoded in the schema, so a violation is a whole-call `isError` before any entry runs: the array's `minItems`/`maxItems`, the presence and JSON type of every call-wide parameter, and the entry array being an array of objects.
+  - Encoded in the schema, so a violation is a whole-call `isError` before any entry runs: the array's `minItems`/`maxItems`, the presence and JSON type of every call-wide parameter, and the entry array's element **type** — objects for the five symbol/position tools, plain **strings** for `toc_file` and `toc_dir`, whose entries are bare paths (see entry-shape-quarry-native).
   - **Not** encoded as a schema `oneOf`: the entry union itself.
     Each tool's entry object declares every property it can accept (`textDocument`, `position`, `symbol` for the two `textDocument_*` tools; `query` for `workspace_symbol`; `file`, `line`, `character`, `symbol`, `within`, `except` for the quarry-native ones) as **optional**, with the legal combinations described in the property descriptions.
     The handler validates the combination per entry.
@@ -241,7 +246,12 @@ That maps directly onto the friction observed and fixed this session.
   A schema-level `oneOf` fails the entire `tools/call` request, so one malformed entry in a 20-entry array would discard 19 good answers — the exact outcome error-mapping exists to prevent, reintroduced through the schema instead of through `isError`.
   Call-level properties are different: they are single-valued, so rejecting them early costs no partial result and catches the error at the cheapest point.
   The rule is uniform across all seven tools, including `workspace_symbol` — no tool gets an entry-level schema strictness the others lack.
-- Rejected: encoding the union as a `oneOf` (maximally precise, discards good entries); no schema at all beyond types (gives the model no shape guidance, which is what the task exists to provide).
+- **`docSentences`'s JSON type, pinned:** `["integer", "string"]`.
+  The CLI flag legitimately takes a count or the literal `"all"` (`toc.go:156`, `ParseDocSentences` at `tocconfig.go:83`), and a model will naturally send `3` rather than `"3"`.
+  An integer is converted to its decimal string and handed to `ParseDocSentences`; a string is passed through unchanged.
+  Declaring it as a string alone would make `{"docSentences": 3}` a whole-call failure — a guess-shaped failure, which is the exact friction this task exists to remove.
+  Every other call-wide parameter is a plain `string`, except `noVerify` (`boolean`) and `except`/`within`, whose types are given by the matrix above.
+- Rejected: encoding the union as a `oneOf` (maximally precise, discards good entries); no schema at all beyond types (gives the model no shape guidance, which is what the task exists to provide); `docSentences` as string-only (rejects the natural numeric form).
 
 ### batching-execution-model
 
@@ -324,14 +334,20 @@ That maps directly onto the friction observed and fixed this session.
   | `references` | `found`, `textDocument_references` | array of `{file, line, character}` |
   | `definitions` | `found`, `textDocument_definition` | array of `{file, line, character}` |
   | `symbols` | `found`, `workspace_symbol` | array of `{name, kind, file, line, character}` |
-  | `target`/`definition`/`callers` | `found`, `impact` | the marshalled `quarry.ImpactResult` fields |
+  | `result` | `found`, `impact` | the whole marshalled `quarry.ImpactResult` — `{target, definition, callers}` — under this one wrapper key |
   | `violation`, `callers` | `found`, `assert_no_callers` | `bool`, array of `{file, line, character}` |
   | `files` | `found`, `toc_dir` | array of dir entries, each carrying the caller-relative `path` |
-  | (toc file fields) | `found`, `toc_file` | the marshalled `quarry.TOCFileResult` |
+  | `result` | `found`, `toc_file` | the whole marshalled `quarry.TOCFileResult`, under the same wrapper key |
   | `candidates` | `ambiguous` | array of candidate descriptors from `*quarry.ErrAmbiguousSymbol` |
   | `error` | `error`, and `not_found` where the CLI carries a message (toc) | string |
 
-  Note `impact`'s marshalled result has its own `target` field; inside an `impact` entry it is nested under the result, never colliding with the envelope's `target` key.
+- **The `result` wrapper key is required, not stylistic.**
+  `impact.Result.Target` marshals to a top-level `"target"` (`impact/types.go:92`), and the CLI's `runBatch` flattens the classifier's fields straight into the entry map (`cli.go:985-988`).
+  Flattening the same way here would have impact's own `target` **overwrite** the envelope's echoed input `target`, destroying exactly the attributability this section pins.
+  The CLI does not hit this because its identity key is `symbol`, which never collides.
+  So: the envelope's `target` always wins and always means "the input entry, echoed"; a marshalled struct result is always nested under `result`.
+  `toc_file` takes the same wrapper for consistency and for the same future-proofing, even though `TOCFileResult` has no colliding key today.
+  This is a deliberate, stated divergence from the CLI's flattening — the one place entry-shape-quarry-native's field-level comparability does not hold, for a reason that only exists in the MCP envelope.
 - **Schema strictness: permissive, and per-tool.**
   Each tool's output schema declares `target` and `status` as required, every key above that the *that tool* can emit as optional, and no key it cannot.
   `additionalProperties` is not set to `false`, and the schema is **not** a discriminated `oneOf` over status.
@@ -599,7 +615,9 @@ TDD candidates, in this order:
 - The **translation layer** is the strongest TDD candidate in the task and should be written test-first: `file://` stripping and passthrough for plain paths, `AbsOrJoin` behaviour against a `targetDir`, the `±1` conversion in both directions, and round-trip stability (a result fed back as an input resolves to the same position).
   Include an explicitly-asserted non-ASCII case documenting the *current* (naive) behaviour, so the deliberate limitation is pinned rather than accidental.
 - **Entry-union parsing**: each of the three entry forms maps onto the right `quarry.Query` variant for `textDocument_definition`/`textDocument_references`; a malformed entry (a `position` with no `textDocument`, neither `symbol` nor `position`, etc.) is rejected with a clear per-entry error rather than a silent guess.
-- **`workspace_symbol` accepts `{"query": …}` only**: a position entry and a file-scoped entry are both rejected at schema validation, never reaching the handler — the regression here is a silent empty-string search.
+- **`workspace_symbol` accepts `{"query": …}` only**: a position entry and a file-scoped entry each come back as that entry's `status: "error"`, with the call's other entries unaffected — the regression here is a silent empty-string search, and the second regression is rejecting the whole call.
+- **`impact`/`toc_file` results nest under `result`**: an `impact` entry's envelope `target` is the echoed input, and the marshalled result's own `target` is reachable at `result.target` — the regression is the flattened form, where one overwrites the other.
+- **`docSentences` accepts both `3` and `"all"`** without a whole-call failure.
 - **toc status mapping**: a missing file is `not_found`, a directory passed to `toc_file` is `error`, and an unsupported language is `error` worded from `TOCImplemented()` — the LSP predicates must not be applied to toc.
 - **`TOCDirEntries` is applied**: `toc_dir` entries carry a `path`, proving `StructToFields` alone (with `DirEntry.Name` at `json:"-"`) was not used.
 - **Flat entry-union parsing** for the quarry-native tools, including that no `±1` and no URI handling is applied there.
