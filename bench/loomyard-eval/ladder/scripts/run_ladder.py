@@ -32,7 +32,10 @@ from gates import (
     daemon_state_file,
     gate_run_complete_artifacts,
     gate_worktree_neutralised,
+    invalidate,
+    is_complete,
     resolve_state_dir,
+    run_dir as run_dir_for,
     run_gates,
     write_run_json,
 )
@@ -796,3 +799,93 @@ def execute_run(ladder, config, n, run_dir, target_dir, server_path, repo_root, 
     }
     written = write_run_json(run_dir, payload)
     return RunOutcome(status="complete", config_id=config.id, n=n, run_json=written)
+
+
+""" THE SEQUENTIAL MATRIX DRIVER """
+
+
+def plan_runs(ladder):
+    """
+    The ordered list of all 45 (config, n) pairs: every non-cold config's
+    reps repetitions first, then the cold config's. It is the reporting
+    view of the whole matrix; neither driver iterates it directly.
+    """
+    pairs = []
+    for config in ladder.configs:
+        if not config.cold:
+            for n in range(1, ladder.reps + 1):
+                pairs.append((config, n))
+    for config in ladder.configs:
+        if config.cold:
+            for n in range(1, ladder.reps + 1):
+                pairs.append((config, n))
+    return pairs
+
+
+def main_runs(ladder):
+    """The main-matrix partition of plan_runs -- every non-cold pair."""
+    return [(config, n) for config, n in plan_runs(ladder) if not config.cold]
+
+
+def cold_runs(ladder):
+    """The cold-cell partition of plan_runs -- every cold pair."""
+    return [(config, n) for config, n in plan_runs(ladder) if config.cold]
+
+
+def pending_runs(pairs, results_root):
+    """
+    Filters pairs through gates.is_complete, so a re-invocation skips
+    finished runs rather than re-running the matrix. Both drivers call
+    this with their own partition.
+    """
+    return [(config, n) for config, n in pairs if not is_complete(run_dir_for(results_root, config.id, n))]
+
+
+MAX_ATTEMPTS = 3
+
+
+def run_matrix(ladder, results_root, worktrees, server_path, repo_root, cache_dir, executor=launch_run, git=run_git):
+    """
+    Drives the main matrix sequentially, one run at a time, never
+    concurrently -- concurrent runs would contend for CPU, the shared
+    daemon, and model-side rate limits, any of which would make
+    wall-clock incomparable across configs.
+
+    For each pending main-matrix pair: warm the target worktree's daemon,
+    then execute; on a "complete" outcome continue to the next pair; on a
+    "failed" outcome invalidate the run directory and retry, up to
+    MAX_ATTEMPTS attempts. On the third failure, halt the whole matrix,
+    leaving every completed run intact so a re-invocation resumes past
+    them. A "truncated" outcome is never retried and halts the matrix on
+    its first occurrence, since the max_turns ceiling is a matrix-wide
+    constant a second attempt would hit identically.
+
+    After every attempt, successful or not, restore_worktree runs
+    unconditionally -- the worktree_dirtied observation was already taken
+    inside execute_run's run_gates call, before the restore erases it.
+    """
+    for config, n in pending_runs(main_runs(ladder), results_root):
+        target_dir = worktrees[config.task]
+        a_run_dir = run_dir_for(results_root, config.id, n)
+        env = run_env()
+
+        outcome = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            warm_daemon(server_path, target_dir, env, cache_dir)
+            outcome = execute_run(ladder, config, n, a_run_dir, target_dir, server_path, repo_root, cache_dir, executor=executor)
+            restore_worktree(target_dir, git=git)
+
+            if outcome.status == "complete":
+                break
+            if outcome.status == "truncated":
+                raise HarnessError(
+                    f"run_matrix: config {config.id!r} rep {n} was truncated at "
+                    f"max_turns={ladder.max_turns}; halting the matrix -- raise "
+                    "max_turns and re-run into a new dated results directory"
+                )
+            invalidate(a_run_dir)
+            if attempt == MAX_ATTEMPTS:
+                raise HarnessError(
+                    f"run_matrix: config {config.id!r} rep {n} failed {MAX_ATTEMPTS} "
+                    f"attempts; last findings: {[(f.gate, f.message) for f in outcome.findings]}"
+                )
