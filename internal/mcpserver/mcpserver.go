@@ -76,5 +76,11 @@ func NewServer(cfg Config) (*mcp.Server, error) {
 		return nil, fmt.Errorf("mcpserver: NewServer: cfg.TargetDir must be absolute, got %q", cfg.TargetDir)
 	}
 
-	return mcp.NewServer(&mcp.Implementation{Name: "quarry", Version: serverVersion}, nil), nil
+	s := mcp.NewServer(&mcp.Implementation{Name: "quarry", Version: serverVersion}, nil)
+
+	if err := registerLSPTools(s, cfg); err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
