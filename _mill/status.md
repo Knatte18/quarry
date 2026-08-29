@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: null
@@ -15,4 +15,6 @@ task_description: |
 
 ```text
 discussing  '2026-08-29T12:00:41Z'
+discussion-fix-r6  '2026-08-29T12:43:35Z'
+discussed  '2026-08-29T12:43:35Z'
 ```

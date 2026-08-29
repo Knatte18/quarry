@@ -155,8 +155,9 @@ another pass of the existing harness.
   tasks 02 and 03.
 - Rationale: both reused tasks already have a tracked, human-reviewed fasit
   (`bench/loomyard-eval/results/2026-08-28/*/c.json`) produced by a high-effort blind
-  reference agent. Reusing them means 45 runs need zero new fasit work and are directly
-  comparable to #006's own numbers for the same tasks. They also cover the two distinct
+  reference agent. Reusing them means 45 runs need zero new fasit work and are scored
+  against the same ground truth #006 used, so correctness numbers are read on the same
+  scale. They also cover the two distinct
   shapes the ladders need: open-ended subsystem survey (01) and precise caller
   enumeration with a deliberate interface-conflation decoy (04). Task 02 has no fasit and
   was never executed; task 03's postmortem in its own scorecard established it cannot
@@ -202,10 +203,34 @@ another pass of the existing harness.
   That cwd choice removes the *invitation*, not the *capability*: Bash is in the allow-set
   and cwd does not bound what an absolute path can read, so a `none` agent that went looking
   could still reach this repo. The blinding is therefore enforced by detection, not by
-  construction — the per-run gate rejecting any `none` run whose transcript contains a
-  `mcp__quarry__*` tool or the string "quarry" is what actually holds the constraint, and a
-  run that trips it is invalidated. This is a weaker guarantee than #006's structural
-  blinding claim and is stated as such rather than overclaimed.
+  construction — a weaker guarantee than #006's structural blinding claim, stated as such
+  rather than overclaimed.
+
+  **The blinding gate matches leak-shaped evidence only, never the bare word "quarry".**
+  Loomyard itself mentions quarry in about a dozen tracked files (`docs/`, `manifest/`,
+  `internal/loomengine/plan_test.go`, …), so a gate on the plain string would fire whenever a
+  `none` agent grepped or read outside its task's package scope — no harness leak involved —
+  and, under the 3-attempt cap, three such runs would halt the whole 45-run matrix over the
+  target codebase's own prose. The gate therefore matches only evidence that the *harness*
+  leaked: a `mcp__quarry__*` tool name, the string `/tmp/quarry-bench`, or any filesystem
+  path into this quarry repository. A "quarry" hit whose origin is a file inside the task
+  worktree is recorded as `target_origin_quarry_mention: true` for that run and otherwise
+  ignored — it is the target codebase talking about an unrelated project, not the control
+  learning that quarry is what it is being compared against.
+
+  **The task worktree's own ambient context is neutralised.** The Loomyard checkout carries a
+  tracked root `CLAUDE.md` and `CONSTRAINTS.md`, plus `.claude/agents/` and
+  `.claude/settings.local.json` with its own `permissions.allow`. A `claude -p` rooted there
+  would auto-load all of it into every one of the 45 runs — an uncontrolled prompt prefix and
+  a second, unaudited permissions source layered under the generated `--settings`. Since each
+  task worktree is disposable and built fresh from a pin, the harness deletes `CLAUDE.md`,
+  `CONSTRAINTS.md`, and `.claude/` from it immediately after `git worktree add`, before any
+  run starts, and a validation gate asserts their absence. Deleting rather than tolerating
+  them matters twice over: the instructions are Loomyard's own project guidance, irrelevant to
+  a benchmark task and capable of steering an agent's exploration; and a second permissions
+  source would silently undermine the deny-list that the entire ladder rests on. (This
+  deletion is a mutation of the disposable worktree only, never of the live checkout, and it
+  becomes part of the clean baseline the post-run hard-restore restores to.)
 
   **Run environment, pinned identically across all 45 runs:**
   - `--model` is pinned to one explicit model id for the entire matrix and recorded in
@@ -435,8 +460,9 @@ another pass of the existing harness.
   - `quarry_tool_uses` — the subtotal across `mcp__quarry__*` tools.
   - `bash_grep_count` — Bash invocations whose command matches `grep`/`rg`. This is
     exactly #006's `grep_fallback_count` definition (README "Dispatch protocol" step 4
-    greps the transcript's Bash `"command"` fields only), and is the field used for any
-    comparison against #006's numbers.
+    greps the transcript's Bash `"command"` fields only). It is held to that definition so
+    the same name never means two things across the two suites — not to license a
+    cross-suite comparison, which the technical-context rule forbids for every cost metric.
   - `grep_tool_count` — calls to the native Grep tool, which #006's definition does not
     cover. Reported as its own field and never silently folded into the one above; a
     combined `grep_fallback_total` is derived from the two for within-suite comparisons
@@ -478,8 +504,26 @@ another pass of the existing harness.
 
 - Decision: each run's answer JSON is scored against its task's existing tracked
   `c.json` by a dedicated scoring agent per run. Its input is exactly three things: the
-  run's `answer.json`, the task's fasit `c.json`, and the task's `<TASK TEXT>`. It never
-  sees the config id, the rung's tool set, the run's transcript, or any other run's answer.
+  run's **redacted** `answer.json`, the task's fasit `c.json`, and the task's `<TASK TEXT>`.
+  It never sees the config id, the run's transcript, or any other run's answer.
+
+  **Redaction is required because the answer names its own tools.** Both task schemas carry
+  free-text `evidence`/`summary` fields, and #006's committed A-arm answer for task 04 says
+  things like "quarry `textDocument_definition` on…" and "singlellm.go's `toc_file` entry" —
+  so an unredacted answer hands the scorer the rung's exact tool set on most Ladder B runs,
+  defeating the blinding via the one input it is allowed to see. Before scoring,
+  `score_run.py` therefore rewrites every free-text field in a copy of `answer.json`,
+  replacing quarry tool names, the word "quarry", and CLI/MCP invocation forms with a neutral
+  token (`<tool>`), and writes the redacted copy alongside the original so the redaction is
+  auditable. The original is never passed to the scorer.
+
+  **Residual bias is acknowledged, not claimed away.** Redaction removes tool *names*, not
+  every trace of method — an answer whose evidence reads "the compiler reported…" versus
+  "resolved the interface method at…" still hints at the route taken, and no mechanical
+  redaction can erase that without destroying the evidence field the scoring rule reads. The
+  claim this suite makes is therefore that the scorer does not know *which config* it is
+  grading, not that it cannot infer *anything* about method. The conclusion states this
+  limit rather than asserting clean blinding.
   The task text is included because Ladder A's rule requires judging whether `summary`
   describes the same mechanism C found, which cannot be assessed without knowing what was
   asked — and the task text is identical across every rung of a ladder, so it reveals
@@ -535,10 +579,24 @@ another pass of the existing harness.
 ### Reporting discipline — medians, ranges, and no significance claims
 
 - Decision: per configuration, report the median and full range of every metric across its
-  3 runs. A rung is described as carrying benefit **only** when its range on that metric is
-  disjoint from its own ladder's `none` control's range. Everything else is reported as
-  "not separated at n = 3". The conclusion states n = 3 explicitly and makes no statistical
-  significance claim.
+  3 runs. **Disjoint ranges are the bar for every comparison this suite makes**, applied to
+  three distinct comparison types, each of which `summarize.py` implements and tests
+  separately:
+  - **Rung vs its own ladder's `none` control.** A rung carries benefit only when its range
+    is disjoint from the control's. Because the control differs in prompt steering as well
+    as tools (see the preamble confound), such a claim is always phrased as "capability +
+    steering", and the grep-count metrics are excluded from this comparison entirely.
+  - **Rung vs rung within the same ladder** — the primary comparison, since these configs
+    share an identical preamble except for the tool list and therefore have no steering
+    confound. Rung X is described as outperforming rung Y on a metric only when their ranges
+    are disjoint. All metrics including the grep counts are eligible here.
+  - **`a5-bundle` vs `a5-bundle-cold`** — the warm-vs-cold contrast, same rule: warmth is
+    described as helping on a metric only when the two cells' ranges are disjoint. This is
+    the comparison the cold cell exists to make, and it is the one #006's task 03 and 04
+    scorecards explicitly deferred here.
+
+  Everything failing its bar is reported as "not separated at n = 3". The conclusion states
+  n = 3 explicitly and makes no statistical significance claim.
 - Rationale: n = 3 does not support significance testing, and #006's headline finding was
   retracted precisely because a single dramatic number was over-read. A disjoint-range rule
   is a blunt but honest bar that cannot be satisfied by one lucky run, and it makes every
@@ -570,6 +628,7 @@ another pass of the existing harness.
       summary.json         # TRACKED — per-config medians/ranges backing every claim
       raw/<config-id>/<n>/ # UNTRACKED — per-run artifacts:
         answer.json        #   the run's parsed output block
+        answer.redacted.json #   tool names stripped; the scorer's actual input
         usage.json         #   extracted metrics
         score.json         #   recall/precision/decoy_admitted/lookalikes_matched
         run.json           #   terminal-state marker
@@ -764,10 +823,23 @@ Tracked fasit for scoring:
 `bench/loomyard-eval/results/2026-08-28/01-reed-geometry-exploration/c.json` and
 `.../04-shedadapters-shuttle-impact/c.json`.
 
-**Prior numbers for orientation** (not for direct comparison — different methodology):
-task 01 A-mcp cold 9 tool calls / 113.9s, A-cli 26 / 193.1s, B (no quarry) 22 / 133.7s;
-task 01 A-mcp warm-blind 8 / 85.8s. Task 04: all arms reached the same correctness, with
-warm-blind at 92.9s vs cold 93.0s.
+**No cost metric is compared against #006. This is a hard rule, not a caution.** #006's
+`usage.json` files record no model id, so its durations and token counts cannot be placed on
+any scale; its token classes were broken out inconsistently across its own two run dates
+(its `_note` says so outright); and its `tool_uses` scoping is inconsistent even within one
+date — task 01's warm run reports `9` counting all tools while task 04's warm run reports
+`5` counting quarry only, against a breakdown listing ten calls. The one axis that *is*
+comparable is **correctness**, because both suites score against the identical committed
+`c.json` fasit for the identical task text. So: correctness may be compared to #006;
+duration, tokens, cost, turns, tool counts, and the grep counts may not, and the conclusion
+must not do so even informally. `bash_grep_count` is kept at #006's exact Bash-only
+definition anyway — not to enable a cross-suite comparison, but so a reader who does open
+#006's numbers is not silently looking at a differently-defined metric under the same name.
+
+**Prior numbers, for orientation only and never as a comparison baseline:** task 01 A-mcp
+cold 9 tool calls / 113.9s, A-cli 26 / 193.1s, B (no quarry) 22 / 133.7s; task 01 A-mcp
+warm-blind 8 / 85.8s. Task 04: all arms reached the same correctness, with warm-blind at
+92.9s vs cold 93.0s.
 
 **Repo conventions.** Go module `github.com/Knatte18/quarry`. Existing bench scripts are
 Python under `bench/loomyard-eval/scripts/`. `.scratch/` is gitignored and is the correct
@@ -834,10 +906,13 @@ any per-config edit (this is the drift guard the decision above depends on, so i
 asserted directly); no non-quarry tool ever appears in a deny-list.
 
 **`summarize.py`.** Median and range per metric per config, and the disjoint-range
-separation rule. Scenarios: an even/odd run count; a config where ranges overlap the
-control's is reported as "not separated"; a config with a disjoint range is reported as
-separated; a config with a failed (missing) run is reported as incomplete rather than
-silently summarised from two runs.
+separation rule across all three comparison types. Scenarios: an even/odd run count;
+overlapping ranges are reported "not separated" and disjoint ones "separated", asserted
+independently for rung-vs-control, rung-vs-rung within a ladder, and
+`a5-bundle` vs `a5-bundle-cold`; a rung-vs-control comparison excludes the grep-count
+metrics while a rung-vs-rung comparison includes them; a rung is never compared against the
+other ladder's control; a config with a failed (missing) run is reported as incomplete
+rather than silently summarised from two runs.
 
 **Preamble generation.** Assert that a rung's generated A-preamble names exactly the
 `mcp__quarry__*` tools that rung allows and no others; that it contains no binary path and
@@ -854,6 +929,17 @@ that a pre-existing `daemon.json` under the resolved state directory rejects the
 than proceeding; and that a run finishing with **no** `daemon.json` present is invalidated
 as a native-fallback rather than reported as cold.
 
+**Answer redaction (`score_run.py`).** Assert that quarry tool names, the word "quarry", and
+CLI/MCP invocation forms are replaced with `<tool>` in every free-text field of the copy
+handed to the scorer; that structural fields (file paths, line numbers) are untouched; that
+the original `answer.json` is preserved unmodified alongside the redacted copy; and that the
+scorer is invoked with the redacted copy, never the original.
+
+**Blinding gate.** Assert that a `none` transcript containing `mcp__quarry__*`,
+`/tmp/quarry-bench`, or a path into this repo fails the gate, while one containing "quarry"
+sourced from a file inside the task worktree passes and is recorded as
+`target_origin_quarry_mention`.
+
 **Resumability.** Assert that a run directory with a `state: "complete"` `run.json` is
 skipped; that one without it is re-run; that invalidation removes `run.json` and moves the
 attempt to `<n>.invalid-<k>/` without destroying it; and that a run whose `score.json` is
@@ -863,9 +949,11 @@ missing is treated as incomplete even when its answer and usage files are presen
 verification steps over the produced data, not unit tests: the run produced a parseable
 answer block and a `usage.json`; its transcript shows no successful call to a tool its
 config denied; no tool call in it carries `targetDir` or `buildTags`; it ran under the
-pinned model; a `none` run's transcript contains no `mcp__quarry__*` tool and no occurrence
-of "quarry"; a cold-cell run's state directory held no `daemon.json` before and did hold one
-after; and a `score.json` exists, produced by the pinned scorer. Worktree dirtiness is
+pinned model; a `none` run's transcript contains no leak-shaped evidence (a `mcp__quarry__*` tool name,
+`/tmp/quarry-bench`, or a path into this repo — a "quarry" mention originating in the target
+codebase is recorded, not failed); the task worktree has no `CLAUDE.md`, `CONSTRAINTS.md`, or
+`.claude/`; a cold-cell run's state directory held no `daemon.json` before and did hold one
+after; and a `score.json` exists, produced by the pinned scorer from a redacted answer. Worktree dirtiness is
 **recorded, not gated** — see the worktree decision. A run failing a gate is retried at most
 3 times, after which the matrix halts. Across the matrix: each config has exactly 3 complete runs, and no
 reported number came from a self-report field. A failed gate invalidates that run per the
@@ -1106,6 +1194,43 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
   structural blinding when the guard is detection-based would overstate the guarantee
   relative to #006's, and the conclusion has to be able to describe what was actually
   enforced.
+- **Q:** Task schemas require an `evidence` field naming how each finding was verified —
+  doesn't that tell the scorer which rung it's grading? **A:** [auto-pick] Yes, so
+  `score_run.py` redacts quarry tool names, the word "quarry", and invocation forms from
+  every free-text field before scoring, keeping the original alongside for audit; residual
+  method-shaped hints are acknowledged rather than claimed away. **Why:** #006's committed
+  task-04 A-arm answer literally says "quarry `textDocument_definition` on…", so an
+  unredacted answer would de-blind the scorer on most of the 24 Ladder B runs via the one
+  input it is allowed to see; no mechanical redaction can remove method entirely without
+  destroying the evidence field the scoring rule reads, so the honest claim is "doesn't know
+  which config", not "can infer nothing".
+- **Q:** The task worktree carries Loomyard's own `CLAUDE.md`, `CONSTRAINTS.md`, and
+  `.claude/` — what happens to them? **A:** [auto-pick] The harness deletes all three from
+  the disposable worktree right after `git worktree add`, and a gate asserts their absence.
+  **Why:** a `claude -p` rooted there auto-loads them into all 45 runs as an uncontrolled
+  prompt prefix *and* a second permissions source layered under the generated `--settings` —
+  which would silently undermine the deny-list the whole ladder rests on.
+- **Q:** What is the separation bar for rung-vs-rung and warm-vs-cold, not just
+  rung-vs-control? **A:** [auto-pick] The same disjoint-range rule, stated and tested for all
+  three comparison types; rung-vs-rung is the primary one (identical preambles, no steering
+  confound, all metrics eligible), rung-vs-control excludes the grep counts, and
+  `a5-bundle` vs `a5-bundle-cold` is the warm-vs-cold contrast. **Why:** the confound block
+  already ruled that the cleanest attribution lives between quarry rungs, so leaving only the
+  control comparison with a stated bar would leave the suite's primary claims — and the one
+  the cold cell exists to make — with no criterion at all.
+- **Q:** Should the `none` blinding gate match the bare string "quarry"? **A:** [auto-pick]
+  No — only leak-shaped evidence (`mcp__quarry__*`, `/tmp/quarry-bench`, paths into this
+  repo); a target-origin mention is recorded, not failed. **Why:** Loomyard mentions quarry
+  in about a dozen of its own tracked files, so a bare-string gate would fire on ordinary
+  exploration with no harness leak involved — and under the 3-attempt cap, three such runs
+  would halt the entire 45-run matrix over the target codebase's own prose.
+- **Q:** Which #006 numbers may this suite compare itself against? **A:** [auto-pick]
+  Correctness only. Duration, tokens, cost, turns, tool counts, and grep counts may not be
+  compared, even informally. **Why:** #006's `usage.json` records no model id, broke out
+  token classes inconsistently across its own two run dates (its `_note` says so), and scoped
+  `tool_uses` inconsistently even within one date (task 01 warm counts all tools, task 04
+  warm counts quarry only against a ten-call breakdown). Correctness survives because both
+  suites score against the identical committed fasit for identical task text.
 - **Q:** If the review rounds hit the configured cap without converging, block or hand
   off? **A:** Hand off anyway (operator instruction, given mid-session). **Why:** the
   operator explicitly overrode auto-mode's block-on-non-progress behaviour for this task.
