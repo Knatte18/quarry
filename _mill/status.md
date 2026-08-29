@@ -81,7 +81,9 @@ batches:
     commit_sha: 0e22f8a996486224e3adc52372fa834a0c11bc2a
     verify_baseline_failures: []
   - name: protocol-readme
-    state: pending
+    state: running
+    implementer_session: a7b266a3-6873-4835-9585-a19de8d2bbc7
+    start_sha: 5c4811d691bda1954262c1eed0900798ee7967b8
   - name: execute-matrix
     state: pending
   - name: conclusion
