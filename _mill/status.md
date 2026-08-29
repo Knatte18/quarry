@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mcpserver-foundation
+phase: approved-lsp-mirrored-tools
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -33,6 +33,7 @@ planned  '2026-08-29T07:38:58Z'
 implementing  '2026-08-29T07:39:30Z'
 approved-export-cli-helpers  '2026-08-29T07:44:35Z'
 approved-mcpserver-foundation  '2026-08-29T07:53:18Z'
+approved-lsp-mirrored-tools  '2026-08-29T08:01:36Z'
 ```
 
 ## Batches
@@ -52,9 +53,10 @@ batches:
     commit_sha: 9129a49c1849fc66a94878556ecdab39d894cdb1
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: lsp-mirrored-tools
-    state: running
+    state: approved
     implementer_session: 0a5ccb39-795c-4965-ad8a-d107a8345a95
     start_sha: 7c02e1b3c5f1498adab9b1babec414c3f2acc688
+    commit_sha: 14a32eb0bcc16fe817f925d6bf19c09a3f2df087
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: quarry-native-lsp-tools
     state: pending
