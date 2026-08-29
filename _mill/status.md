@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
-plan: null
+plan: _mill/plan
 parent: main
 task: Add an MCP wrapper for quarry
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-29T05:55:57Z'
 discussion-fix-r6  '2026-08-29T06:46:05Z'
 discussed  '2026-08-29T06:46:05Z'
+planning  '2026-08-29T07:01:08Z'
 ```
