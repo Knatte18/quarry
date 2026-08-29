@@ -1,0 +1,1133 @@
+"""
+The quarry-mcp capability ladder harness's entry point: builds and adopts
+the two disposable task worktrees, builds the quarry-mcp server binary,
+probes permission-deny semantics once before any paid run, executes the
+sequential 42-run main matrix with resume and a three-attempt cap, then
+runs the 3-run cold-daemon comparison cell last.
+
+Every git call and every `claude` subprocess dispatch goes through one seam
+each (`git=run_git`, `executor=launch_run`), so the pure planning and
+resume logic -- run ordering, attempt accounting, the resume skip
+decision, argv assembly -- is testable without invoking a model or
+building a real worktree. The dispatch layer itself is exercised by
+actually running the matrix, never by a mock.
+
+Usage:
+    python run_ladder.py bench/loomyard-eval/ladder/ladder.yaml \
+        bench/loomyard-eval/ladder/results/2026-08-29 --stage all
+"""
+import argparse
+import json
+import os
+import select
+import shutil
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+from extract_usage import extract_usage, init_event, read_transcript, result_event
+from gates import (
+    GateFinding,
+    clear_state_dir,
+    daemon_state_file,
+    gate_cold_before,
+    gate_denied_tools_not_used,
+    gate_run_complete_artifacts,
+    gate_worktree_neutralised,
+    invalidate,
+    is_complete,
+    resolve_state_dir,
+    run_gates,
+    user_cache_dir,
+    wait_for_daemon_exit,
+    write_run_json,
+)
+from gates import run_dir as run_dir_for
+from ladder_config import (
+    extract_fenced_json,
+    load_ladder,
+    mcp_name,
+    preamble_for,
+    require_pins,
+    write_settings,
+)
+from score_run import ScoringError, score_run
+
+
+class HarnessError(Exception):
+    """
+    Raised when the harness cannot proceed safely: a stale worktree at a
+    declared path, a worktree adopted at the wrong pin, a failed server
+    build, a malformed or timed-out MCP call, a warm-up that left no
+    daemon.json behind, a preflight probe whose denial did not block, a
+    truncated run, or an exhausted attempt cap.
+    """
+
+
+""" TASK WORKTREE LIFECYCLE """
+
+
+def run_git(args):
+    """
+    The single seam every git call in this module goes through: runs
+    `git <args>` and returns its stdout. Every function below takes it as
+    a `git=run_git` default parameter so tests can drive them against an
+    injected runner without creating a real worktree.
+    """
+    result = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
+    return result.stdout
+
+
+def neutralise_worktree(path):
+    """
+    Deletes CLAUDE.md, CONSTRAINTS.md, and .claude/ from the disposable
+    worktree at path. This is a mutation of the disposable checkout only;
+    the live source checkout is never touched.
+    """
+    path = Path(path)
+    for name in ("CLAUDE.md", "CONSTRAINTS.md"):
+        target = path / name
+        if target.exists():
+            target.unlink()
+    claude_dir = path / ".claude"
+    if claude_dir.exists():
+        shutil.rmtree(claude_dir)
+
+
+def build_worktree(ladder, path, sha, git=run_git):
+    """
+    Builds one disposable task worktree at path, pinned to sha, off
+    ladder.source_repo: `git -C <source_repo> worktree add <path> <sha>`,
+    then neutralise_worktree, then an assertion that
+    gate_worktree_neutralised passes.
+
+    Raises HarnessError when a directory already exists at path, so a
+    stale worktree is never silently reused. ensure_task_worktrees is the
+    idempotent caller; nothing else calls this directly.
+    """
+    path = Path(path)
+    if path.exists():
+        raise HarnessError(f"build_worktree: a directory already exists at {path} -- refusing to reuse a stale worktree")
+
+    git(["-C", ladder.source_repo, "worktree", "add", str(path), sha])
+    neutralise_worktree(path)
+
+    findings = gate_worktree_neutralised(path)
+    if findings:
+        raise HarnessError(
+            f"build_worktree: {path} failed gate_worktree_neutralised: {[f.message for f in findings]}"
+        )
+
+
+def restore_worktree(path, git=run_git):
+    """
+    Restores a task worktree to its pinned commit after a run: `git -C
+    <path> reset --hard` followed by `git -C <path> clean -fdx`, then
+    neutralise_worktree again, since `clean -fdx` restores the
+    ambient-context files the neutralisation removed. Called
+    unconditionally after every main-matrix run.
+    """
+    git(["-C", str(path), "reset", "--hard"])
+    git(["-C", str(path), "clean", "-fdx"])
+    neutralise_worktree(path)
+
+
+def remove_worktree(ladder, path, git=run_git):
+    """Removes a disposable task worktree: `git -C <source_repo> worktree
+    remove --force <path>`."""
+    git(["-C", ladder.source_repo, "worktree", "remove", "--force", str(path)])
+
+
+def ensure_task_worktrees(ladder, git=run_git):
+    """
+    Returns a mapping from task key to worktree path, idempotently,
+    because the harness is re-invoked to resume and this runs on every
+    invocation.
+
+    For each task: when no directory exists at the declared path,
+    build_worktree it. When one does exist, read `git -C <path>
+    rev-parse HEAD` -- if it equals the task's declared pin, adopt the
+    existing worktree by calling restore_worktree on it and continue; if
+    it does not, raise HarnessError naming both SHAs, since a worktree at
+    the wrong pin would silently benchmark a different codebase.
+    """
+    worktrees = {}
+    for task_key, task in ladder.tasks.items():
+        path = Path(task.worktree)
+        if not path.exists():
+            build_worktree(ladder, path, task.pinned_sha, git=git)
+        else:
+            head = git(["-C", str(path), "rev-parse", "HEAD"]).strip()
+            if head != task.pinned_sha:
+                raise HarnessError(
+                    f"ensure_task_worktrees: {path} is at {head!r}, expected the declared pin {task.pinned_sha!r}"
+                )
+            restore_worktree(path, git=git)
+        worktrees[task_key] = path
+    return worktrees
+
+
+""" SERVER BINARY, PER-RUN MCP CONFIG, AND WARM-UP """
+
+
+def build_server(repo_root):
+    """
+    Builds the quarry-mcp server binary at <repo_root>/quarry-mcp with
+    CGO_ENABLED=1, returning its absolute path.
+
+    The warm-start path (a built binary) is used rather than the
+    committed `go run ./cmd/quarry-mcp` form so a cold build cache cannot
+    make a run's first connection exceed the client's connect timeout.
+    Raises HarnessError with the compiler output when the build fails,
+    naming the CGO toolchain requirement, since a missing C toolchain
+    fails at compile time (the toc verbs' tree-sitter backend links C
+    grammars).
+    """
+    repo_root = Path(repo_root)
+    binary_path = repo_root / "quarry-mcp"
+    build_env = dict(os.environ)
+    build_env["CGO_ENABLED"] = "1"
+
+    result = subprocess.run(
+        ["go", "build", "-o", str(binary_path), "./cmd/quarry-mcp"],
+        cwd=str(repo_root),
+        env=build_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise HarnessError(
+            "build_server: go build ./cmd/quarry-mcp failed -- requires CGO_ENABLED=1 "
+            f"with a C toolchain:\n{result.stderr}"
+        )
+    return str(binary_path.resolve())
+
+
+def mcp_config_document(server_path, target_dir):
+    """
+    The --mcp-config mapping declaring a single server named "quarry",
+    whose command is the built binary's absolute path and whose args
+    carry an explicit --target-dir <target_dir>.
+    """
+    return {
+        "mcpServers": {
+            "quarry": {
+                "command": str(server_path),
+                "args": ["--target-dir", str(target_dir)],
+            }
+        }
+    }
+
+
+def write_run_inputs(ladder, config, run_dir, target_dir, server_path):
+    """
+    Materialises one run's launch inputs into run_dir: its settings.json
+    always, and its mcp.json only when config.allowed is non-empty.
+
+    A config whose allowed set is empty gets no MCP config file and is
+    launched with no --mcp-config at all: the quarry server is never
+    declared to it, because a declared server named "quarry" exposing an
+    mcp__quarry__* namespace is itself the structural leak the blinding
+    forbids.
+    """
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    write_settings(ladder, config, run_dir / "settings.json")
+    if config.allowed:
+        with open(run_dir / "mcp.json", "w") as f:
+            json.dump(mcp_config_document(server_path, target_dir), f, indent=2)
+            f.write("\n")
+
+
+_MCP_PROTOCOL_VERSION = "2024-11-05"
+
+
+def _write_jsonrpc_message(stream, message):
+    """Writes one JSON-RPC message as a single line, matching the
+    newline-delimited framing cmd/quarry-mcp/main.go's mcp.StdioTransport{}
+    speaks."""
+    stream.write(json.dumps(message))
+    stream.write("\n")
+    stream.flush()
+
+
+def _readline_with_timeout(stream, timeout_s):
+    """
+    Returns one line off stream, waiting at most timeout_s.
+
+    Returns None when nothing became readable within timeout_s, and ""
+    when the stream was readable but at EOF (the server closed stdout).
+    """
+    ready, _writable, _errored = select.select([stream], [], [], timeout_s)
+    if not ready:
+        return None
+    return stream.readline()
+
+
+def mcp_call(server_path, target_dir, tool, arguments, env, timeout_s):
+    """
+    A minimal MCP stdio client, standard library only.
+
+    Spawns the server binary rooted at target_dir with pipes on stdin and
+    stdout; writes a JSON-RPC "initialize" request, then an "initialized"
+    notification, then a "tools/call" request naming tool and arguments,
+    each as one JSON object followed by a newline; reads newline-delimited
+    JSON objects back off stdout until the response whose id matches the
+    request arrives; then closes stdin and terminates the process.
+
+    Raises HarnessError on a JSON-RPC error response, on a malformed
+    line, on the server closing stdout before a matching response
+    arrives, or on timeout_s elapsing.
+    """
+    argv = [str(server_path), "--target-dir", str(target_dir)]
+    proc = subprocess.Popen(
+        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
+    )
+    try:
+        call_id = 2
+        _write_jsonrpc_message(
+            proc.stdin,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": _MCP_PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "loomyard-eval-ladder", "version": "1.0"},
+                },
+            },
+        )
+        _write_jsonrpc_message(proc.stdin, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+        _write_jsonrpc_message(
+            proc.stdin,
+            {"jsonrpc": "2.0", "id": call_id, "method": "tools/call", "params": {"name": tool, "arguments": arguments}},
+        )
+
+        deadline = time.monotonic() + timeout_s
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise HarnessError(f"mcp_call: {tool} timed out after {timeout_s}s waiting for a response")
+            line = _readline_with_timeout(proc.stdout, remaining)
+            if line is None:
+                continue
+            if line == "":
+                raise HarnessError(f"mcp_call: {tool}: server closed stdout before a matching response arrived")
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise HarnessError(f"mcp_call: malformed line from quarry-mcp server: {exc}") from exc
+            if message.get("id") == call_id:
+                if "error" in message:
+                    raise HarnessError(f"mcp_call: {tool} returned a JSON-RPC error: {message['error']}")
+                return message.get("result")
+    finally:
+        proc.stdin.close()
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+
+WARM_UP_TOOL = "workspace_symbol"
+
+_WARM_UP_TIMEOUT_S = 60
+
+
+def warm_daemon(server_path, target_dir, env, cache_dir):
+    """
+    Pre-warms the daemon for one main-matrix run: one mcp_call against
+    WARM_UP_TOOL, then an assertion that a daemon.json now exists at the
+    state directory gates.resolve_state_dir derives for target_dir.
+
+    The query needs no match: workspace_symbol's handler calls
+    resolveCall once for the whole call before resolving any target, so
+    the daemon starts whether or not the query resolves -- which is why
+    the post-condition is the state file's existence and not the result
+    payload. WARM_UP_TOOL must be daemon-backed: toc_file and toc_dir
+    reach the tree-sitter path directly and never EnsureServer, so
+    warming with a toc call would start no daemon at all. Called by
+    run_matrix immediately before each main-matrix run's dispatch, per
+    run rather than once per worktree, since the daemon self-expires
+    after its idle timeout; never called for a config with cold: true.
+    """
+    mcp_call(server_path, target_dir, WARM_UP_TOOL, {"targets": [{"query": "Run"}]}, env, timeout_s=_WARM_UP_TIMEOUT_S)
+    state_dir = resolve_state_dir(target_dir, cache_dir, env)
+    state_file = daemon_state_file(state_dir)
+    if not os.path.exists(state_file):
+        raise HarnessError(
+            f"warm_daemon: no daemon.json at {state_file} after warming {target_dir} -- "
+            "the warm-up call did not start a daemon"
+        )
+
+
+def run_env():
+    """
+    The environment every subprocess this module launches inherits, with
+    QUARRY_STATE_DIR and QUARRY_BUILD_TAGS removed.
+
+    Both would move the resolved state directory off the per-path key the
+    cold cell depends on: the first two take precedence over
+    workspaceKey outright, and a non-empty tag set appends a
+    "tags-<hex>" segment at every tier. QUARRY_CONFIG is deliberately
+    not scrubbed: it selects the servers.yaml overlay naming the
+    language-server command, and clearing it on a machine that needs an
+    overlay would stop the server starting at all.
+    """
+    env = dict(os.environ)
+    env.pop("QUARRY_STATE_DIR", None)
+    env.pop("QUARRY_BUILD_TAGS", None)
+    return env
+
+
+""" THE PREFLIGHT DENIAL PROBE """
+
+# The one tool the probe denies -- an arbitrary daemon-backed choice, since
+# what is being established is whether permissions.deny blocks at all, not
+# whether this particular tool is safe.
+_PROBE_DENIED_TOOL = "impact"
+
+
+def run_probe(ladder, repo_root, results_root, target_dir, server_path):
+    """
+    Executes one throwaway claude -p run, before any matrix run, that
+    declares the quarry server with mcp__quarry__impact denied and asks
+    the agent to call it and report what happened.
+
+    Writes probe.json into results_root recording denial_blocks (whether
+    the denied call failed to succeed -- the load-bearing premise of the
+    whole suite), denied_tools_advertised (whether the denied name
+    appears in the init event's tools array), advertised_tools,
+    session_id, the resolved model, the resolved QUARRY_CONFIG value, and
+    the probe's own transcript path (captured under
+    <results_root>/raw/probe/, the one subtree .gitignore covers).
+
+    Raises HarnessError when denial_blocks is False -- the matrix halts
+    before a single paid run, because every rung would silently be the
+    full bundle. The probe runs with the same --setting-sources "",
+    --strict-mcp-config, --max-turns, and non-interactive permission mode
+    as every matrix run, so what it establishes is true of the matrix and
+    not of a differently-configured invocation.
+    """
+    del repo_root  # accepted for signature symmetry with the rest of this module's dispatch functions; unused here.
+    results_root = Path(results_root)
+    probe_dir = results_root / "raw" / "probe"
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    transcript_path = probe_dir / "transcript.jsonl"
+
+    denied_name = mcp_name(_PROBE_DENIED_TOOL)
+    settings_path = probe_dir / "settings.json"
+    with open(settings_path, "w") as f:
+        json.dump({"permissions": {"allow": ["Read", "Grep", "Glob", "Bash"], "deny": [denied_name, "Task"]}}, f, indent=2)
+        f.write("\n")
+
+    mcp_config_path = probe_dir / "mcp.json"
+    with open(mcp_config_path, "w") as f:
+        json.dump(mcp_config_document(server_path, target_dir), f, indent=2)
+        f.write("\n")
+
+    prompt = (
+        f"Call the {denied_name} tool once, with any plausible arguments for it, and "
+        "report exactly what happened when you called it -- whether it succeeded, was "
+        "denied, or errored, quoting the tool result you received."
+    )
+
+    argv = [
+        "claude", "-p", prompt,
+        "--model", ladder.run_model,
+        "--output-format", "stream-json",
+        "--verbose",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--settings", str(settings_path),
+        "--permission-mode", "dontAsk",
+        "--max-turns", str(ladder.max_turns),
+        "--mcp-config", str(mcp_config_path),
+    ]
+
+    env = run_env()
+    launch_run(argv, cwd=target_dir, env=env, transcript_path=transcript_path)
+    events = read_transcript(transcript_path)
+
+    init = init_event(events)
+    advertised_tools = init.get("tools") or []
+    denial_blocks = not gate_denied_tools_not_used(events, [denied_name])
+
+    probe_record = {
+        "denial_blocks": denial_blocks,
+        "denied_tools_advertised": denied_name in advertised_tools,
+        "advertised_tools": advertised_tools,
+        "session_id": init.get("session_id"),
+        "model": init.get("model"),
+        "quarry_config": env.get("QUARRY_CONFIG"),
+        "transcript": str(transcript_path),
+    }
+    with open(results_root / "probe.json", "w") as f:
+        json.dump(probe_record, f, indent=2)
+        f.write("\n")
+
+    if not denial_blocks:
+        raise HarnessError(
+            "run_probe: the denied tool call did not error -- permissions.deny does not "
+            "block; halting before any matrix run"
+        )
+    return probe_record
+
+
+""" EXECUTE ONE RUN END TO END """
+
+# The exact heading text both task files use to introduce their identical
+# task-text block -- the section boundary is load-bearing, not tidiness
+# (see task_text_for's docstring).
+TASK_TEXT_HEADING = "## `<TASK TEXT>` (identical for A, B, C)"
+
+
+def task_text_for(ladder, task_key):
+    """
+    Extracts the task's task-text block from its committed task file, so
+    the preamble is assembled from the tracked source rather than from a
+    copy.
+
+    Starts at the line whose heading text is TASK_TEXT_HEADING, takes
+    every following line up to but not including the next line beginning
+    with "## ", strips a leading "> " or ">" from each line, and strips
+    surrounding blank lines. Over-reading this boundary is the worst
+    failure this harness can have: task 01's very next section is its
+    fasit leads, and task 04's is followed by its scoring notes naming
+    the real callers and the burler.go:373 decoy outright -- an extractor
+    that ran past the boundary would paste the answer key into every
+    run's prompt.
+
+    Raises HarnessError when the heading is absent or the extracted body
+    is empty.
+    """
+    task = ladder.tasks[task_key]
+    with open(task.task_file) as f:
+        lines = f.read().splitlines()
+
+    try:
+        start = lines.index(TASK_TEXT_HEADING)
+    except ValueError as exc:
+        raise HarnessError(f"task_text_for: {task.task_file!r} has no {TASK_TEXT_HEADING!r} heading") from exc
+
+    body_lines = []
+    for line in lines[start + 1:]:
+        if line.startswith("## "):
+            break
+        if line.startswith("> "):
+            body_lines.append(line[2:])
+        elif line.startswith(">"):
+            body_lines.append(line[1:])
+        else:
+            body_lines.append(line)
+
+    while body_lines and not body_lines[0].strip():
+        body_lines.pop(0)
+    while body_lines and not body_lines[-1].strip():
+        body_lines.pop()
+
+    if not body_lines:
+        raise HarnessError(f"task_text_for: {task.task_file!r} extracted an empty task-text body")
+
+    return "\n".join(body_lines)
+
+
+def _first_fenced_json_block(text):
+    """Returns the first ```json ... ``` fenced block found in text, fences
+    included. Raises HarnessError when none is present."""
+    found = extract_fenced_json(text, which="first")
+    if found is None:
+        raise HarnessError("schema_for: no fenced json block found in the expected section")
+    block_text, _inner_text = found
+    return block_text
+
+
+def _section(text, heading):
+    """Returns the text between heading (exclusive) and the next line
+    starting with "## " (exclusive), or to the end of text when there is
+    no next "## " line. Raises HarnessError when heading is absent."""
+    idx = text.find(heading)
+    if idx == -1:
+        raise HarnessError(f"schema_for: no {heading!r} section found")
+    section = text[idx + len(heading):]
+    next_heading = section.find("\n## ")
+    if next_heading != -1:
+        section = section[:next_heading]
+    return section
+
+
+_IMPACT_SCHEMA_HEADING = "## Output schema (impact-analysis tasks)"
+_EXPLORATION_SCHEMAS_HEADING = "## Output schemas"
+_EXPLORATION_SCHEMA_MARKER = "**Exploration tasks:**"
+_BENCHMARK_README_PATH = "bench/loomyard-eval/README.md"
+
+
+def schema_for(ladder, task_key):
+    """
+    Returns the task's output schema (a fenced ```json ... ``` block, with
+    fences), from the source that actually holds it -- which differs per
+    task and is not uniform.
+
+    The impact schema is in task 04's own "## Output schema
+    (impact-analysis tasks)" section. Task 01 has no schema section at
+    all, so the exploration schema comes from the "## Output schemas"
+    section of the benchmark README, under its "Exploration tasks:"
+    marker. Selection is driven by the task's declared schema field,
+    never by guessing which file to read.
+
+    Raises HarnessError when the named section is absent.
+    """
+    task = ladder.tasks[task_key]
+
+    if task.schema == "impact":
+        with open(task.task_file) as f:
+            text = f.read()
+        return _first_fenced_json_block(_section(text, _IMPACT_SCHEMA_HEADING))
+
+    if task.schema == "exploration":
+        with open(_BENCHMARK_README_PATH) as f:
+            text = f.read()
+        schemas_section = _section(text, _EXPLORATION_SCHEMAS_HEADING)
+        marker_idx = schemas_section.find(_EXPLORATION_SCHEMA_MARKER)
+        if marker_idx == -1:
+            raise HarnessError(
+                f"schema_for: {_BENCHMARK_README_PATH!r}'s {_EXPLORATION_SCHEMAS_HEADING!r} section "
+                f"has no {_EXPLORATION_SCHEMA_MARKER!r} marker"
+            )
+        return _first_fenced_json_block(schemas_section[marker_idx:])
+
+    raise HarnessError(f"schema_for: unknown schema {task.schema!r} for task {task_key!r}")
+
+
+def build_argv(ladder, config, run_dir, target_dir):
+    """
+    Builds the full claude argv for one matrix run: -p, the generated
+    preamble as the prompt, --model the pinned run model, --output-format
+    stream-json, --verbose, --setting-sources "", --strict-mcp-config,
+    --settings <run_dir>/settings.json, --permission-mode dontAsk,
+    --max-turns from the ladder's max_turns field, and --mcp-config
+    <run_dir>/mcp.json only when config.allowed is non-empty.
+
+    Never includes --state-dir: the suite always resolves the state
+    directory through the scrubbed environment, never the launch flag.
+    """
+    task_text = task_text_for(ladder, config.task)
+    schema_json = schema_for(ladder, config.task)
+    prompt = preamble_for(ladder, config, target_dir, task_text, schema_json)
+
+    run_dir = Path(run_dir)
+    argv = [
+        "claude", "-p", prompt,
+        "--model", ladder.run_model,
+        "--output-format", "stream-json",
+        "--verbose",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--settings", str(run_dir / "settings.json"),
+        "--permission-mode", "dontAsk",
+        "--max-turns", str(ladder.max_turns),
+    ]
+    if config.allowed:
+        argv += ["--mcp-config", str(run_dir / "mcp.json")]
+    return argv
+
+
+def launch_run(argv, cwd, env, transcript_path):
+    """
+    The default executor: the one place this module starts a claude
+    subprocess.
+
+    Captures the subprocess's stdout stream directly to transcript_path
+    as it runs -- the OS pipes the child's writes straight to the open
+    file, so a run that dies mid-way still leaves a diagnosable
+    transcript. Exists as a named seam so tests drive an injected
+    executor rather than a model.
+    """
+    with open(transcript_path, "w") as transcript_file:
+        subprocess.run(
+            argv, cwd=str(cwd), env=env, stdout=transcript_file, stderr=subprocess.PIPE, text=True, check=False
+        )
+
+
+def _extract_answer(result_payload):
+    """
+    Parses the final fenced json block out of the result event's "result"
+    text field. Raises HarnessError when none is present or it does not
+    parse.
+    """
+    text = result_payload.get("result", "")
+    found = extract_fenced_json(text, which="last")
+    if found is None:
+        raise HarnessError("execute_run: result event's result field carried no fenced json block")
+    _block_text, inner_text = found
+    try:
+        return json.loads(inner_text)
+    except json.JSONDecodeError as exc:
+        raise HarnessError(f"execute_run: final fenced json block did not parse: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class RunOutcome:
+    """
+    The result of execute_run's per-run pipeline.
+
+    Instance variables:
+        status: "complete", "truncated", or "failed".
+        config_id: the config this outcome belongs to.
+        n: 1-based repetition index.
+        run_json: the written run.json record, present only when status
+            == "complete".
+        findings: tuple of GateFinding-shaped details explaining a
+            "truncated" or "failed" outcome; empty for "complete".
+    """
+
+    status: str
+    config_id: str
+    n: int
+    run_json: dict = None
+    findings: tuple = ()
+
+
+def execute_run(ladder, config, n, run_dir, target_dir, server_path, repo_root, cache_dir, executor=launch_run):
+    """
+    The per-run pipeline: materialise inputs; launch the subprocess
+    through executor, capturing its stdout stream directly to
+    transcript.jsonl as it runs; parse the final fenced json block out of
+    the result event's result field into answer.json; extract
+    usage.json; run run_gates; invoke score_run; run
+    gate_run_complete_artifacts; and only then write_run_json.
+
+    A run whose result event reports a non-success subtype -- the shape a
+    run stopped by --max-turns leaves, with no fenced json block to parse
+    -- returns a "truncated" RunOutcome rather than the generic
+    unparseable-answer failure, because the two call for opposite
+    responses. Any failing fatal gate, an unparseable answer from a run
+    that did finish, or a scoring failure returns a "failed" RunOutcome
+    carrying the findings, and no run.json is written in any of these
+    cases.
+    """
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    write_run_inputs(ladder, config, run_dir, target_dir, server_path)
+
+    argv = build_argv(ladder, config, run_dir, target_dir)
+    transcript_path = run_dir / "transcript.jsonl"
+    env = run_env()
+
+    start = time.monotonic()
+    executor(argv, cwd=target_dir, env=env, transcript_path=transcript_path)
+    wall_clock_ms = int((time.monotonic() - start) * 1000)
+
+    events = read_transcript(transcript_path)
+    result = result_event(events)
+
+    if result.get("subtype") != "success":
+        return RunOutcome(
+            status="truncated",
+            config_id=config.id,
+            n=n,
+            findings=(
+                GateFinding(
+                    "truncated",
+                    f"config {config.id!r} rep {n} did not finish successfully "
+                    f"(subtype={result.get('subtype')!r}); max_turns={ladder.max_turns}",
+                    fatal=True,
+                ),
+            ),
+        )
+
+    try:
+        answer = _extract_answer(result)
+    except HarnessError as exc:
+        return RunOutcome(
+            status="failed", config_id=config.id, n=n,
+            findings=(GateFinding("unparseable_answer", str(exc), fatal=True),),
+        )
+
+    with open(run_dir / "answer.json", "w") as f:
+        json.dump(answer, f, indent=2)
+        f.write("\n")
+
+    usage = extract_usage(events, wall_clock_ms=wall_clock_ms, transcript_path=str(transcript_path))
+    with open(run_dir / "usage.json", "w") as f:
+        json.dump(usage, f, indent=2)
+        f.write("\n")
+
+    gate_report = run_gates(events, ladder, config, ladder.run_model, repo_root, target_dir, run_dir, cache_dir, env)
+    if not gate_report.passed:
+        return RunOutcome(status="failed", config_id=config.id, n=n, findings=gate_report.findings)
+
+    task_text = task_text_for(ladder, config.task)
+    try:
+        score_run(ladder, config, run_dir, task_text)
+    except ScoringError as exc:
+        return RunOutcome(
+            status="failed", config_id=config.id, n=n,
+            findings=(GateFinding("scoring_failed", str(exc), fatal=True),),
+        )
+
+    artifact_findings = gate_run_complete_artifacts(run_dir)
+    if artifact_findings:
+        return RunOutcome(status="failed", config_id=config.id, n=n, findings=tuple(artifact_findings))
+
+    payload = {
+        "config_id": config.id,
+        "n": n,
+        "model": ladder.run_model,
+        "observations": [{"gate": finding.gate, "message": finding.message} for finding in gate_report.findings],
+    }
+    written = write_run_json(run_dir, payload)
+    return RunOutcome(status="complete", config_id=config.id, n=n, run_json=written)
+
+
+""" THE SEQUENTIAL MATRIX DRIVER """
+
+
+def plan_runs(ladder):
+    """
+    The ordered list of all 45 (config, n) pairs: every non-cold config's
+    reps repetitions first, then the cold config's. It is the reporting
+    view of the whole matrix; neither driver iterates it directly.
+    """
+    pairs = []
+    for config in ladder.configs:
+        if not config.cold:
+            for n in range(1, ladder.reps + 1):
+                pairs.append((config, n))
+    for config in ladder.configs:
+        if config.cold:
+            for n in range(1, ladder.reps + 1):
+                pairs.append((config, n))
+    return pairs
+
+
+def main_runs(ladder):
+    """The main-matrix partition of plan_runs -- every non-cold pair."""
+    return [(config, n) for config, n in plan_runs(ladder) if not config.cold]
+
+
+def cold_runs(ladder):
+    """The cold-cell partition of plan_runs -- every cold pair."""
+    return [(config, n) for config, n in plan_runs(ladder) if config.cold]
+
+
+def pending_runs(pairs, results_root):
+    """
+    Filters pairs through gates.is_complete, so a re-invocation skips
+    finished runs rather than re-running the matrix. Both drivers call
+    this with their own partition.
+    """
+    return [(config, n) for config, n in pairs if not is_complete(run_dir_for(results_root, config.id, n))]
+
+
+MAX_ATTEMPTS = 3
+
+
+def run_matrix(ladder, results_root, worktrees, server_path, repo_root, cache_dir, executor=launch_run, git=run_git):
+    """
+    Drives the main matrix sequentially, one run at a time, never
+    concurrently -- concurrent runs would contend for CPU, the shared
+    daemon, and model-side rate limits, any of which would make
+    wall-clock incomparable across configs.
+
+    For each pending main-matrix pair: warm the target worktree's daemon,
+    then execute; on a "complete" outcome continue to the next pair; on a
+    "failed" outcome invalidate the run directory and retry, up to
+    MAX_ATTEMPTS attempts. On the third failure, halt the whole matrix,
+    leaving every completed run intact so a re-invocation resumes past
+    them. A "truncated" outcome is never retried and halts the matrix on
+    its first occurrence, since the max_turns ceiling is a matrix-wide
+    constant a second attempt would hit identically.
+
+    After every attempt, successful or not, restore_worktree runs
+    unconditionally -- the worktree_dirtied observation was already taken
+    inside execute_run's run_gates call, before the restore erases it.
+    """
+    for config, n in pending_runs(main_runs(ladder), results_root):
+        target_dir = worktrees[config.task]
+        a_run_dir = run_dir_for(results_root, config.id, n)
+        env = run_env()
+
+        outcome = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            warm_daemon(server_path, target_dir, env, cache_dir)
+            outcome = execute_run(ladder, config, n, a_run_dir, target_dir, server_path, repo_root, cache_dir, executor=executor)
+            restore_worktree(target_dir, git=git)
+
+            if outcome.status == "complete":
+                break
+            if outcome.status == "truncated":
+                raise HarnessError(
+                    f"run_matrix: config {config.id!r} rep {n} was truncated at "
+                    f"max_turns={ladder.max_turns}; halting the matrix -- raise "
+                    "max_turns and re-run into a new dated results directory"
+                )
+            invalidate(a_run_dir)
+            if attempt == MAX_ATTEMPTS:
+                raise HarnessError(
+                    f"run_matrix: config {config.id!r} rep {n} failed {MAX_ATTEMPTS} "
+                    f"attempts; last findings: {[(f.gate, f.message) for f in outcome.findings]}"
+                )
+
+
+""" THE COLD-CELL DRIVER """
+
+# The daemon's own 10-minute idle timeout plus a minute of margin, so no
+# cold run is timed alongside a resident daemon from a predecessor.
+DAEMON_EXIT_TIMEOUT_S = 660
+
+
+def _rep_disposition_from_run_json(a_run_dir):
+    """
+    Reads a completed cold-cell repetition's run.json and returns "cold"
+    when its gate observations confirm a supervised connection, or
+    "no_daemon_signal" when it recorded cold_no_daemon_backed_call.
+    """
+    with open(Path(a_run_dir) / "run.json") as f:
+        record = json.load(f)
+    gate_names = {observation["gate"] for observation in record.get("observations", [])}
+    if "cold_no_daemon_backed_call" in gate_names:
+        return "no_daemon_signal"
+    return "cold"
+
+
+def run_cold_cell(ladder, results_root, server_path, repo_root, cache_dir, executor=launch_run, git=run_git):
+    """
+    Runs the cold-daemon comparison cell, executed after the entire main
+    matrix.
+
+    Before the first repetition, drains the daemons the main matrix left
+    resident on every shared task worktree. For each of the cold config's
+    repetitions: builds a fresh worktree at cold_worktree_template with
+    {n} substituted; clears the resolved state directory and asserts
+    gate_cold_before before every attempt (including retries), since a
+    failed attempt's daemon.json would otherwise fail the precondition
+    deterministically; runs no warm-up step; executes through
+    execute_run, whose internal run_gates call asserts gate_cold_after
+    for a cold config; and removes the worktree after the final attempt
+    whatever its outcome.
+
+    Persists <results_root>/cold_cell.json recording one of four
+    dispositions -- confirmed-cold, not-run, no-daemon-signal, or
+    partial -- and the number of confirmed-cold repetitions, so a not-run
+    or partial cell is never mistaken for an interrupted one.
+
+    A repetition that never confirms cold can land there for two distinct
+    reasons -- every attempt exhausted MAX_ATTEMPTS on the native-fallback
+    branch (an environment limitation the not-run disposition documents),
+    or every attempt discarded because gate_cold_before found a live
+    daemon before it even started (a different, retry-exhausting cause the
+    plan's not-run definition does not describe). The per-repetition cause
+    is tracked and recorded in "not_run_causes" so the reason text stays
+    accurate rather than reporting both alike.
+    """
+    results_root = Path(results_root)
+    env = run_env()
+
+    # Drain the daemons the main matrix left resident before the first
+    # cold repetition starts, so neither task daemon competes with the
+    # cold runs for CPU.
+    for task in ladder.tasks.values():
+        wait_for_daemon_exit(task.worktree, cache_dir, env, DAEMON_EXIT_TIMEOUT_S)
+
+    all_pairs = cold_runs(ladder)
+    pending = pending_runs(all_pairs, results_root)
+    pending_ns = {n for _config, n in pending}
+
+    dispositions = {}
+    not_run_causes = {}
+    for config, n in all_pairs:
+        if n not in pending_ns:
+            dispositions[n] = _rep_disposition_from_run_json(run_dir_for(results_root, config.id, n))
+
+    for config, n in pending:
+        target_dir = ladder.cold_worktree_template.format(n=n)
+        a_run_dir = run_dir_for(results_root, config.id, n)
+        task_sha = ladder.tasks[config.task].pinned_sha
+
+        rep_disposition = "not_run"
+        rep_not_run_cause = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            build_worktree(ladder, target_dir, task_sha, git=git)
+            clear_state_dir(target_dir, cache_dir, env)
+
+            if gate_cold_before(target_dir, cache_dir, env):
+                # A genuinely live daemon means this attempt cannot be
+                # cold -- discard it and retry rather than reporting it
+                # as cold. Distinct cause from a native-fallback
+                # exhaustion below -- see run_cold_cell's docstring.
+                rep_not_run_cause = "live_daemon_before_start"
+                remove_worktree(ladder, target_dir, git=git)
+                continue
+
+            outcome = execute_run(ladder, config, n, a_run_dir, target_dir, server_path, repo_root, cache_dir, executor=executor)
+            remove_worktree(ladder, target_dir, git=git)
+
+            if outcome.status == "truncated":
+                raise HarnessError(
+                    f"run_cold_cell: config {config.id!r} rep {n} was truncated at "
+                    f"max_turns={ladder.max_turns}; halting -- raise max_turns and "
+                    "re-run into a new dated results directory"
+                )
+            if outcome.status == "complete":
+                rep_disposition = _rep_disposition_from_run_json(a_run_dir)
+                rep_not_run_cause = None
+                break
+
+            rep_not_run_cause = "native_fallback_exhausted"
+            invalidate(a_run_dir)
+
+        dispositions[n] = rep_disposition
+        if rep_disposition == "not_run":
+            not_run_causes[n] = rep_not_run_cause
+        wait_for_daemon_exit(target_dir, cache_dir, env, DAEMON_EXIT_TIMEOUT_S)
+
+    reps_confirmed_cold = sum(1 for status in dispositions.values() if status == "cold")
+    reps_not_run = sum(1 for status in dispositions.values() if status == "not_run")
+    total_reps = len(all_pairs)
+
+    reps_not_run_live_daemon = sum(
+        1 for cause in not_run_causes.values() if cause == "live_daemon_before_start"
+    )
+    reps_not_run_native_fallback = reps_not_run - reps_not_run_live_daemon
+
+    def _not_run_reps_reason():
+        """Describes why the not-run reps never confirmed cold, naming
+        both causes only when both actually occurred -- see
+        run_cold_cell's docstring on why they are tracked separately."""
+        if reps_not_run_live_daemon == 0:
+            return f"{reps_not_run_native_fallback} exhausted attempts on the native-fallback branch"
+        if reps_not_run_native_fallback == 0:
+            return f"{reps_not_run_live_daemon} found a live daemon before every attempt started"
+        return (
+            f"{reps_not_run_native_fallback} exhausted attempts on the native-fallback branch, "
+            f"{reps_not_run_live_daemon} found a live daemon before every attempt started"
+        )
+
+    if reps_confirmed_cold >= 1 and reps_not_run == 0:
+        disposition = "confirmed-cold"
+        reason = f"{reps_confirmed_cold} of {total_reps} repetitions confirmed cold"
+    elif reps_confirmed_cold >= 1 and reps_not_run >= 1:
+        disposition = "partial"
+        reason = (
+            f"{reps_confirmed_cold} of {total_reps} repetitions confirmed cold; "
+            f"{reps_not_run} did not: {_not_run_reps_reason()}"
+        )
+    elif reps_confirmed_cold == 0 and reps_not_run == total_reps:
+        disposition = "not-run"
+        if reps_not_run_live_daemon == 0:
+            reason = (
+                "the supervised daemon strategy is unavailable on this machine -- every "
+                "repetition exhausted its attempts on the native-fallback branch"
+            )
+        else:
+            reason = f"no repetition confirmed cold: {_not_run_reps_reason()}"
+    else:
+        disposition = "no-daemon-signal"
+        reason = "every repetition completed validly but none invoked a daemon-backed tool"
+
+    record = {
+        "disposition": disposition,
+        "reason": reason,
+        "confirmed_cold_reps": reps_confirmed_cold,
+        "reps": total_reps,
+        "per_repetition": dispositions,
+        "not_run_causes": not_run_causes,
+    }
+    with open(results_root / "cold_cell.json", "w") as f:
+        json.dump(record, f, indent=2)
+        f.write("\n")
+    return record
+
+
+""" THE CLI ENTRY POINT """
+
+
+def _run_probe_if_needed(ladder, repo_root, results_root, worktrees, server_path, prober=run_probe):
+    """
+    Runs the preflight probe unless results_root already holds a
+    probe.json recording a passing probe (denial_blocks: true) -- the CLI
+    is re-invoked on every resume, and without this skip each resume
+    would spend a paid run re-probing and overwrite an already-committed
+    probe record.
+    """
+    results_root = Path(results_root)
+    probe_path = results_root / "probe.json"
+    if probe_path.exists():
+        with open(probe_path) as f:
+            existing = json.load(f)
+        if existing.get("denial_blocks"):
+            return existing
+
+    target_dir = worktrees[next(iter(ladder.tasks))]
+    return prober(ladder, repo_root, results_root, target_dir, server_path)
+
+
+def run_stage(ladder, results_root, worktrees, server_path, repo_root, cache_dir, stage,
+              prober=run_probe, matrix_runner=run_matrix, cold_runner=run_cold_cell):
+    """
+    Runs the CLI's stage-selection logic against already-resolved
+    dependencies (a loaded Ladder, established task worktrees, and a
+    built server binary), with the probe/main-matrix/cold-cell drivers
+    injectable so tests exercise the selector without dispatching any of
+    them for real.
+
+    "probe" runs the probe (skipped when already recorded passing) and
+    stops. "main" runs only the main matrix. "cold" runs only the cold
+    cell. "all" runs the probe, then the main matrix, then the cold cell,
+    in that order.
+    """
+    if stage in ("probe", "all"):
+        _run_probe_if_needed(ladder, repo_root, results_root, worktrees, server_path, prober=prober)
+
+    if stage == "main":
+        matrix_runner(ladder, results_root, worktrees, server_path, repo_root, cache_dir)
+    elif stage == "cold":
+        cold_runner(ladder, results_root, server_path, repo_root, cache_dir)
+    elif stage == "all":
+        matrix_runner(ladder, results_root, worktrees, server_path, repo_root, cache_dir)
+        cold_runner(ladder, results_root, server_path, repo_root, cache_dir)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description=(
+            "Drive the quarry-mcp capability ladder benchmark: task worktrees, the "
+            "preflight probe, the sequential main matrix, and the cold-daemon "
+            "comparison cell."
+        )
+    )
+    parser.add_argument("ladder_path", help="path to ladder.yaml")
+    parser.add_argument("results_root", help="results directory this invocation writes into")
+    parser.add_argument(
+        "--stage",
+        choices=["probe", "main", "cold", "all"],
+        default="all",
+        help="which stage(s) to run (default: all)",
+    )
+    cli_args = parser.parse_args()
+
+    cli_ladder = load_ladder(cli_args.ladder_path)
+    require_pins(cli_ladder)
+
+    cli_repo_root = Path.cwd()
+    cli_results_root = Path(cli_args.results_root)
+    cli_results_root.mkdir(parents=True, exist_ok=True)
+    cli_cache_dir = user_cache_dir()
+
+    cli_server_path = build_server(cli_repo_root)
+    cli_worktrees = ensure_task_worktrees(cli_ladder)
+
+    run_stage(
+        cli_ladder, cli_results_root, cli_worktrees, cli_server_path, cli_repo_root, cli_cache_dir, cli_args.stage
+    )
+
+    print(f"done -- point summarize.py at {cli_results_root}")
