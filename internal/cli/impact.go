@@ -2,7 +2,7 @@
 // own enclosing declaration's identity and line range, via quarry.Impact.
 // It also holds the three impact-typed helpers refsCommand's emitLookupResult/classifyLookupError
 // have no counterpart for, because impact's result is its own struct rather than
-// []quarry.Reference: emitImpactResult, classifyImpactError, and filterImpactWithin.
+// []quarry.Reference: emitImpactResult, classifyImpactError, and FilterImpactWithin.
 
 package cli
 
@@ -150,7 +150,7 @@ those whose file lies within <dir> (relative to --target-dir, or absolute):
 
 				result, err := quarry.Impact(ctx, opts)
 				if err == nil && within != "" {
-					result = filterImpactWithin(result, within, dir)
+					result = FilterImpactWithin(result, within, dir)
 				}
 				emitImpactResult(ctx, out, result, err)
 				return nil
@@ -163,7 +163,7 @@ those whose file lies within <dir> (relative to --target-dir, or absolute):
 				}
 				result, err := quarry.Impact(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved))
 				if err == nil && within != "" {
-					result = filterImpactWithin(result, within, dir)
+					result = FilterImpactWithin(result, within, dir)
 				}
 				return classifyImpactError(err, result)
 			})
@@ -262,7 +262,7 @@ func rewordImpactMarshalFailure(err error) string {
 	return fmt.Sprintf("impact: %s", strings.TrimPrefix(err.Error(), "toc: "))
 }
 
-// filterImpactWithin filters result's caller list to entries whose file lies within within
+// FilterImpactWithin filters result's caller list to entries whose file lies within within
 // (relative to baseDir, or absolute), leaving Target and Definition untouched — --within is a CLI
 // flag with no engine option behind it, so quarry.Impact itself is unfiltered.
 // within is normalized exactly as FilterWithin normalizes its own within argument — joined onto
@@ -272,7 +272,7 @@ func rewordImpactMarshalFailure(err error) string {
 // answer.
 // The returned Callers slice is always non-nil, even when nothing survives, so it still marshals as
 // "[]".
-func filterImpactWithin(result quarry.ImpactResult, within, baseDir string) quarry.ImpactResult {
+func FilterImpactWithin(result quarry.ImpactResult, within, baseDir string) quarry.ImpactResult {
 	w := within
 	if !filepath.IsAbs(w) {
 		w = filepath.Join(baseDir, w)

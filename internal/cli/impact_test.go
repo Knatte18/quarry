@@ -330,7 +330,7 @@ func TestRunBatch_ImpactMixedStatusWorstWins(t *testing.T) {
 	}
 }
 
-// TestFilterImpactWithin covers filterImpactWithin's normalization and its own-invariant
+// TestFilterImpactWithin covers FilterImpactWithin's normalization and its own-invariant
 // preservation: target/definition untouched, filtered callers dropped, a non-nil result even when
 // everything is dropped.
 func TestFilterImpactWithin(t *testing.T) {
@@ -380,24 +380,24 @@ func TestFilterImpactWithin(t *testing.T) {
 			t.Parallel()
 
 			result := quarry.ImpactResult{Target: target, Definition: definition, Callers: tt.callers}
-			got := filterImpactWithin(result, tt.within, tt.baseDir)
+			got := FilterImpactWithin(result, tt.within, tt.baseDir)
 
 			if got.Target != target {
-				t.Errorf("filterImpactWithin(...).Target = %v; want it untouched (%v)", got.Target, target)
+				t.Errorf("FilterImpactWithin(...).Target = %v; want it untouched (%v)", got.Target, target)
 			}
 			if got.Definition != definition {
-				t.Errorf("filterImpactWithin(...).Definition = %v; want it untouched (%v)", got.Definition, definition)
+				t.Errorf("FilterImpactWithin(...).Definition = %v; want it untouched (%v)", got.Definition, definition)
 			}
 
 			if got.Callers == nil {
-				t.Fatalf("filterImpactWithin(...).Callers = nil; want a non-nil slice even when empty")
+				t.Fatalf("FilterImpactWithin(...).Callers = nil; want a non-nil slice even when empty")
 			}
 			if len(got.Callers) != len(tt.wantCallers) {
-				t.Fatalf("filterImpactWithin(...).Callers = %v; want %v", got.Callers, tt.wantCallers)
+				t.Fatalf("FilterImpactWithin(...).Callers = %v; want %v", got.Callers, tt.wantCallers)
 			}
 			for i := range got.Callers {
 				if got.Callers[i] != tt.wantCallers[i] {
-					t.Errorf("filterImpactWithin(...).Callers[%d] = %v; want %v", i, got.Callers[i], tt.wantCallers[i])
+					t.Errorf("FilterImpactWithin(...).Callers[%d] = %v; want %v", i, got.Callers[i], tt.wantCallers[i])
 				}
 			}
 		})
