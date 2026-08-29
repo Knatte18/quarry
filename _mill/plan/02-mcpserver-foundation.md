@@ -21,8 +21,8 @@ every handler batch that follows.
 
 The external interface batches 3, 4, and 5 consume: `Config`, `NewServer`, the seven `*Fn`
 variables, `resolveEntryFile`/`toOneBased`/`toZeroBased`, the `status*` constants and the
-`classifyLSPError`/`classifySymbolError`/`classifyTOCError` helpers, `inputSchemaFor`/`outputSchemaFor`/`unknownEntryKeys`,
-and `effectiveTargetDir`/`resolveCall`.
+`classifyLSPError`/`classifySymbolError`/`classifyTOCError` helpers, `inputSchemaFor`/`outputSchemaFor`/`unknownEntryKeys`/`dropEntryProperty`, the `docSentences`
+type, and `effectiveTargetDir`/`resolveCall`.
 
 Batch-local decision beyond `## Shared Decisions`: `NewServer` registers no tools yet. Each
 handler batch adds its own `register*` call to `NewServer` in `internal/mcpserver/mcpserver.go`,
@@ -43,20 +43,21 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   - `internal/mcpserver/mcpserver.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add `github.com/modelcontextprotocol/go-sdk v1.7.0` and
-  `github.com/google/jsonschema-go v0.4.3` as direct requirements by running
-  `go get github.com/modelcontextprotocol/go-sdk@v1.7.0` and then
-  `go get github.com/google/jsonschema-go@v0.4.3` — the second is required because the SDK
-  pulls `jsonschema-go` in only as an indirect requirement, while card 10 imports it directly —
-  followed by `go mod tidy` after the new file below exists. Create `internal/mcpserver/mcpserver.go` with a package doc comment stating that
+- **Requirements:** Add `github.com/modelcontextprotocol/go-sdk v1.7.0` as a direct requirement by
+  running `go get github.com/modelcontextprotocol/go-sdk@v1.7.0`, then `go mod tidy` after the new
+  file below exists so the requirement is justified by a real import. Do not acquire
+  `github.com/google/jsonschema-go` here: nothing imports it until card 10, so `go mod tidy` in
+  this card would demote it straight back to `// indirect`. Card 10 owns that acquisition, in the
+  same card as its first import. Create `internal/mcpserver/mcpserver.go` with a package doc comment stating that
   this package binds `quarry/facade.go` onto MCP tools and imports `internal/cli` for resolution
   helpers but never `internal/quarryengine`. Declare `const serverVersion = "0.1.0"`. Declare
   `const minTargets = 1` and `const maxTargets = 64`. Declare
   `type Config struct { TargetDir string; ConfigPath string; StateDir string; Timeout time.Duration }`
   documenting each field as a launch-only value the model never sees. Declare
   `func ResolveLaunchTargetDir(flagValue string) (string, error)` which returns
-  `filepath.Abs(flagValue)` when `flagValue` is non-empty and `filepath.Abs(os.Getwd())` otherwise,
-  wrapping any error as `mcpserver: resolve target dir: %w`; document that this runs exactly once,
+  `filepath.Abs(flagValue)` when `flagValue` is non-empty and `os.Getwd()` otherwise — `os.Getwd`
+  already returns an absolute path, so no second absolutisation is needed — wrapping either
+  function's error as `mcpserver: resolve target dir: %w`; document that this runs exactly once,
   at server startup, before any handler can run, and that every downstream consumer therefore only
   ever sees an absolute path. Declare
   `func NewServer(cfg Config) (*mcp.Server, error)` which asserts `filepath.IsAbs(cfg.TargetDir)`
@@ -187,13 +188,18 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
 - **Context:**
   - `internal/mcpserver/mcpserver.go`
   - `internal/cli/tocconfig.go`
-- **Edits:** none
+- **Edits:**
+  - `go.mod`
+  - `go.sum`
 - **Creates:**
   - `internal/mcpserver/schema.go`
   - `internal/mcpserver/schema_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `internal/mcpserver/schema.go` implementing the
+- **Requirements:** Run `go get github.com/google/jsonschema-go@v0.4.3` and `go mod tidy` in this
+  card, not in card 6: this card holds the package's first direct import of `jsonschema-go`, so
+  running the acquisition here is what makes it a direct requirement that survives tidy. Create
+  `internal/mcpserver/schema.go` implementing the
   `schema-derivation-and-patching` Shared Decision against
   `github.com/google/jsonschema-go/jsonschema`. Declare
   `type docSentences struct { raw json.RawMessage }` with an `UnmarshalJSON` method that accepts a

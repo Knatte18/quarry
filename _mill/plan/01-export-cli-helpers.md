@@ -5,7 +5,7 @@ task: "Add an MCP wrapper for quarry"
 batch: "export-cli-helpers"
 number: 1
 cards: 5
-verify: go test ./internal/cli/... && go test -tags lsp ./internal/cli/...
+verify: go test ./internal/cli/... && go test -tags lsp ./internal/cli/... && go test ./internal/quarryengine/query/...
 depends-on: []
 ```
 
@@ -164,4 +164,8 @@ has no MCP caller at all because target-dir resolution hands every handler an ab
 `gopls` is not on `$PATH` here, so its value is the compile, which is exactly what a rename batch
 needs from it: a rename that missed a call site in a build-tagged file fails to compile rather than
 passing silently. No new tests are added — this batch changes no behaviour, so the existing suite
-passing unchanged is the assertion.
+passing unchanged is the assertion. The third chained invocation,
+`go test ./internal/quarryengine/query/...`, exists solely to compile
+`internal/quarryengine/query/callers_test.go`, whose comment prose card 2 edits: the boundary gate
+`go build ./...` does not compile `_test.go` files, so without it nothing in the plan would build
+that edit.

@@ -3,7 +3,7 @@
 ```yaml
 task: "Add an MCP wrapper for quarry"
 slug: "quarry-mcp-wrapper"
-approved: false
+approved: true
 started: "20260829-065134"
 parent: "main"
 root: ""
@@ -21,7 +21,7 @@ batches:
     name: export-cli-helpers
     file: 01-export-cli-helpers.md
     depends-on: []
-    verify: go test ./internal/cli/... && go test -tags lsp ./internal/cli/...
+    verify: go test ./internal/cli/... && go test -tags lsp ./internal/cli/... && go test ./internal/quarryengine/query/...
   - number: 2
     name: mcpserver-foundation
     file: 02-mcpserver-foundation.md

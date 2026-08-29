@@ -33,6 +33,12 @@ Batch-local decisions beyond `## Shared Decisions`:
   `quarry.ErrLanguageUnsupported` is `error` worded from `quarry.TOCImplemented()`; any other error
   is `error`. `ambiguous` is unreachable here — toc uses no language server and no symbol
   resolution.
+- `toc_file`'s marshalled `quarry.TOCFileResult` is nested under a `result` wrapper key, where
+  `tocFileOne` flattens the same `StructToFields` output straight into its entry. This is the same
+  deliberate divergence batch 4 records for `impact`, applied here for consistency and
+  future-proofing rather than out of necessity: `TOCFileResult` has no key colliding with the
+  envelope's `target` today, but one wrapper rule across every struct-returning tool is what keeps
+  the envelope's `target` unambiguously "the input entry, echoed".
 - `toc_dir`'s per-file `path` stays caller-relative, composed by `cli.TOCDirEntries` against the
   argument as the caller wrote it. This is the one documented exception to the always-absolute
   output rule, and it exists so the value round-trips straight into a following `toc_file` call.
