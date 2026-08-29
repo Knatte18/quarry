@@ -44,7 +44,10 @@ another pass of the existing harness.
 - Blind execution: every run is a fresh headless agent process with no memory of this
   conversation or of any other run.
 - Repetition: N = 3 runs per configuration (42 runs), plus a 3-run cold-daemon comparison
-  cell against the pre-warmed task-01 full-bundle cell (45 runs total).
+  cell against the pre-warmed task-01 full-bundle cell (45 runs total). All 45 dispatch
+  sequentially.
+- Freshly written MCP-shaped agent preambles per rung, replacing #006's CLI-shaped
+  "Agent A preamble" template.
 - Full benchmark accounting per run: wall-clock duration, every token class, total tool
   calls, per-tool call breakdown, and non-quarry fallback counts — all extracted from the
   run's own transcript JSONL, never from an agent's self-report.
@@ -217,18 +220,59 @@ another pass of the existing harness.
   Warmth is a controlled constant, not a ladder dimension. Separately, one dedicated cell
   runs config A5 (`bundle`, task 01) N = 3 more times against a **cold** daemon, giving a
   clean warm-vs-cold contrast at n = 3 per side with blind agents on both sides.
+
+  **How the cold cell is actually made cold.** quarry keys its daemon per absolute
+  target-dir path (`workspaceKey`, `internal/cli/paths.go:76`) and the daemon only
+  self-expires after `daemonIdleTimeout = 10 * time.Minute`
+  (`internal/quarryengine/daemon/ensureserver.go:143`). Task 01's shared read-only worktree
+  therefore keeps one warm daemon alive across every task-01 run, so "run the cold cell
+  later" cannot produce a cold daemon. Instead each of the 3 cold runs gets **its own
+  freshly-built disposable worktree at a distinct path**
+  (`/tmp/loomyard-eval-01-cold-<n>`), which yields a distinct `workspaceKey` and therefore
+  a genuinely unstarted daemon, and that worktree is removed immediately after its run so
+  the path is never reused. The harness asserts coldness rather than assuming it: before
+  each cold run it verifies no daemon state exists for that key, and the run is invalidated
+  and redone if one does. No pre-warm step is performed for these three runs.
 - Rationale: #006's scorecards leave warm-vs-cold genuinely unresolved (n = 1 blind, and
   the apparently decisive warm numbers were retracted as contaminated), and both task 03
   and task 04 scorecards name this task as the place to settle it. Making warmth a second
   ladder dimension would double the matrix to 90 runs for a question orthogonal to
   per-capability attribution. One dedicated 3-run cell answers the warmth question at the
   same n as everything else while leaving the main matrix's warmth confound eliminated by
-  construction.
+  construction. Per-run distinct worktree paths are what make the cold side real: a
+  time-ordering rule would silently degrade into "warm vs warm" the moment the schedule
+  slipped, reproducing exactly the contamination the two retracted scorecards asked this
+  task to resolve — and a contaminated cold cell is worse than none, because it looks like
+  data.
 - Rejected: warmth as a full second dimension (90 runs, orthogonal question). Ignoring
   warmth entirely (leaves it as an uncontrolled confound, and silently declines a question
   two committed scorecards explicitly delegate here). Cold everywhere (would make every
   cell's numbers dominated by first-call daemon startup, compressing the differences the
-  ladder is trying to resolve).
+  ladder is trying to resolve). Ordering the cold cell first against the shared task-01
+  worktree (only the first of its three runs would be cold; the other two would inherit
+  its still-live daemon, and any later re-run of that cell would be fully warm). Killing
+  the daemon process between runs (relies on internal process/state layout this task is not
+  allowed to modify and would silently stop working if quarry's daemon lifecycle changed;
+  a distinct key needs no such coupling).
+
+### Runs dispatch sequentially
+
+- Decision: all 45 runs execute one at a time, in a defined order, never concurrently. The
+  harness records each completed run and skips it on re-invocation.
+- Rationale: `duration_ms` is the metric the disjoint-range separation rule leans on
+  hardest, and concurrent runs contend for CPU, for the gopls daemon backing a shared
+  worktree, and for model-side rate limits — any of which would make wall-clock
+  incomparable across configs and could manufacture or erase a separation. Sequential
+  dispatch is also what makes the cold cell's per-run fresh worktrees meaningful (a
+  concurrent run against a sibling path could otherwise be racing daemon startup) and what
+  makes the resumability constraint straightforward: a completed run is a finished record
+  on disk, not a partially-drained parallel batch. The cost is wall-clock for the operator,
+  not accuracy, and that is the right trade here.
+- Rejected: concurrent dispatch (faster, but corrupts the primary timing metric and the
+  cold cell's premise). Concurrency only across different tasks (still contends for CPU and
+  rate limits, and buys little since the matrix is two tasks). Dropping `duration_ms` in
+  favour of tokens so concurrency becomes safe (throws away a headline benchmark metric the
+  operator explicitly asked to keep).
 
 ### Metrics — full benchmark accounting, extracted from transcripts
 
@@ -308,7 +352,9 @@ another pass of the existing harness.
     README.md              # self-contained protocol; ladder tables; how to re-run
     ladder.yaml            # the 14 configs + warmth cell, declaratively: id, task, allowed tools
     scripts/
-      run_ladder.py        # generates deny-list settings, warms, dispatches, collects raw
+      run_ladder.py        # generates deny-list settings + per-rung MCP preamble, builds
+                           # worktrees, warms (or asserts cold), dispatches sequentially,
+                           # collects raw, resumes by skipping completed runs
       extract_usage.py     # transcript JSONL -> usage.json
       summarize.py         # per-config medians/ranges -> the summary table
     results/<YYYY-MM-DD>/
@@ -401,16 +447,30 @@ task's `Setup` section builds a disposable `git worktree` at its pin
 point at the live main checkout. Note the repo-wide instruction against writing to system
 temp directories applies to *this* repo's own scratch files, not to the disposable Loomyard
 worktrees, whose paths are fixed by the already-committed task files and must not be
-changed. With 45 runs the harness should build each task's worktree **once** and share it
-read-only across that task's runs rather than creating and removing it per run.
+changed. For the 42 main-matrix runs the harness builds each task's worktree **once** and
+shares it read-only across that task's runs rather than creating and removing it per run;
+the 3 cold-cell runs are the deliberate exception and each get their own disposable
+worktree at a distinct path, for the daemon-key reason given in the warmth decision.
 
-**Reusable assets from #006.** The role preambles in `bench/loomyard-eval/README.md`
-("Agent A preamble", "Agent B preamble") and the output schemas ("Exploration tasks",
-"Impact-analysis tasks") are used verbatim. Note the A preamble contains quarry-specific
-guidance (verb list, "prefer quarry over grep", the position-instead-of-bare-name tip) —
-per-rung it must be regenerated to describe only the tools that rung actually has, or an
-agent will be told to use a tool its deny-list blocks. The `none` configs use the B
-preamble unchanged, which must never mention quarry. Tracked fasit for scoring:
+**Reusable assets from #006.** The output schemas in `bench/loomyard-eval/README.md`
+("Exploration tasks", "Impact-analysis tasks") and the **Agent B preamble** are used
+verbatim. The `none` configs use the B preamble unchanged; it must never mention quarry.
+
+The **Agent A preamble must be rewritten, not reused.** The committed template at
+`bench/loomyard-eval/README.md` (the "Agent A preamble" block) is #006's *CLI* preamble: it
+states `Binary: /tmp/quarry-bench` and documents shell verb syntax (`quarry toc dir <path>`,
+`quarry refs <symbol> --target-dir <TARGET_DIR>`, …). The README contains no MCP tool names
+anywhere. Trimming its verb list per rung would still hand every quarry-enabled agent a
+binary path this task's scope forbids building — the MCP-flavoured preamble #006 actually
+used for its MCP arm lived only in an uncommitted, gitignored scratch runbook
+(`.scratch/bench-mcp-runbook.md`, cited in `results/2026-08-29/*/usage.json`'s `_note`) that
+no longer exists. So: for each quarry-enabled rung the harness generates a fresh
+**MCP-shaped** A preamble that names the rung's allowed tools by their client-side MCP names
+(`mcp__quarry__toc_file`, …), describes them as tool calls with `targets`-array inputs,
+mentions no binary path and no shell verb syntax, and carries over only the
+exposure-independent guidance worth keeping from the CLI template: prefer quarry over grep,
+do not re-verify a quarry answer with grep, and pass a known `file:line:character` position
+instead of a bare symbol name when one is already in hand. Tracked fasit for scoring:
 `bench/loomyard-eval/results/2026-08-28/01-reed-geometry-exploration/c.json` and
 `.../04-shedadapters-shuttle-impact/c.json`.
 
@@ -471,9 +531,16 @@ control's is reported as "not separated"; a config with a disjoint range is repo
 separated; a config with a failed (missing) run is reported as incomplete rather than
 silently summarised from two runs.
 
-**Preamble generation.** Assert that a rung's generated A-preamble documents exactly the
-verbs that rung allows and no others, and — as a distinct assertion — that every `none`
+**Preamble generation.** Assert that a rung's generated A-preamble names exactly the
+`mcp__quarry__*` tools that rung allows and no others; that it contains no binary path and
+no CLI verb syntax (`/tmp/quarry-bench`, `quarry toc dir`, `--target-dir`, and the like), so
+the CLI template can never leak back in; and — as a distinct assertion — that every `none`
 config's prompt contains no occurrence of "quarry" anywhere.
+
+**Cold-cell coldness.** Assert that the three cold runs each resolve to a distinct
+target-dir path and therefore a distinct daemon key, that no pre-warm step runs for them,
+and that the harness's coldness check rejects a target-dir whose daemon state already
+exists rather than proceeding.
 
 **Protocol validation gates, checked before the matrix is treated as valid.** These are
 verification steps over the produced data, not unit tests: every one of the 45 runs
@@ -546,6 +613,26 @@ dispatch layer is exercised by actually running the matrix, not by mocking a mod
   Both — build it, run all 45, and write the tracked conclusion. **Why:** the body's
   tracked-conclusion convention presupposes a conclusion exists, and a harness alone would
   leave every retracted #006 claim unreplaced.
+- **Q:** How does the cold-daemon cell actually achieve a cold daemon, given the shared
+  task-01 worktree and the 10-minute idle timeout? **A:** [auto-pick] Each of the 3 cold
+  runs gets its own freshly-built worktree at a distinct path, so it has a distinct
+  `workspaceKey` and an unstarted daemon; the harness asserts coldness before each run
+  rather than assuming it. **Why:** the daemon is keyed per absolute target-dir path
+  (`internal/cli/paths.go:76`) and only self-expires after 10 minutes
+  (`internal/quarryengine/daemon/ensureserver.go:143`), so any time-ordering rule against
+  the shared worktree would silently degrade into warm-vs-warm — and a contaminated cold
+  cell is worse than none, because it looks like data.
+- **Q:** Sequential or concurrent run dispatch? **A:** [auto-pick] Sequential, all 45.
+  **Why:** `duration_ms` is what the disjoint-range separation rule leans on hardest, and
+  concurrent runs contend for CPU, the gopls daemon, and rate limits, which could
+  manufacture or erase a separation; sequential dispatch also underpins the cold cell and
+  the resumability constraint.
+- **Q:** Can #006's committed "Agent A preamble" be reused with its verb list trimmed per
+  rung? **A:** [auto-pick] No — it must be rewritten as an MCP-shaped preamble per rung.
+  **Why:** the committed template is the CLI one (`Binary: /tmp/quarry-bench`, shell verb
+  syntax, no MCP tool names anywhere in the README), so trimming its verb list would still
+  point agents at a binary this task's scope forbids building; #006's actual MCP preamble
+  only ever existed in an uncommitted scratch runbook that is gone.
 - **Q:** If the review rounds hit the configured cap without converging, block or hand
   off? **A:** Hand off anyway (operator instruction, given mid-session). **Why:** the
   operator explicitly overrode auto-mode's block-on-non-progress behaviour for this task.
