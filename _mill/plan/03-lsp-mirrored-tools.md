@@ -19,7 +19,8 @@ that shared parsing across two contexts.
 
 The external interface batches 4, 5, and 6 consume: the per-type `raw json.RawMessage` plus
 own-`UnmarshalJSON` convention for capturing an entry's original JSON, `runTargets` (the shared
-sequential batching loop), and the three `register*` functions now called from `NewServer`.
+sequential batching loop), and the two `register*` functions covering the three LSP-mirrored
+tools, now called from `NewServer`.
 
 Batch-local decisions beyond `## Shared Decisions`:
 

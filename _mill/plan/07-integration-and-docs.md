@@ -55,11 +55,17 @@ Batch-local decisions beyond `## Shared Decisions`:
   `tools/list` returns the
   seven tools; at least one real `tools/call` against the fixture resolves through gopls and comes
   back `found`; one multi-entry call returns one entry per input in input order, proving array
-  batching survives real serialization; and the child process's stdout carries only well-formed
-  JSON-RPC frames and no other bytes — capture stdout independently of the transport, or drive the
-  process directly over pipes for this one assertion, and fail on any line that does not parse as
-  JSON. That last assertion is the reason this tier exists. The child's stderr is expected to carry
-  the startup target-directory line and must not be conflated with stdout.
+  batching survives real serialization; and the binary's stdout carries only well-formed
+  JSON-RPC frames and no other bytes. Use one mechanism for that last assertion, not a choice:
+  spawn a second, separate child of the same built binary with `os/exec`, wired to explicit
+  `StdinPipe`, `StdoutPipe`, and `StderrPipe`, write a hand-built `initialize` request followed by
+  the `initialized` notification to its stdin as newline-delimited JSON, read every line it writes
+  to stdout, and fail on any line that does not parse as a JSON object. `mcp.CommandTransport`
+  cannot serve this assertion, because it owns the child's stdout pipe and its framed reader
+  consumes it — the `CommandTransport` session is for the handshake, `tools/list`, and the two
+  `tools/call` assertions only. That stdout-purity assertion is the reason this tier exists. The
+  second child's stderr is expected to carry the startup target-directory line and must not be
+  conflated with its stdout.
 - **Commit:** `test(mcpserver): add the tier-3 real-binary stdio integration test`
 
 ### Card 28: Commit `.mcp.json` and ignore the optional built binary
@@ -73,9 +79,13 @@ Batch-local decisions beyond `## Shared Decisions`:
   - `.mcp.json`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `.mcp.json` at the repository root declaring one stdio server named
-  `quarry` whose command is `go` and whose arguments are `run` and `./cmd/quarry-mcp`, with no
-  `--target-dir` argument. Add a plain `/quarry-mcp` line to `.gitignore` inside the existing
+- **Requirements:** Create `.mcp.json` at the repository root in the project-scope
+  form: a single top-level `mcpServers` object whose one key is `quarry`, whose value sets
+  `"command": "go"` and `"args": ["run", "./cmd/quarry-mcp"]`, with no `--target-dir` argument. The
+  top-level key is `mcpServers` and not a bare server map — the bare-map form belongs to a plugin's
+  own `.claude-plugin/` directory, which this repository does not have, and a wrong top-level shape
+  has no detector anywhere in this plan because `.mcp.json` correctness is verified by dogfooding
+  rather than by a test. Add a plain `/quarry-mcp` line to `.gitignore` inside the existing
   hand-written block above the mill-managed section, with a one-line comment noting that it covers
   the optional `go build -o quarry-mcp ./cmd/quarry-mcp` warm-start alternative documented in
   the MCP setup document card 29 adds. No `!/quarry-mcp/` re-include is needed: the `/quarry` entry
@@ -97,8 +107,9 @@ Batch-local decisions beyond `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Create `docs/mcp-setup.md` covering four things. First, what the committed
-  `.mcp.json` does: a Claude Code session opened in quarry connects to the server with no install
-  step, and the server takes its process working directory as the target-directory default,
+  `.mcp.json` does: a Claude Code session opened in quarry connects to the server with no
+  install step, after the one-time prompt Claude Code shows before trusting a project-scoped
+  server, and the server takes its process working directory as the target-directory default,
   absolutising it once at startup and reporting the resolved path on stderr. Second, cold-start
   behaviour, stated as expected rather than as a bug: quarry requires `CGO_ENABLED=1` and a C
   toolchain because the tree-sitter package links C grammars, so the first `go run ./cmd/quarry-mcp`
@@ -129,7 +140,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   `go build -o quarry-mcp ./cmd/quarry-mcp` line beside the existing
   `go build -o quarry ./cmd/quarry` in the "Building and running" section, naming the seven tools,
   and linking to `docs/mcp-setup.md`. State that a Claude Code session opened in this repository
-  connects automatically through the committed `.mcp.json`. Keep it short — the README currently
+  connects through the committed `.mcp.json` once the one-time project-server trust prompt is
+  accepted. Keep it short — the README currently
   documents the CLI as quarry's only entry point, and the defect being fixed is that the third
   layer is undiscoverable from the front door, not that the README lacks detail.
 - **Commit:** `docs(readme): add a pointer to the MCP layer`

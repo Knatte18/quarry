@@ -127,6 +127,7 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   - `internal/cli/impact.go`
   - `internal/cli/toc.go`
   - `internal/quarryengine/query/symbol.go`
+  - `internal/mcpserver/translate.go`
   - `quarry/facade.go`
 - **Edits:** none
 - **Creates:**
@@ -252,7 +253,10 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   `resolveCall` calls `effectiveTargetDir` first, then follows `resolveContext`'s sequence in
   `internal/cli/cli.go` exactly and in the same order, through the exported helpers:
   `cli.ResolveBuildTags(buildTags)`, then `cli.ResolveConfigPath(cfg.ConfigPath)`, then
-  `quarry.LoadRegistry` on that path, then `cli.ResolveStateDir(cfg.StateDir, absTargetDir, tags)`.
+  `quarry.LoadRegistry` on that path, then `cli.ResolveStateDir(cfg.StateDir, absTargetDir, tags)`. `callContext.Timeout` is carried
+  straight from `cfg.Timeout` — the launch-only `--timeout` value — so it is a per-entry
+  deadline for each entry's facade call rather than a whole-call budget, exactly as the CLI
+  applies `Options.Timeout` per invocation.
   Document that using these helpers rather than a local copy is what keeps the state-directory key
   bit-for-bit identical to the CLI's, and that a divergence silently spawns a second gopls daemon
   and forfeits warm-daemon reuse. Declare
