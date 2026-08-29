@@ -66,7 +66,9 @@ batches:
     commit_sha: 42d17210fc26a67322ea9a3afc581c2633c7a484
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: toc-tools
-    state: pending
+    state: running
+    implementer_session: bc2f2681-6ab5-474e-aef0-920b3b69c456
+    start_sha: b14d1e596e85a1f4fa87c82e1dea7e9874930ec5
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: server-binary-and-transport-tests
     state: pending
