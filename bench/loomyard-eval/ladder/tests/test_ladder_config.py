@@ -281,3 +281,56 @@ def test_write_settings_serialises_the_settings_document(tmp_path, ladder):
     with open(out_path) as f:
         written = json.load(f)
     assert written == lc.settings_document_for(ladder, a0)
+
+
+""" PREAMBLE GENERATION """
+
+_TARGET_DIR = "/tmp/loomyard-eval-01"
+_TASK_TEXT = "Explain how the thing works."
+_SCHEMA_JSON = '{"summary": "string"}'
+_FORBIDDEN_LITERALS = ("/tmp/quarry-bench", "quarry toc dir", "quarry refs", "--target-dir")
+
+
+@pytest.mark.parametrize("config_id", [c.id for c in lc.load_ladder(LADDER_YAML).configs if c.allowed])
+def test_mcp_preamble_names_exactly_its_allowed_tools(ladder, config_id):
+    config = lc.config_by_id(ladder, config_id)
+    prompt = lc.preamble_for(ladder, config, _TARGET_DIR, _TASK_TEXT, _SCHEMA_JSON)
+    for tool in lc.QUARRY_TOOLS:
+        if tool in config.allowed:
+            assert lc.mcp_name(tool) in prompt
+        else:
+            assert lc.mcp_name(tool) not in prompt
+
+
+@pytest.mark.parametrize("config_id", [c.id for c in lc.load_ladder(LADDER_YAML).configs if c.allowed])
+def test_mcp_preamble_forbids_binary_paths_and_cli_syntax(ladder, config_id):
+    config = lc.config_by_id(ladder, config_id)
+    prompt = lc.preamble_for(ladder, config, _TARGET_DIR, _TASK_TEXT, _SCHEMA_JSON)
+    for literal in _FORBIDDEN_LITERALS:
+        assert literal not in prompt
+    assert "Never set targetDir or buildTags" in prompt
+
+
+@pytest.mark.parametrize("config_id", [c.id for c in lc.load_ladder(LADDER_YAML).configs if c.allowed])
+def test_mcp_preamble_contains_parallel_blocks_verbatim(ladder, config_id):
+    config = lc.config_by_id(ladder, config_id)
+    prompt = lc.preamble_for(ladder, config, _TARGET_DIR, _TASK_TEXT, _SCHEMA_JSON)
+    assert lc.PARALLEL_OPENING in prompt
+    assert lc.PARALLEL_BLOCK in prompt
+
+
+@pytest.mark.parametrize("config_id", [c.id for c in lc.load_ladder(LADDER_YAML).configs if not c.allowed])
+def test_none_control_preamble_never_mentions_quarry(ladder, config_id):
+    config = lc.config_by_id(ladder, config_id)
+    prompt = lc.preamble_for(ladder, config, _TARGET_DIR, _TASK_TEXT, _SCHEMA_JSON)
+    assert "quarry" not in prompt.lower()
+
+
+def test_none_control_preamble_is_the_committed_b_preamble_shape(ladder):
+    a0 = lc.config_by_id(ladder, "a0-none")
+    prompt = lc.preamble_for(ladder, a0, _TARGET_DIR, _TASK_TEXT, _SCHEMA_JSON)
+    assert lc.PARALLEL_OPENING in prompt
+    assert lc.PARALLEL_BLOCK in prompt
+    assert _TARGET_DIR in prompt
+    assert _TASK_TEXT in prompt
+    assert "standard tools: Read, Grep, Bash, Glob" in prompt

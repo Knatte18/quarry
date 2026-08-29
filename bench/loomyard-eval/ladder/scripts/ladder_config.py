@@ -314,3 +314,102 @@ def write_settings(ladder, config, path):
     with open(path, "w") as f:
         json.dump(settings_document_for(ladder, config), f, indent=2)
         f.write("\n")
+
+
+""" PREAMBLE GENERATION """
+
+# Copied byte-for-byte from bench/loomyard-eval/README.md's committed
+# preambles, which every rung's prompt reuses verbatim.
+PARALLEL_OPENING = """USE PARALLEL TOOL CALLS. Whenever you have more than one independent thing to
+read or check, issue ALL of those tool calls together in the SAME turn --
+never one at a time across separate turns. This is not optional."""
+
+PARALLEL_BLOCK = """<use_parallel_tool_calls>
+For maximum efficiency, whenever you need to perform multiple independent
+operations, invoke all relevant tools simultaneously rather than
+sequentially. Prioritize calling tools in parallel whenever possible. For
+example, once you know several independent locations to read or check (e.g.
+a list of caller locations from a single lookup), issue all of those Read or
+Bash calls together in one turn rather than one at a time across separate
+turns -- each turn costs a full round of model latency regardless of how
+fast the underlying tool executes, so batching directly cuts wall-clock and
+token cost. Err on the side of maximizing parallel tool calls rather than
+running too many tools sequentially. Only batch tool calls that are
+independent of each other -- two Read calls at two locations you already
+know about are never dependent on each other.
+</use_parallel_tool_calls>"""
+
+# The committed Agent B preamble's own body, between PARALLEL_OPENING and
+# PARALLEL_BLOCK. Ends at the <TARGET_DIR> paragraph and excludes the
+# committed template's own <TASK TEXT> placeholder line -- preamble_for
+# appends the task text itself, so carrying the placeholder through would
+# emit both the placeholder and the text into every control run's prompt.
+B_PREAMBLE_BODY = """You are working on a code task in the codebase at <TARGET_DIR>. You have
+standard tools: Read, Grep, Bash, Glob. Explore as needed to answer
+thoroughly and correctly."""
+
+_CLOSING_SENTENCE = """When you are completely done, end your final message with ONLY a fenced json
+code block matching the schema below -- no other trailing prose after it."""
+
+# One-line description of each canonical tool's job, for the generated
+# MCP-shaped preamble body. Written without any binary path, shell verb
+# syntax, or --prefixed flag -- every rung's tool is a call, not a CLI verb.
+_TOOL_DESCRIPTIONS = {
+    "toc_dir": "lists every source file directly in a directory (not recursive) with its package, header comment, and test/generated flags",
+    "toc_file": "returns the table of contents for one file: every function, method, and type with its signature, docstring, and precise line range",
+    "textDocument_definition": "jumps to a symbol's definition, LSP-resolved",
+    "textDocument_references": "finds every reference to a symbol, LSP-resolved -- including interface-dispatched calls a text search cannot see",
+    "workspace_symbol": "searches for a symbol by name across the whole target codebase",
+    "impact": "resolves a symbol, finds its callers, and reports each caller's full enclosing-function line range",
+    "assert_no_callers": "fails if the symbol has callers outside its declaration",
+}
+
+
+def _mcp_preamble_body(ladder, config, target_dir):
+    """Builds the body of a freshly generated MCP-shaped preamble for a
+    quarry rung: names config's allowed tools by their client-side name and
+    nothing else, then carries over the three exposure-independent
+    instructions from the committed Agent A template."""
+    tool_lines = "\n".join(
+        f"- {mcp_name(tool)} -- {_TOOL_DESCRIPTIONS[tool]}" for tool in ladder.quarry_tools if tool in config.allowed
+    )
+    return f"""You are working on a code task in the codebase at {target_dir}. You have
+access to the following code-navigation tools, each a call taking a
+call-wide input with a `targets` array:
+
+{tool_lines}
+
+Never set targetDir or buildTags on any of these calls -- the server is
+already rooted at the correct target codebase.
+
+Use these tools as your PRIMARY tool for anything they cover: symbol
+lookups, "who calls this / where is this defined", file/directory surveys,
+and caller-impact analysis. Do NOT reach for grep/ripgrep as a reflex, and
+do NOT use it to "double-check" a question one of these tools has already
+answered -- that defeats the point of having it and just spends tokens
+re-deriving what you already know.
+
+If you already know a symbol's declaration line -- e.g. from an earlier
+table-of-contents call, which gives you every symbol's exact line range up
+front -- call the matching tool with that `file:line:character` position
+directly instead of the bare symbol name. A bare name triggers a
+project-wide symbol search that is often genuinely ambiguous, and costs you
+a second round trip to disambiguate with the position you already had."""
+
+
+def preamble_for(ladder, config, target_dir, task_text, schema_json):
+    """
+    Returns the full prompt string for one run of config against target_dir.
+
+    When config.allowed is empty, reproduces the committed Agent B preamble
+    exactly. Otherwise generates a freshly written MCP-shaped preamble
+    naming config's allowed tools by their mcp__quarry__* client-side names.
+    Both shapes share PARALLEL_OPENING, PARALLEL_BLOCK, the closing
+    schema-only-output sentence, and schema_json.
+    """
+    if config.allowed:
+        body = _mcp_preamble_body(ladder, config, target_dir)
+    else:
+        body = B_PREAMBLE_BODY.replace("<TARGET_DIR>", target_dir)
+
+    return "\n\n".join([PARALLEL_OPENING, body, task_text, PARALLEL_BLOCK, _CLOSING_SENTENCE, schema_json])
