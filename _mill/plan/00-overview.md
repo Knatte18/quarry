@@ -3,7 +3,7 @@
 ```yaml
 task: "Per-capability quarry-mcp benchmark suite"
 slug: "mcp-capability-bench"
-approved: false
+approved: true
 started: "20260829-124916"
 parent: "main"
 root: ""

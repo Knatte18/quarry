@@ -15,7 +15,7 @@ This batch lays down the ladder suite's tree and its single declarative source o
 
 The external interface the later batches consume is `ladder_config.py`'s module-level functions: `load_ladder`, `LadderConfig`, `deny_list_for`, `settings_document_for`, and `preamble_for`. Batches 2 through 6 import from this module and never re-derive a deny-list or a preamble themselves.
 
-Batch-local decision: the canonical seven quarry tool names are declared exactly once, as the module-level constant `QUARRY_TOOLS` in `ladder_config.py`, and every deny-list is derived as `QUARRY_TOOLS - allowed`. No file in this suite ever writes a deny-list literal.
+Batch-local decision: there are two places the seven tool names appear, with distinct jobs. `QUARRY_TOOLS` in `ladder_config.py` is the **validation** constant — the canonical set `load_ladder` checks the ladder file's own `quarry_tools:` against, so a ladder that drifts from quarry's real surface is rejected at load. `deny_list_for` derives from the **loaded** `Ladder.quarry_tools`, which is what makes the drift guard meaningful and what a genuine eighth tool would flow through. Either way no file in this suite ever writes a deny-list literal: every deny-list is `<the ladder's tool set> - allowed`.
 
 ## Cards
 
