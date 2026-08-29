@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: mcp-capability-bench
 branch: mcp-capability-bench
 plan: _mill/plan
@@ -47,6 +47,7 @@ nits-fixed-holistic  '2026-08-29T15:30:17Z'
 holistic-approved  '2026-08-29T15:30:26Z'
 self-resolved-scope-violation  '2026-08-29T15:31:14Z'
 done  '2026-08-29T15:31:34Z'
+pr-pending  '2026-08-29T15:33:30Z'
 ```
 
 ## Batches
