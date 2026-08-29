@@ -24,8 +24,9 @@ import subprocess
 import time
 from pathlib import Path
 
+from extract_usage import init_event, read_transcript
 from gates import daemon_state_file, gate_worktree_neutralised, resolve_state_dir
-from ladder_config import write_settings
+from ladder_config import mcp_name, write_settings
 
 
 class HarnessError(Exception):
@@ -358,3 +359,121 @@ def run_env():
     env.pop("QUARRY_STATE_DIR", None)
     env.pop("QUARRY_BUILD_TAGS", None)
     return env
+
+
+""" THE PREFLIGHT DENIAL PROBE """
+
+# The one tool the probe denies -- an arbitrary daemon-backed choice, since
+# what is being established is whether permissions.deny blocks at all, not
+# whether this particular tool is safe.
+_PROBE_DENIED_TOOL = "impact"
+
+
+def _denied_call_succeeded(events, denied_name):
+    """
+    True when some tool_use block named denied_name has a matching
+    tool_result that did not error -- i.e. the denial did not block it.
+    """
+    results_by_id = {}
+    for event in events:
+        if event.get("type") != "user":
+            continue
+        for block in event.get("message", {}).get("content", []):
+            if block.get("type") == "tool_result":
+                results_by_id[block["tool_use_id"]] = block
+
+    for event in events:
+        if event.get("type") != "assistant":
+            continue
+        for block in event["message"]["content"]:
+            if block.get("type") == "tool_use" and block["name"] == denied_name:
+                result = results_by_id.get(block["id"])
+                if result and not result.get("is_error"):
+                    return True
+    return False
+
+
+def run_probe(ladder, repo_root, results_root, target_dir, server_path):
+    """
+    Executes one throwaway claude -p run, before any matrix run, that
+    declares the quarry server with mcp__quarry__impact denied and asks
+    the agent to call it and report what happened.
+
+    Writes probe.json into results_root recording denial_blocks (whether
+    the denied call failed to succeed -- the load-bearing premise of the
+    whole suite), denied_tools_advertised (whether the denied name
+    appears in the init event's tools array), advertised_tools,
+    session_id, the resolved model, the resolved QUARRY_CONFIG value, and
+    the probe's own transcript path (captured under
+    <results_root>/raw/probe/, the one subtree .gitignore covers).
+
+    Raises HarnessError when denial_blocks is False -- the matrix halts
+    before a single paid run, because every rung would silently be the
+    full bundle. The probe runs with the same --setting-sources "",
+    --strict-mcp-config, --max-turns, and non-interactive permission mode
+    as every matrix run, so what it establishes is true of the matrix and
+    not of a differently-configured invocation.
+    """
+    del repo_root  # accepted for signature symmetry with the rest of this module's dispatch functions; unused here.
+    results_root = Path(results_root)
+    probe_dir = results_root / "raw" / "probe"
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    transcript_path = probe_dir / "transcript.jsonl"
+
+    denied_name = mcp_name(_PROBE_DENIED_TOOL)
+    settings_path = probe_dir / "settings.json"
+    with open(settings_path, "w") as f:
+        json.dump({"permissions": {"allow": ["Read", "Grep", "Glob", "Bash"], "deny": [denied_name, "Task"]}}, f, indent=2)
+        f.write("\n")
+
+    mcp_config_path = probe_dir / "mcp.json"
+    with open(mcp_config_path, "w") as f:
+        json.dump(mcp_config_document(server_path, target_dir), f, indent=2)
+        f.write("\n")
+
+    prompt = (
+        f"Call the {denied_name} tool once, with any plausible arguments for it, and "
+        "report exactly what happened when you called it -- whether it succeeded, was "
+        "denied, or errored, quoting the tool result you received."
+    )
+
+    argv = [
+        "claude", "-p", prompt,
+        "--model", ladder.run_model,
+        "--output-format", "stream-json",
+        "--verbose",
+        "--setting-sources", "",
+        "--strict-mcp-config",
+        "--settings", str(settings_path),
+        "--permission-mode", "dontAsk",
+        "--max-turns", str(ladder.max_turns),
+        "--mcp-config", str(mcp_config_path),
+    ]
+
+    env = run_env()
+    launch_run(argv, cwd=target_dir, env=env, transcript_path=transcript_path)
+    events = read_transcript(transcript_path)
+
+    init = init_event(events)
+    advertised_tools = init.get("tools") or []
+    denial_blocks = not _denied_call_succeeded(events, denied_name)
+
+    probe_record = {
+        "denial_blocks": denial_blocks,
+        "denied_tools_advertised": denied_name in advertised_tools,
+        "advertised_tools": advertised_tools,
+        "session_id": init.get("session_id"),
+        "model": init.get("model"),
+        "quarry_config": env.get("QUARRY_CONFIG"),
+        "transcript": str(transcript_path),
+    }
+    with open(results_root / "probe.json", "w") as f:
+        json.dump(probe_record, f, indent=2)
+        f.write("\n")
+
+    if not denial_blocks:
+        raise HarnessError(
+            "run_probe: the denied tool call did not error -- permissions.deny does not "
+            "block; halting before any matrix run"
+        )
+    return probe_record
