@@ -85,7 +85,8 @@ Batch-local decisions beyond `## Shared Decisions`:
   `impact`, and `assert_no_callers`, each carrying both an input and an output schema; the per-tool
   parameter matrix holds, by inspecting each listed tool's input schema properties —
   `workspace_symbol` declares no `within` on its entries, neither toc tool declares `buildTags`,
-  `toc_dir` declares no `docSentences`, and `noVerify` appears on `assert_no_callers` alone; a
+  `toc_dir` declares no `docSentences`, `impact`'s entry schema declares no `except` while
+  `assert_no_callers`'s does, and `noVerify` appears on `assert_no_callers` alone; a
   malformed **call** is rejected before any handler runs and comes back with the result's error
   flag set — assert this for a zero-length `targets` array, a 65-entry `targets` array, and a
   `targets` value of the wrong JSON type. Assert only the observable contract for these — the

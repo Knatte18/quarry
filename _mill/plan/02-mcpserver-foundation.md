@@ -93,6 +93,7 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   - `internal/cli/cli.go`
   - `internal/quarryengine/lsp/wire.go`
   - `internal/quarryengine/query/refs.go`
+  - `quarry/facade.go`
 - **Edits:** none
 - **Creates:**
   - `internal/mcpserver/translate.go`
@@ -152,7 +153,9 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   result marshals as `[]`. Declare `referenceFieldsNative(refs []quarry.Reference) []referenceField`
   which is identical except that it applies no conversion, for the quarry-native tools. Declare
   `classifyLSPError(err error) (status string, candidates []string, message string)` implementing
-  exactly the predicates `classifyLookupError` uses: `errors.As(err, &ambiguous)` against
+  exactly the branches `classifyLookupError` uses, nil branch included: a nil `err` yields
+  `statusFound` with no candidates and no message — stated explicitly so a caller that hands it a
+  nil error does not fall through to the else branch and dereference it; `errors.As(err, &ambiguous)` against
   `*quarry.ErrAmbiguousSymbol` yields `statusAmbiguous` with the candidates;
   `errors.Is(err, quarry.ErrSymbolNotFoundSentinel)` yields `statusNotFound` with no message;
   anything else yields `statusError` carrying `err.Error()`. Declare
@@ -209,8 +212,13 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   `MaxItems` to `jsonschema.Ptr(maxTargets)`, and calls `clearAdditionalProperties` on its `Items`
   only — the call-wide properties keep whatever inference produced, so a call-level violation stays
   a whole-call failure. Return an error naming `targets` when the property is absent. Declare
-  `outputSchemaFor[T any]() (*jsonschema.Schema, error)` which calls `jsonschema.For[T]` and then
+  `outputSchemaFor[T any]() (*jsonschema.Schema, error)` which calls `jsonschema.For[T]` with the
+  same `jsonschema.ForOptions` value `inputSchemaFor` uses — never `nil`, so the two helpers name
+  one call form, harmless here because no output type embeds `docSentences` — and then
   `clearAdditionalProperties` on the whole tree, so a mixed batch never fails output validation.
+  Declare `dropEntryProperty(s *jsonschema.Schema, name string)` which removes `name` from the
+  `targets` item schema's `Properties` map and from its `PropertyOrder`, so a tool whose entry Go
+  type carries a field it does not accept never advertises that field in its published schema.
   Declare `unknownEntryKeys(raw json.RawMessage, allowed ...string) []string` which unmarshals
   `raw` into a `map[string]json.RawMessage` and returns the sorted key names absent from `allowed`,
   or nil when `raw` is not a JSON object; document that this exists because clearing
@@ -223,7 +231,8 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   listed in `required`, that a derived output schema carries `additionalProperties` nowhere, that
   `docSentences` unmarshals from both `3` and `"all"` and rejects `true`, and that
   `unknownEntryKeys` reports a key absent from `allowed`, reports nothing for an entry using only
-  allowed keys, and returns nil for a non-object input.
+  allowed keys, and returns nil for a non-object input; and that `dropEntryProperty` removes the
+  named property from both `Properties` and `PropertyOrder` and leaves every other property intact.
 - **Commit:** `feat(mcpserver): add schema derivation and the permissive-entry patches`
 
 ### Card 11: Add per-call context and options resolution
@@ -231,6 +240,7 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
 - **Context:**
   - `internal/cli/cli.go`
   - `internal/cli/paths.go`
+  - `internal/cli/toc.go`
   - `quarry/facade.go`
   - `internal/mcpserver/mcpserver.go`
 - **Edits:** none
@@ -266,8 +276,11 @@ which is why batches 3, 4, and 5 form a chain rather than a fan-out.
   value so the default is "verify". Create `internal/mcpserver/callcontext_test.go` asserting that
   a relative `targetDirOverride` is absolutised, that the launch default is used when the override
   is empty, that the derived `StateDir` equals what `cli.ResolveStateDir` returns for the identical
-  inputs so drift fails the build, that a non-empty build-tag set appends the `tags-` segment, and
-  that `options` leaves `SkipVerification` false. Pin `Config.StateDir` explicitly in these tests
+  inputs so drift fails the build, that a non-empty build-tag set appends the `tags-` segment,
+  that `options` leaves `SkipVerification` false, and that `options` carries `cfg.Timeout` through
+  to `quarry.Options.Timeout` in full for every entry rather than dividing it across a batch —
+  build the `quarry.Options` for several entries of one call and assert each carries the same,
+  undivided value, which is `batching-execution-model`'s per-entry-timeout rule. Pin `Config.StateDir` explicitly in these tests
   rather than relying on the machine's user cache directory, because the `userCacheDir` seam is
   reachable only from inside `internal/cli`.
 - **Commit:** `feat(mcpserver): add per-call context and options resolution`

@@ -108,7 +108,14 @@ Batch-local decisions beyond `## Shared Decisions`:
   `candidates,omitempty`, `error,omitempty`, plus
   `type impactOutput struct { Results []impactEntry }`. Declare
   `registerImpactTool(s *mcp.Server, cfg Config) error` following the registration shape card 14
-  established. The handler resolves the call context once, then runs `runTargets` over
+  established, with one addition: after building the input schema with `inputSchemaFor[impactInput]()`,
+  call `dropEntryProperty(schema, "except")` before assigning it to `mcp.Tool.InputSchema`.
+  `nativeEntry` is shared with `assert_no_callers` and therefore carries an `Except` field, but
+  `impact` does not accept `except` — `per-entry-vs-call-wide`'s matrix gives `impact` a per-entry
+  set of `within` alone, and a tool exposes exactly its matrix row and nothing else. Pruning the
+  published property is what makes the schema agree with the handler's own
+  `unknownEntryKeys` rejection below; the shared Go type is kept so both tools parse through one
+  `nativeEntry.query`. The handler resolves the call context once, then runs `runTargets` over
   `in.Targets`. Per entry it reports `unknownEntryKeys(entry.raw, "file", "line", "character", "symbol", "within")`
   as `status: statusError` — `except` is not accepted by this tool — then parses with
   `nativeEntry.query`, then calls `impactFn` with `callContext.options(in.Lang, query)`. On a nil
