@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: quarry-mcp-wrapper
 branch: quarry-mcp-wrapper
 plan: _mill/plan
@@ -42,6 +42,7 @@ holistic-reviewing  '2026-08-29T10:26:25Z'
 holistic-fixing  '2026-08-29T10:30:35Z'
 nits-fixed-holistic  '2026-08-29T10:32:27Z'
 holistic-approved  '2026-08-29T10:32:36Z'
+done  '2026-08-29T10:33:14Z'
 ```
 
 ## Batches
