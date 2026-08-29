@@ -112,7 +112,7 @@ func TestAssertNoCallers_InterfaceConflation_Integration(t *testing.T) {
 
 	// callers-verified: 2, per docs/implementation-widening-spike.md's recorded figure for
 	// this exact position — references-verified (3) minus the one declaration site
-	// filterUnexpectedCallers removes. Not the spike's references-unfiltered (7, which
+	// FilterUnexpectedCallers removes. Not the spike's references-unfiltered (7, which
 	// still includes the declaration) or references-verified (3) figures, and not issue
 	// #1's pre-fix "31 -> 2" measurement, taken against a different repository.
 	const wantCallersVerified = 2

@@ -265,7 +265,7 @@ func rewordImpactMarshalFailure(err error) string {
 // filterImpactWithin filters result's caller list to entries whose file lies within within
 // (relative to baseDir, or absolute), leaving Target and Definition untouched — --within is a CLI
 // flag with no engine option behind it, so quarry.Impact itself is unfiltered.
-// within is normalized exactly as filterWithin normalizes its own within argument — joined onto
+// within is normalized exactly as FilterWithin normalizes its own within argument — joined onto
 // baseDir when relative, then filepath.Abs, then filepath.Clean — before isWithinDir is called per
 // entry: every compared path is absolute, so skipping this normalization would make filepath.Rel
 // error inside isWithinDir and silently filter every caller out, producing an empty-but-successful
@@ -280,7 +280,7 @@ func filterImpactWithin(result quarry.ImpactResult, within, baseDir string) quar
 	// baseDir itself may still be relative here (e.g. --target-dir "."
 	// passed through verbatim) — filepath.Abs resolves whatever remains
 	// against the process's actual working directory, mirroring
-	// filterWithin's identical fallback.
+	// FilterWithin's identical fallback.
 	if abs, err := filepath.Abs(w); err == nil {
 		w = abs
 	}

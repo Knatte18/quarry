@@ -739,7 +739,7 @@ func TestFilterWithin(t *testing.T) {
 	inScope2 := quarry.Reference{File: "/repo/internal/websterengine/state.go", Line: 10}
 	crossPackage := quarry.Reference{File: "/repo/internal/perchengine/identity.go", Line: 44}
 	// A sibling directory whose name merely starts with the same prefix —
-	// proves filterWithin does not fall back to a naive string-prefix
+	// proves FilterWithin does not fall back to a naive string-prefix
 	// check, which would wrongly treat "internal/webster" as containing
 	// anything under "internal/websterengine" (they share no path
 	// component boundary in common beyond the literal substring).
@@ -779,13 +779,13 @@ func TestFilterWithin(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := filterWithin(tt.refs, tt.within, tt.baseDir)
+			got := FilterWithin(tt.refs, tt.within, tt.baseDir)
 			if len(got) != len(tt.wantRefs) {
-				t.Fatalf("filterWithin() = %v; want %v", got, tt.wantRefs)
+				t.Fatalf("FilterWithin() = %v; want %v", got, tt.wantRefs)
 			}
 			for i := range got {
 				if got[i] != tt.wantRefs[i] {
-					t.Errorf("filterWithin()[%d] = %v; want %v", i, got[i], tt.wantRefs[i])
+					t.Errorf("FilterWithin()[%d] = %v; want %v", i, got[i], tt.wantRefs[i])
 				}
 			}
 		})
@@ -926,20 +926,20 @@ func TestFilterUnexpectedCallers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := filterUnexpectedCallers(tt.refs, tt.declRefs, tt.exceptAbs)
+			got := FilterUnexpectedCallers(tt.refs, tt.declRefs, tt.exceptAbs)
 			if len(got) != len(tt.want) {
-				t.Fatalf("filterUnexpectedCallers() = %v; want %v", got, tt.want)
+				t.Fatalf("FilterUnexpectedCallers() = %v; want %v", got, tt.want)
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("filterUnexpectedCallers()[%d] = %v; want %v", i, got[i], tt.want[i])
+					t.Errorf("FilterUnexpectedCallers()[%d] = %v; want %v", i, got[i], tt.want[i])
 				}
 			}
 		})
 	}
 }
 
-// TestAssertNoCallersFilterOrdering covers filterWithin composed with filterUnexpectedCallers in
+// TestAssertNoCallersFilterOrdering covers FilterWithin composed with FilterUnexpectedCallers in
 // the exact order assertNoCallersCommand applies them -- --within, then --except, then the
 // declaration exclusion -- over a hand-built reference slice.
 //
@@ -960,24 +960,24 @@ func TestAssertNoCallersFilterOrdering(t *testing.T) {
 
 	refs := []quarry.Reference{decl, exceptRef, outOfScope, violation}
 
-	scoped := filterWithin(refs, within, baseDir)
+	scoped := FilterWithin(refs, within, baseDir)
 	if len(scoped) != 3 {
-		t.Fatalf("filterWithin(...) = %v; want 3 entries (outOfScope excluded)", scoped)
+		t.Fatalf("FilterWithin(...) = %v; want 3 entries (outOfScope excluded)", scoped)
 	}
 	for _, r := range scoped {
 		if r == outOfScope {
-			t.Fatalf("filterWithin(...) = %v; want outOfScope %v excluded", scoped, outOfScope)
+			t.Fatalf("FilterWithin(...) = %v; want outOfScope %v excluded", scoped, outOfScope)
 		}
 	}
 
 	exceptAbs := map[string]bool{filepath.Clean(exceptRef.File): true}
-	got := filterUnexpectedCallers(scoped, []quarry.Reference{decl}, exceptAbs)
+	got := FilterUnexpectedCallers(scoped, []quarry.Reference{decl}, exceptAbs)
 
 	if len(got) != 1 {
-		t.Fatalf("filterUnexpectedCallers(filterWithin(...)) = %v; want exactly [%v]", got, violation)
+		t.Fatalf("FilterUnexpectedCallers(FilterWithin(...)) = %v; want exactly [%v]", got, violation)
 	}
 	if got[0] != violation {
-		t.Errorf("filterUnexpectedCallers(filterWithin(...))[0] = %v; want %v", got[0], violation)
+		t.Errorf("FilterUnexpectedCallers(FilterWithin(...))[0] = %v; want %v", got[0], violation)
 	}
 	for _, r := range got {
 		if r == decl {

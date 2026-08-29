@@ -194,7 +194,7 @@ scoped to one package comes back both complete and precise:
 
 				results, err := quarry.References(ctx, opts)
 				if err == nil && within != "" {
-					results = filterWithin(results, within, dir)
+					results = FilterWithin(results, within, dir)
 				}
 				emitLookupResult(ctx, out, "references", results, err)
 				return nil
@@ -207,7 +207,7 @@ scoped to one package comes back both complete and precise:
 				}
 				results, err := quarry.References(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved))
 				if err == nil && within != "" {
-					results = filterWithin(results, within, dir)
+					results = FilterWithin(results, within, dir)
 				}
 				return classifyLookupError(err, "references", results)
 			})
@@ -347,12 +347,12 @@ then ignored, never combined or validated against it.`,
 			// a positional argument always takes precedence when both forms
 			// are given, so this branch never consults the flags otherwise.
 			if len(args) == 0 {
-				query := quarry.Query{Pos: &quarry.Position{File: absOrJoin(dir, posFile), Line: posLine, Character: posChar}}
+				query := quarry.Query{Pos: &quarry.Position{File: AbsOrJoin(dir, posFile), Line: posLine, Character: posChar}}
 				opts := buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved)
 
 				results, err := quarry.Definition(ctx, opts)
 				if err == nil && within != "" {
-					results = filterWithin(results, within, dir)
+					results = FilterWithin(results, within, dir)
 				}
 				emitLookupResult(ctx, out, "definitions", results, err)
 				return nil
@@ -369,7 +369,7 @@ then ignored, never combined or validated against it.`,
 
 				results, err := quarry.Definition(ctx, opts)
 				if err == nil && within != "" {
-					results = filterWithin(results, within, dir)
+					results = FilterWithin(results, within, dir)
 				}
 				emitLookupResult(ctx, out, "definitions", results, err)
 				return nil
@@ -382,7 +382,7 @@ then ignored, never combined or validated against it.`,
 				}
 				results, err := quarry.Definition(ctx, buildOptions(registry, dir, stateDir, lang, query, timeout, buildTagsResolved))
 				if err == nil && within != "" {
-					results = filterWithin(results, within, dir)
+					results = FilterWithin(results, within, dir)
 				}
 				return classifyLookupError(err, "definitions", results)
 			})
@@ -686,7 +686,7 @@ and symbol are unchanged by this task and gain no verification flag.`,
 				// an ordinary optional filter here — see the Long help for
 				// what it does now that verification runs by default inside
 				// quarry.Callers, ahead of all three filters below.
-				refs = filterWithin(refs, within, dir)
+				refs = FilterWithin(refs, within, dir)
 			}
 
 			exceptAbs := make(map[string]bool, len(except))
@@ -698,7 +698,7 @@ and symbol are unchanged by this task and gain no verification flag.`,
 				exceptAbs[filepath.Clean(p)] = true
 			}
 
-			violations := filterUnexpectedCallers(refs, declRefs, exceptAbs)
+			violations := FilterUnexpectedCallers(refs, declRefs, exceptAbs)
 			if len(violations) == 0 {
 				SetExit(ctx, output.Ok(out, map[string]any{"callers": []map[string]any{}}))
 				return nil
@@ -733,8 +733,8 @@ func emitAmbiguousOrError(ctx context.Context, out io.Writer, err error) bool {
 	return false
 }
 
-// filterUnexpectedCallers returns entries in refs that are neither in declRefs nor in exceptAbs.
-func filterUnexpectedCallers(refs []quarry.Reference, declRefs []quarry.Reference, exceptAbs map[string]bool) []quarry.Reference {
+// FilterUnexpectedCallers returns entries in refs that are neither in declRefs nor in exceptAbs.
+func FilterUnexpectedCallers(refs []quarry.Reference, declRefs []quarry.Reference, exceptAbs map[string]bool) []quarry.Reference {
 	declSet := make(map[quarry.Reference]bool, len(declRefs))
 	for _, d := range declRefs {
 		declSet[d] = true
@@ -753,8 +753,8 @@ func filterUnexpectedCallers(refs []quarry.Reference, declRefs []quarry.Referenc
 	return violations
 }
 
-// filterWithin returns entries in refs whose file lies within the specified directory.
-func filterWithin(refs []quarry.Reference, within, baseDir string) []quarry.Reference {
+// FilterWithin returns entries in refs whose file lies within the specified directory.
+func FilterWithin(refs []quarry.Reference, within, baseDir string) []quarry.Reference {
 	w := within
 	if !filepath.IsAbs(w) {
 		w = filepath.Join(baseDir, w)
@@ -858,7 +858,7 @@ func parseQuery(base, arg string) (quarry.Query, error) {
 	// "file:line:col" argument is resolved against base here, the one point
 	// where the CLI, not the engine, owns path interpretation. base is never
 	// the process cwd, so this never falls back to filepath.Abs.
-	pos.File = absOrJoin(base, pos.File)
+	pos.File = AbsOrJoin(base, pos.File)
 
 	return quarry.Query{Pos: &pos}, nil
 }
@@ -873,16 +873,16 @@ func inFileQuery(base, inFilePath, name string) (quarry.Query, error) {
 	// parseQuery resolves Pos.File: the CLI layer, not the engine, owns path
 	// interpretation. base is never the process cwd, so this never falls back
 	// to filepath.Abs.
-	absFile := absOrJoin(base, inFilePath)
+	absFile := AbsOrJoin(base, inFilePath)
 
 	return quarry.Query{InFile: &quarry.InFileQuery{File: absFile, Name: name}}, nil
 }
 
-// absOrJoin returns path unchanged if it is already absolute (cleaned), or joined onto base
+// AbsOrJoin returns path unchanged if it is already absolute (cleaned), or joined onto base
 // otherwise.
 // base must itself be absolute; this is the one path-resolution rule the seam cwd governs for a
 // caller-supplied argument, shared by parseQuery and inFileQuery.
-func absOrJoin(base, path string) string {
+func AbsOrJoin(base, path string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}

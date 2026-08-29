@@ -248,7 +248,7 @@ func validateTOCLang(lang string) error {
 	return fmt.Errorf("toc: unrecognised --lang %q; valid languages: %s", lang, strings.Join(quarry.TOCLanguages(), ", "))
 }
 
-// resolveTOCPath joins arg onto baseDir unless arg is already absolute, mirroring absOrJoin's
+// resolveTOCPath joins arg onto baseDir unless arg is already absolute, mirroring AbsOrJoin's
 // resolution rule for a toc positional argument.
 func resolveTOCPath(baseDir, arg string) string {
 	if filepath.IsAbs(arg) {
