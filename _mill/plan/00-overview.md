@@ -40,7 +40,7 @@ batches:
   - number: 5
     name: summarize-and-separation
     file: 05-summarize-and-separation.md
-    depends-on: [1, 3]
+    depends-on: [1, 2, 3, 4]
     verify: uv run --no-project --with pytest --with pyyaml python -m pytest bench/loomyard-eval/ladder/tests/test_summarize.py -q
   - number: 6
     name: run-orchestration

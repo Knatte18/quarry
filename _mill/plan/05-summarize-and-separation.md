@@ -6,12 +6,12 @@ batch: "summarize-and-separation"
 number: 5
 cards: 3
 verify: uv run --no-project --with pytest --with pyyaml python -m pytest bench/loomyard-eval/ladder/tests/test_summarize.py -q
-depends-on: [1, 3]
+depends-on: [1, 2, 3, 4]
 ```
 
 ## Batch Scope
 
-This batch delivers `summarize.py`: per-config medians and full ranges over every metric, the disjoint-range separation rule implemented and tested separately for each of the three comparison types the discussion defines, and the tracked `summary.json` that backs every claim the conclusion will make. It depends on batch 1 for config identity and control resolution, and on batch 3 for run completeness: `load_runs` calls `gates.is_complete` rather than re-deriving what a complete run is, so there is exactly one definition of run completeness in the suite.
+This batch delivers `summarize.py`: per-config medians and full ranges over every metric, the disjoint-range separation rule implemented and tested separately for each of the three comparison types the discussion defines, and the tracked `summary.json` that backs every claim the conclusion will make. It depends on batch 1 for config identity and control resolution, on batch 3 for run completeness (`load_runs` calls `gates.is_complete` rather than re-deriving what a complete run is, so there is exactly one definition of it in the suite), and on batches 2 and 4 for the artifact schemas it reads: every metric it summarises is a field `extract_usage` writes into `usage.json` or `score_run` writes into `score.json`, so those two modules define the shape this batch consumes.
 
 The external interface batch 8 consumes is `summarize.py`'s CLI, invoked once after the matrix completes to write `summary.json`. Batch 9 reads that file and nothing else when writing the conclusion.
 
@@ -24,6 +24,8 @@ Batch-local decision: a comparison is a first-class value, not a formatted strin
 - **Context:**
   - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
   - `bench/loomyard-eval/ladder/scripts/gates.py`
+  - `bench/loomyard-eval/ladder/scripts/extract_usage.py`
+  - `bench/loomyard-eval/ladder/scripts/score_run.py`
   - `bench/loomyard-eval/ladder/tests/conftest.py`
   - `bench/loomyard-eval/scripts/gen_compact_toc.py`
 - **Edits:** none
@@ -33,6 +35,8 @@ Batch-local decision: a comparison is a first-class value, not a formatted strin
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Write the tests first. Add module-level `METRICS` — the ordered list of summarised metric names drawn from a run's `usage.json` and `score.json`: `duration_ms`, `wall_clock_ms`, `num_turns`, `tool_uses`, `quarry_tool_uses`, `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd`, `bash_grep_count`, `grep_tool_count`, `grep_fallback_total`, `denied_tool_attempts`, `recall`, and `precision` — and `GREP_METRICS`, the subset `bash_grep_count`, `grep_tool_count`, and `grep_fallback_total`.
+
+  The four token classes are **flattened out of `usage.json`'s nested `tokens` mapping**: `extract_usage` writes them under `tokens.input_tokens` and siblings, and `METRICS` names them flat, so `load_runs` lifts each `tokens.<class>` to a top-level key of the per-run mapping. Every other metric is already top-level in `usage.json` or `score.json` and is copied across unchanged.
 
   `wall_clock_ms` is summarised alongside `duration_ms` because the sequential-dispatch rationale rests on wall-clock comparability and the two measure different spans — the client's own view of the run, and the harness's measurement around the whole subprocess including startup. `denied_tool_attempts` is summarised because the summary's own metadata carries a boolean saying whether it means anything; a metadata flag qualifying a metric the summary never reports would qualify nothing.
 
@@ -80,7 +84,7 @@ Batch-local decision: a comparison is a first-class value, not a formatted strin
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Write the tests first. Add `build_summary(ladder, results_root)` returning the full mapping written to `summary.json`:
-  - `_meta` — the pinned run model, the pinned scorer mapping, `reps`, the results-root date segment, the number of configs, and a `denied_tool_attempts_reported` boolean read from the run directory's `probe.json`, so the summary states whether that metric carries information or was dropped.
+  - `_meta` — the pinned run model, the pinned scorer mapping, `reps`, the results-root date segment, the number of configs, and a `denied_tool_attempts_reported` boolean, read from `<results_root>/probe.json` — the probe record at the results root, not in any run directory — as the value of that file's **`denied_tools_advertised`** key, which is the field name the probe writer uses. When denied tools are hidden from the model the metric can never be non-zero, so the flag is false and the summary says the column carries no information.
   - `cells` — every config id mapped to its `Cell` stats plus `complete`, plus `worktree_dirtied_count`, `target_origin_quarry_mention_count`, and `daemon_backed_runs` aggregated from the observations `load_runs` reads out of each run's `run.json`, so a cluster of dirtied runs is visible per config rather than only per run, and the cold cell's warmth signal — or its absence — is visible in the tracked numbers.
   - `comparisons` — every comparison the three builders produce, as a flat list of `Comparison` records.
   - `incomplete` — the ids of every cell that is not complete.
