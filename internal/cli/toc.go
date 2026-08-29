@@ -125,7 +125,7 @@ default of 1.`,
 			// value therefore fails once, up front, before any argument is
 			// processed.
 			if docSentences != "" {
-				if _, err := parseDocSentences(docSentences); err != nil {
+				if _, err := ParseDocSentences(docSentences); err != nil {
 					SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
@@ -285,7 +285,7 @@ func resolveTOCBaseDir(cwd, targetDir string) string {
 //
 // Resolution is per argument, not per invocation: the setting is per-directory and a batch may
 // span directories, so each argument resolves the config-file tier against its own parent
-// directory. When docSentences is non-empty, resolveDocSentences short-circuits before touching
+// directory. When docSentences is non-empty, ResolveDocSentences short-circuits before touching
 // any config file — the caller has already validated the flag once, up front, before any
 // argument was processed.
 func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[string]any) {
@@ -303,7 +303,7 @@ func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[strin
 	}
 
 	targetDir := filepath.Dir(abs)
-	resolvedDocSentences, err := resolveDocSentences(docSentences, targetDir)
+	resolvedDocSentences, err := ResolveDocSentences(docSentences, targetDir)
 	if err != nil {
 		return statusError, map[string]any{"error": err.Error()}
 	}
