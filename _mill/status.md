@@ -52,7 +52,9 @@ batches:
     commit_sha: 9129a49c1849fc66a94878556ecdab39d894cdb1
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: lsp-mirrored-tools
-    state: pending
+    state: running
+    implementer_session: 0a5ccb39-795c-4965-ad8a-d107a8345a95
+    start_sha: 7c02e1b3c5f1498adab9b1babec414c3f2acc688
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: quarry-native-lsp-tools
     state: pending
