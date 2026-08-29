@@ -29,11 +29,12 @@ That maps directly onto the friction observed and fixed this session.
 
 - New `internal/mcpserver/` package implementing an MCP server over stdio, exposing seven tools.
 - New `cmd/quarry-mcp/` binary — a thin `main.go` that constructs and runs the server.
-- A minimal set of newly-exported resolution helpers in `internal/cli` (`ResolveStateDir`, `ResolveConfigPath`, `ResolveBuildTags`, `AbsOrJoin`) so the MCP layer reuses the CLI's exact state-directory keying rather than reimplementing it.
+- A minimal set of newly-exported helpers in `internal/cli` — `ResolveStateDir`, `ResolveConfigPath`, `ResolveBuildTags`, `AbsOrJoin`, `FilterWithin`, `FilterImpactWithin` — so the MCP layer reuses the CLI's exact state-directory keying and `within` semantics rather than reimplementing them.
+- An injectable facade seam in `internal/mcpserver` (package-level function variables defaulting to the `quarry.*` facade functions) so handlers are testable without gopls.
 - A translation layer: `file://` URI acceptance on input, 0-based↔1-based line/character conversion for the LSP-mirrored tools only.
 - `go.mod` dependency on `github.com/modelcontextprotocol/go-sdk`.
 - Three tiers of tests (unit / in-memory transport / real-binary stdio).
-- A committed `.mcp.json` at the repo root so a Claude Code session in quarry can connect to the server.
+- A committed `.mcp.json` at the repo root so a Claude Code session in quarry can connect to the server, plus a short `docs/mcp-setup.md` covering cold-start behaviour and the pre-built-binary alternative.
 
 **Out:**
 
@@ -67,8 +68,10 @@ That maps directly onto the friction observed and fixed this session.
 
 - Decision: a separate `cmd/quarry-mcp` binary, not a subcommand of `cmd/quarry`.
 - Rationale: stdio MCP cannot tolerate anything else writing to stdout.
-  The existing CLI writes JSON to stdout by design (`internal/output`), so sharing a process with it puts the JSON-RPC stream one stray line away from corruption.
-  A dedicated binary removes the hazard structurally rather than by discipline.
+  The existing CLI writes JSON to stdout by design (`internal/output`), so a subcommand would put the JSON-RPC stream one stray line away from corruption.
+  What the separate binary actually guarantees is narrower than "no stdout writers exist in the process": because `internal/mcpserver` imports `internal/cli` for the resolution helpers, cobra and `internal/output` are still linked into `quarry-mcp`.
+  The guarantee is that **no CLI command ever runs in this process** — no `cobra.Command` is constructed or executed, so no `output.Ok`/`output.Err` call site is reachable.
+  Residual stdout purity rests on discipline plus the tier-3 assertion (see test-strategy), not on a structural absence of stdout writers.
 - Rejected: `quarry mcp serve` subcommand (one artifact, but shares stdout with a layer built to print to it); both forms (redundant given the above).
 
 ### package-placement
@@ -89,6 +92,26 @@ That maps directly onto the friction observed and fixed this session.
   Duplication guarantees eventual drift on something that must stay identical.
 - Rejected: a new `internal/resolve` package both layers import (cleaner layering, but a structural refactor of stable CLI code inside an additive-exposure task); duplicating the logic in `internal/mcpserver` (CLI untouched, two implementations that will diverge).
 
+### within-filter-helpers
+
+- Decision: also export `FilterWithin` and `FilterImpactWithin` from `internal/cli` (currently `filterWithin` at `cli.go:757` and `filterImpactWithin` at `impact.go:275`), and call them from `internal/mcpserver`.
+  `isWithinDir` (`cli.go:784`) stays unexported — it is `filterWithin`'s own helper and has no separate caller.
+  Do not reimplement `within` filtering in `internal/mcpserver`.
+- Rationale: identical to shared-resolution-helpers.
+  `within` semantics are subtle — the directory is joined onto the base when relative, `baseDir` may itself still be relative (e.g. `--target-dir "."`), and `filterImpactWithin` deliberately returns a non-nil `Callers` slice so it marshals as `[]` rather than `null`.
+  A second implementation would silently answer a differently-scoped question than the CLI does for the same arguments, and there is no cheap test that would catch the divergence.
+- Rejected: reimplementing in `internal/mcpserver` (avoids touching the CLI, but forks a subtle filter); leaving the choice to mill-plan (the reason this is now a decision rather than a "prefer…" note).
+
+### facade-seam-for-tests
+
+- Decision: `internal/mcpserver` declares package-level function variables for every facade call it makes — `definitionFn = quarry.Definition`, `referencesFn = quarry.References`, `symbolFn = quarry.Symbol`, `callersFn = quarry.Callers`, `impactFn = quarry.Impact`, `tocFileFn = quarry.TOCFile`, `tocDirFn = quarry.TOCDir` — defaulting to the facade functions and overridable from tests in the same package.
+- Rationale: `quarry.References`/`Definition`/`Symbol`/`Callers`/`Impact` are package-level functions with no injection point (`internal/cli` calls them directly at `cli.go:195,353,469,679` and `impact.go:151`), so five of the seven handlers cannot be exercised at all without a live gopls.
+  Without a seam, tiers 1 and 2 would collapse to translation, parsing, options assembly, and the two toc handlers, and every per-entry status and error-mapping assertion — the ones that matter most under array batching — would land in the gopls-gated tier 3 where they run rarely.
+  This mirrors the seam convention `internal/cli/paths.go` already uses for `userConfigDir`/`userCacheDir`.
+- Rejected: no seam, restricting tiers 1–2 to the non-LSP paths (avoids new indirection, but moves the highest-value assertions behind a `//go:build lsp` gate); an interface parameter threaded through every handler (more idiomatic in the abstract, but a wider change for a seam that exists only for tests).
+- Constraint on the seam: it lives in `internal/mcpserver` only.
+  `quarry/facade.go` stays behaviour-free — adding indirection there would break `facade_test.go`'s alias-and-delegation property.
+
 ### character-encoding
 
 - Decision: naive `±1` only.
@@ -105,6 +128,10 @@ That maps directly onto the friction observed and fixed this session.
 - Rationale: accepting the URI form is the point of the hedge — it is what LSP-shaped input looks like.
   Emitting URIs would force Claude to unwrap a URI before the result is usable in Read/Edit, adding exactly the friction this task exists to remove.
 - Rejected: strict LSP `uri` in and out (maximum fidelity, but pushes unwrapping work onto every consumer of a result); plain paths only (abandons the hedge on input, which is where it matters).
+- **Exception — `toc_dir`'s per-file `path`.**
+  The "always absolute" half of the rule governs *position and reference* results (`file` on a `Reference`, `SymbolMatch`, or impact caller).
+  `toc_dir`'s per-file `path` stays **caller-relative**, composed exactly as the CLI composes it — `filepath.Join(arg, result.Files[i].Name)` against the argument as the caller wrote it (`toc.go:392`) — so the value round-trips straight into a follow-up `toc_file` call.
+  Absolutising it would break precisely the chained-call ergonomics the field exists for, which is the same friction this task removes.
 
 ### tool-set
 
@@ -132,7 +159,8 @@ That maps directly onto the friction observed and fixed this session.
 ### array-batching
 
 - Decision: **all seven** tools take an array of targets, not a single target.
-  This is new functionality relative to today's CLI for the LSP-mirrored three, and matches the existing CLI batch pattern for the rest.
+  Six of the seven have direct CLI precedent: `refs`, `definition`, `symbol`, and `impact` are `cobra.MinimumNArgs(1)` driven through `runBatch` (`cli.go:140,203,291,378,433,489`; `impact.go:96,159`), and `toc file`/`toc dir` through `runPathBatch` (`toc.go:103,135,190,208`).
+  **`assert_no_callers` is the one tool whose batch envelope has no CLI precedent to mirror** — it is `cobra.ExactArgs(1)` (`cli.go:631`) and emits a bare `{"violation": …, "callers": …}` object with no batch envelope at all.
 - Rationale: parallel `tool_use` blocks are empirically unavailable to `Agent`-dispatched subagents.
   This was verified earlier in the originating session: 0 of 56 turns batched, across two escalating prompt strategies — most likely an API-level `disable_parallel_tool_use` constraint applied specifically to dispatched subagents.
   Since dispatched subagents are a primary consumer, array input is the **only** mechanism that actually reduces turn count for them: it is one `tool_use` call carrying several targets in its input, not several `tool_use` calls in one turn.
@@ -140,6 +168,24 @@ That maps directly onto the friction observed and fixed this session.
 - Rejected: one target per call (would have matched the LSP request shape, but the justification — "Claude can issue several tool calls in one message" — is false for the primary consumer); arrays only on the quarry-native tools (splits the mechanism exactly where it is needed most).
 - Note: the "no LSP analogue for a batch shape" cost is real but irrelevant.
   `textDocument/definition` is single-request in every LSP variant, so no option here has a batch shape to mirror — there is no hedge to lose at the batch level.
+
+### batching-execution-model
+
+- Decision, four parts:
+  1. **Entries execute strictly sequentially, in input order.**
+     Results are returned in the same order, one entry per input entry, always.
+  2. **The server serializes concurrent `tools/call` requests** behind a single process-wide mutex held for the duration of a call.
+  3. **`--timeout` is per-entry**, not a whole-call budget: each entry's `quarry.Options.Timeout` gets the configured value, exactly as the CLI does per invocation.
+     There is no server-imposed whole-call deadline; the MCP client's own request timeout bounds the call.
+  4. **Array length is capped at 64 entries.**
+     Exceeding the cap is a whole-call `isError`, naming the cap and the received length — not a silent truncation.
+- Rationale: sequential execution and server-side serialization are both forced by the engine.
+  `lsp.Client` is single-flight — `Call` increments an unsynchronized `nextID`, `writeMessage` holds no write lock, and the response loop reads one shared channel with no pending-request registry, so two concurrent calls consume and drop each other's responses (`internal/quarryengine/query/callers.go:52-55`).
+  The one-shot CLI never exercised concurrency, so an MCP server — which may legitimately receive overlapping `tools/call` requests — is the first consumer that can hit this, and it would surface as sporadic wrong or missing answers rather than a clean failure.
+  Serializing at the server is the conservative choice; per-target-dir sharding is a later optimization only if measurement shows contention.
+  Per-entry timeout matches the CLI's own semantics (`Options.Timeout` is documented as the deadline for each LSP request phase), so a 12-entry call is not silently more likely to time out than 12 CLI invocations.
+  The 64-entry cap is a guard against a pathological call monopolizing the serialized server; it is deliberately far above any plausible real batch.
+- Rejected: concurrent entry execution (would corrupt the single-flight client); a whole-call timeout budget (makes a batched call behave differently from the same targets issued singly, undermining the turn-saving argument); unbounded arrays (one bad call blocks every other client indefinitely under serialization); silent truncation (hides lost targets).
 
 ### entry-shape-lsp-mirrored
 
@@ -188,12 +234,41 @@ That maps directly onto the friction observed and fixed this session.
 - Note: MCP has no exit code, so the CLI's `statusRank` ordering has no direct home.
   The rank exists only to pick a process exit code; per-entry `status` carries the same information without it.
 
+### assert-no-callers-semantics
+
+- Decision:
+  - A violation is **not** a status.
+    The four per-entry statuses stay exactly as they are; an `assert_no_callers` entry whose symbol resolved is `status: "found"` whether or not it has violating callers.
+    The entry additionally carries `"violation": <bool>` and `"callers": [...]`, mirroring the CLI's fields (`cli.go:701-708`): `{"callers": []}` on a clean check, `{"violation": true, "callers": [...]}` when violations remain.
+    `"violation": false` is emitted explicitly on the clean case rather than omitted, so the field is always present and never has to be inferred from an empty array.
+  - A violation never sets tool-level `isError`.
+    It is an answer to the question asked, not a failure to answer it.
+  - `except` and `within` are **per-entry** for this tool.
+- Rationale: overloading `status` with a fifth `violation` value would make "did the lookup succeed" and "was the assertion satisfied" indistinguishable, and would break the shared `found`/`not_found`/`ambiguous`/`error` vocabulary every other tool uses.
+  Keeping them orthogonal means a caller reads `status` to know whether to trust the entry and `violation` to know the answer.
+  `except` is inherently per-target — it names the specific paths sanctioned for *that* symbol — so a call-wide `except` would either leak one target's exemptions onto another's check (silently weakening the gate) or force one call per symbol, destroying the batching the tool exists to provide.
+  This is the same heterogeneous-targets argument as in-file-is-per-entry.
+- Rejected: a fifth `status: "violation"` (conflates resolution outcome with assertion outcome); `isError: true` on violation (a CI gate's negative answer is a result, and under arrays it would discard every other entry); call-wide `except`/`within` (contradicts in-file-is-per-entry and is unsafe for `except` specifically).
+
+### per-entry-vs-call-wide
+
+- Decision: the governing rule is **target-specific answer-shaping parameters are per-entry; everything else is call-wide.**
+  - Per-entry: file-scoping (the `{textDocument, symbol}` entry form), `within`, `except`.
+  - Call-wide: `lang`, `buildTags`, `docSentences`, `noVerify`, `targetDir`.
+  - Launch-only: `--config`, `--state-dir`, `--timeout`, `--target-dir` default.
+- Rationale: `lang` and `buildTags` select the language server and feed the state-directory key.
+  They cannot vary within one call without re-keying the daemon mid-call, which is exactly the failure `Options.StateDir`'s own doc comment warns about — so making them per-entry would be actively unsafe, not merely verbose.
+  `noVerify` is a mode for the whole check and `docSentences` a rendering choice; neither is target-specific.
+  Everything remaining that genuinely differs per target is per-entry.
+- Rejected: making every answer-shaping parameter per-entry uniformly (simple rule, but `lang`/`buildTags` per entry would silently mismatch the daemon serving the call); keeping `within`/`except` call-wide for CLI parity (the contradiction round 1 caught).
 ### param-split
 
-- Decision: per-call parameters are the answer-shaping ones — `lang`, `within`, `buildTags`, `docSentences`, `except`, `noVerify`, plus the optional `targetDir` override (and file-scoping, which is per-entry per in-file-is-per-entry).
-  Server-launch-only flags are the environment-shaping ones — `--config`, `--state-dir`, `--timeout`, `--target-dir` (default).
-- Rationale: the model should only ever see parameters that change the **answer**, never infrastructure.
-- Rejected: everything per-call (full CLI parity, but a wide schema on every tool and more for the model to get wrong); target-only per-call (smallest schema, but `within` and file-scoping are genuinely per-question and would become unreachable).
+- Decision: the model sees only parameters that change the **answer**; everything infrastructural is a server-launch flag it never sees.
+  Answer-shaping (visible in a tool schema): `lang`, `within`, `buildTags`, `docSentences`, `except`, `noVerify`, the optional `targetDir` override, and file-scoping.
+  Environment-shaping (launch-only): `--config`, `--state-dir`, `--timeout`, `--target-dir` default.
+  Where each answer-shaping parameter sits — per-entry or call-wide — is settled by per-entry-vs-call-wide above.
+- Rationale: the model should only ever see parameters that change the answer, never infrastructure.
+- Rejected: everything per-call including infrastructure (full CLI parity, but a wide schema on every tool and more for the model to get wrong); target-only per-call (smallest schema, but `within` and file-scoping are genuinely per-question and would become unreachable).
 
 ### test-strategy
 
@@ -213,6 +288,12 @@ That maps directly onto the friction observed and fixed this session.
 - Rationale: works from a fresh clone with no install step, and dogfoods the server in quarry's own future sessions — including work of this kind — which is the best continuous validation available.
   The compile is cached after the first launch.
 - Rejected: invoking an installed `quarry-mcp` from `$PATH` (matches real-world deployment, but is broken until someone runs `go install`); documenting the snippet in `docs/` without committing `.mcp.json` (leaves the brief's own requirement — "a Claude Code session can actually connect to it for testing" — unfulfilled).
+- **Cold-start behaviour, stated explicitly.**
+  quarry requires `CGO_ENABLED=1` and a working C toolchain — `internal/quarryengine/cgoguard_nocgo.go` fails a `CGO_ENABLED=0` build at compile time on purpose, because the treesitter package links tree-sitter's C grammars.
+  So the first `go run ./cmd/quarry-mcp` on a cold build cache is a **cgo build**, not a trivial compile, and it can exceed an MCP client's connect timeout.
+  Expected behaviour: the first connect after a fresh clone or a cleared build cache may fail or hang; a retry once the build has completed succeeds, and every later launch is cache-fast.
+  A missing C toolchain does not fail with a linker dump — it fails with the guard's own compile error naming `quarry_requires_CGO_ENABLED_1_with_a_C_toolchain`, which surfaces to the client as the server process exiting immediately with that message on stderr.
+  Both behaviours must be documented alongside the committed `.mcp.json` (a short `docs/mcp-setup.md`), including the `go build -o` + `$PATH` alternative for anyone who wants a warm start.
 
 ## Technical context
 
@@ -296,6 +377,10 @@ The MCP layer needs equivalent filtering; reusing these means exporting them too
 Prefer exporting if the logic is non-trivial, to keep one definition of "within".
 
 **`toc` specifics.** `toc file` resolves an optional per-directory config via `resolveTOCConfigPath(targetDir)` — `$QUARRY_TOC_CONFIG`, else `<targetDir>/.quarry.yaml`, looked up in that directory only with no upward walk.
+**Critical: that `targetDir` is not the CLI's `--target-dir`.**
+`tocFileOne` sets `targetDir := filepath.Dir(abs)` — the resolved *file's own parent directory* (`toc.go:305`).
+`toc_file` must pin the config base the same way: the parent directory of each resolved file, per entry.
+Reusing the MCP `targetDir` there would silently pick up a different `.quarry.yaml` than the CLI does for the identical argument, breaking the byte-comparability this task otherwise preserves.
 `--doc-sentences` accepts a number or `"all"` (`quarry.TOCAllSentences`); resolution order is flag → config → default 1, via `resolveDocSentences`.
 `toc dir` emits headers only and never consults the config.
 `--lang` is validated against `quarry.TOCLanguages()`, but the unsupported-language error message is worded from `quarry.TOCImplemented()`.
@@ -316,13 +401,17 @@ Constraints established during this discussion:
 - **stdout purity.** Nothing in the `quarry-mcp` process may write to stdout except the MCP transport.
   Diagnostics go to stderr.
   This is load-bearing, not stylistic — see binary-shape and test-strategy tier 3.
+  Note that cobra and `internal/output` are linked into the binary (via the `internal/cli` import), so this is enforced by never constructing or running a `cobra.Command` plus the tier-3 assertion, not by their absence.
+- **The LSP client is single-flight.**
+  Entries execute sequentially and concurrent `tools/call` requests are serialized server-side.
+  Violating this corrupts responses rather than failing cleanly (`query/callers.go:52-55`).
 - **State-directory keying must be bit-for-bit identical to the CLI's.**
   Any divergence silently spawns a second gopls daemon and forfeits warm-daemon reuse.
 - **`quarry/facade.go` stays behaviour-free.**
   `facade_test.go` enforces it mechanically.
 - **`internal/mcpserver` imports the facade only**, never `internal/quarryengine/...` directly.
 - **No changes to CLI behaviour**, including output shapes, flag names, and exit codes.
-  The only permitted edit to `internal/cli` is exporting existing helpers (renaming the identifier, not changing its logic) — plus, if chosen, exporting the `within`-filter helpers.
+  The only permitted edit to `internal/cli` is exporting six existing helpers — `ResolveStateDir`, `ResolveConfigPath`, `ResolveBuildTags`, `AbsOrJoin`, `FilterWithin`, `FilterImpactWithin` — which means renaming the identifier and updating its call sites, never changing its logic.
 - **Two positional conventions coexist by design** (0-based LSP-mirrored, 1-based quarry-native).
   Each tool description must state its own convention explicitly.
 
@@ -336,11 +425,14 @@ TDD candidates, in this order:
 - **Entry-union parsing**: each of the three LSP-mirrored entry forms maps onto the right `quarry.Query` variant; a malformed entry (both `position` and no `textDocument`, neither `symbol` nor `position`, etc.) is rejected with a clear per-entry error rather than a silent guess.
 - **Flat entry-union parsing** for the quarry-native tools, including that no `±1` and no URI handling is applied there.
 - **Options assembly**: `targetDir` precedence (per-call override beats launch default), state-dir derivation matching `internal/cli`'s for the same inputs — assert the derived path is equal to what the exported CLI helper returns for identical arguments, so drift fails the build.
-- **`within` filtering** and `except`/`noVerify` handling for `assert_no_callers`.
-- Per-tool handler tests against existing `testdata/` fixtures for the non-LSP-dependent paths (`toc_file`, `toc_dir`).
+- **`within` filtering** (via the exported `FilterWithin`/`FilterImpactWithin`) and per-entry `except`/call-wide `noVerify` handling for `assert_no_callers`, including that one entry's `except` never affects another's.
+- **`assert_no_callers` result mapping**: `status: "found"` with `violation: false` and an empty `callers` array on a clean check; `status: "found"` with `violation: true` and populated `callers` when violations remain; `violation` present in both cases.
+- **Batching execution model**: entry results come back in input order one-per-input; a 65-entry array is rejected as a whole-call error naming the cap; per-entry timeout is applied per entry rather than divided across the batch.
+- Per-tool handler tests against existing `testdata/` fixtures for the non-LSP-dependent paths (`toc_file`, `toc_dir`), including that `toc_file`'s `.quarry.yaml` base is each resolved file's own parent directory and that `toc_dir`'s per-file `path` stays caller-relative and round-trips into a `toc_file` call.
 
 **Tier 2 — in-memory MCP transport tests.**
-Client and server wired over the SDK's in-memory transport, with the facade calls stubbed or pointed at tree-sitter-only fixtures so no gopls is required:
+Client and server wired over the SDK's in-memory transport, with the facade function variables (see facade-seam-for-tests) swapped for stubs so no gopls is required.
+The stubs are what make the status and error-mapping assertions below reachable at all — five of seven handlers have no other way to be driven without a live language server:
 
 - Tool listing: all seven tools present, names exactly as decided, each with an input and output schema.
 - Schema validation rejects a malformed call before any handler runs.
