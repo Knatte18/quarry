@@ -104,7 +104,7 @@ That maps directly onto the friction observed and fixed this session.
 
 ### export-inventory
 
-- Decision: the complete list of `internal/cli` identifiers exported for `internal/mcpserver`, derived from the actual per-handler call chain — nine, not six:
+- Decision: the complete list of `internal/cli` identifiers exported for `internal/mcpserver`, derived by walking every handler's call chain including both toc handlers — twelve:
 
   | Exported as | Currently | Needed by |
   | --- | --- | --- |
@@ -116,14 +116,31 @@ That maps directly onto the friction observed and fixed this session.
   | `FilterImpactWithin` | `impact.go:275` | `impact` |
   | `FilterUnexpectedCallers` | `cli.go:737` | `assert_no_callers` (declaration-site exclusion) |
   | `ResolveDocSentences` | `tocconfig.go:105` | `toc_file` (composes `loadTOCConfig` `:47` and `parseDocSentences` `:83`) |
-  | `StructToFields` | `toc.go:401` | `impact`, `toc_file` |
+  | `StructToFields` | `toc.go:401` | `impact`, `toc_file`, `toc_dir` |
+  | `ResolveTOCPath` | `toc.go:253` | `toc_file`, `toc_dir` |
+  | `ValidateTOCLang` | `toc.go:239` | `toc_file`, `toc_dir` |
+  | `TOCDirEntries` | `toc.go:376` | `toc_dir` |
 
-  `isWithinDir` (`cli.go:784`), `loadTOCConfig`, `parseDocSentences`, `resolveTOCConfigPath`, and `workspaceKey`/`buildTagsSegment` stay unexported — each is reached only through one of the nine above, so exporting them would widen the surface without adding a caller.
+  `TOCDirEntries` is the one that must not be skipped: `toc.DirEntry.Name` carries `json:"-"` (`toc/types.go:80`), so `StructToFields(TOCDirResult)` on its own produces `files` entries with **neither** `name` nor `path`.
+  The `filepath.Join(arg, Files[i].Name)` composition is not a convenience — without it, `toc_dir` returns entries that cannot be fed into anything.
+  `isWithinDir` (`cli.go:784`), `loadTOCConfig`, `parseDocSentences`, `resolveTOCConfigPath`, and `workspaceKey`/`buildTagsSegment` stay unexported — each is reached only through one of the twelve above, so exporting them would widen the surface without adding a caller.
+  `classifyTOCError` is reimplemented rather than exported, for the type reason given under error-mapping.
 - **Deliberately reimplemented, not exported:** the per-entry status classification.
   `classifyLookupError` (`cli.go:942`) and `classifySymbolError` (`cli.go:963`) return a `batchStatus` plus fields shaped for the CLI's own envelope, which is not the MCP envelope (no `target` key, no `structuredContent`, and the CLI's `statusRank` exit-code machinery has no MCP counterpart).
   `internal/mcpserver` writes its own classification.
   What it must reuse verbatim is the **error predicates**, not the packaging: `errors.As(err, &ambiguous)` against `*quarry.ErrAmbiguousSymbol` for `ambiguous`, `errors.Is(err, quarry.ErrSymbolNotFoundSentinel)` for `not_found`, everything else `error`.
   Those predicates go through the facade's re-exported sentinels, which are the identical values, so the classification cannot drift even though the code is not shared.
+  The same applies to `classifyTOCError` (`toc.go:428`), which additionally **cannot** be exported: it returns the unexported `batchStatus` type, so exporting it would mean exporting that type too — a wider change to the CLI's surface than the rename-only rule allows.
+- **The toc-side status rule** (the LSP predicates above never fire for toc — it uses no language server and no symbol resolution, so `ambiguous` is unreachable there):
+
+  | Condition | Status | CLI source |
+  | --- | --- | --- |
+  | `os.IsNotExist` on the stat | `not_found` | `toc.go:296` |
+  | argument is a directory for `toc_file` / a file for `toc_dir` | `error` | `toc.go:302`, `toc.go:343` |
+  | `errors.Is(err, quarry.ErrLanguageUnsupported)` | `error`, message worded from `quarry.TOCImplemented()` | `toc.go:428` |
+  | any other error | `error` | `toc.go:299` |
+
+  Applying the LSP predicates literally to toc would report `error` where the CLI reports `not_found` for a missing file — a divergence, not a mapping.
 - Rationale: round 1 asserted a six-helper list without walking the call chain, and the list was short.
   Naming every helper with an explicit exported-or-reimplemented disposition is what stops mill-plan from silently reimplementing something subtle (`FilterUnexpectedCallers`, `ResolveDocSentences`) or needlessly exporting something trivial.
 - Rejected: exporting the classification functions too (they package for a different envelope — sharing them would force the MCP result shape to follow the CLI's, which result-shape already rejected).
@@ -214,8 +231,9 @@ That maps directly onto the friction observed and fixed this session.
      The server holds no global lock; overlapping calls proceed independently.
   3. **`--timeout` is per-entry**, not a whole-call budget: each entry's `quarry.Options.Timeout` gets the configured value, exactly as the CLI does per invocation.
      There is no server-imposed whole-call deadline; the MCP client's own request timeout bounds the call.
-  4. **Array length is capped at 64 entries.**
-     Exceeding the cap is a whole-call `isError`, naming the cap and the received length — not a silent truncation.
+  4. **Array length is bounded at both ends: `minItems: 1`, `maxItems: 64`, declared in the input schema.**
+     Both bounds are enforced by schema validation before the handler runs, so a zero-length or 65-entry array is a whole-call error naming the bound and the received length — never a silent truncation and never an empty `results` array.
+     `minItems: 1` matches the CLI's own `cobra.MinimumNArgs(1)` on all six batching verbs.
 - Rationale for sequential entries: every facade call acquires its **own** connection.
   `runOnConnection` (`query/refs.go:230`) calls `acquireConnection` (`refs.go:153`), which either dials the supervised daemon afresh (`daemon.EnsureServer` → `lsp.NewClientDial`, `daemon/ensureserver.go:367`) or, on the non-native-daemon path, starts a **new language-server subprocess** via `lsp.NewClient(entry.Command)`.
   Running a 64-entry array concurrently would therefore mean 64 simultaneous dials — or 64 language-server processes on the legacy path — for no gain, since quarry's own calls already run in single-digit milliseconds to ~0.7s.
@@ -234,6 +252,13 @@ That maps directly onto the friction observed and fixed this session.
   - explicit position: `{"textDocument": {"uri": "..."}, "position": {"line": 0, "character": 0}}` — verbatim LSP `TextDocumentPositionParams`
   - project-wide symbol name: `{"symbol": "Name"}`
   - file-scoped symbol name: `{"textDocument": {"uri": "..."}, "symbol": "Name"}`
+- **`workspace_symbol` is the exception: it accepts one entry form only.**
+  Its array elements are `{"query": "Name"}` — LSP's own `WorkspaceSymbolParams` field name — and its schema declares nothing else, so a position or file-scoped entry is **rejected by schema validation before the handler runs**.
+  Reason: `query.Symbol` reads only `opts.Query.Symbol` (`query/symbol.go:90`).
+  A position entry would search for the empty string and a file-scoped entry would silently drop the scoping — both returning a confident wrong answer rather than an error.
+  The CLI offers neither form for `symbol` either (no `--in-file`, no `--within`, `cli.go:466-492`).
+  This *strengthens* rather than weakens the LSP hedge: `workspace/symbol`'s real params carry a bare `query` string with no `textDocument` and no `position`, so a single-form entry is the more faithful mirror.
+  The three-form union above therefore applies to `textDocument_definition` and `textDocument_references` only.
 - Rationale: tool-naming already went all-in on literal LSP naming because the name carries the signal.
   The same logic applies to the nesting structure: `{textDocument: {uri}, position: {line, character}}` is an equally recognisable, equally repeated pattern in training data (LSP spec, gopls source, VS Code clients), not merely a set of field names.
   Since #006 will measure this empirically, it must measure a clean maximal version of the LSP shape, not a compromise.
@@ -253,7 +278,9 @@ That maps directly onto the friction observed and fixed this session.
   `impact` and `assert_no_callers` entries are a flat union `{file, line, character}` / `{symbol}` / `{file, symbol}`; `toc_file` and `toc_dir` take arrays of plain paths.
 - Rationale: this follows directly from the brief's explicit mandate — mirror LSP only where there is an LSP equivalent, and keep quarry's natural shape where there is none.
   Keeping the two shapes cleanly separated is also what makes #006 interpretable: any measured difference is attributable to shape, not to a muddled hybrid.
-  It has the side benefit that quarry-native tool output stays byte-comparable with the CLI's.
+  It has the side benefit that quarry-native tool output stays directly comparable with the CLI's.
+  Scope that claim precisely: the **payload fields** of an entry match the CLI's (`files`, `path`, `callers`, `violation`, impact's marshalled result, and the same `status` vocabulary and wording).
+  The **envelope** does not and cannot — MCP entries are keyed `target` uniformly, where the CLI uses `symbol` in `runBatch` and `path` in `runPathBatch` (`toc.go:428`ff), and there is no `ok` field or exit code.
 - Rejected: applying the LSP nested shape uniformly for internal consistency (would contradict the brief and destroy #006's ability to attribute a result).
 - Consequence to handle explicitly: the server exposes two positional conventions at once — 0-based on the LSP-mirrored three, 1-based on the quarry-native ones.
   Every tool's description string must state its convention in its first line so the difference is never inferred.
@@ -268,10 +295,14 @@ That maps directly onto the friction observed and fixed this session.
 ### error-mapping
 
 - Decision: per-entry `status` (`found` / `not_found` / `ambiguous` / `error`) inside an otherwise-successful result for anything target-specific.
-  Tool-level `isError` is reserved for whole-call failures: an unusable `targetDir`, a malformed `servers.yaml`, a daemon spawn failure.
+  Tool-level `isError` is reserved for failures that occur **before any entry runs**, and that set is closed: schema validation (including the array bounds), `targetDir` absolutisation failure, and the three pre-flight steps inside `resolveContext` — config-path resolution, `quarry.LoadRegistry`, and state-dir resolution.
+  Everything surfacing from a per-entry facade call is per-entry `status: "error"` — **including daemon spawn failures** (`ErrServerNotFound`, `ErrServerSpawnTimeout`, `ErrServerTimeout`).
 - Rationale: reuses `classifyLookupError`/`classifySymbolError`'s **error predicates** exactly (see export-inventory — the classification itself is reimplemented for a different envelope), and preserves partial results.
   This matters far more under array batching than it would have for single-target calls: with arrays, `isError` on one bad target would discard every good answer in the same call.
-- Rejected: `isError: true` whenever any entry failed (simple, throws away good results); never using `isError` (a config error would look like a normal result until the body is read).
+- On daemon spawn failure specifically: round 2's list named it as a whole-call failure, which was wrong — it surfaces only as the error returned from a per-entry facade call, where no predicate distinguishes it from any other per-entry error.
+  The correct rule is the structural one above: **whole-call means pre-flight**.
+  In practice every entry in the call shares one daemon and so will fail identically, each carrying its own error string — legible, and it costs nothing.
+- Rejected: `isError: true` whenever any entry failed (simple, throws away good results); never using `isError` (a config error would look like a normal result until the body is read); keeping spawn failure in the whole-call set (no detection point exists for it).
 - Note: MCP has no exit code, so the CLI's `statusRank` ordering has no direct home.
   The rank exists only to pick a process exit code; per-entry `status` carries the same information without it.
 
@@ -479,7 +510,10 @@ TDD candidates, in this order:
 
 - The **translation layer** is the strongest TDD candidate in the task and should be written test-first: `file://` stripping and passthrough for plain paths, `AbsOrJoin` behaviour against a `targetDir`, the `±1` conversion in both directions, and round-trip stability (a result fed back as an input resolves to the same position).
   Include an explicitly-asserted non-ASCII case documenting the *current* (naive) behaviour, so the deliberate limitation is pinned rather than accidental.
-- **Entry-union parsing**: each of the three LSP-mirrored entry forms maps onto the right `quarry.Query` variant; a malformed entry (both `position` and no `textDocument`, neither `symbol` nor `position`, etc.) is rejected with a clear per-entry error rather than a silent guess.
+- **Entry-union parsing**: each of the three entry forms maps onto the right `quarry.Query` variant for `textDocument_definition`/`textDocument_references`; a malformed entry (a `position` with no `textDocument`, neither `symbol` nor `position`, etc.) is rejected with a clear per-entry error rather than a silent guess.
+- **`workspace_symbol` accepts `{"query": …}` only**: a position entry and a file-scoped entry are both rejected at schema validation, never reaching the handler — the regression here is a silent empty-string search.
+- **toc status mapping**: a missing file is `not_found`, a directory passed to `toc_file` is `error`, and an unsupported language is `error` worded from `TOCImplemented()` — the LSP predicates must not be applied to toc.
+- **`TOCDirEntries` is applied**: `toc_dir` entries carry a `path`, proving `StructToFields` alone (with `DirEntry.Name` at `json:"-"`) was not used.
 - **Flat entry-union parsing** for the quarry-native tools, including that no `±1` and no URI handling is applied there.
 - **Options assembly**: `targetDir` precedence (per-call override beats launch default), state-dir derivation matching `internal/cli`'s for the same inputs — assert the derived path is equal to what the exported CLI helper returns for identical arguments, so drift fails the build.
 - **`within` filtering** (via the exported `FilterWithin`/`FilterImpactWithin`) and per-entry `except`/call-wide `noVerify` handling for `assert_no_callers`, including that one entry's `except` never affects another's.
@@ -528,6 +562,6 @@ Builds `cmd/quarry-mcp`, execs it, and speaks real MCP framing over its stdin/st
 - **Q:** Error mapping? **A:** Per-entry status in the payload, `isError` only for whole-call failures. Directly coupled to the array decision: with all seven tools taking arrays, `isError` on one bad target would throw away five good answers with it — more important after the array decision than it was before.
 - **Q:** Which parameters are per-call vs launch-only? **A:** Per-call = answer-shaping; launch-only = environment-shaping. The model should only see parameters that change the answer, not infrastructure.
 - **Q:** Test strategy? **A:** All three tiers. Tier 3 (real binary, real stdio) is not optional — it is exactly the test that catches the "stray Cobra log line corrupts the JSON-RPC stream" risk that motivated the separate binary, and an in-memory transport can never see it. Matches the `//go:build lsp` + skip-without-gopls pattern already in `refs_targetdir_lsp_test.go`.
-- **Q:** `.mcp.json` wiring? **A:** Commit it, running `go run ./cmd/quarry-mcp --target-dir .` — works from a fresh clone and dogfoods the server in quarry's own future sessions, the best continuous validation available. Documenting only would leave the proposal's own requirement ("a Claude Code session must actually be able to connect to it") unfulfilled.
+- **Q:** `.mcp.json` wiring? **A:** Commit it, running `go run ./cmd/quarry-mcp` — works from a fresh clone and dogfoods the server in quarry's own future sessions, the best continuous validation available. (The `--target-dir .` form originally chosen here was superseded during discussion review: the flag is omitted and the server absolutises its process cwd at startup instead. **mcp-json-wiring is authoritative** wherever this log and a Decision disagree.) Documenting only would leave the proposal's own requirement ("a Claude Code session must actually be able to connect to it") unfulfilled.
 - **Q:** Entry shape for the LSP-mirrored tools, and is file-scoping per-entry or call-wide? **A:** LSP-native nested union, and per-entry. Nesting is as recognisable a training-data pattern as the method names themselves; flattening is a half-hedge that tests neither pure form cleanly and makes #006 harder to interpret. Per-entry file-scoping because the point of batching is heterogeneous targets — a call-wide flag forces dropping precision or splitting into per-file calls, destroying the turn saving, and fails worst in the ambiguous same-name case where scoping is most needed.
 - **Q:** Entry shape for the quarry-native tools? **A:** Derived, not asked — flat union with plain paths and 1-based positions, per the brief's explicit mandate to mirror LSP only where an equivalent exists. Keeps #006 interpretable and keeps quarry-native output comparable with the CLI's.
