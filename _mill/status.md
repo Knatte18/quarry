@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
@@ -42,6 +42,7 @@ holistic-reviewing  '2026-08-30T12:12:21Z'
 holistic-approved  '2026-08-30T12:14:41Z'
 self-resolved-scope-violation  '2026-08-30T12:15:16Z'
 done  '2026-08-30T12:15:33Z'
+pr-pending  '2026-08-30T12:16:05Z'
 ```
 
 ## Batches
