@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mcpserver-targetdir-removal
+phase: approved-docs-and-bench-alignment
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
@@ -37,6 +37,7 @@ plan-fix-r6  '2026-08-30T11:52:40Z'
 planned  '2026-08-30T11:52:49Z'
 implementing  '2026-08-30T11:53:19Z'
 approved-mcpserver-targetdir-removal  '2026-08-30T12:08:42Z'
+approved-docs-and-bench-alignment  '2026-08-30T12:12:02Z'
 ```
 
 ## Batches
@@ -50,8 +51,9 @@ batches:
     commit_sha: 011acc7c66d3e844e9afbc0da2ec3e3f9e823e35
     verify_baseline_failures: []
   - name: docs-and-bench-alignment
-    state: running
+    state: approved
     implementer_session: 14b02808-9398-40a9-b283-2905666420de
     start_sha: f1e99187bff01e85e3182e2968ed25d89e7a4dd6
+    commit_sha: b27627810dc38ef57a61b226dabe7f61d07b0f19
     verify_baseline_failures: []
 ```
