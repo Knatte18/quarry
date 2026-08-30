@@ -46,7 +46,9 @@ batches:
     commit_sha: f814d5b4177586f9f1b4301715f27dc2f7b82c28
     verify_baseline_failures: []
   - name: transcript-usage
-    state: pending
+    state: running
+    implementer_session: 6fb400e0-0147-44db-8466-abf0847c3f21
+    start_sha: bc922e319beeaef27eaf49e7ddfccecf07cec95c
     verify_baseline_failures: []
   - name: scoring
     state: pending
