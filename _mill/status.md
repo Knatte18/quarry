@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-mcpserver-targetdir-removal
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
@@ -36,6 +36,7 @@ plan-review-r6  '2026-08-30T11:51:52Z'
 plan-fix-r6  '2026-08-30T11:52:40Z'
 planned  '2026-08-30T11:52:49Z'
 implementing  '2026-08-30T11:53:19Z'
+approved-mcpserver-targetdir-removal  '2026-08-30T12:08:42Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ implementing  '2026-08-30T11:53:19Z'
 ```yaml
 batches:
   - name: mcpserver-targetdir-removal
-    state: running
+    state: approved
     implementer_session: da3fbefc-0dab-41fa-abf0-545ef7a9997a
     start_sha: 4d9600aa282b86e78fe0b2b9fa9fc5323341664f
+    commit_sha: 011acc7c66d3e844e9afbc0da2ec3e3f9e823e35
     verify_baseline_failures: []
   - name: docs-and-bench-alignment
     state: pending
