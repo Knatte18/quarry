@@ -3,6 +3,8 @@ package ladder
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestIsBashGrepCommand(t *testing.T) {
@@ -241,5 +243,83 @@ func TestExtractUsage_SerialisedJSONCarriesNoDroppedField(t *testing.T) {
 		if _, present := decoded[dropped]; present {
 			t.Errorf("serialised Usage carries dropped field %q; want it absent", dropped)
 		}
+	}
+}
+
+func TestExtractUsage_EndToEndOverReshapedFixtures(t *testing.T) {
+	tests := []struct {
+		name         string
+		fixture      string
+		grantedTools []string
+		want         Usage
+	}{
+		{
+			name:         "bundle-mixed-tools",
+			fixture:      "bundle-mixed-tools.jsonl",
+			grantedTools: []string{"toc_file", "workspace_symbol", "impact"},
+			want: Usage{
+				Tokens:                        TokenUsage{InputTokens: 300, OutputTokens: 130, CacheReadInputTokens: 30, CacheCreationInputTokens: 20},
+				ToolUses:                      8,
+				ToolUsesBreakdown:             map[string]int{"mcp__quarry__toc_file": 1, "mcp__quarry__workspace_symbol": 1, "Read": 2, "Grep": 1, "Bash": 3},
+				QuarryToolUses:                2,
+				BashGrepCount:                 2,
+				GrepToolCount:                 1,
+				GrepFallbackTotal:             3,
+				Transcript:                    "run/transcript.jsonl",
+				DurationMs:                    10000,
+				NumTurns:                      3,
+				Model:                         "claude-opus-5",
+				Effort:                        "medium",
+				AgentID:                       "agent-a5-bundle-1",
+				TranscriptSource:              "agent-1/agent-1.jsonl",
+				GrantedTools:                  []string{"toc_file", "workspace_symbol", "impact"},
+				DeniedToolAttempts:            0,
+				DeniedToolAttemptsProvisional: true,
+			},
+		},
+		{
+			// The zero-tool-calls fixture's granted tools list intentionally names tools that never
+			// appear as a tool_use in the transcript, proving GrantedTools reflects the parameter
+			// rather than anything the transcript itself carries.
+			name:         "zero-tool-calls",
+			fixture:      "zero-tool-calls.jsonl",
+			grantedTools: []string{"toc_dir", "toc_file"},
+			want: Usage{
+				Tokens:                        TokenUsage{InputTokens: 50, OutputTokens: 20, CacheReadInputTokens: 0, CacheCreationInputTokens: 0},
+				ToolUses:                      0,
+				ToolUsesBreakdown:             map[string]int{},
+				QuarryToolUses:                0,
+				BashGrepCount:                 0,
+				GrepToolCount:                 0,
+				GrepFallbackTotal:             0,
+				Transcript:                    "run/transcript.jsonl",
+				DurationMs:                    0,
+				NumTurns:                      1,
+				Model:                         "claude-opus-5",
+				Effort:                        "medium",
+				AgentID:                       "agent-zero-1",
+				TranscriptSource:              "agent-1/agent-1.jsonl",
+				GrantedTools:                  []string{"toc_dir", "toc_file"},
+				DeniedToolAttempts:            0,
+				DeniedToolAttemptsProvisional: true,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records, err := ReadTranscript("testdata/" + tt.fixture)
+			if err != nil {
+				t.Fatalf("ReadTranscript(%q) = _, %v; want nil error", tt.fixture, err)
+			}
+
+			got, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", tt.grantedTools)
+			if err != nil {
+				t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("ExtractUsage() mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
