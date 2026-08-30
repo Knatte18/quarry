@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-scope-violation
+phase: done
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-docs-and-bench-alignment  '2026-08-30T12:12:02Z'
 holistic-reviewing  '2026-08-30T12:12:21Z'
 holistic-approved  '2026-08-30T12:14:41Z'
 self-resolved-scope-violation  '2026-08-30T12:15:16Z'
+done  '2026-08-30T12:15:33Z'
 ```
 
 ## Batches
