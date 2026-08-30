@@ -78,6 +78,7 @@ documents exactly that and aligns the bench ladder's prompt to it.
   - `internal/mcpserver/schema.go`
   - `internal/mcpserver/mcpserver.go`
   - `internal/cli/toc.go`
+  - `internal/cli/paths.go`
 - **Edits:**
   - `internal/mcpserver/callcontext.go`
   - `internal/mcpserver/callcontext_test.go`

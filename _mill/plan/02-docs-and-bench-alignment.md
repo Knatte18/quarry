@@ -50,6 +50,16 @@ decision, it edits two existing files and creates no new Python anywhere.
   working directory, and there is no per-call way to change it — no tool accepts a target directory
   as an input property. Name `ResolveLaunchTargetDir` as the function that resolves it and
   `NewServer`'s absolute-path guard as what enforces it.
+  Throughout the whole section, name this concept in prose only — "the server's target directory", "a
+  target directory as an input property" — and never write the removed property's own token,
+  `targetDir`, anywhere in `docs/mcp-setup.md`, not even to say it is gone. Card 8's check one greps
+  this file case-insensitively for that token and treats any schema-property spelling as a failure,
+  so the natural phrasing "no `targetDir` property" would fail the very gate this batch runs. Prose
+  is also the better documentation here: a reader who never had the property does not need its name,
+  and a reader who did is told the capability is gone regardless of spelling. Naming the Go
+  identifiers `ResolveLaunchTargetDir` and `Config.TargetDir` is still fine and is what this
+  requirement asks for: check one's whitelist sanctions those explicitly, and they are function and
+  field names, not the removed tool property.
   Second: cwd inheritance is what makes per-project scoping automatic, and this is the reason no
   per-call override is needed. Where a client launches a project-scoped server with the project root
   as the server process's working directory — which is what the committed argument-free `.mcp.json`
@@ -228,12 +238,19 @@ decision, it edits two existing files and creates no new Python anywhere.
   key set inside a JSON arguments literal or an input-struct literal — with exactly one sanctioned
   exception, the deliberately-rejected `{"targets":[{"symbol":"S"}],"targetDir":"/somewhere/else"}`
   literal batch 1's card 1 adds, whose whole purpose is to be refused.
-  Check two is a grep for `effectiveTargetDir` across the whole repository, not just this package and
-  not just Go files, which must return zero hits. That identifier has no intentional survivors and is
-  deliberately excluded from both whitelists above, which otherwise read as if any identifier
-  spelling passes. Repository-wide scope is required rather than package-wide because one reference
-  lives outside the package, in the comment above `DAEMON_BACKED_TOOLS` in
+  Check two is a grep for `effectiveTargetDir` across the repository's code, documentation, and bench
+  surface — not just this package and not just Go files — which must return zero hits. That
+  identifier has no intentional survivors there and is deliberately excluded from both whitelists
+  above, which otherwise read as if any identifier spelling passes. Scope wider than the package is
+  required because one reference lives outside it, in the comment above `DAEMON_BACKED_TOOLS` in
   `bench/loomyard-eval/ladder/scripts/ladder_config.py`, which card 7 rewords.
+  The grep must exclude this task's own planning artefacts — the `_mill/` directory, which holds the
+  discussion, the plan files, the review files, and the briefs, all of which name the deleted helper
+  by design and will keep naming it after every card has landed — along with the git metadata
+  directory, the wiki and portals junctions, and the scratch directory. The exact exclusion flags are
+  written out in this batch's `## Batch Tests` section. Without those exclusions the check is unsatisfiable
+  rather than strict: it would report dozens of hits on arrival no matter how complete the change is,
+  and a gate that can never pass is a gate that gets ignored.
   Check three is the second enumeration criterion, and it is mandatory rather than optional: re-read
   the doc comment on all six input structs — `lspInput`, `symbolInput`, `impactInput`, `assertInput`,
   `tocFileInput`, and `tocDirInput` — and on `exceptSet`, and confirm each still describes its
@@ -280,10 +297,13 @@ The four completeness checks card 8 runs are:
    intentional survivors only, per card 8's second enumeration, and no `targetDir` key set in a JSON
    arguments literal or an input-struct literal except the one deliberately-rejected literal batch
    1's card 1 adds.
-3. `grep -rn 'effectiveTargetDir' .` from the repository root — expected: zero hits, no exceptions,
-   tests included and non-Go files included. Repository-wide rather than package-scoped, because the
-   comment above `DAEMON_BACKED_TOOLS` in `bench/loomyard-eval/ladder/scripts/ladder_config.py` names
-   the helper too and card 7 rewords it.
+3. `grep -rn 'effectiveTargetDir' . --exclude-dir=_mill --exclude-dir=.git --exclude-dir=.wiki
+   --exclude-dir=.portals --exclude-dir=.scratch` from the repository root — expected: zero hits,
+   tests included and non-Go files included. Wider than package-scoped, because the comment above
+   `DAEMON_BACKED_TOOLS` in `bench/loomyard-eval/ladder/scripts/ladder_config.py` names the helper too
+   and card 7 rewords it. The exclusions are what make the zero-hit expectation achievable: `_mill/`
+   holds this task's own discussion, plan, reviews, and briefs, which name the deleted helper by
+   design and go on naming it after every card has landed.
 4. A re-read of all six input structs' doc comments and `exceptSet`'s, confirming each still
    describes its subject accurately. This is not automatable and is why card 8 is a card rather than
    a line in this section.
