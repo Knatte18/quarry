@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-e2e-test
+phase: approved-skill-docs-cleanup
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -45,6 +45,7 @@ approved-session-provisioning  '2026-08-30T13:39:04Z'
 approved-cli-session-commands  '2026-08-30T13:54:50Z'
 approved-cli-run-commands  '2026-08-30T14:14:21Z'
 approved-e2e-test  '2026-08-30T14:23:18Z'
+approved-skill-docs-cleanup  '2026-08-30T14:30:19Z'
 ```
 
 ## Batches
@@ -130,8 +131,9 @@ batches:
     commit_sha: 546df91b2525011428d65fb23cc9bf577334eefb
     verify_baseline_failures: []
   - name: skill-docs-cleanup
-    state: running
+    state: approved
     implementer_session: 54e97279-c8d6-4fc6-89f3-e8cb6410e2b6
     start_sha: a2142068561247ad85083f44bf34a50a669dd3f7
+    commit_sha: 39e0d211857d5207613dd065487a295213734e52
     verify_baseline_failures: []
 ```
