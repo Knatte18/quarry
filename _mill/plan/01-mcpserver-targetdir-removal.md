@@ -221,9 +221,12 @@ documents exactly that and aligns the bench ladder's prompt to it.
   task removes, and both must be reworded to describe only the properties that remain.
   Leave every Go doc comment that names `targetDir` as a live function parameter unchanged:
   `nativeEntry.query`'s and `lspEntry.query`'s `targetDir` parameter, `resolveEntryFile`'s
-  `targetDir` parameter, `exceptSet`'s `targetDir` parameter, and the local `targetDir` variables the
-  toc handlers now assign from `cfg.TargetDir`. Those name real identifiers, not a removed tool
-  property.
+  `targetDir` parameter, `exceptSet`'s `targetDir` parameter, `resolveTOCFileEntry`'s and
+  `resolveTOCDirEntry`'s `targetDir` parameters in `internal/mcpserver/tools_toc.go` — both survive
+  the change untouched, and both their signatures and their doc comments' references to that
+  parameter stay exactly as they are — and the local `targetDir` variables the toc handlers now
+  assign from `cfg.TargetDir` and pass into those two functions. Those all name real identifiers, not
+  a removed tool property.
 - **Commit:** `docs(mcpserver): correct every comment describing a per-call target directory`
 
 ### Card 5: Pin toc's surviving absolute-path escape hatch with a test

@@ -37,6 +37,7 @@ decision, it edits two existing files and creates no new Python anywhere.
   - `cmd/quarry-mcp/main.go`
   - `internal/mcpserver/mcpserver.go`
   - `internal/mcpserver/tools_toc.go`
+  - `internal/cli/paths.go`
 - **Edits:**
   - `docs/mcp-setup.md`
 - **Creates:** none
@@ -50,18 +51,30 @@ decision, it edits two existing files and creates no new Python anywhere.
   as an input property. Name `ResolveLaunchTargetDir` as the function that resolves it and
   `NewServer`'s absolute-path guard as what enforces it.
   Second: cwd inheritance is what makes per-project scoping automatic, and this is the reason no
-  per-call override is needed. A project-scoped `.mcp.json` is launched by the client with the
-  project root as its working directory, so each worktree's session gets its own server process
-  rooted at its own worktree, with its own daemon state directory and its own gopls. State is keyed
-  by a hash of the cleaned absolute target path, so two worktrees of the same repository never share
-  a daemon, lock, socket, or language-server process. No configuration and no repointing is
-  involved. That keying claim must be qualified rather than stated as an absolute: `cli.ResolveStateDir`
-  reaches `workspaceKey` only in its default user-cache tier, and an explicit `--state-dir` or a set
-  `$QUARRY_STATE_DIR` becomes the leaf verbatim with the target path never entering the key. Write
-  the automatic-isolation guarantee as holding for the default tier, and name `--state-dir` and
-  `$QUARRY_STATE_DIR` as the exception where two servers pinned to one explicit state directory do
-  share it — the `## Launch-only flags` section this card leaves in place still documents
-  `--state-dir`, so an unqualified absolute here would contradict the same file two sections down.
+  per-call override is needed. Where a client launches a project-scoped server with the project root
+  as the server process's working directory — which is what the committed argument-free `.mcp.json`
+  relies on — each worktree's session gets its own server process rooted at its own worktree, with
+  its own daemon state directory and its own gopls, needing no configuration and no repointing.
+  Neither of the two claims in that paragraph may be written as an unconditional absolute, and each
+  is qualified differently.
+  The cwd claim is client behaviour this repository does not control and cannot verify: `.mcp.json`
+  carries only `command` and `args`, `cmd/quarry-mcp/main.go` only calls `os.Getwd` through
+  `ResolveLaunchTargetDir`, and the existing `docs/mcp-setup.md` already hedges the same point where
+  it notes the effective default is visible on stderr even though `.mcp.json` never states it
+  explicitly. Scope it to clients that launch a project-scoped server from the project root, and name
+  the `quarry-mcp: resolved target directory <path>` stderr line as how an operator confirms it for a
+  given session rather than assuming it. Do not present it as a universal client guarantee — it is
+  the entire justification for removing the per-call override, so overstating it is the one claim in
+  this document that most needs to be exact.
+  The state-keying claim is qualified on different grounds: `cli.ResolveStateDir`
+  (`internal/cli/paths.go`) reaches `workspaceKey` only in its default user-cache tier, and an
+  explicit `--state-dir` or a set `$QUARRY_STATE_DIR` becomes the leaf verbatim with the target path
+  never entering the key. Write the automatic-isolation guarantee as holding for the default tier,
+  and name `--state-dir` and `$QUARRY_STATE_DIR` as the exception where two servers pinned to one
+  explicit state directory do share it — the `## Launch-only flags` section this card leaves in place
+  still documents `--state-dir`, so an unqualified absolute here would contradict the same file two
+  sections down. Read `internal/cli/paths.go` to confirm the tier precedence and the digest's inputs
+  before writing this paragraph; both `workspaceKey` and `ResolveStateDir` are defined there.
   Third: the escape hatch for a genuinely cross-repository or cross-worktree query is a second named
   server entry in the client's own MCP configuration, with an explicit `--target-dir` pointing at the
   other root. Show it as a short JSON snippet in the same shape as the committed `.mcp.json`, with a
@@ -108,7 +121,16 @@ decision, it edits two existing files and creates no new Python anywhere.
   removed half, and leaving it attached to a `buildTags`-only instruction would be a non-sequitur.
   Keep the two-line wrap and the surrounding blank lines exactly as they are so the prompt block's
   shape is unchanged, and keep both lines at the same column the originals sit at inside the
-  f-string. Change nothing else in the file.
+  f-string. Change nothing else in the file. Use these two replacement lines verbatim: they are the
+  exact text `_mill/discussion.md`'s Scope section prescribes, and this prompt is measured benchmark
+  input, so its wording is not a free choice at implementation time.
+  The replacement rationale is deliberately worded for the model being benchmarked rather than
+  copied from `gate_no_target_override`'s own docstring, which frames the same constraint as the
+  pinned-worktree constraint and the cold cell's daemon key. Both statements describe the same fact —
+  the run is scoped to one pinned build-tag set, and departing from it changes the daemon key — but
+  the prompt's audience is a model deciding whether to set a parameter, while the docstring's is a
+  bench maintainer reading a fatal gate. Do not import the gate's phrasing into the prompt; the
+  divergence is intended, not an oversight.
   In `bench/loomyard-eval/ladder/tests/test_ladder_config.py`, narrow the assertion in
   `test_mcp_preamble_forbids_binary_paths_and_cli_syntax` from
   `assert "Never set targetDir or buildTags" in prompt` to
@@ -167,9 +189,9 @@ decision, it edits two existing files and creates no new Python anywhere.
   package's **production** files only — every `.go` file except `_test.go` files — and across
   `docs/mcp-setup.md`. It must return only intentional survivors: Go identifiers —
   `Config.TargetDir`, `callContext.TargetDir`, `quarry.Options.TargetDir`, `ResolveLaunchTargetDir`,
-  the `targetDir` parameters of `nativeEntry.query`, `lspEntry.query`, `resolveEntryFile`, and
-  `exceptSet`, and the local `targetDir` variables in `tocFileHandler` and `tocDirHandler` — plus
-  prose naming the server's target directory. It must never return a schema property name, a
+  the `targetDir` parameters of `nativeEntry.query`, `lspEntry.query`, `resolveEntryFile`,
+  `exceptSet`, `resolveTOCFileEntry`, and `resolveTOCDirEntry`, and the local `targetDir` variables
+  in `tocFileHandler` and `tocDirHandler` — plus prose naming the server's target directory. It must never return a schema property name, a
   `jsonschema` tag mentioning `targetDir` as a settable parameter, or per-call override phrasing.
   Check one-b is the same case-insensitive grep restricted to this package's `_test.go` files, run
   as a separate pass with its own whitelist because the production whitelist above does not sanction
@@ -182,8 +204,9 @@ decision, it edits two existing files and creates no new Python anywhere.
   `TestCallTool_AssertNoCallers_RelativeExceptResolvesAgainstTargetDir`, plus the two batch 1 adds,
   `TestResolveCall_TargetDirIsAlwaysConfigTargetDir` and
   `TestCallTool_TargetDirIsRejectedAsWholeCallError`; test-local identifiers, which today are
-  `launchTargetDir` and `gotTargetDir` in `transport_errors_test.go` and the `targetDir` table field
-  in `translate_test.go`; and prose in test doc comments. What it must never return is a `targetDir`
+  `launchTargetDir` and `gotTargetDir` in `transport_errors_test.go`, the `targetDir` local in
+  `TestExceptSet_ResolvesAgainstTargetDirNotProcessCwd` in `nativeentry_test.go`, and the `targetDir`
+  table field in `translate_test.go`; and prose in test doc comments. What it must never return is a `targetDir`
   key set inside a JSON arguments literal or an input-struct literal — with exactly one sanctioned
   exception, the deliberately-rejected `{"targets":[{"symbol":"S"}],"targetDir":"/somewhere/else"}`
   literal batch 1's card 1 adds, whose whole purpose is to be refused.
