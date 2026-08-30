@@ -168,6 +168,8 @@ list in from the caller keeps this package free of a dependency cycle while pres
   - `bench/loomyard-eval/ladder/tests/test_extract_usage.py`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/usage_test.go`
+  - `go.mod`
+  - `go.sum`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -176,7 +178,9 @@ list in from the caller keeps this package free of a dependency cycle while pres
   and asserting that `GrantedTools` reflects the parameter passed rather than anything in the
   transcript. Carry over every assertion the Python suite made that still has meaning under the new
   format; where an assertion covered a dropped field, drop the assertion rather than substituting a
-  near-equivalent.
+  near-equivalent. Asserting a full-struct `Usage` value needs a proper struct-diff comparison
+  (`golang-testing`'s `cmp.Diff` guidance), which pulls `github.com/google/go-cmp` in as a direct
+  dependency, touching `go.mod`/`go.sum` alongside the test file.
 - **Commit:** `test(ladder): cover ExtractUsage against the reshaped fixtures`
 
 ## Batch Tests
