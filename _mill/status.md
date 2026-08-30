@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ladder-config
+phase: approved-transcript-usage
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-fix-r6  '2026-08-30T12:22:38Z'
 planned  '2026-08-30T12:22:53Z'
 implementing  '2026-08-30T12:23:21Z'
 approved-ladder-config  '2026-08-30T12:33:41Z'
+approved-transcript-usage  '2026-08-30T12:43:43Z'
 ```
 
 ## Batches
@@ -46,9 +47,10 @@ batches:
     commit_sha: f814d5b4177586f9f1b4301715f27dc2f7b82c28
     verify_baseline_failures: []
   - name: transcript-usage
-    state: running
+    state: approved
     implementer_session: 6fb400e0-0147-44db-8466-abf0847c3f21
     start_sha: bc922e319beeaef27eaf49e7ddfccecf07cec95c
+    commit_sha: 3a1bad9389c44d68b9d5498639c747a368acfcdd
     verify_baseline_failures: []
   - name: scoring
     state: pending
