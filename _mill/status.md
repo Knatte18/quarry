@@ -109,7 +109,9 @@ batches:
     commit_sha: 195a81cebc5398f1c690e35647ede082700948b1
     verify_baseline_failures: []
   - name: cli-session-commands
-    state: pending
+    state: running
+    implementer_session: 0dc46289-407a-492c-892b-8f3580a1d93a
+    start_sha: ae2adb1e23ee8d4bada40ee7e07bcd2d795b57c9
     verify_baseline_failures: []
   - name: cli-run-commands
     state: pending
