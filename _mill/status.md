@@ -130,6 +130,8 @@ batches:
     commit_sha: 546df91b2525011428d65fb23cc9bf577334eefb
     verify_baseline_failures: []
   - name: skill-docs-cleanup
-    state: pending
+    state: running
+    implementer_session: 54e97279-c8d6-4fc6-89f3-e8cb6410e2b6
+    start_sha: a2142068561247ad85083f44bf34a50a669dd3f7
     verify_baseline_failures: []
 ```
