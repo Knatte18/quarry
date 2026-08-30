@@ -50,12 +50,20 @@ type Permissions struct {
 // SettingsDocument is the full settings mapping a run is launched with.
 type SettingsDocument struct {
 	Permissions Permissions `json:"permissions"`
+	// EnabledMcpjsonServers pre-approves the named .mcp.json servers, so Claude Code never interactively
+	// asks whether to trust and connect to them -- a separate, server-level approval gate from
+	// Permissions' own tool-level allow/deny, confirmed live: a session whose settings document omitted
+	// this field prompted "do you want to use this MCP server?" the first time its dispatched run agent
+	// actually called a quarry tool. Omitted entirely (via omitempty) for a session that declares no
+	// server at all, so this key never appears in a blinded session's own settings.json.
+	EnabledMcpjsonServers []string `json:"enabledMcpjsonServers,omitempty"`
 }
 
 // SettingsDocumentFor returns the full settings document a run of config is launched with.
 // permissions.allow is the fixed Read/Grep/Glob/Bash set, plus config's own granted quarry tool names for
 // a non-blinded config. permissions.deny is config's quarry deny-list only (empty for a blinded "none"
-// control, which declares no server at all).
+// control, which declares no server at all). enabledMcpjsonServers names "quarry" for a non-blinded
+// config, and is omitted for a blinded one -- see SettingsDocument's own doc comment for why.
 //
 // "Task" was originally included in this deny-list uniformly, as a backup against a run agent
 // definition that fails to load and falls back to a broader tool set that could recursively spawn
@@ -73,8 +81,11 @@ func SettingsDocumentFor(l *Ladder, config LadderConfig) SettingsDocument {
 	// config) on an empty Allowed set would return every quarry name, which is exactly the leak this
 	// branch exists to prevent -- no quarry name may appear anywhere in a blinded session's own files,
 	// since that session declares no server and its scratch directory is the blinded agent's own cwd.
-	// Mirroring config.Allowed into allow below would be the same leak by a different route.
+	// Mirroring config.Allowed into allow below would be the same leak by a different route. The same
+	// reasoning is why enabledMcpjsonServers stays nil (naming "quarry" there would be exactly the same
+	// leak by a third route) and matches HasServerDeclaration's own condition in session.go.
 	var deny []string
+	var enabledServers []string
 	if len(config.Allowed) == 0 {
 		deny = []string{}
 	} else {
@@ -84,12 +95,14 @@ func SettingsDocumentFor(l *Ladder, config LadderConfig) SettingsDocument {
 				allow = append(allow, MCPName(tool))
 			}
 		}
+		enabledServers = []string{"quarry"}
 	}
 	return SettingsDocument{
 		Permissions: Permissions{
 			Allow: allow,
 			Deny:  deny,
 		},
+		EnabledMcpjsonServers: enabledServers,
 	}
 }
 

@@ -150,15 +150,14 @@ func ladderbenchOutput(args ...string) (string, error) {
 }
 
 // fieldValue returns the value after "<field>: " on output's first line starting with that prefix, or ""
-// if no such line is present. Mirrors run-matrix.sh's own `awk '/^field: /{print $2}'` extraction against
-// next-run's/prepare-session's fixed "field: value" line shapes.
+// if no such line is present, against next-run's/prepare-session's fixed "field: value" line shapes.
 func fieldValue(output, field string) string {
 	prefix := field + ": "
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, prefix) {
-			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		if value, ok := strings.CutPrefix(line, prefix); ok {
+			return strings.TrimSpace(value)
 		}
 	}
 	return ""

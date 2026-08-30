@@ -223,10 +223,17 @@ func PrepareProbeSession(l *Ladder, kind string) (SessionInputs, error) {
 	} else {
 		deny = []string{}
 	}
-	settingsDoc := SettingsDocument{Permissions: Permissions{
-		Allow: []string{"Read", "Grep", "Glob", "Bash"},
-		Deny:  deny,
-	}}
+	settingsDoc := SettingsDocument{
+		Permissions: Permissions{
+			Allow: []string{"Read", "Grep", "Glob", "Bash"},
+			Deny:  deny,
+		},
+		// Both probe kinds always declare a server (see this function's own doc comment), so both need
+		// it pre-approved -- see SettingsDocument's own doc comment for what this avoids. Naming it here
+		// is independent of whether the probed tool itself is in Allow: for the denylist probe, the
+		// server is trusted but the specific tool is still denied.
+		EnabledMcpjsonServers: []string{"quarry"},
+	}
 	if err := writeJSONDocument(filepath.Join(scratchDir, settingsRelativePath), settingsDoc); err != nil {
 		return SessionInputs{}, err
 	}

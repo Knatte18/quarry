@@ -175,6 +175,9 @@ func TestPrepareProbeSession_BothKindsExactWriteLists(t *testing.T) {
 	if !hasExactDenySet(t, allowlistSettings, []string{}) {
 		t.Errorf("allowlist probe settings.json does not deny exactly []: %s", allowlistSettings)
 	}
+	if !hasEnabledServer(t, allowlistSettings, "quarry") {
+		t.Errorf("allowlist probe settings.json does not pre-approve the quarry server: %s", allowlistSettings)
+	}
 
 	denylistInputs, err := PrepareProbeSession(l, ProbeKindDenylist)
 	if err != nil {
@@ -194,6 +197,9 @@ func TestPrepareProbeSession_BothKindsExactWriteLists(t *testing.T) {
 	}
 	if !hasExactDenySet(t, denylistSettings, []string{MCPName(probeDeniedTool)}) {
 		t.Errorf("denylist probe settings.json does not deny exactly [%q]: %s", MCPName(probeDeniedTool), denylistSettings)
+	}
+	if !hasEnabledServer(t, denylistSettings, "quarry") {
+		t.Errorf("denylist probe settings.json does not pre-approve the quarry server: %s", denylistSettings)
 	}
 
 	if !allowlistInputs.HasServerDeclaration || !denylistInputs.HasServerDeclaration {
@@ -282,6 +288,17 @@ func TestLaunchCommand_OmitsServerFlagForBlindedIncludesForRung(t *testing.T) {
 	if !strings.Contains(got, launchSettingSources) {
 		t.Errorf("LaunchCommand(rung) = %q; want it to name %q", got, launchSettingSources)
 	}
+}
+
+// hasEnabledServer reads a settings document's JSON bytes and reports whether its enabledMcpjsonServers
+// contains exactly one entry, name.
+func hasEnabledServer(t *testing.T, data []byte, name string) bool {
+	t.Helper()
+	var doc SettingsDocument
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("unmarshal settings document: %v", err)
+	}
+	return len(doc.EnabledMcpjsonServers) == 1 && doc.EnabledMcpjsonServers[0] == name
 }
 
 // hasExactDenySet reads a settings document's JSON bytes and reports whether its permissions.deny is

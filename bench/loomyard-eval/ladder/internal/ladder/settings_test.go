@@ -131,6 +131,28 @@ func TestSettingsDocumentFor_NoNonQuarryNameAppearsInAnyDenyList(t *testing.T) {
 	}
 }
 
+// TestSettingsDocumentFor_EnabledMcpjsonServersMatchesServerDeclaration asserts EnabledMcpjsonServers is
+// exactly ["quarry"] for a config that declares a server (Allowed non-empty) and nil for one that doesn't
+// (a blinded config) -- the same condition PrepareRunSession itself uses for HasServerDeclaration, so a
+// session's own settings.json is never left silently un-pre-approved for a server it actually connects
+// to, and never names "quarry" in a blinded session's own settings.json.
+func TestSettingsDocumentFor_EnabledMcpjsonServersMatchesServerDeclaration(t *testing.T) {
+	l := mustLoadLadder(t)
+	for _, config := range l.Configs {
+		settings := SettingsDocumentFor(l, config)
+		if len(config.Allowed) == 0 {
+			if settings.EnabledMcpjsonServers != nil {
+				t.Errorf("SettingsDocumentFor(l, %q).EnabledMcpjsonServers = %v; want nil for a blinded config", config.ID, settings.EnabledMcpjsonServers)
+			}
+			continue
+		}
+		want := []string{"quarry"}
+		if !reflect.DeepEqual(settings.EnabledMcpjsonServers, want) {
+			t.Errorf("SettingsDocumentFor(l, %q).EnabledMcpjsonServers = %v; want %v", config.ID, settings.EnabledMcpjsonServers, want)
+		}
+	}
+}
+
 func TestSettingsDocumentFor_BlindedConfigDeniesNothing(t *testing.T) {
 	l := mustLoadLadder(t)
 	a0, err := ConfigByID(l, "a0-none")
