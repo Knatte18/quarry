@@ -43,6 +43,7 @@ documents exactly that and aligns the bench ladder's prompt to it.
   - `internal/mcpserver/schema.go`
   - `internal/mcpserver/facade.go`
   - `internal/mcpserver/tools_lsp_test.go`
+  - `internal/mcpserver/schema_test.go`
 - **Edits:**
   - `internal/mcpserver/transport_test.go`
 - **Creates:** none
@@ -243,6 +244,7 @@ documents exactly that and aligns the bench ladder's prompt to it.
   - `internal/mcpserver/tools_lsp_test.go`
   - `internal/mcpserver/facade.go`
   - `internal/mcpserver/result.go`
+  - `internal/cli/toc.go`
 - **Edits:**
   - `internal/mcpserver/tools_toc_test.go`
 - **Creates:** none

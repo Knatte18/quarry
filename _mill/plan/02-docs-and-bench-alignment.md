@@ -105,6 +105,7 @@ decision, it edits two existing files and creates no new Python anywhere.
 - **Context:**
   - `bench/loomyard-eval/ladder/scripts/gates.py`
   - `_mill/discussion.md`
+  - `internal/mcpserver/tools_toc.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
   - `bench/loomyard-eval/ladder/tests/test_ladder_config.py`
@@ -122,7 +123,18 @@ decision, it edits two existing files and creates no new Python anywhere.
   removed half, and leaving it attached to a `buildTags`-only instruction would be a non-sequitur.
   Keep the two-line wrap and the surrounding blank lines exactly as they are so the prompt block's
   shape is unchanged, and keep both lines at the same column the originals sit at inside the
-  f-string. Change nothing else in the file. Use these two replacement lines verbatim: they are the
+  f-string.
+  Also disposition the one other stale reference in the same file: the module-level comment above
+  `DAEMON_BACKED_TOOLS` states that `tocFileHandler`/`tocDirHandler` in
+  `internal/mcpserver/tools_toc.go` `call effectiveTargetDir/tocPreflight directly and never
+  resolveCall`. That is the identical claim card 4 rewords in the production file and card 5 rewords
+  in the toc test file, and it names a function this task deletes. Reword it the same way — the two
+  handlers read `cfg.TargetDir` and call `tocPreflight` directly, never `resolveCall` — leaving the
+  comment's actual point (those two tools never start a daemon, so they are not warmth signals for
+  the cold cell) and the `DAEMON_BACKED_TOOLS` expression below it untouched. This is the only
+  `effectiveTargetDir` reference anywhere outside `internal/mcpserver/`, and card 8's check two is
+  widened to the whole repository so it is caught rather than assumed.
+  Change nothing else in the file. Use these two replacement lines verbatim: they are the
   exact text `_mill/discussion.md`'s Scope section prescribes, and this prompt is measured benchmark
   input, so its wording is not a free choice at implementation time.
   The replacement rationale is deliberately worded for the model being benchmarked rather than
@@ -178,6 +190,7 @@ decision, it edits two existing files and creates no new Python anywhere.
   - `internal/mcpserver/transport_test.go`
   - `internal/mcpserver/translate_test.go`
   - `docs/mcp-setup.md`
+  - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
@@ -207,13 +220,20 @@ decision, it edits two existing files and creates no new Python anywhere.
   `TestCallTool_TargetDirIsRejectedAsWholeCallError`; test-local identifiers, which today are
   `launchTargetDir` and `gotTargetDir` in `transport_errors_test.go`, the `targetDir` local in
   `TestExceptSet_ResolvesAgainstTargetDirNotProcessCwd` in `nativeentry_test.go`, and the `targetDir`
-  table field in `translate_test.go`; and prose in test doc comments. What it must never return is a `targetDir`
+  table field in `translate_test.go`; and prose in test doc comments naming the server's target
+  directory. That prose survivor carries the same qualification check one applies to production
+  prose, and is not a blanket allowance: a test doc comment describing a per-call override, or
+  naming `targetDir` as something a call sets, fails check one-b exactly as it would fail check one.
+  What check one-b must never return is a `targetDir`
   key set inside a JSON arguments literal or an input-struct literal — with exactly one sanctioned
   exception, the deliberately-rejected `{"targets":[{"symbol":"S"}],"targetDir":"/somewhere/else"}`
   literal batch 1's card 1 adds, whose whole purpose is to be refused.
-  Check two is a grep for `effectiveTargetDir` across the whole package including tests, which must
-  return zero hits. That identifier has no intentional survivors and is deliberately excluded from
-  both whitelists above, which otherwise read as if any identifier spelling passes.
+  Check two is a grep for `effectiveTargetDir` across the whole repository, not just this package and
+  not just Go files, which must return zero hits. That identifier has no intentional survivors and is
+  deliberately excluded from both whitelists above, which otherwise read as if any identifier
+  spelling passes. Repository-wide scope is required rather than package-wide because one reference
+  lives outside the package, in the comment above `DAEMON_BACKED_TOOLS` in
+  `bench/loomyard-eval/ladder/scripts/ladder_config.py`, which card 7 rewords.
   Check three is the second enumeration criterion, and it is mandatory rather than optional: re-read
   the doc comment on all six input structs — `lspInput`, `symbolInput`, `impactInput`, `assertInput`,
   `tocFileInput`, and `tocDirInput` — and on `exceptSet`, and confirm each still describes its
@@ -260,8 +280,10 @@ The four completeness checks card 8 runs are:
    intentional survivors only, per card 8's second enumeration, and no `targetDir` key set in a JSON
    arguments literal or an input-struct literal except the one deliberately-rejected literal batch
    1's card 1 adds.
-3. `grep -rn 'effectiveTargetDir' internal/mcpserver/` — expected: zero hits, no exceptions, tests
-   included.
+3. `grep -rn 'effectiveTargetDir' .` from the repository root — expected: zero hits, no exceptions,
+   tests included and non-Go files included. Repository-wide rather than package-scoped, because the
+   comment above `DAEMON_BACKED_TOOLS` in `bench/loomyard-eval/ladder/scripts/ladder_config.py` names
+   the helper too and card 7 rewords it.
 4. A re-read of all six input structs' doc comments and `exceptSet`'s, confirming each still
    describes its subject accurately. This is not automatable and is why card 8 is a card rather than
    a line in this section.
