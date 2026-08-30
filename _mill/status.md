@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-run-state
+phase: approved-summarize
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-scoring  '2026-08-30T12:49:31Z'
 approved-transcript-gates  '2026-08-30T12:53:55Z'
 approved-daemon-cold-gates  '2026-08-30T13:00:31Z'
 approved-run-state  '2026-08-30T13:09:17Z'
+approved-summarize  '2026-08-30T13:17:18Z'
 ```
 
 ## Batches
@@ -81,9 +82,10 @@ batches:
     commit_sha: c9fc59856bb458736bb7665f8cbf67fdb65f7b1f
     verify_baseline_failures: []
   - name: summarize
-    state: running
+    state: approved
     implementer_session: c811ff0b-70e0-44ed-a6e8-59a85fba2918
     start_sha: 5e767956ee2b3cedf957597174f2c755a492bb43
+    commit_sha: 83ceb78a554f35d6fc5134f9fc6e6497b8ea458f
     verify_baseline_failures: []
   - name: worktree-server-warm
     state: pending
