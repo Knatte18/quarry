@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-bench-alignment
+phase: holistic-reviewing
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
@@ -38,6 +38,7 @@ planned  '2026-08-30T11:52:49Z'
 implementing  '2026-08-30T11:53:19Z'
 approved-mcpserver-targetdir-removal  '2026-08-30T12:08:42Z'
 approved-docs-and-bench-alignment  '2026-08-30T12:12:02Z'
+holistic-reviewing  '2026-08-30T12:12:21Z'
 ```
 
 ## Batches
