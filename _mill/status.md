@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -51,6 +51,7 @@ holistic-fixing  '2026-08-30T14:38:02Z'
 nits-fixed-holistic  '2026-08-30T14:39:41Z'
 holistic-approved  '2026-08-30T14:39:47Z'
 done  '2026-08-30T14:40:20Z'
+pr-pending  '2026-08-30T14:40:55Z'
 ```
 
 ## Batches
