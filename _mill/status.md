@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
@@ -34,4 +34,15 @@ plan-fix-r5  '2026-08-30T11:47:35Z'
 plan-review-r6  '2026-08-30T11:51:52Z'
 plan-fix-r6  '2026-08-30T11:52:40Z'
 planned  '2026-08-30T11:52:49Z'
+implementing  '2026-08-30T11:53:19Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: mcpserver-targetdir-removal
+    state: pending
+  - name: docs-and-bench-alignment
+    state: pending
 ```
