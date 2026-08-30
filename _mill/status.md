@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r5
+phase: plan-review-r6
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
@@ -31,4 +31,5 @@ plan-review-r4  '2026-08-30T11:41:00Z'
 plan-fix-r4  '2026-08-30T11:42:25Z'
 plan-review-r5  '2026-08-30T11:46:09Z'
 plan-fix-r5  '2026-08-30T11:47:35Z'
+plan-review-r6  '2026-08-30T11:51:52Z'
 ```
