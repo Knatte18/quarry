@@ -58,8 +58,8 @@ and the session does the dispatching.
 
 - Decision: `.claude/skills/ladder-run/SKILL.md`, invoked as `/ladder-run`, is the session-side driver. It is versioned in this repo alongside the harness.
 - Rationale: the protocol `run_ladder.py --stage all` used to enforce has to live somewhere that enforces step order; README prose does not. A repo-tracked skill is versioned with the binary whose subcommands it calls, so the two cannot drift independently.
-- Delivery: the skill is tracked in this repo, but every session launches from a `/tmp/ladder-session-*` scratch dir, which is a different project scope — so `prepare-session` **copies** `.claude/skills/ladder-run/SKILL.md` from the repo into `<scratch>/.claude/skills/ladder-run/SKILL.md` alongside the agent definitions. The repo has no `.claude/` today; this task creates it.
-- Rejected: a runbook section in the README that the operator pastes into a session (protocol becomes unenforced prose); a millhouse skill (separate repo, and this harness is quarry-specific); relying on project-scope discovery from the repo (the session's cwd is not the repo).
+- Delivery: the skill is tracked in this repo at `.claude/skills/ladder-run/SKILL.md` (the repo has no `.claude/` today; this task creates it), but every session launches from a `/tmp/ladder-session-*` scratch dir, which is a different project scope — so `prepare-session` **installs** it to `~/.claude/skills/ladder-run/SKILL.md` (user scope) for every session type uniformly. It is deliberately **not** copied into the scratch dir: the skill body names quarry throughout, and a `none` session's scratch dir is the blinded agent's own cwd (see the tool-exposure decision's scratch-dir rule).
+- Rejected: a runbook section in the README that the operator pastes into a session (protocol becomes unenforced prose); a millhouse skill (separate repo, and this harness is quarry-specific); relying on project-scope discovery from the repo (the session's cwd is not the repo); copying the skill into the scratch dir (leaks into every blinded arm's cwd).
 
 ### One session per config
 
@@ -281,15 +281,15 @@ The answer is still the last fenced ```json block in the final assistant record'
 `prepare-session` writes into the scratch dir:
 
 - `.mcp.json` — **only when the config's `allowed` set is non-empty**: a single server named `quarry`, `command` = the built `quarry-mcp` absolute path, `args` = `["--target-dir", "<task worktree>"]`, and an `env` block setting `QUARRY_STATE_DIR` and `QUARRY_BUILD_TAGS` to the empty string. A `none` config gets no file and is launched with no `--mcp-config`.
-- `.claude/settings.json` — the derived `permissions.allow` (`Read`, `Grep`, `Glob`, `Bash`) and `permissions.deny` (that config's quarry deny-list plus `Task`).
+- `.claude/settings.json` — `permissions.allow` (`Read`, `Grep`, `Glob`, `Bash`) and `permissions.deny`: that config's derived quarry deny-list plus `Task` for a rung, and **`["Task"]` alone** for a `none` config.
 - `.claude/agents/<config-id>.md` — the run agent definition, and `.claude/agents/<config-id>-scorer.md` — the zero-tool scorer definition.
-- `.claude/skills/ladder-run/SKILL.md` — copied from the repo, since the scratch dir is a different project scope than the repo.
 
+Outside the scratch dir it installs `~/.claude/skills/ladder-run/SKILL.md` from the repo copy — never into the scratch dir, since a `none` session's scratch dir is the blinded agent's own cwd.
 It also hard-fails when `QUARRY_STATE_DIR` or `QUARRY_BUILD_TAGS` is set non-empty in the operator's shell, and then prints the exact `claude` launch command for the operator to run.
 
 **Known implementation risks, all to be settled by an actual `claude` launch during the batch that builds `prepare-session`, never assumed:**
 
-1. Claude Code's `--setting-sources` flag interacts with project-local **agent-definition** and **skill** discovery. The flag combination that isolates settings while still loading both must be established empirically. Fallback if project-local discovery is suppressed: write the definitions into `~/.claude/agents/` and the skill into `~/.claude/skills/`, both under a `ladder-<config-id>` namespace, with `prepare-session` responsible for cleaning them up.
+1. Claude Code's `--setting-sources` flag interacts with project-local **agent-definition** discovery, and with user-scope **skill** discovery. The flag combination that isolates settings while still loading both must be established empirically. Fallback if project-local agent discovery is suppressed: write the definitions into `~/.claude/agents/` under a `ladder-<config-id>` namespace, with `prepare-session` responsible for cleaning them up. If user-scope skill discovery is also suppressed, the operator invokes the protocol by reading the installed `SKILL.md` path directly — the skill must never be relocated into a scratch dir to work around this.
 2. Whether an MCP server entry's `env` block **replaces** or **augments** the inherited environment. If it augments, setting both keys to the empty string is sufficient; if it replaces, `QUARRY_CONFIG` must be forwarded explicitly in the same block or the server will not start on a machine that needs a `servers.yaml` overlay. The `prepare-session` precondition check exists partly as cover for this uncertainty.
 
 ### `ladder.yaml` as it stands
