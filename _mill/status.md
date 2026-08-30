@@ -102,7 +102,9 @@ batches:
     commit_sha: 6b3f2edd8f4e829193c63e2f12488d4cd30e58eb
     verify_baseline_failures: []
   - name: session-provisioning
-    state: pending
+    state: running
+    implementer_session: 9a316740-9249-426b-9ac0-8081c28c19b8
+    start_sha: 710b0c95766da86796db1d8885909912d4ddb04a
     verify_baseline_failures: []
   - name: cli-session-commands
     state: pending
