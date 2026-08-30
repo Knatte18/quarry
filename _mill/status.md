@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-worktree-server-warm
+phase: approved-task-schema-planning
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-daemon-cold-gates  '2026-08-30T13:00:31Z'
 approved-run-state  '2026-08-30T13:09:17Z'
 approved-summarize  '2026-08-30T13:17:18Z'
 approved-worktree-server-warm  '2026-08-30T13:23:15Z'
+approved-task-schema-planning  '2026-08-30T13:28:08Z'
 ```
 
 ## Batches
@@ -95,9 +96,10 @@ batches:
     commit_sha: 3b0b5021e5edc418dcdacf7a44e129431ba243d4
     verify_baseline_failures: []
   - name: task-schema-planning
-    state: running
+    state: approved
     implementer_session: 8efe05e2-5f60-4885-9645-fe64bc92fa5f
     start_sha: 64a7276f0a466fbcc934ae7a821e604e0df3f736
+    commit_sha: 6b3f2edd8f4e829193c63e2f12488d4cd30e58eb
     verify_baseline_failures: []
   - name: session-provisioning
     state: pending
