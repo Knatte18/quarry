@@ -123,7 +123,9 @@ batches:
     commit_sha: d9f301ea9dc4f7e26e49cb55466d48481358a731
     verify_baseline_failures: []
   - name: e2e-test
-    state: pending
+    state: running
+    implementer_session: 3d5f400b-48d3-408e-bd89-125f8c5a48e7
+    start_sha: f1a362ebd335b819eca94f3468f0cfc03dd371fe
     verify_baseline_failures: []
   - name: skill-docs-cleanup
     state: pending
