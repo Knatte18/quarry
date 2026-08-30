@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-session-commands
+phase: approved-cli-run-commands
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-worktree-server-warm  '2026-08-30T13:23:15Z'
 approved-task-schema-planning  '2026-08-30T13:28:08Z'
 approved-session-provisioning  '2026-08-30T13:39:04Z'
 approved-cli-session-commands  '2026-08-30T13:54:50Z'
+approved-cli-run-commands  '2026-08-30T14:14:21Z'
 ```
 
 ## Batches
@@ -116,9 +117,10 @@ batches:
     commit_sha: d5979f9ee596f10eda51504d318e5af7f62685aa
     verify_baseline_failures: []
   - name: cli-run-commands
-    state: running
+    state: approved
     implementer_session: f8c4566a-95d6-4b25-96fd-fa9d05257e14
     start_sha: 3fc07c750133c475e027ec484627d07e1a3f8f30
+    commit_sha: d9f301ea9dc4f7e26e49cb55466d48481358a731
     verify_baseline_failures: []
   - name: e2e-test
     state: pending
