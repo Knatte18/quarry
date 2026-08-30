@@ -51,7 +51,8 @@ correctness fix. This is purely an API-surface decision.
   `lspentry.go:55`.
 - Reword the Go doc comments that use **per-call** phrasing for the same concept —
   `nativeentry.go:29`, `nativeentry.go:43`, `nativeentry.go:45`, `lspentry.go:19`, and
-  `lspentry.go:54` all say "relative to **the call's** targetDir", which goes stale for exactly the
+  `lspentry.go:54` — and, on the test side, `tools_toc_test.go:212` ("never the call's targetDir") —
+  all say "**the call's** targetDir", which goes stale for exactly the
   same reason the three sites in "Gotcha — stale doc comments" below do: there is no longer any such
   thing as *the call's* target directory. Reword these to "the server's target directory".
   Go doc comments naming `targetDir` as a plain Go *identifier* (e.g. `nativeentry.go:76`'s
@@ -449,10 +450,13 @@ rejects it. Do not assert the SDK's exact error string — assert that the call 
 that no `results` array came back.
 
 **Per-tool tests (`tools_lsp_test.go`, `tools_impact_test.go`, `tools_assert_test.go`,
-`tools_toc_test.go`).** Remove override-specific cases. Where a test used an override to point at a
-fixture directory, convert it to setting `Config.TargetDir` at construction — the coverage of "the
-tool resolves relative paths against the target directory" is worth keeping, only the mechanism for
-setting that directory changes.
+`tools_toc_test.go`) — expect no deletions.** `callcontext_test.go:12-39` is the **only** file with
+cases that exercise a per-call override. Across these four files every `targetDir`/`TargetDir`
+occurrence is either `Config{TargetDir: ...}` at construction (`tools_lsp_test.go:58`,
+`tools_toc_test.go:225`) or prose in a comment; none sets an input struct's `TargetDir`. So there is
+no override-case removal or conversion work here — the fixture-directory mechanism these tests
+already use is the one that survives. The only new work in this group is the toc absolute-path case
+below.
 
 **`tools_toc_test.go` specifically.** **Add** a new case — there is none today; every existing toc
 test roots its fixture at `cfg.TargetDir` — proving an **absolute** `target` still resolves outside
