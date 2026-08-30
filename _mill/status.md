@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -48,6 +48,8 @@ approved-e2e-test  '2026-08-30T14:23:18Z'
 approved-skill-docs-cleanup  '2026-08-30T14:30:19Z'
 holistic-reviewing  '2026-08-30T14:33:57Z'
 holistic-fixing  '2026-08-30T14:38:02Z'
+nits-fixed-holistic  '2026-08-30T14:39:41Z'
+holistic-approved  '2026-08-30T14:39:47Z'
 ```
 
 ## Batches
