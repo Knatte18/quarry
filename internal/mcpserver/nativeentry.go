@@ -29,7 +29,7 @@ type nativeEntry struct {
 	// (absolute, or relative to the call's targetDir). Required together with Line and Character,
 	// and optional together with Symbol (its presence there switches the search from project-wide
 	// to file-scoped).
-	File string `json:"file,omitempty" jsonschema:"the file a position or in-file symbol search resolves against, a plain path (absolute, or relative to targetDir); required with line+character, optional with symbol"`
+	File string `json:"file,omitempty" jsonschema:"the file a position or in-file symbol search resolves against, a plain path (absolute, or relative to the server's target directory); required with line+character, optional with symbol"`
 	// Line is the entry's 1-based line number, used together with File and Character. A nil value
 	// means the field was omitted.
 	Line *int `json:"line,omitempty" jsonschema:"1-based line number, used together with file and character"`
@@ -41,12 +41,12 @@ type nativeEntry struct {
 	Symbol string `json:"symbol,omitempty" jsonschema:"a symbol name to resolve; project-wide when file is absent, or within file's own file when present; mutually exclusive with line+character"`
 	// Within restricts this entry's own result to files within the named directory (relative to
 	// the call's targetDir, or absolute). Not every quarry-native tool accepts it.
-	Within string `json:"within,omitempty" jsonschema:"restrict this entry's own result to files within this directory (relative to targetDir, or absolute)"`
+	Within string `json:"within,omitempty" jsonschema:"restrict this entry's own result to files within this directory (relative to the server's target directory, or absolute)"`
 	// Except is a set of file paths (relative to the call's targetDir, or absolute) sanctioned to
 	// keep referencing this entry's own symbol without being reported as a violation. Only
 	// assert_no_callers accepts it — impact drops this property from its published schema even
 	// though the Go type is shared.
-	Except []string `json:"except,omitempty" jsonschema:"file paths (relative to targetDir, or absolute) sanctioned to reference this entry's own symbol without being reported as a violation; assert_no_callers only"`
+	Except []string `json:"except,omitempty" jsonschema:"file paths (relative to the server's target directory, or absolute) sanctioned to reference this entry's own symbol without being reported as a violation; assert_no_callers only"`
 }
 
 // nativeEntryAlias is a defined type (not a type alias) with nativeEntry's exact underlying type,

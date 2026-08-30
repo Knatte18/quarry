@@ -18,7 +18,7 @@ import (
 type textDocumentIdentifier struct {
 	// URI is a file:// URI or a plain path, resolved against the call's targetDir by
 	// resolveEntryFile. It must not be empty when TextDocument is present.
-	URI string `json:"uri,omitempty" jsonschema:"the file this entry's position or symbol search resolves against, as a file:// URI or a plain path (absolute, or relative to targetDir)"`
+	URI string `json:"uri,omitempty" jsonschema:"the file this entry's position or symbol search resolves against, as a file:// URI or a plain path (absolute, or relative to the server's target directory)"`
 }
 
 // lspPosition is a 0-based line/character pair, mirroring LSP's own Position. Line and Character are
@@ -52,7 +52,7 @@ type lspEntry struct {
 	Symbol string `json:"symbol,omitempty" jsonschema:"a symbol name to resolve; project-wide when textDocument is absent, or within textDocument's file when present; mutually exclusive with position"`
 	// Within restricts this entry's own reference results to files within the named directory
 	// (relative to the call's targetDir, or absolute). Not every LSP-mirrored tool accepts it.
-	Within string `json:"within,omitempty" jsonschema:"restrict this entry's own reference results to files within this directory (relative to targetDir, or absolute)"`
+	Within string `json:"within,omitempty" jsonschema:"restrict this entry's own reference results to files within this directory (relative to the server's target directory, or absolute)"`
 }
 
 // lspEntryAlias is a defined type (not a type alias) with lspEntry's exact underlying type, used
