@@ -2,6 +2,74 @@ package ladder
 
 import "testing"
 
+func TestSessionDir_All45RunPairsDeriveDistinctDirectories(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	seen := make(map[string]bool)
+	for _, pair := range PlanRuns(l) {
+		dir, err := SessionDir(l, pair.Config.ID, pair.N)
+		if err != nil {
+			t.Fatalf("SessionDir(l, %q, %d) = _, %v; want nil error", pair.Config.ID, pair.N, err)
+		}
+		if seen[dir] {
+			t.Errorf("SessionDir(l, %q, %d) = %q; already produced by another run pair", pair.Config.ID, pair.N, dir)
+		}
+		seen[dir] = true
+	}
+	if len(seen) != 45 {
+		t.Errorf("SessionDir produced %d distinct directories across PlanRuns(l); want 45", len(seen))
+	}
+}
+
+func TestSessionDir_ScoringAndProbeSessionsAreDistinctFromRunsAndEachOther(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	runDirs := make(map[string]bool)
+	for _, pair := range PlanRuns(l) {
+		dir, err := SessionDir(l, pair.Config.ID, pair.N)
+		if err != nil {
+			t.Fatalf("SessionDir(l, %q, %d) = _, %v; want nil error", pair.Config.ID, pair.N, err)
+		}
+		runDirs[dir] = true
+	}
+
+	scoringDir, err := SessionDir(l, "scoring", 1)
+	if err != nil {
+		t.Fatalf("SessionDir(l, \"scoring\", 1) = _, %v; want nil error", err)
+	}
+	allowlistDir, err := SessionDir(l, "probe-allowlist", 1)
+	if err != nil {
+		t.Fatalf("SessionDir(l, \"probe-allowlist\", 1) = _, %v; want nil error", err)
+	}
+	denylistDir, err := SessionDir(l, "probe-denylist", 1)
+	if err != nil {
+		t.Fatalf("SessionDir(l, \"probe-denylist\", 1) = _, %v; want nil error", err)
+	}
+
+	special := map[string]string{
+		"scoring":         scoringDir,
+		"probe-allowlist": allowlistDir,
+		"probe-denylist":  denylistDir,
+	}
+	for name, dir := range special {
+		if runDirs[dir] {
+			t.Errorf("%s session directory %q collides with a run session directory", name, dir)
+		}
+	}
+	if scoringDir == allowlistDir || scoringDir == denylistDir || allowlistDir == denylistDir {
+		t.Errorf("scoring/probe session directories are not pairwise distinct: scoring=%q allowlist=%q denylist=%q", scoringDir, allowlistDir, denylistDir)
+	}
+}
+
+func TestSessionDir_ErrorsWhenTemplateUnset(t *testing.T) {
+	l := mustLoadLadder(t)
+	l.SessionDirTemplate = ""
+
+	if _, err := SessionDir(l, "a0-none", 1); err == nil {
+		t.Errorf("SessionDir(l, \"a0-none\", 1) = _, nil; want an error naming the unset template")
+	}
+}
+
 func TestPlanRuns_Yields45PairsWithColdStrictlyLast(t *testing.T) {
 	l := mustLoadLadder(t)
 
