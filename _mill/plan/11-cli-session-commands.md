@@ -74,7 +74,8 @@ unverified. The documentation batch is where that gets stated in the README rath
   binary, runs the environment precondition, runs the skill-leak scan — hard-failing only for a config
   whose allowed set is empty and naming the offending skill so the operator relocates it — takes the
   session lock, materialises the scratch directory, installs the orchestration skill, and prints the
-  launch command. The scoring path materialises the scoring session and takes the lock like any other
+  launch command exactly as the session-provisioning batch's fixed flag set defines it — this command
+  assembles no flags of its own. The scoring path materialises the scoring session and takes the lock like any other
   session; the probe path materialises the named probe session. `--release` clears the lock and does
   nothing else. `--run-model` overrides the pinned run model for this invocation only and is never
   written back to the ladder file. `prepare-session` enforces the narrower session pin set rather than

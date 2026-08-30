@@ -54,8 +54,11 @@ list in from the caller keeps this package free of a dependency cycle while pres
 - **Requirements:** Define a `Record` struct for one line of an `agent-<id>.jsonl` subagent transcript,
   carrying `ParentUUID`, `IsSidechain`, `AgentID`, `UUID`, `Timestamp` (RFC 3339 with milliseconds),
   `Type`, `Effort`, `ToolUseResult`, and a `Message` sub-struct with `Model`, `Content` (a slice of
-  content blocks typed `text` / `thinking` / `tool_use` / `tool_result`), and `Usage` with
-  `InputTokens`, `OutputTokens`, `CacheReadInputTokens`, `CacheCreationInputTokens`. Content blocks
+  content blocks typed `text` / `thinking` / `tool_use` / `tool_result`), and a `Usage` member of named
+  type `MessageUsage` carrying `InputTokens`, `OutputTokens`, `CacheReadInputTokens`, and
+  `CacheCreationInputTokens`. The transcript-side type is deliberately named `MessageUsage` rather than
+  `Usage`, because the package-level `Usage` struct added in card 10 models the emitted metrics document
+  and the two would otherwise collide. Content blocks
   must retain the fields the gates need: `Type`, `Text`, `Name`, `Input`, `ToolUseID`, `IsError`, and
   `Content`. Port `read_transcript` as `ReadTranscript(path string) ([]Record, error)` and
   `TranscriptError` as an exported `TranscriptError` type, keeping the Python's behaviour of erroring
@@ -116,7 +119,8 @@ list in from the caller keeps this package free of a dependency cycle while pres
   `ExtractUsage`. This card lands the fields whose definitions are unchanged by the dispatch swap: the
   four token classes summed independently across every assistant record's `message.usage` — none
   derived from another; `ToolUses`; `ToolUsesBreakdown`; `QuarryToolUses` counted by the `MCPPrefix`
-  prefix; `BashGrepCount`; `GrepToolCount`; and `GrepFallbackTotal`. Port `_BASH_GREP_RE` as an
+  prefix; `BashGrepCount`; `GrepToolCount`; `GrepFallbackTotal`; and `Transcript`, still the path to the run's
+  transcript, now naming the copy inside the run directory rather than a harness-captured file. Port `_BASH_GREP_RE` as an
   unexported `bashGrepRe` and `_is_bash_grep_command` as `isBashGrepCommand`, keeping the
   leading-command-word semantics so a `grep` appearing inside a path does not count. `BashGrepCount`
   and `GrepToolCount` are counted strictly separately and are never merged; `GrepFallbackTotal` is

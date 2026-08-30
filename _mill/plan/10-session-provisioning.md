@@ -22,6 +22,23 @@ The external interface the CLI batches consume is `RunAgentDefinition`, `ScorerA
 `ReleaseSessionLock`, `InstallSkill`, `PrepareRunSession`, `PrepareScoringSession`,
 `PrepareProbeSession`, and `LaunchCommand`.
 
+**Session-input filenames, fixed here for every card in this batch.** A session's scratch directory
+holds its server declaration at `.mcp.json`, its settings document at `.claude/settings.json`, a run
+agent definition at `.claude/agents/<config-id>.md`, and the scorer definition at
+`.claude/agents/scorer.md`. The orchestration skill installs to `~/.claude/skills/ladder-run/SKILL.md`.
+The two skill-scan roots are `~/.claude/skills/*/SKILL.md` and
+`~/.claude/plugins/cache/*/*/*/skills/*/SKILL.md`. These are the literals Claude Code's own discovery
+depends on; no card may invent a different one.
+
+**Launch flag set, fixed here.** Sessions launch with `--setting-sources user,project`, so the scratch
+directory's settings document and agent definitions load as project scope while the installed skill
+loads as user scope, plus a server-config flag pointing at the scratch directory's server declaration
+only when the session has one. The documented fallback, should project-scope agent discovery turn out to
+be suppressed by that flag combination, is to write the definitions into `~/.claude/agents/` under a
+`ladder-<config-id>` name with `prepare-session` responsible for removing them again; the skill is never
+relocated into a scratch directory to work around anything. This flag set ships unverified, for the
+reason the overview's no-smoke-launch decision gives.
+
 Batch-local decisions. First, the tool allowlist in a generated definition is the primary enforcement
 layer and the settings deny-list is the backup: an allowlist is structurally stronger, since a blinded
 arm never sees the prefixed namespace at all rather than seeing it and being denied. Second, a session
@@ -120,9 +137,9 @@ parameter, so this batch can land and be tested before the tracked skill file it
   and `DefaultSkillRoots() []string`. Every subagent transcript carries a record enumerating the
   session's available skills by name and description verbatim, with no tool call involved, so a
   skill's frontmatter is a leak channel into a blinded run agent's transcript that no working-directory
-  hygiene can close — say that in the doc comment. The scan covers both the user-scope skills root and
-  the plugin-cache root, because installed skills actually live under the plugin cache on this machine
-  and scanning the user-scope root alone would pass vacuously. A root that does not exist is skipped
+  hygiene can close — say that in the doc comment. `DefaultSkillRoots` returns the two roots this batch's scope section fixes — the user-scope skills
+  root and the plugin-cache root — because installed skills actually live under the plugin cache on this
+  machine and scanning the user-scope root alone would pass vacuously. A root that does not exist is skipped
   rather than erroring, and `ScanReport` records every root scanned with the file count found at each
   so a vacuous pass is visible rather than silent. The scan is advisory for a rung and hard-failing for
   a config whose allowed set is empty; the caller applies that distinction. Test that a
@@ -172,8 +189,11 @@ parameter, so this batch can land and be tested before the tracked skill file it
 - **Moves:** none
 - **Requirements:** Add
   `PrepareRunSession(l *Ladder, c LadderConfig, n int, serverPath, targetDir string) (SessionInputs, error)`
-  writing a run session's scratch directory: the settings document always, the run agent definition
-  always, and the MCP server declaration **only when the config's allowed set is non-empty**. A config
+  writing a run session's scratch directory at the filenames this batch's scope section fixes: the
+  settings document always, the run agent definition always under the config's own id, and the server
+  declaration **only when the config's allowed set is non-empty**. `SessionInputs` records the scratch
+  directory path, the definition name, and whether a server declaration was written, so no later caller
+  re-derives a filename. A config
   whose allowed set is empty gets no server declaration file and is launched with no server flag
   whatsoever, because a declared server named `quarry` exposing a prefixed namespace is itself the
   structural leak the blinding forbids — port that rule verbatim from `write_run_inputs` and record it
@@ -198,7 +218,8 @@ parameter, so this batch can land and be tested before the tracked skill file it
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add `PrepareScoringSession(l *Ladder) (SessionInputs, error)`, writing a scratch
-  directory holding the scorer definition and a settings document denying only the task-spawning tool —
+  directory holding the scorer definition at the scorer filename this batch's scope section fixes, and a
+  settings document denying only the task-spawning tool —
   no server declaration, no run agent definition, no worktree setup, and no server build. Add
   `PrepareProbeSession(l *Ladder, kind string) (SessionInputs, error)` writing each probe's bespoke
   definition and settings document into its own scratch directory: the allowlist probe's session
@@ -221,13 +242,16 @@ parameter, so this batch can land and be tested before the tracked skill file it
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add `InstallSkill(sourcePath, destRoot string) (string, error)` copying the tracked
-  orchestration skill into the user-scope skills root, taking both paths as parameters so it is
-  testable before the tracked skill file exists and so the destination is not hardcoded. It is called
+  orchestration skill to the installed path this batch's scope section fixes, taking both paths as
+  parameters so it is testable before the tracked skill file exists and so the destination is not
+  hardcoded. It is called
   for every session type uniformly and must never write into a scratch directory — the skill body names
   quarry throughout, and a blinded session's scratch directory is that agent's own working directory.
   The doc comment must say so. Add `LaunchCommand(inputs SessionInputs) string` returning the exact
-  command line the operator runs, including the server flag only when the session has a server
-  declaration. Test that installation creates the destination tree and overwrites an existing copy,
+  command line the operator runs: the setting-source flag set this batch's scope section fixes, plus the
+  server-config flag only when the session has a server declaration. Its doc comment must record that
+  this flag combination ships unverified and must name the definition-relocation fallback, so the README
+  card has a decided disposition to document rather than an open question. Test that installation creates the destination tree and overwrites an existing copy,
   that it never writes into the scratch directory, and that the launch command omits the server flag
   for a blinded session and includes it for a rung.
 - **Commit:** `feat(ladder): install the orchestration skill and print the launch command`

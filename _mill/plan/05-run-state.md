@@ -44,9 +44,10 @@ the run session.
 - **Moves:** none
 - **Requirements:** Port `run_git` as `RunGit(args ...string) (string, error)`, keeping the Python's
   error-on-non-zero behaviour and capturing combined output into the error. Port
-  `gate_worktree_neutralised` as `GateWorktreeNeutralised(worktree string) GateFinding` and
-  `observe_worktree_dirtied` as `ObserveWorktreeDirtied(worktree string) GateFinding`, preserving each
-  one's fatality and message shape. `ObserveWorktreeDirtied`'s doc comment must record that it has to
+  `gate_worktree_neutralised` as `GateWorktreeNeutralised(worktree string) []GateFinding` — a slice,
+  matching the Python, which emits one finding per offending file — and `observe_worktree_dirtied` as
+  `ObserveWorktreeDirtied(worktree string) GateFinding`, which stays singular because it always returns
+  exactly one non-fatal observation. Preserve each one's fatality and message shape. `ObserveWorktreeDirtied`'s doc comment must record that it has to
   run before the worktree restore, because the restore is precisely what erases the evidence. Test both
   gates against temporary git repositories created inside the test's own temp directory.
 - **Commit:** `feat(ladder): port the git helper and the two worktree gates`
@@ -142,8 +143,16 @@ the run session.
 - **Requirements:** Port `run_gates` as `RunGates` with the same aggregation order the Python uses,
   extended to include `GateMaxTurns` and to take the dirtied observation as an input rather than
   computing it, so the caller can take that observation before restoring the worktree. Port
-  `gate_run_complete_artifacts` as `GateRunCompleteArtifacts(runDir string) GateFinding`, updated to
-  the artifact set the new results layout defines. Test the aggregate over a passing transcript and
+  `gate_run_complete_artifacts` as `GateRunCompleteArtifacts(runDir string) []GateFinding` — a
+  slice, matching the Python, which emits one finding per missing artifact — updated to the artifact set
+  the new results layout defines. It requires all seven unconditional artifacts by name:
+  `answer.json`, `answer.redacted.json`, `usage.json`, `score.json`, `ingest.json`, `transcript.jsonl`,
+  and `transcript.meta.json`. The copied launch inputs are deliberately excluded, because the server
+  declaration among them exists only for a config whose allowed set is non-empty and this gate's
+  signature carries no config to make that distinction — record that exclusion and its reason in the doc
+  comment. Like the Python's, this gate stays out of the aggregating runner and is invoked after scoring
+  and immediately before the run marker is written, since two of the files it requires are written by
+  the scoring step. Test the aggregate over a passing transcript and
   over a transcript that trips one fatal and one non-fatal gate, and the artifacts gate with a complete
   and an incomplete run directory.
 - **Commit:** `feat(ladder): port the aggregating gate runner and artifacts gate`

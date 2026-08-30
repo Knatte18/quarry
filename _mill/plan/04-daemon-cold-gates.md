@@ -111,7 +111,7 @@ scrub would have nowhere to apply.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `gate_cold_before` as
-  `GateColdBefore(targetDir, cacheDir string, env []string) GateFinding` and `gate_cold_after` as
+  `GateColdBefore(targetDir, cacheDir string, env []string) []GateFinding` and `gate_cold_after` as
   `GateColdAfter(records []Record, targetDir, cacheDir string, env []string) []GateFinding`, keeping
   every outcome the Python produces, including the non-fatal no-daemon-backed-call observation that the
   cold-cell disposition logic later reads. `GateColdBefore` keys on daemon liveness, never on the state

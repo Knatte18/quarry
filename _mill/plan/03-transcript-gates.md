@@ -58,9 +58,12 @@ identically-spelled branch in the redactor is a separate mechanism and is kept â
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `gate_denied_tools_not_used` as
-  `GateDeniedToolsNotUsed(records []Record, deniedNames []string) GateFinding` and
-  `gate_no_target_override` as `GateNoTargetOverride(records []Record) GateFinding`, both keeping their
-  Python fatality and message shape. Test each with a passing and a failing case; the override gate's
+  `GateDeniedToolsNotUsed(records []Record, deniedNames []string) []GateFinding` and
+  `gate_no_target_override` as `GateNoTargetOverride(records []Record) []GateFinding`, both keeping their
+  Python fatality and message shape. Both return a slice, matching the Python: the denied-tool gate emits
+  one finding per offending call and the override gate one per offending key, so a singular return would
+  silently collapse several violations into one. An empty slice is the passing result; there is no
+  zero-value finding sentinel. Test each with a passing and a failing case; the override gate's
   failing case uses the reshaped override fixture.
 - **Commit:** `feat(ladder): port denied-tool and target-override gates`
 
@@ -78,7 +81,7 @@ identically-spelled branch in the redactor is a separate mechanism and is kept â
 - **Moves:** none
 - **Requirements:** Port `_CONTEXT_WINDOW_SUFFIX_RE` and `_normalise_model_id` as an unexported
   `normaliseModelID`, and `gate_model_pinned` as
-  `GateModelPinned(records []Record, runModel string) GateFinding`, sourcing the reported id from the
+  `GateModelPinned(records []Record, runModel string) []GateFinding`, sourcing the reported id from the
   assistant records' `message.model` rather than from a `system`/`init` event â€” the doc comment must
   record that provenance change. The gate stays fatal. Test the matching case, the mismatching case,
   the `[1m]` context-window suffix normalising to a match, and a transcript with no assistant record at
@@ -127,7 +130,7 @@ identically-spelled branch in the redactor is a separate mechanism and is kept â
 - **Moves:** none
 - **Requirements:** Port `used_daemon_backed_tool` as
   `UsedDaemonBackedTool(records []Record) bool`, deriving the tool set from `DaemonBackedTools` through
-  `MCPName` rather than from a literal. Add a new `GateMaxTurns(records []Record, maxTurns int) GateFinding`
+  `MCPName` rather than from a literal. Add a new `GateMaxTurns(records []Record, maxTurns int) []GateFinding`
   that is fatal when the count of assistant records exceeds `maxTurns`, producing the same `truncated`
   outcome semantics the client-side `--max-turns` flag used to produce. Its doc comment must state that
   the Agent Tool has no `--max-turns` equivalent so nothing bounds a run mid-flight, that the ceiling is

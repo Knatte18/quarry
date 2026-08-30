@@ -75,7 +75,9 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   per run; extract usage, passing the granted-tool list read from the copied agent definition; parse the
   answer as the last fenced block of the final assistant record; take the worktree dirtiness observation;
   run the gates; write the ingest marker on success; and print the outcome as ingested, truncated, or
-  failed. The dirtiness observation is taken before anything restores the worktree, because the restore
+  failed. `ingest` enforces the full pin set before running the gates, which is what makes the turn
+  ceiling readable — the ceiling value ships blank and the gate would otherwise compare against nothing.
+  The dirtiness observation is taken before anything restores the worktree, because the restore
   is what erases the evidence. `ingest` never destroys evidence on failure — invalidation is a separate
   command — and a truncated outcome is never retried. Test the ordering constraint that the observation
   precedes the marker write, the three outcomes, and that a single-flight violation errors before any
@@ -156,10 +158,11 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add the `probe-record` subcommand consuming one probe dispatch's transcript and
-  writing or extending the probe record at the results root with whether the allowlist layer blocked and
-  whether the deny-list layer blocked, halting on either being false. The deny-list probe additionally
-  captures the verbatim text of the errored tool result it provoked into the probe record as the
-  observed denial shape — its help text must state that this is what the follow-up task checks the
+  writing or extending `probe.json` at the results root with the boolean keys `allowlist_blocks` and
+  `denylist_blocks`, halting on either being false. Each probe kind writes only its own key, so a second
+  invocation extends the existing document rather than replacing it. The deny-list probe additionally
+  captures the verbatim text of the errored tool result it provoked into the same document under
+  `denial_shape_observed` — its help text must state that this is what the follow-up task checks the
   provisional denial pattern against before clearing the provisional marker. Test writing each probe's
   half, extending an existing record rather than overwriting the other half, halting on a false layer,
   and capturing the observed shape verbatim.

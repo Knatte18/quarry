@@ -149,6 +149,7 @@ grandfather clause is removed in the same batch that earns its removal.
   - `bench/loomyard-eval/ladder/tests/test_ladder_config.py`
   - `bench/loomyard-eval/ladder/tests/test_extract_usage.py`
   - `bench/loomyard-eval/ladder/tests/test_gates.py`
+  - `bench/loomyard-eval/ladder/tests/test_run_ladder.py`
   - `bench/loomyard-eval/ladder/tests/test_score_run.py`
   - `bench/loomyard-eval/ladder/tests/test_summarize.py`
 - **Moves:** none
