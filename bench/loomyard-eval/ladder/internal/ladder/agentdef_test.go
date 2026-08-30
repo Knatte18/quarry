@@ -188,3 +188,56 @@ func TestGrantedToolsFromDefinition_ErrorsOnMalformedInput(t *testing.T) {
 		t.Error("GrantedToolsFromDefinition(missing tools key) = _, nil; want an error")
 	}
 }
+
+func TestScorerAgentDefinition_GrantsNothing(t *testing.T) {
+	l := mustLoadLadder(t)
+	name, body, err := ScorerAgentDefinition(l)
+	if err != nil {
+		t.Fatalf("ScorerAgentDefinition(l) = _, _, %v; want nil error", err)
+	}
+	if name != scorerAgentName {
+		t.Errorf("ScorerAgentDefinition(l) name = %q; want %q", name, scorerAgentName)
+	}
+	tools, err := extractToolsFromDoc(t, body)
+	if err != nil {
+		t.Fatalf("extractToolsFromDoc: %v", err)
+	}
+	if len(tools) != 0 {
+		t.Errorf("ScorerAgentDefinition(l) tools = %v; want empty", tools)
+	}
+}
+
+func TestProbeAgentDefinition_AllowlistProbeOmitsImpactDenylistProbeIncludesIt(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	_, allowlistBody, err := ProbeAgentDefinition(l, ProbeKindAllowlist)
+	if err != nil {
+		t.Fatalf("ProbeAgentDefinition(l, ProbeKindAllowlist) = _, _, %v; want nil error", err)
+	}
+	allowlistTools, err := extractToolsFromDoc(t, allowlistBody)
+	if err != nil {
+		t.Fatalf("extractToolsFromDoc: %v", err)
+	}
+	if stringSliceContains(allowlistTools, MCPName(probeDeniedTool)) {
+		t.Errorf("allowlist probe tools = %v; want no %q", allowlistTools, MCPName(probeDeniedTool))
+	}
+
+	_, denylistBody, err := ProbeAgentDefinition(l, ProbeKindDenylist)
+	if err != nil {
+		t.Fatalf("ProbeAgentDefinition(l, ProbeKindDenylist) = _, _, %v; want nil error", err)
+	}
+	denylistTools, err := extractToolsFromDoc(t, denylistBody)
+	if err != nil {
+		t.Fatalf("extractToolsFromDoc: %v", err)
+	}
+	if !stringSliceContains(denylistTools, MCPName(probeDeniedTool)) {
+		t.Errorf("denylist probe tools = %v; want %q", denylistTools, MCPName(probeDeniedTool))
+	}
+}
+
+func TestProbeAgentDefinition_UnknownKindErrors(t *testing.T) {
+	l := mustLoadLadder(t)
+	if _, _, err := ProbeAgentDefinition(l, "not-a-real-kind"); err == nil {
+		t.Error("ProbeAgentDefinition(l, \"not-a-real-kind\") = _, _, nil; want an error")
+	}
+}
