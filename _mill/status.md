@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r2
+phase: discussion-fix-r5
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: null
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-08-30T10:33:59Z'
 discussion-fix-r1  '2026-08-30T10:43:39Z'
 discussion-fix-r2  '2026-08-30T10:49:32Z'
+discussion-fix-r5  '2026-08-30T11:04:55Z'
 ```

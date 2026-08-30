@@ -26,7 +26,7 @@ suppressed by prompt text and enforced by a fatal gate is a parameter that shoul
 schema.
 
 A safety concern was investigated first and ruled out: daemon state is keyed by
-`workspaceKey(targetDir)` (`internal/cli/paths.go:76-97`), a hash of the **absolute path**, so one
+`workspaceKey(targetDir)` (`internal/cli/paths.go:76-86`), a hash of the **absolute path**, so one
 long-lived server already isolates multiple worktrees and repos cleanly, with separate state file,
 lock, socket, and gopls process per distinct `targetDir`, and no restart needed. Nothing here is a
 correctness fix. This is purely an API-surface decision.
@@ -246,6 +246,19 @@ correctness fix. This is purely an API-surface decision.
 - **Rejected:** *Keep it as a one-line passthrough* — preserves an unreachable error path and a
   function whose doc comment ("This is the only place a per-call override becomes absolute") would
   become false.
+- **Every comment naming `effectiveTargetDir` must be dispositioned.** Deleting the function leaves
+  dangling references in seven production comment sites, none of which a `targetDir` grep finds
+  (the identifier is capitalised differently and appears in prose): `translate.go:23` ("callers only
+  ever pass `ResolveLaunchTargetDir`'s or `effectiveTargetDir`'s result"), `callcontext.go:8`,
+  `callcontext.go:62`, `tools_toc.go:5`, `tools_toc.go:162`, `tools_toc.go:185`, and
+  `nativeentry.go:119` ("the **effective** absolute target directory" — the same concept by
+  paraphrase, no identifier). Disposition for all of them: reword to name `Config.TargetDir` / "the
+  server's target directory" as the single source, dropping the two-source framing entirely.
+  `callcontext.go:42-59` disappears with the function itself. `tools_toc_test.go:370` carries the
+  same reference and is rewritten with that file's other changes; `callcontext_test.go:15-39` tests
+  the function directly and is deleted per Testing. **After the change, `grep -rn 'effectiveTargetDir'
+  internal/mcpserver/` must return zero hits** — this identifier is explicitly *not* on the
+  verification grep's intentional-survivor list.
 
 ### bench-ladder-update
 
@@ -358,9 +371,11 @@ criterion, mandatory:** re-read the doc comment on every input struct in `intern
 `lspInput` (`tools_lsp.go:22`), `symbolInput` (`tools_symbol.go:48`), `impactInput`
 (`tools_impact.go:18`), `assertInput` (`tools_assert.go:18`), `tocFileInput` (`tools_toc.go:22`),
 `tocDirInput` (`tools_toc.go:40`) — and confirm each still describes the struct accurately.
-`symbolInput`'s says "the same call-wide resolution overrides" (a back-reference, no count) and the
-two toc comments enumerate their own fields; those need checking, not necessarily changing. Do not
-rely on grep to find this class of staleness.
+`symbolInput`'s says "the same call-wide resolution overrides" and both toc comments say "plus the
+**per-call overrides** `toc_file`/`toc_dir` accepts" (`tools_toc.go:22-24`, `tools_toc.go:40-43`) —
+all three are back-references of the same shape, not enumerations, and the toc pair's "per-call
+overrides" phrasing is itself the stale wording this task removes. Do not rely on grep to find this
+class of staleness.
 
 **Gotcha — stale doc comments.** Several comments describe the override as existing:
 `callcontext.go`'s file header ("either the launch default or an absolutised per-call override" at
@@ -469,9 +484,15 @@ Technical context. It should return only intentional survivors: Go identifiers (
 `callContext.TargetDir`, `query(targetDir string)`) and prose about the server's target directory,
 never a schema property name and never per-call phrasing.
 
-This grep is necessary but not sufficient on its own — run the second enumeration criterion from
-Technical context (re-read all six input structs' doc comments) alongside it, because the
-count-based comments contain neither spelling of the token.
+Then `grep -rn 'effectiveTargetDir' internal/mcpserver/`, which **must return zero hits** — that
+identifier has no intentional survivors (see `delete-effectivetargetdir`). It is deliberately
+excluded from the "Go identifiers" whitelist above, which otherwise reads as if any identifier
+spelling passes.
+
+Neither grep is sufficient on its own — run the second enumeration criterion from Technical context
+(re-read all six input structs' doc comments) alongside them, because the count-based comments
+contain neither spelling of `targetDir` and `nativeentry.go:119` paraphrases the deleted helper
+without naming it.
 
 ## Q&A log
 
