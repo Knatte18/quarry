@@ -73,6 +73,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(redactCommand())
 	cmd.AddCommand(recordScoreCommand())
 	cmd.AddCommand(probeRecordCommand())
+	cmd.AddCommand(coldCellCommand())
 
 	return cmd
 }
