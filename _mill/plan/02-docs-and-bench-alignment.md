@@ -227,7 +227,9 @@ decision, it edits two existing files and creates no new Python anywhere.
   silent fix here would land uncommitted, unreviewed, and outside any card's declared file set.
   Report the failure instead, naming the file, the line, and the offending text, so the batch fails
   visibly and the card that owns that file is corrected. All four checks are expected to pass on
-  arrival, because cards 3, 4, 5, and 6 already did the work they verify.
+  arrival, because cards 2, 3, 4, 5, and 6 already did the work they verify — card 2 above all, since
+  it is the only card that deletes the six `TargetDir` fields, their `jsonschema` tags, and
+  `effectiveTargetDir`, and is therefore what makes checks one, one-b, and two pass at all.
 - **Commit:** none
 
 ## Batch Tests

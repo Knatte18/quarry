@@ -41,6 +41,8 @@ documents exactly that and aligns the bench ladder's prompt to it.
   - `internal/mcpserver/tools_assert.go`
   - `internal/mcpserver/tools_toc.go`
   - `internal/mcpserver/schema.go`
+  - `internal/mcpserver/facade.go`
+  - `internal/mcpserver/tools_lsp_test.go`
 - **Edits:**
   - `internal/mcpserver/transport_test.go`
 - **Creates:** none
@@ -122,7 +124,12 @@ documents exactly that and aligns the bench ladder's prompt to it.
   `TestResolveCall_TargetDirIsAlwaysConfigTargetDir` asserting that `resolveCall(cfg, "")` returns a
   `callContext` whose `TargetDir` equals `cfg.TargetDir` and whose `StateDir` equals
   `cli.ResolveStateDir(cfg.StateDir, cfg.TargetDir, cli.ResolveBuildTags(""))` — that pairing is the
-  invariant the whole task now rests on. Remove the `path/filepath` import from this test file if the
+  invariant the whole task now rests on. The `StateDir` half deliberately restates the assertion
+  `TestResolveCall_StateDirMatchesCLIResolution` already makes and this card retains; keep both.
+  Asserting them as a pair is the point: `TargetDir == cfg.TargetDir` alone does not show that the
+  state directory was derived from that same value, and the existing test alone does not show which
+  target directory it was derived from. Neither test's assertion is redundant with the other once
+  the override that could make them disagree is gone. Give the new test a doc comment stating that. Remove the `path/filepath` import from this test file if the
   deletions leave it unused.
 - **Commit:** `feat(mcpserver)!: drop the per-call targetDir override from all seven tools`
 
@@ -234,6 +241,8 @@ documents exactly that and aligns the bench ladder's prompt to it.
 - **Context:**
   - `internal/mcpserver/tools_toc.go`
   - `internal/mcpserver/tools_lsp_test.go`
+  - `internal/mcpserver/facade.go`
+  - `internal/mcpserver/result.go`
 - **Edits:**
   - `internal/mcpserver/tools_toc_test.go`
 - **Creates:** none
