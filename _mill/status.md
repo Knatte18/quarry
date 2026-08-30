@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-skill-docs-cleanup
+phase: holistic-reviewing
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -46,6 +46,7 @@ approved-cli-session-commands  '2026-08-30T13:54:50Z'
 approved-cli-run-commands  '2026-08-30T14:14:21Z'
 approved-e2e-test  '2026-08-30T14:23:18Z'
 approved-skill-docs-cleanup  '2026-08-30T14:30:19Z'
+holistic-reviewing  '2026-08-30T14:33:57Z'
 ```
 
 ## Batches
