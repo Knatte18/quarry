@@ -336,3 +336,79 @@ func CheckSingleFlight(resultsRoot, configID string, n int) error {
 		configID, n, n-1, MaxAttempts,
 	)
 }
+
+// RunGates composes the transcript gates and the filesystem/daemon-state gates into one GateReport, in
+// the same order the Python's run_gates used, with two additions: GateMaxTurns, and a deliberate
+// signature difference from the Python's run_gates(events, ladder, config, run_model, repo_root,
+// worktree, run_dir, cache_dir, env) in three respects.
+//
+// It derives deniedNames through DenyListFor(l, c) rather than accepting a precomputed list, so the
+// suite keeps one derivation site for them -- passing a precomputed list in would invite a second one,
+// exactly what the single-source deny-list decision exists to prevent. It drops the Python's a_run_dir
+// parameter rather than carrying it forward for symmetry: the Python's own run_gates never inspected it
+// either (see its docstring), so threading an unused parameter through the port would only carry the
+// dead weight forward. And it takes dirtied as an input rather than computing it internally, so the
+// caller can take that observation (via ObserveWorktreeDirtied) before restoring the worktree -- the
+// restore is precisely what erases the evidence a call made from inside RunGates could no longer see.
+//
+// Applies GateBlinding only when c.Allowed is empty, and GateColdAfter only when c.Cold is true --
+// GateColdBefore is a separate precondition the caller checks before starting an attempt, not part of
+// this composed report.
+func RunGates(records []Record, l *Ladder, c LadderConfig, runModel, repoRoot, worktree string, maxTurns int, dirtied GateFinding, cacheDir string, env []string) GateReport {
+	deniedNames := DenyListFor(l, c)
+
+	var findings []GateFinding
+	findings = append(findings, GateDeniedToolsNotUsed(records, deniedNames)...)
+	findings = append(findings, GateNoTargetOverride(records)...)
+	findings = append(findings, GateModelPinned(records, runModel)...)
+	findings = append(findings, GateMaxTurns(records, maxTurns)...)
+	if len(c.Allowed) == 0 {
+		findings = append(findings, GateBlinding(records, repoRoot)...)
+	}
+	findings = append(findings, GateWorktreeNeutralised(worktree)...)
+	findings = append(findings, dirtied)
+	if c.Cold {
+		findings = append(findings, GateColdAfter(records, worktree, cacheDir, env)...)
+	}
+
+	return GateReport{Findings: findings}
+}
+
+// runCompleteArtifactNames is the fixed set of files GateRunCompleteArtifacts requires, in the order it
+// checks them. All seven are unconditional: the copied launch inputs (settings.json, and mcp.json when
+// the config's allowed set is non-empty) are deliberately excluded, because a declared server named
+// "quarry" among them exists only for a config whose allowed set is non-empty, and this gate's own
+// signature carries no config to make that per-config distinction -- requiring mcp.json unconditionally
+// would fail every blinded "none" control run, which never writes one by design (see
+// write_run_inputs/WriteRunInputs).
+var runCompleteArtifactNames = []string{
+	"answer.json",
+	"answer.redacted.json",
+	"usage.json",
+	"score.json",
+	"ingest.json",
+	"transcript.jsonl",
+	"transcript.meta.json",
+}
+
+// GateRunCompleteArtifacts is a separate, later gate requiring all seven of runCompleteArtifactNames --
+// updated from the Python's four to the new results layout's own complete-artifact set, which adds
+// ingest.json (the session split's own run-session marker), transcript.jsonl, and transcript.meta.json.
+//
+// Deliberately not part of RunGates: two of its required files are written by the scorer, which runs
+// after RunGates, so folding it in would make every run fail a fatal gate before the scorer had a chance
+// to write them. Like the Python's gate_run_complete_artifacts, this stays a gate the caller invokes
+// separately after scoring and immediately before the run marker is written.
+func GateRunCompleteArtifacts(runDir string) []GateFinding {
+	var findings []GateFinding
+	for _, name := range runCompleteArtifactNames {
+		if _, err := os.Stat(filepath.Join(runDir, name)); err != nil {
+			findings = append(findings, GateFinding{
+				Gate:    "run_complete_artifacts",
+				Fatal:   true,
+				Message: fmt.Sprintf("%s missing from %s", name, runDir),
+			})
+		}
+	}
+	return findings
+}

@@ -286,6 +286,105 @@ func TestCheckSingleFlight_ErrorsOutOfOrderAndPassesOnceAnyConditionIsMet(t *tes
 	})
 }
 
+func fakeLadderForRunGates() *Ladder {
+	return &Ladder{QuarryTools: QuarryTools}
+}
+
+func TestRunGates_PassesOverAPassingTranscript(t *testing.T) {
+	worktree := t.TempDir()
+	initGitRepo(t, worktree)
+
+	records, err := ReadTranscript("testdata/bundle-mixed-tools.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	l := fakeLadderForRunGates()
+	c := LadderConfig{ID: "a5-bundle", Allowed: []string{"toc_file", "workspace_symbol"}}
+	dirtied := ObserveWorktreeDirtied(worktree)
+
+	report := RunGates(records, l, c, "claude-opus-5", "/repo/root", worktree, 50, dirtied, "/cache", nil)
+	if !report.Passed() {
+		t.Errorf("RunGates() report = %+v; want passed", report)
+	}
+	found := false
+	for _, finding := range report.Findings {
+		if finding.Gate == "worktree_dirtied" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("RunGates() findings carry no worktree_dirtied observation")
+	}
+}
+
+func TestRunGates_TripsOneFatalAndOneNonFatalGate(t *testing.T) {
+	worktree := t.TempDir()
+	initGitRepo(t, worktree)
+
+	records, err := ReadTranscript("testdata/none-target-origin-mention.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	l := fakeLadderForRunGates()
+	c := LadderConfig{ID: "a5-none", Allowed: nil} // blinded control, triggers GateBlinding
+	dirtied := ObserveWorktreeDirtied(worktree)
+
+	// runModel mismatches the fixture's own "claude-opus-5", tripping the fatal model_pinned gate
+	// alongside the fixture's own non-fatal target_origin_quarry_mention observation.
+	report := RunGates(records, l, c, "claude-sonnet-5", "/repo/root", worktree, 50, dirtied, "/cache", nil)
+	if report.Passed() {
+		t.Fatalf("RunGates() report = %+v; want not passed", report)
+	}
+
+	var sawFatalModelPinned, sawNonFatalMention bool
+	for _, finding := range report.Findings {
+		if finding.Gate == "model_pinned" && finding.Fatal {
+			sawFatalModelPinned = true
+		}
+		if finding.Gate == "target_origin_quarry_mention" && !finding.Fatal {
+			sawNonFatalMention = true
+		}
+	}
+	if !sawFatalModelPinned {
+		t.Error("RunGates() findings carry no fatal model_pinned finding")
+	}
+	if !sawNonFatalMention {
+		t.Error("RunGates() findings carry no non-fatal target_origin_quarry_mention finding")
+	}
+}
+
+func TestGateRunCompleteArtifacts(t *testing.T) {
+	t.Run("fails on an incomplete run directory", func(t *testing.T) {
+		dir := t.TempDir()
+		writeJSONFile(t, filepath.Join(dir, "answer.json"), map[string]any{})
+		writeJSONFile(t, filepath.Join(dir, "usage.json"), map[string]any{})
+
+		findings := GateRunCompleteArtifacts(dir)
+		if len(findings) != len(runCompleteArtifactNames)-2 {
+			t.Fatalf("GateRunCompleteArtifacts() = %+v; want %d findings", findings, len(runCompleteArtifactNames)-2)
+		}
+		for _, finding := range findings {
+			if !finding.Fatal || finding.Gate != "run_complete_artifacts" {
+				t.Errorf("finding = %+v; want fatal run_complete_artifacts", finding)
+			}
+		}
+	})
+
+	t.Run("passes once all seven artifacts exist", func(t *testing.T) {
+		dir := t.TempDir()
+		for _, name := range runCompleteArtifactNames {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("{}"), 0o644); err != nil {
+				t.Fatalf("write %s: %v", name, err)
+			}
+		}
+		if findings := GateRunCompleteArtifacts(dir); len(findings) != 0 {
+			t.Errorf("GateRunCompleteArtifacts() = %+v; want empty", findings)
+		}
+	})
+}
+
 func TestNextAttempt_DerivesFromExistingInvalidSiblings(t *testing.T) {
 	root := t.TempDir()
 
