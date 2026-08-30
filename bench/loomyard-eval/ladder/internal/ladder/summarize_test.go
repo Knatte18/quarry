@@ -166,6 +166,154 @@ func TestBuildComparison_OverTwoSyntheticCells(t *testing.T) {
 	}
 }
 
+/* CARD 33: the three comparison families */
+
+func cellFromMetric(configID, metric string, values []int) Cell {
+	var runs []map[string]any
+	for _, v := range values {
+		runs = append(runs, map[string]any{metric: v})
+	}
+	return SummariseCell(configID, runs, len(values))
+}
+
+func TestCompareRungToControl_ExcludesGrepMetricsButCompareRungsDoesNot(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	cellFor := func(configID string) Cell {
+		var runs []map[string]any
+		for i, v := range []int{10, 12, 14} {
+			runs = append(runs, map[string]any{"duration_ms": v, "bash_grep_count": []int{1, 2, 3}[i]})
+		}
+		return SummariseCell(configID, runs, 3)
+	}
+	a1, err := ConfigByID(l, "a1-toc-file")
+	if err != nil {
+		t.Fatalf("ConfigByID(a1-toc-file) = _, %v; want nil error", err)
+	}
+	cells := map[string]Cell{
+		"a1-toc-file": cellFor("a1-toc-file"),
+		"a2-toc-dir":  cellFor("a2-toc-dir"),
+		"a0-none":     cellFor("a0-none"),
+	}
+
+	controlComparisons, err := CompareRungToControl(l, cells, a1)
+	if err != nil {
+		t.Fatalf("CompareRungToControl() = _, %v; want nil error", err)
+	}
+	for _, comparison := range controlComparisons {
+		if isGrepMetric(comparison.Metric) {
+			t.Errorf("CompareRungToControl() included grep metric %q; want none", comparison.Metric)
+		}
+	}
+
+	rungComparisons, err := CompareRungs(l, cells, "a1-toc-file", "a2-toc-dir")
+	if err != nil {
+		t.Fatalf("CompareRungs() = _, %v; want nil error", err)
+	}
+	foundGrepMetric := false
+	for _, comparison := range rungComparisons {
+		if comparison.Metric == "bash_grep_count" {
+			foundGrepMetric = true
+		}
+	}
+	if !foundGrepMetric {
+		t.Error("CompareRungs() did not include bash_grep_count; want it eligible for rung-vs-rung")
+	}
+}
+
+func TestCompareRungs_RejectsACrossLadderPair(t *testing.T) {
+	l := mustLoadLadder(t)
+	cells := map[string]Cell{
+		"a1-toc-file": cellFromMetric("a1-toc-file", "duration_ms", []int{1, 2, 3}),
+		"b1-symbol":   cellFromMetric("b1-symbol", "duration_ms", []int{1, 2, 3}),
+	}
+
+	_, err := CompareRungs(l, cells, "a1-toc-file", "b1-symbol")
+	if err == nil {
+		t.Fatal("CompareRungs() = _, nil; want a *SummarizeError")
+	}
+	if _, ok := err.(*SummarizeError); !ok {
+		t.Errorf("CompareRungs() error type = %T; want *SummarizeError", err)
+	}
+}
+
+func TestCompareRungs_IncompleteCellYieldsNoComparisons(t *testing.T) {
+	l := mustLoadLadder(t)
+	cells := map[string]Cell{
+		"a1-toc-file": SummariseCell("a1-toc-file", []map[string]any{{"duration_ms": 1}}, 3),
+		"a2-toc-dir":  cellFromMetric("a2-toc-dir", "duration_ms", []int{1, 2, 3}),
+	}
+
+	comparisons, err := CompareRungs(l, cells, "a1-toc-file", "a2-toc-dir")
+	if err != nil {
+		t.Fatalf("CompareRungs() = _, %v; want nil error", err)
+	}
+	if len(comparisons) != 0 {
+		t.Errorf("CompareRungs() returned %d comparisons; want 0 when a cell is incomplete", len(comparisons))
+	}
+}
+
+func TestCompareWarmCold_ResolvesWarmSideThroughWarmCounterpartField(t *testing.T) {
+	l := mustLoadLadder(t)
+	cells := map[string]Cell{
+		"a5-bundle-cold": cellFromMetric("a5-bundle-cold", "duration_ms", []int{1, 2, 3}),
+		"a5-bundle":      cellFromMetric("a5-bundle", "duration_ms", []int{100, 110, 120}),
+	}
+
+	comparisons, err := CompareWarmCold(l, cells, "confirmed-cold")
+	if err != nil {
+		t.Fatalf("CompareWarmCold() = _, %v; want nil error", err)
+	}
+	if len(comparisons) == 0 {
+		t.Fatal("CompareWarmCold() returned 0 comparisons; want at least one")
+	}
+	if comparisons[0].Kind != "warm-vs-cold" {
+		t.Errorf("CompareWarmCold()[0].Kind = %q; want warm-vs-cold", comparisons[0].Kind)
+	}
+	sides := map[string]bool{comparisons[0].Left: true, comparisons[0].Right: true}
+	if !sides["a5-bundle-cold"] || !sides["a5-bundle"] {
+		t.Errorf("CompareWarmCold()[0] sides = %+v; want a5-bundle-cold and a5-bundle", comparisons[0])
+	}
+}
+
+func TestCompareWarmCold_EmitsNothingWhenEveryColdRunLacksDaemonSignal(t *testing.T) {
+	l := mustLoadLadder(t)
+	var coldRuns []map[string]any
+	for _, v := range []int{1, 2, 3} {
+		coldRuns = append(coldRuns, map[string]any{"duration_ms": v, "cold_no_daemon_backed_call": true})
+	}
+	cells := map[string]Cell{
+		"a5-bundle-cold": SummariseCell("a5-bundle-cold", coldRuns, 3),
+		"a5-bundle":      cellFromMetric("a5-bundle", "duration_ms", []int{10, 11, 12}),
+	}
+
+	comparisons, err := CompareWarmCold(l, cells, "confirmed-cold")
+	if err != nil {
+		t.Fatalf("CompareWarmCold() = _, %v; want nil error", err)
+	}
+	if len(comparisons) != 0 {
+		t.Errorf("CompareWarmCold() returned %d comparisons; want 0 when every cold run lacks a daemon signal", len(comparisons))
+	}
+}
+
+func TestCompareWarmCold_EmitsNothingForNotRunOrPartialDisposition(t *testing.T) {
+	l := mustLoadLadder(t)
+	cells := map[string]Cell{
+		"a5-bundle-cold": cellFromMetric("a5-bundle-cold", "duration_ms", []int{1, 2, 3}),
+		"a5-bundle":      cellFromMetric("a5-bundle", "duration_ms", []int{10, 11, 12}),
+	}
+
+	for _, disposition := range []string{"not-run", "partial"} {
+		comparisons, err := CompareWarmCold(l, cells, disposition)
+		if err != nil {
+			t.Fatalf("CompareWarmCold(%q) = _, %v; want nil error", disposition, err)
+		}
+		if len(comparisons) != 0 {
+			t.Errorf("CompareWarmCold(%q) returned %d comparisons; want 0", disposition, len(comparisons))
+		}
+	}
+}
+
 // writeSummarizeRun writes a synthetic run directory at
 // <resultsRoot>/raw/<configID>/<n>/ carrying usage.json, score.json, and run.json, with reasonable
 // defaults for every field summarize.go reads. usageExtra and scoreExtra override the defaults; runExtra

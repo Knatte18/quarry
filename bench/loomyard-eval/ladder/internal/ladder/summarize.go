@@ -331,3 +331,139 @@ func buildComparison(kind string, leftCell, rightCell Cell, metric string) (Comp
 		Separated:   RangesDisjoint(leftRange, rightRange),
 	}, true
 }
+
+// isGrepMetric reports whether metric is one of GrepMetrics.
+func isGrepMetric(metric string) bool {
+	for _, grepMetric := range GrepMetrics {
+		if grepMetric == metric {
+			return true
+		}
+	}
+	return false
+}
+
+// CompareRungToControl compares config against its own ladder's control, resolved through ControlFor
+// rather than by parsing config.ID. Emits a comparison for every Metrics entry except GrepMetrics, since
+// the control's preamble differs in steering as well as in tools, so a grep-usage gap between it and a
+// rung cannot be attributed to the tool exposure alone. This exclusion is CompareRungToControl's own:
+// CompareRungs keeps every grep metric eligible for a same-ladder rung pair, whose preambles differ only
+// in the tool list -- the asymmetry is encoded here explicitly, one comparison family at a time, rather
+// than as a filter the two builders would otherwise have to share.
+//
+// Emits nothing when either cell is incomplete.
+func CompareRungToControl(l *Ladder, cells map[string]Cell, config LadderConfig) ([]Comparison, error) {
+	control, err := ControlFor(l, config)
+	if err != nil {
+		return nil, err
+	}
+	rungCell := cells[config.ID]
+	controlCell := cells[control.ID]
+	if !rungCell.Complete || !controlCell.Complete {
+		return nil, nil
+	}
+
+	var comparisons []Comparison
+	for _, metric := range Metrics {
+		if isGrepMetric(metric) {
+			continue
+		}
+		if comparison, ok := buildComparison("rung-vs-control", rungCell, controlCell, metric); ok {
+			comparisons = append(comparisons, comparison)
+		}
+	}
+	return comparisons, nil
+}
+
+// CompareRungs compares two configs in the same ladder, both expected to carry a non-empty allowed set.
+// All Metrics are eligible, including the grep metrics, since these preambles are identical except for
+// the tool list -- contrast CompareRungToControl's own grep exclusion, made for the opposite reason.
+//
+// Returns a *SummarizeError when leftID and rightID are not in the same ladder. Emits nothing when
+// either cell is incomplete.
+func CompareRungs(l *Ladder, cells map[string]Cell, leftID, rightID string) ([]Comparison, error) {
+	leftConfig, err := ConfigByID(l, leftID)
+	if err != nil {
+		return nil, err
+	}
+	rightConfig, err := ConfigByID(l, rightID)
+	if err != nil {
+		return nil, err
+	}
+	if leftConfig.Ladder != rightConfig.Ladder {
+		return nil, &SummarizeError{Message: fmt.Sprintf("CompareRungs: %q and %q are not in the same ladder", leftID, rightID)}
+	}
+
+	leftCell := cells[leftID]
+	rightCell := cells[rightID]
+	if !leftCell.Complete || !rightCell.Complete {
+		return nil, nil
+	}
+
+	var comparisons []Comparison
+	for _, metric := range Metrics {
+		if comparison, ok := buildComparison("rung-vs-rung", leftCell, rightCell, metric); ok {
+			comparisons = append(comparisons, comparison)
+		}
+	}
+	return comparisons, nil
+}
+
+// allColdRunsLackDaemonBackedCall reports whether every run in runs carries cold_no_daemon_backed_call
+// as true -- runs must be non-empty; callers check that themselves, since an empty cold cell is a
+// different (incomplete-cell) case CompareWarmCold already excludes before reaching this check.
+func allColdRunsLackDaemonBackedCall(runs []map[string]any) bool {
+	for _, run := range runs {
+		lacksDaemon, _ := run["cold_no_daemon_backed_call"].(bool)
+		if !lacksDaemon {
+			return false
+		}
+	}
+	return true
+}
+
+// CompareWarmCold compares the ladder's cold cell against the warm cell named by its own
+// WarmCounterpart field, resolved through WarmCounterpartFor.
+//
+// Emits nothing when coldDisposition is "not-run" or "partial" -- a disjoint-range claim at n = reps
+// cannot be made from fewer than reps cold runs -- when either cell is incomplete, or when every cold
+// run recorded cold_no_daemon_backed_call: none of them started a daemon, so there is no warmth contrast
+// to draw.
+func CompareWarmCold(l *Ladder, cells map[string]Cell, coldDisposition string) ([]Comparison, error) {
+	if coldDisposition == "not-run" || coldDisposition == "partial" {
+		return nil, nil
+	}
+
+	var coldConfig LadderConfig
+	found := false
+	for _, config := range l.Configs {
+		if config.Cold {
+			coldConfig = config
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("ladder: CompareWarmCold: no cold config found in ladder")
+	}
+	warmConfig, err := WarmCounterpartFor(l, coldConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	coldCell := cells[coldConfig.ID]
+	warmCell := cells[warmConfig.ID]
+	if !coldCell.Complete || !warmCell.Complete {
+		return nil, nil
+	}
+	if len(coldCell.Runs) > 0 && allColdRunsLackDaemonBackedCall(coldCell.Runs) {
+		return nil, nil
+	}
+
+	var comparisons []Comparison
+	for _, metric := range Metrics {
+		if comparison, ok := buildComparison("warm-vs-cold", coldCell, warmCell, metric); ok {
+			comparisons = append(comparisons, comparison)
+		}
+	}
+	return comparisons, nil
+}
