@@ -209,7 +209,8 @@ func TestTOCDirHandler_EntriesCarryCallerRelativePath(t *testing.T) {
 
 // TestTOCFileHandler_ResolvesQuarryYAMLAgainstFilesOwnDirectory asserts each target's effective
 // DocSentences value is resolved against that target's own resolved file's parent directory, never
-// the call's targetDir, using two fixture directories carrying different doc_sentences values.
+// the server's target directory, using two fixture directories carrying different doc_sentences
+// values.
 func TestTOCFileHandler_ResolvesQuarryYAMLAgainstFilesOwnDirectory(t *testing.T) {
 	root := t.TempDir()
 	writeTOCTestFile(t, root, ".quarry.yaml", "toc:\n  doc_sentences: 99\n")
@@ -367,7 +368,7 @@ func TestTOCDirHandler_InvalidLangFailsWholeCall(t *testing.T) {
 
 // TestTOCTools_MalformedServersYAMLStillSucceeds asserts a Config.ConfigPath pointing at a
 // malformed servers.yaml leaves both toc tools succeeding, because neither tocFileCommand nor
-// tocDirCommand ever calls quarry.LoadRegistry — the handlers call effectiveTargetDir and
+// tocDirCommand ever calls quarry.LoadRegistry — the handlers read cfg.TargetDir and call
 // tocPreflight directly and never resolveCall.
 func TestTOCTools_MalformedServersYAMLStillSucceeds(t *testing.T) {
 	malformed := filepath.Join(t.TempDir(), "servers.yaml")
@@ -408,5 +409,34 @@ func TestTOCTools_MalformedServersYAMLStillSucceeds(t *testing.T) {
 		t.Errorf("tocDirHandler(cfg)(...) error = %v; want nil (toc never loads the registry)", err)
 	} else if got := out.Results[0].Status; got != statusFound {
 		t.Errorf("out.Results[0].Status = %q; want %q", got, statusFound)
+	}
+}
+
+// TestTOCFileHandler_AbsoluteTargetResolvesOutsideLaunchRoot pins the one partial escape hatch that
+// survives the per-call targetDir override's removal: cli.ResolveTOCPath ignores the base directory
+// entirely for an absolute argument, so toc_file can still resolve a target outside cfg.TargetDir by
+// sending an absolute path. The five language-server-backed tools have no equivalent — their queries
+// are served by the gopls daemon rooted at the server's own target directory, so there is no
+// per-argument way to escape that root the way toc's plain-string targets allow.
+func TestTOCFileHandler_AbsoluteTargetResolvesOutsideLaunchRoot(t *testing.T) {
+	cfg := newTestConfig(t)
+	outside := t.TempDir()
+	abs := writeTOCTestFile(t, outside, "outside.go", "package outside\n")
+
+	withStubbedFacade(t, &tocFileFn, stubTOCFileFn(t, nil, map[string]struct {
+		result quarry.TOCFileResult
+		err    error
+	}{
+		abs: {result: quarry.TOCFileResult{Language: "go"}},
+	}))
+
+	in := tocFileInput{Targets: []string{abs}}
+
+	_, out, err := tocFileHandler(cfg)(context.Background(), nil, in)
+	if err != nil {
+		t.Fatalf("tocFileHandler(cfg)(...) error = %v; want nil", err)
+	}
+	if got := out.Results[0].Status; got != statusFound {
+		t.Errorf("out.Results[0].Status = %q; want %q (an absolute target outside cfg.TargetDir still resolves)", got, statusFound)
 	}
 }
