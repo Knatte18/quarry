@@ -24,8 +24,6 @@ type impactInput struct {
 	Lang string `json:"lang,omitempty" jsonschema:"override language detection with this servers.yaml registry key"`
 	// BuildTags is a comma-separated Go build tag set scoping this call's language server.
 	BuildTags string `json:"buildTags,omitempty" jsonschema:"comma-separated Go build tags scoping this call's language server"`
-	// TargetDir overrides the server's launch-default project directory for this call.
-	TargetDir string `json:"targetDir,omitempty" jsonschema:"project directory to detect the language in and root this call at, overriding the server's launch default"`
 }
 
 // impactEntry is one target's own result in impact's "results" array. Result nests the marshalled
@@ -100,7 +98,7 @@ func resolveImpactEntry(ctx context.Context, callCtx callContext, lang string, e
 // the one callContext resolveCall derives for the whole call.
 func impactHandler(cfg Config) mcp.ToolHandlerFor[impactInput, impactOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in impactInput) (*mcp.CallToolResult, impactOutput, error) {
-		callCtx, err := resolveCall(cfg, in.TargetDir, in.BuildTags)
+		callCtx, err := resolveCall(cfg, in.BuildTags)
 		if err != nil {
 			return nil, impactOutput{}, err
 		}

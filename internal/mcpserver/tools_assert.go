@@ -30,8 +30,6 @@ type assertInput struct {
 	// reference is kept as a violation rather than dropped when false (the default, fail-closed
 	// behaviour).
 	NoVerify bool `json:"noVerify,omitempty" jsonschema:"skip per-caller definition verification for the whole call (fail-closed by default: an unverifiable reference is kept as a violation rather than dropped)"`
-	// TargetDir overrides the server's launch-default project directory for this call.
-	TargetDir string `json:"targetDir,omitempty" jsonschema:"project directory to detect the language in and root this call at, overriding the server's launch default"`
 }
 
 // assertEntry is one target's own result in assert_no_callers' "results" array. A violation is
@@ -116,7 +114,7 @@ func resolveAssertEntry(ctx context.Context, callCtx callContext, lang string, n
 // resolution reuses the one callContext resolveCall derives for the whole call.
 func assertHandler(cfg Config) mcp.ToolHandlerFor[assertInput, assertOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in assertInput) (*mcp.CallToolResult, assertOutput, error) {
-		callCtx, err := resolveCall(cfg, in.TargetDir, in.BuildTags)
+		callCtx, err := resolveCall(cfg, in.BuildTags)
 		if err != nil {
 			return nil, assertOutput{}, err
 		}

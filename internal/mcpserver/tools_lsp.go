@@ -30,8 +30,6 @@ type lspInput struct {
 	Lang string `json:"lang,omitempty" jsonschema:"override language detection with this servers.yaml registry key"`
 	// BuildTags is a comma-separated Go build tag set scoping this call's language server.
 	BuildTags string `json:"buildTags,omitempty" jsonschema:"comma-separated Go build tags scoping this call's language server"`
-	// TargetDir overrides the server's launch-default project directory for this call.
-	TargetDir string `json:"targetDir,omitempty" jsonschema:"project directory to detect the language in and root this call at, overriding the server's launch default"`
 }
 
 // definitionEntry is one target's own result in textDocument_definition's "results" array. Target
@@ -139,7 +137,7 @@ func resolveLSPEntry(ctx context.Context, callCtx callContext, lang string, entr
 // per-entry resolution reuses the one callContext resolveCall derives for the whole call.
 func definitionHandler(cfg Config) mcp.ToolHandlerFor[lspInput, definitionOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in lspInput) (*mcp.CallToolResult, definitionOutput, error) {
-		callCtx, err := resolveCall(cfg, in.TargetDir, in.BuildTags)
+		callCtx, err := resolveCall(cfg, in.BuildTags)
 		if err != nil {
 			return nil, definitionOutput{}, err
 		}
@@ -164,7 +162,7 @@ func definitionHandler(cfg Config) mcp.ToolHandlerFor[lspInput, definitionOutput
 // per-entry resolution reuses the one callContext resolveCall derives for the whole call.
 func referencesHandler(cfg Config) mcp.ToolHandlerFor[lspInput, referencesOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in lspInput) (*mcp.CallToolResult, referencesOutput, error) {
-		callCtx, err := resolveCall(cfg, in.TargetDir, in.BuildTags)
+		callCtx, err := resolveCall(cfg, in.BuildTags)
 		if err != nil {
 			return nil, referencesOutput{}, err
 		}
