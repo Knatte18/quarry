@@ -140,6 +140,21 @@ func run() error {
 	return nil
 }
 
+// mcpTrustDialogSignature is the fixed text Claude Code's own "New MCP server found in this project"
+// startup dialog prints, confirmed empirically against a live pane. No settings.json field, ~/.claude.json
+// project entry, or --strict-mcp-config flag this suite tried actually suppresses it (all three tested
+// live and ruled out) -- it appears to require an actual keystroke from whoever is attached, which this
+// command deliberately does not send itself (scripting a keypress into a permission dialog is exactly the
+// shape of thing Claude Code's own auto-mode classifier already refuses, for good reason). So this only
+// detects the stall and says so loudly instead of silently polling for a marker that will never appear
+// until a human answers it.
+const mcpTrustDialogSignature = "New MCP server found in this project"
+
+// stuckAlertInterval is how often launchAndWait re-prints its "attach and answer the dialog" alert while
+// the pane appears stuck on the MCP trust dialog -- repeated, not printed once, since a single line is
+// easy to scroll past in a long-running terminal.
+const stuckAlertInterval = 30 * time.Second
+
 // launchAndWait starts scratchDir's session detached inside tmuxSession and polls for either its
 // completion marker (outcomeMarkerName) to appear or the tmux session itself to disappear.
 //
@@ -151,12 +166,19 @@ func run() error {
 // nothing this suite launches inside it ever does that on its own before writing the marker), and there
 // is then no reliable way to tell whether the attempt actually finished -- so this stops rather than
 // guessing.
+//
+// While waiting, it also captures the pane's own visible content on every poll and watches for
+// mcpTrustDialogSignature -- Claude Code's MCP server trust prompt requires an actual human keystroke and
+// nothing this command does can answer it, so a session stuck on it would otherwise sit silently until
+// someone happened to check. Detecting it prints a repeated, hard-to-miss alert naming exactly what to do
+// instead.
 func launchAndWait(scratchDir string) (string, error) {
 	if err := runVisible("tmux", "new-session", "-d", "-s", tmuxSession, ladderDir+"/launch-session.sh", scratchDir); err != nil {
 		return "", fmt.Errorf("start tmux session: %w", err)
 	}
 
 	markerPath := filepath.Join(scratchDir, outcomeMarkerName)
+	var lastStuckAlert time.Time
 	for {
 		data, err := os.ReadFile(markerPath)
 		switch {
@@ -171,6 +193,13 @@ func launchAndWait(scratchDir string) (string, error) {
 		if !tmuxSessionExists() {
 			return "", fmt.Errorf("tmux session %q ended without ever writing %s -- assuming the operator closed it themselves; not guessing whether the attempt finished", tmuxSession, markerPath)
 		}
+
+		if paneShowsMCPTrustDialog() && time.Since(lastStuckAlert) >= stuckAlertInterval {
+			fmt.Printf("\a!! ATTENTION: %s is waiting on Claude Code's MCP trust dialog and nothing but a human keystroke can answer it.\n!! Run `tmux attach -t %s`, press Enter (or 1) to approve, then detach (ctrl-b d) -- this command will pick back up on its own.\n",
+				scratchDir, tmuxSession)
+			lastStuckAlert = time.Now()
+		}
+
 		time.Sleep(pollInterval)
 	}
 }
@@ -178,6 +207,19 @@ func launchAndWait(scratchDir string) (string, error) {
 // tmuxSessionExists reports whether tmuxSession is still a live tmux session.
 func tmuxSessionExists() bool {
 	return exec.Command("tmux", "has-session", "-t", tmuxSession).Run() == nil
+}
+
+// paneShowsMCPTrustDialog reports whether tmuxSession's current visible pane content contains
+// mcpTrustDialogSignature. A capture failure (session gone between the has-session check above and this
+// call, a genuine race under concurrent polling) is treated as "not showing it", never as an error --
+// tmuxSessionExists is the authority on whether the session itself is still alive, this is only a
+// best-effort peek at its content.
+func paneShowsMCPTrustDialog() bool {
+	out, err := exec.Command("tmux", "capture-pane", "-t", tmuxSession, "-p").Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), mcpTrustDialogSignature)
 }
 
 // runVisible runs name with args, streaming its own stdout/stderr straight through so build/warm/release
