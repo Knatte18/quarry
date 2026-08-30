@@ -1,8 +1,8 @@
 // tools_toc.go implements toc_file and toc_dir, the two tree-sitter-backed tools wrapping
 // quarry.TOCFile and quarry.TOCDir. Both take plain-string "targets" entries rather than objects,
 // both validate "lang" against quarry.TOCLanguages() rather than the servers.yaml registry, and
-// neither loads that registry or resolves a state directory — each handler calls
-// effectiveTargetDir and tocPreflight directly and never resolveCall, following
+// neither loads that registry or resolves a state directory — each handler reads cfg.TargetDir
+// and calls tocPreflight directly and never resolveCall, following
 // internal/mcpserver/callcontext.go's header comment for why a malformed servers.yaml must not
 // fail a toc call.
 
@@ -19,9 +19,9 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// tocFileInput is toc_file's call-wide input: a "targets" array of plain path strings, plus the
-// per-call overrides toc_file accepts. Unlike lspInput/impactInput, there is no buildTags: toc is
-// tree-sitter-backed, never loads the server registry, and registers no --build-tags.
+// tocFileInput is toc_file's call-wide input: a "targets" array of plain path strings, plus lang
+// and docSentences. Unlike lspInput/impactInput, there is no buildTags: toc is tree-sitter-backed,
+// never loads the server registry, and registers no --build-tags.
 type tocFileInput struct {
 	// Targets is the array of plain file paths this call resolves, 1 to 64 per call.
 	Targets []string `json:"targets" jsonschema:"the file paths to resolve, 1 to 64 per call"`
@@ -32,24 +32,17 @@ type tocFileInput struct {
 	// 0 omits the key entirely, N keeps the first N sentences, and "all" keeps the docstring
 	// unchanged. Resolved per entry against that entry's own resolved file's parent directory.
 	DocSentences docSentences `json:"docSentences,omitempty" jsonschema:"number of leading docstring sentences to emit (0 omits the key entirely), or \"all\"; resolved per entry against that entry's own file's parent directory"`
-	// TargetDir overrides the server's launch-default project directory for this call, used only
-	// to resolve a relative target — toc never detects a project or loads a registry against it.
-	TargetDir string `json:"targetDir,omitempty" jsonschema:"base directory to resolve a relative target against, overriding the server's launch default"`
 }
 
 // tocDirInput is toc_dir's call-wide input: a "targets" array of plain directory-path strings,
-// plus the per-call overrides toc_dir accepts. It carries no docSentences property: --doc-sentences
-// is registered on "toc file" only in the CLI, deliberately, because "toc dir" emits headers and
-// never docstrings.
+// plus lang. It carries no docSentences property: --doc-sentences is registered on "toc file" only
+// in the CLI, deliberately, because "toc dir" emits headers and never docstrings.
 type tocDirInput struct {
 	// Targets is the array of plain directory paths this call resolves, 1 to 64 per call.
 	Targets []string `json:"targets" jsonschema:"the directory paths to resolve, 1 to 64 per call"`
 	// Lang restricts the listing to this language's own extensions, validated against
 	// quarry.TOCLanguages() rather than a servers.yaml registry key.
 	Lang string `json:"lang,omitempty" jsonschema:"restrict the listing to this language's own extensions, validated against toc's own supported language set rather than a servers.yaml registry key"`
-	// TargetDir overrides the server's launch-default project directory for this call, used only
-	// to resolve a relative target — toc never detects a project or loads a registry against it.
-	TargetDir string `json:"targetDir,omitempty" jsonschema:"base directory to resolve a relative target against, overriding the server's launch default"`
 }
 
 // tocFileEntry is one target's own result in toc_file's "results" array. It declares no
@@ -159,15 +152,12 @@ func resolveTOCDirEntry(arg, targetDir, lang string) tocDirEntry {
 	return tocDirEntry{Target: arg, Status: statusFound, Files: files}
 }
 
-// tocFileHandler returns toc_file's handler, closing over cfg. It calls effectiveTargetDir and
+// tocFileHandler returns toc_file's handler, closing over cfg. It reads cfg.TargetDir and calls
 // tocPreflight directly, never resolveCall, so a malformed servers.yaml or an unresolvable
 // registry/state directory never fails a toc_file call — tocFileFn never consults either.
 func tocFileHandler(cfg Config) mcp.ToolHandlerFor[tocFileInput, tocFileOutput] {
 	return func(_ context.Context, _ *mcp.CallToolRequest, in tocFileInput) (*mcp.CallToolResult, tocFileOutput, error) {
-		targetDir, err := effectiveTargetDir(cfg, in.TargetDir)
-		if err != nil {
-			return nil, tocFileOutput{}, err
-		}
+		targetDir := cfg.TargetDir
 
 		docString, err := tocPreflight(in.Lang, in.DocSentences)
 		if err != nil {
@@ -182,14 +172,11 @@ func tocFileHandler(cfg Config) mcp.ToolHandlerFor[tocFileInput, tocFileOutput] 
 	}
 }
 
-// tocDirHandler returns toc_dir's handler, closing over cfg. It calls effectiveTargetDir and
+// tocDirHandler returns toc_dir's handler, closing over cfg. It reads cfg.TargetDir and calls
 // tocPreflight directly, never resolveCall, for the same reason tocFileHandler does.
 func tocDirHandler(cfg Config) mcp.ToolHandlerFor[tocDirInput, tocDirOutput] {
 	return func(_ context.Context, _ *mcp.CallToolRequest, in tocDirInput) (*mcp.CallToolResult, tocDirOutput, error) {
-		targetDir, err := effectiveTargetDir(cfg, in.TargetDir)
-		if err != nil {
-			return nil, tocDirOutput{}, err
-		}
+		targetDir := cfg.TargetDir
 
 		// docSentences has no property on tocDirInput, so its zero value never carries a value —
 		// tocPreflight's own doc.value() check short-circuits before ever reaching

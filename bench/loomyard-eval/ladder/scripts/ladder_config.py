@@ -36,9 +36,9 @@ MCP_PREFIX = "mcp__quarry__"
 
 # toc_dir/toc_file are tree-sitter-backed and never start a daemon (see
 # tocFileHandler/tocDirHandler in internal/mcpserver/tools_toc.go, which
-# call effectiveTargetDir/tocPreflight directly and never resolveCall). Every
-# other canonical tool routes through resolveCall/EnsureServer and can be
-# used as a warmth signal for the cold cell.
+# read cfg.TargetDir and call tocPreflight directly, never resolveCall).
+# Every other canonical tool routes through resolveCall/EnsureServer and can
+# be used as a warmth signal for the cold cell.
 DAEMON_BACKED_TOOLS = tuple(t for t in QUARRY_TOOLS if t not in ("toc_dir", "toc_file"))
 
 
@@ -380,8 +380,8 @@ call-wide input with a `targets` array:
 
 {tool_lines}
 
-Never set targetDir or buildTags on any of these calls -- the server is
-already rooted at the correct target codebase.
+Never set buildTags on any of these calls -- the default build-tag set is
+the one this run is scoped to.
 
 Use these tools as your PRIMARY tool for anything they cover: symbol
 lookups, "who calls this / where is this defined", file/directory surveys,

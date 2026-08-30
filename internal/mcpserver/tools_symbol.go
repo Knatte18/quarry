@@ -55,8 +55,6 @@ type symbolInput struct {
 	Lang string `json:"lang,omitempty" jsonschema:"override language detection with this servers.yaml registry key"`
 	// BuildTags is a comma-separated Go build tag set scoping this call's language server.
 	BuildTags string `json:"buildTags,omitempty" jsonschema:"comma-separated Go build tags scoping this call's language server"`
-	// TargetDir overrides the server's launch-default project directory for this call.
-	TargetDir string `json:"targetDir,omitempty" jsonschema:"project directory to detect the language in and root this call at, overriding the server's launch default"`
 }
 
 // symbolMatchEntry is one target's own result in workspace_symbol's "results" array. It carries no
@@ -116,7 +114,7 @@ func resolveSymbolEntry(ctx context.Context, callCtx callContext, lang string, e
 // resolution reuses the one callContext resolveCall derives for the whole call.
 func symbolHandler(cfg Config) mcp.ToolHandlerFor[symbolInput, symbolOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in symbolInput) (*mcp.CallToolResult, symbolOutput, error) {
-		callCtx, err := resolveCall(cfg, in.TargetDir, in.BuildTags)
+		callCtx, err := resolveCall(cfg, in.BuildTags)
 		if err != nil {
 			return nil, symbolOutput{}, err
 		}

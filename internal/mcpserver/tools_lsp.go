@@ -1,6 +1,6 @@
 // tools_lsp.go implements textDocument_definition and textDocument_references, the two
 // LSP-mirrored tools whose per-entry shape is a definition or reference list: both share lspInput's
-// call-wide "targets" array plus lang/buildTags/targetDir overrides, and both resolve each entry
+// call-wide "targets" array plus lang/buildTags overrides, and both resolve each entry
 // through resolveLSPEntry, the one function that runs the unknown-key check, the query parse, the
 // facade call, the per-entry --within filter, and the error classification every LSP-mirrored
 // lookup needs. Only the wrapping into definitionEntry vs referencesEntry, and which facade seam
@@ -20,8 +20,9 @@ import (
 )
 
 // lspInput is the call-wide input every LSP-mirrored tool (textDocument_definition,
-// textDocument_references, workspace_symbol) shares: the "targets" array plus the three call-wide
-// resolution overrides every language-server-backed tool in this package accepts.
+// textDocument_references, workspace_symbol) shares: the "targets" array plus the two call-wide
+// resolution overrides every language-server-backed tool in this package accepts, lang and
+// buildTags.
 type lspInput struct {
 	// Targets is the array of entries this call resolves, 1 to 64 per call.
 	Targets []lspEntry `json:"targets" jsonschema:"the entries to resolve, 1 to 64 per call"`
@@ -30,8 +31,6 @@ type lspInput struct {
 	Lang string `json:"lang,omitempty" jsonschema:"override language detection with this servers.yaml registry key"`
 	// BuildTags is a comma-separated Go build tag set scoping this call's language server.
 	BuildTags string `json:"buildTags,omitempty" jsonschema:"comma-separated Go build tags scoping this call's language server"`
-	// TargetDir overrides the server's launch-default project directory for this call.
-	TargetDir string `json:"targetDir,omitempty" jsonschema:"project directory to detect the language in and root this call at, overriding the server's launch default"`
 }
 
 // definitionEntry is one target's own result in textDocument_definition's "results" array. Target
@@ -139,7 +138,7 @@ func resolveLSPEntry(ctx context.Context, callCtx callContext, lang string, entr
 // per-entry resolution reuses the one callContext resolveCall derives for the whole call.
 func definitionHandler(cfg Config) mcp.ToolHandlerFor[lspInput, definitionOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in lspInput) (*mcp.CallToolResult, definitionOutput, error) {
-		callCtx, err := resolveCall(cfg, in.TargetDir, in.BuildTags)
+		callCtx, err := resolveCall(cfg, in.BuildTags)
 		if err != nil {
 			return nil, definitionOutput{}, err
 		}
@@ -164,7 +163,7 @@ func definitionHandler(cfg Config) mcp.ToolHandlerFor[lspInput, definitionOutput
 // per-entry resolution reuses the one callContext resolveCall derives for the whole call.
 func referencesHandler(cfg Config) mcp.ToolHandlerFor[lspInput, referencesOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in lspInput) (*mcp.CallToolResult, referencesOutput, error) {
-		callCtx, err := resolveCall(cfg, in.TargetDir, in.BuildTags)
+		callCtx, err := resolveCall(cfg, in.BuildTags)
 		if err != nil {
 			return nil, referencesOutput{}, err
 		}

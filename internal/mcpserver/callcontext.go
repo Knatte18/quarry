@@ -5,15 +5,13 @@
 // bit-for-bit identical to the CLI's — a divergence would silently spawn a second gopls daemon and
 // forfeit warm-daemon reuse.
 //
-// The toc tools call effectiveTargetDir directly and never call resolveCall: tocFileCommand and
+// The toc tools read Config.TargetDir directly and never call resolveCall: tocFileCommand and
 // tocDirCommand (internal/cli/toc.go) never call resolveContext, quarry.LoadRegistry, or
 // ResolveStateDir either, so a malformed servers.yaml must not fail a toc call.
 
 package mcpserver
 
 import (
-	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/quarry/internal/cli"
@@ -25,8 +23,8 @@ import (
 type callContext struct {
 	// Registry is the servers.yaml-backed language-server registry loaded for this call.
 	Registry quarry.Registry
-	// TargetDir is the absolute project directory this call resolved, either the launch default or
-	// an absolutised per-call override.
+	// TargetDir is the absolute project directory this call resolved, carried straight from
+	// Config.TargetDir.
 	TargetDir string
 	// StateDir is the absolute daemon state directory this call resolved, bit-for-bit identical to
 	// what internal/cli's own resolution produces for the same inputs.
@@ -39,27 +37,8 @@ type callContext struct {
 	Timeout time.Duration
 }
 
-// effectiveTargetDir resolves the target directory a call actually uses: when override is
-// non-empty it is passed through filepath.Abs immediately, before it is used for anything, and any
-// error is returned wrapped; otherwise cfg.TargetDir is returned unchanged, already absolute from
-// ResolveLaunchTargetDir.
-//
-// This is the only place a per-call override becomes absolute. The toc tools call this function
-// directly rather than going through resolveCall — see this file's header comment for why.
-func effectiveTargetDir(cfg Config, override string) (string, error) {
-	if override == "" {
-		return cfg.TargetDir, nil
-	}
-
-	abs, err := filepath.Abs(override)
-	if err != nil {
-		return "", fmt.Errorf("mcpserver: resolve targetDir: %w", err)
-	}
-	return abs, nil
-}
-
 // resolveCall resolves the full per-call context for a language-server-backed tool: the absolute
-// target directory (effectiveTargetDir), the normalized build-tag set (cli.ResolveBuildTags), the
+// target directory (Config.TargetDir), the normalized build-tag set (cli.ResolveBuildTags), the
 // servers.yaml config path (cli.ResolveConfigPath) and the registry loaded from it
 // (quarry.LoadRegistry), and the daemon state directory (cli.ResolveStateDir) — in that order,
 // exactly mirroring resolveContext's sequence in internal/cli/cli.go.
@@ -67,11 +46,8 @@ func effectiveTargetDir(cfg Config, override string) (string, error) {
 // Using these exported helpers rather than a local copy is what keeps the state-directory key
 // bit-for-bit identical to the CLI's; a divergence would silently spawn a second gopls daemon and
 // forfeit warm-daemon reuse.
-func resolveCall(cfg Config, targetDirOverride, buildTags string) (callContext, error) {
-	absTargetDir, err := effectiveTargetDir(cfg, targetDirOverride)
-	if err != nil {
-		return callContext{}, err
-	}
+func resolveCall(cfg Config, buildTags string) (callContext, error) {
+	absTargetDir := cfg.TargetDir
 
 	tags := cli.ResolveBuildTags(buildTags)
 

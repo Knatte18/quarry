@@ -308,7 +308,7 @@ def test_mcp_preamble_forbids_binary_paths_and_cli_syntax(ladder, config_id):
     prompt = lc.preamble_for(ladder, config, _TARGET_DIR, _TASK_TEXT, _SCHEMA_JSON)
     for literal in _FORBIDDEN_LITERALS:
         assert literal not in prompt
-    assert "Never set targetDir or buildTags" in prompt
+    assert "Never set buildTags on any of these calls" in prompt
 
 
 @pytest.mark.parametrize("config_id", [c.id for c in lc.load_ladder(LADDER_YAML).configs if c.allowed])

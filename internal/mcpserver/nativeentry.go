@@ -26,10 +26,10 @@ type nativeEntry struct {
 	raw json.RawMessage
 
 	// File names the file a position or in-file symbol search resolves against, a plain path
-	// (absolute, or relative to the call's targetDir). Required together with Line and Character,
-	// and optional together with Symbol (its presence there switches the search from project-wide
-	// to file-scoped).
-	File string `json:"file,omitempty" jsonschema:"the file a position or in-file symbol search resolves against, a plain path (absolute, or relative to targetDir); required with line+character, optional with symbol"`
+	// (absolute, or relative to the server's target directory). Required together with Line and
+	// Character, and optional together with Symbol (its presence there switches the search from
+	// project-wide to file-scoped).
+	File string `json:"file,omitempty" jsonschema:"the file a position or in-file symbol search resolves against, a plain path (absolute, or relative to the server's target directory); required with line+character, optional with symbol"`
 	// Line is the entry's 1-based line number, used together with File and Character. A nil value
 	// means the field was omitted.
 	Line *int `json:"line,omitempty" jsonschema:"1-based line number, used together with file and character"`
@@ -40,13 +40,13 @@ type nativeEntry struct {
 	// when present. Mutually exclusive with Line/Character.
 	Symbol string `json:"symbol,omitempty" jsonschema:"a symbol name to resolve; project-wide when file is absent, or within file's own file when present; mutually exclusive with line+character"`
 	// Within restricts this entry's own result to files within the named directory (relative to
-	// the call's targetDir, or absolute). Not every quarry-native tool accepts it.
-	Within string `json:"within,omitempty" jsonschema:"restrict this entry's own result to files within this directory (relative to targetDir, or absolute)"`
-	// Except is a set of file paths (relative to the call's targetDir, or absolute) sanctioned to
-	// keep referencing this entry's own symbol without being reported as a violation. Only
+	// the server's target directory, or absolute). Not every quarry-native tool accepts it.
+	Within string `json:"within,omitempty" jsonschema:"restrict this entry's own result to files within this directory (relative to the server's target directory, or absolute)"`
+	// Except is a set of file paths (relative to the server's target directory, or absolute)
+	// sanctioned to keep referencing this entry's own symbol without being reported as a violation. Only
 	// assert_no_callers accepts it — impact drops this property from its published schema even
 	// though the Go type is shared.
-	Except []string `json:"except,omitempty" jsonschema:"file paths (relative to targetDir, or absolute) sanctioned to reference this entry's own symbol without being reported as a violation; assert_no_callers only"`
+	Except []string `json:"except,omitempty" jsonschema:"file paths (relative to the server's target directory, or absolute) sanctioned to reference this entry's own symbol without being reported as a violation; assert_no_callers only"`
 }
 
 // nativeEntryAlias is a defined type (not a type alias) with nativeEntry's exact underlying type,
@@ -116,7 +116,7 @@ func (e nativeEntry) query(targetDir string) (quarry.Query, error) {
 
 // exceptSet reproduces assertNoCallersCommand's own inline --except composition
 // (internal/cli/cli.go's RunE) exactly: each path in except is resolved with cli.AbsOrJoin
-// against targetDir — the effective absolute target directory, never the process working
+// against targetDir — the server's target directory, never the process working
 // directory — then filepath.Cleaned, and the cleaned paths are the returned map's keys.
 //
 // cli.FilterUnexpectedCallers compares this map against filepath.Clean(r.File) on
