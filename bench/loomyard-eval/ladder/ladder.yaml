@@ -8,7 +8,15 @@
 
 run_model: null
 reps: 3
-max_turns: 60
+run_effort: medium
+# max_turns' meaning is now "maximum number of assistant records in a run's subagent transcript" --
+# the committed 60 was calibrated against a different accounting basis, so it does not carry over.
+# The operator must set max_turns before the matrix starts.
+max_turns: null
+
+# session_dir_template is the per-repetition session working-directory path. `{config_id}` and `{n}`
+# are substituted; `{n}` is the 1-based repetition index.
+session_dir_template: /tmp/ladder-session-{config_id}-{n}
 
 scorer:
   model: claude-opus-5
