@@ -137,6 +137,12 @@ backup.**
   named tool from the model's schema entirely — the model is never offered it, so no call-time refusal is
   observable in the transcript; see the deny-list probe below for what this means for how that probe is
   scored.
+- **`settings.json`'s `permissions.allow` also mirrors config's own granted quarry tool names, purely to
+  avoid a prompt.** This is a distinct concern from either enforcement layer above — it grants nothing on
+  its own, the `tools:` frontmatter already decided that. Without it, every single quarry tool call
+  interactively prompts (confirmed on a real dispatch, every call individually), which silently corrupts
+  this suite's own duration/cost measurements with arbitrary human reaction-time delay. `Read`/`Grep`/
+  `Glob`/`Bash` stay fixed and uniform for every config regardless.
 - **A blinded (`none`) session gets no server declaration at all.** `prepare-session` writes `.mcp.json`
   only when the config's `allowed` set is non-empty; a `none` config is launched with no `--mcp-config`
   flag whatsoever, and its `settings.json` denies nothing — the quarry deny-list backup guards nothing for
@@ -419,7 +425,21 @@ ladderbench prepare-session --config-id <config-id> --rep <n> --results-root ben
 ```
 
 prints the launch command for one run session; run `/ladder-run` inside the launched session to drive its
-attempt loop. Once every run session for the matrix has ingested, prepare and launch the single scoring
+attempt loop.
+
+**`tools/` automates the sequencing across all 42 warm-matrix sessions.** `tools/runmatrix` (a Go program;
+`go run ./tools/runmatrix` or build it) loops `next-run`/`prepare-session`/`warm` for every non-cold
+config, in `ladder.yaml`'s own declared order, and launches each session inside a named tmux session
+(`tmux new-session -s ladder-run`) with `/ladder-run` pre-submitted as its first message via `claude`'s own
+positional prompt argument -- this still launches fully interactively, never `-p`/`--print`; the operator
+watches and can close the pane exactly as with any other session in this suite, they just never have to
+type the launch command or the slash command by hand. `launch-session.sh` (repo root of this suite) is the
+single-session building block both this and `tools/launch.sh` (a zero-argument wrapper reading the
+scratch directory most recently prepared from `.scratch/ladder-sessions/.current`) are built on.
+`tools/runmatrix` deliberately stops short of the cold config and the scoring session -- see its own doc
+comment for why -- both are still driven by hand, per this section's own instructions below.
+
+Once every run session for the matrix has ingested, prepare and launch the single scoring
 session:
 
 ```

@@ -110,8 +110,9 @@ func TestResolvePrepareSessionMode_ReleaseAlone(t *testing.T) {
 
 func TestResolveRunModel_OverrideSatisfiesThePinCheckThatWouldOtherwiseFail(t *testing.T) {
 	l := mustLoadLadderFixture(t)
-	// The committed ladder.yaml ships run_model: null, so without an override RequireSessionPins must
-	// fail on it.
+	// Exercise the unset-RunModel branch below regardless of ladder.yaml's own committed value, matching
+	// TestRequireSessionPins.
+	l.RunModel = nil
 	if _, err := resolveRunModel(l, ""); err == nil {
 		t.Fatal("resolveRunModel(l, \"\") = _, nil; want an error, since run_model is unset and no override was given")
 	}

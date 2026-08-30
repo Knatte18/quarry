@@ -338,6 +338,7 @@ func TestRequirePins(t *testing.T) {
 func TestRequireSessionPins(t *testing.T) {
 	l := mustLoadLadder(t)
 	l.MaxTurns = nil // session preparation must not depend on MaxTurns
+	l.RunModel = nil // exercise the unset-RunModel branch below regardless of ladder.yaml's own value
 	// Set explicitly rather than relying on ladder.yaml's own value, matching TestRequirePins.
 	l.RunEffort = "medium"
 	l.SessionDirTemplate = "/tmp/ladder-session-{config_id}-{n}"

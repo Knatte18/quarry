@@ -82,16 +82,35 @@ func TestDenyListFor_TracksAMutatedQuarryTools(t *testing.T) {
 	}
 }
 
-func TestSettingsDocumentFor_NoDocumentContainsTaskAndAllowIsIdentical(t *testing.T) {
+func TestSettingsDocumentFor_NoDocumentContainsTask(t *testing.T) {
 	l := mustLoadLadder(t)
-	wantAllow := []string{"Read", "Grep", "Glob", "Bash"}
 	for _, config := range l.Configs {
 		settings := SettingsDocumentFor(l, config)
 		if stringSliceContains(settings.Permissions.Deny, "Task") {
 			t.Errorf("SettingsDocumentFor(l, %q).Permissions.Deny = %v; want it not to contain \"Task\" -- a session-wide Task deny leaves the operator's own live session unable to dispatch the run agent at all", config.ID, settings.Permissions.Deny)
 		}
-		if !reflect.DeepEqual(settings.Permissions.Allow, wantAllow) {
-			t.Errorf("SettingsDocumentFor(l, %q).Permissions.Allow = %v; want %v", config.ID, settings.Permissions.Allow, wantAllow)
+	}
+}
+
+// TestSettingsDocumentFor_AllowIncludesConfigsOwnGrantedQuarryNames asserts Allow is exactly the fixed
+// Read/Grep/Glob/Bash set, plus config's own granted quarry tool names appended in l.QuarryTools' own
+// order -- mirroring SettingsDocumentFor's own algorithm structurally, the same way
+// TestDenyListFor_NoneControlsDenyAllSevenQuarryNames mirrors DenyListFor's. This is what lets a real run
+// call its own granted quarry tools without an interactive permission prompt for every single call --
+// prompting there would corrupt this suite's own duration measurements.
+func TestSettingsDocumentFor_AllowIncludesConfigsOwnGrantedQuarryNames(t *testing.T) {
+	l := mustLoadLadder(t)
+	base := []string{"Read", "Grep", "Glob", "Bash"}
+	for _, config := range l.Configs {
+		settings := SettingsDocumentFor(l, config)
+		want := append([]string{}, base...)
+		for _, tool := range l.QuarryTools {
+			if stringSliceContains(config.Allowed, tool) {
+				want = append(want, MCPName(tool))
+			}
+		}
+		if !reflect.DeepEqual(settings.Permissions.Allow, want) {
+			t.Errorf("SettingsDocumentFor(l, %q).Permissions.Allow = %v; want %v", config.ID, settings.Permissions.Allow, want)
 		}
 	}
 }

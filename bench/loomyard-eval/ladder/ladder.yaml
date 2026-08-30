@@ -9,13 +9,17 @@
 # latter also ships null). Both ship null and RequirePins refuses every
 # gate-dependent subcommand while either is unset.
 
-run_model: null
+run_model: claude-sonnet-5
 reps: 3
 run_effort: medium
 # max_turns' meaning is now "maximum number of assistant records in a run's subagent transcript" --
-# the committed 60 was calibrated against a different accounting basis, so it does not carry over.
-# The operator must set max_turns before the matrix starts.
-max_turns: null
+# the old committed 60 was calibrated against a different accounting basis and did not carry over.
+# Calibrated from the first real matrix run (b7-bundle rep 1, the full 7-tool bundle, medium effort):
+# num_turns was 12 in a clean, successful completion. 60 is that observed value times a 5x margin --
+# generous enough that a harder task (the ladder A exploration task in particular, which this first
+# calibration run did not exercise) or a rung with fewer tools forcing more manual exploration is very
+# unlikely to hit it on a genuinely successful run, while still catching real runaway/looping behavior.
+max_turns: 60
 
 # session_dir_template is the per-repetition session working-directory path. `{config_id}` and `{n}`
 # are substituted; `{n}` is the 1-based repetition index.

@@ -27,13 +27,19 @@ func DenyListFor(l *Ladder, config LadderConfig) []string {
 
 // Permissions is the "permissions" block of a run's settings document.
 type Permissions struct {
-	// Allow is fixed to Read/Grep/Glob/Bash for every config -- prompt-avoidance only, per the plan's
-	// Shared Decision, never treated as an allowlist anywhere in this suite. This intentionally still
-	// lists Grep/Glob even though baseRunTools (agentdef.go) does not grant them: this field only
-	// suppresses permission prompts for tools the agent actually has, so the two entries are simply
-	// inert here, not contradictory -- and this list only takes effect at all when the session's
-	// scratch directory sits under an already-trusted ancestor (see ladder.yaml's session_dir_template
-	// comment); a fresh, untrusted /tmp directory has this entire field silently ignored by Claude Code.
+	// Allow is the fixed Read/Grep/Glob/Bash set for every config, plus -- for a non-blinded config --
+	// that same config's own already-granted quarry tool names. This is prompt-avoidance only, per the
+	// plan's Shared Decision, never treated as an allowlist in the security sense anywhere in this
+	// suite: it decides nothing on its own, it only mirrors what the agent definition's own tools:
+	// frontmatter (the actual, primary capability grant) already decided, so Claude Code does not also
+	// interactively prompt for every single quarry tool call -- which would silently corrupt this
+	// suite's own duration/cost measurements with arbitrary human reaction-time delay, confirmed by a
+	// live run whose every quarry call prompted individually before this field carried them. Read/Grep/
+	// Glob/Bash stay fixed and uniform across every config regardless (Grep/Glob are inert here even
+	// though baseRunTools (agentdef.go) does not grant them, since this field only suppresses prompts for
+	// tools the agent actually has). This list only takes effect at all when the session's scratch
+	// directory sits under an already-trusted ancestor (see ladder.yaml's session_dir_template comment);
+	// a fresh, untrusted /tmp directory has this entire field silently ignored by Claude Code.
 	Allow []string `json:"allow"`
 	// Deny is config's quarry deny-list. "Task" is deliberately not included here -- see
 	// SettingsDocumentFor's doc comment for why a session-wide deny of Task is incompatible with this
@@ -47,8 +53,9 @@ type SettingsDocument struct {
 }
 
 // SettingsDocumentFor returns the full settings document a run of config is launched with.
-// permissions.allow is fixed to Read/Grep/Glob/Bash. permissions.deny is config's quarry deny-list only
-// (empty for a blinded "none" control, which declares no server at all).
+// permissions.allow is the fixed Read/Grep/Glob/Bash set, plus config's own granted quarry tool names for
+// a non-blinded config. permissions.deny is config's quarry deny-list only (empty for a blinded "none"
+// control, which declares no server at all).
 //
 // "Task" was originally included in this deny-list uniformly, as a backup against a run agent
 // definition that fails to load and falls back to a broader tool set that could recursively spawn
@@ -61,19 +68,26 @@ type SettingsDocument struct {
 // (a run agent definition's tools: frontmatter never lists Task, so a successfully loaded definition
 // cannot spawn subagents regardless of settings.json) still stands on its own.
 func SettingsDocumentFor(l *Ladder, config LadderConfig) SettingsDocument {
-	// A blinded "none" control denies nothing: DenyListFor(l, config) on an empty Allowed set would
-	// return every quarry name, which is exactly the leak this branch exists to prevent -- no quarry
-	// name may appear anywhere in a blinded session's own files, since that session declares no server
-	// and its scratch directory is the blinded agent's own cwd.
+	allow := []string{"Read", "Grep", "Glob", "Bash"}
+	// A blinded "none" control denies nothing and allows nothing beyond the fixed set: DenyListFor(l,
+	// config) on an empty Allowed set would return every quarry name, which is exactly the leak this
+	// branch exists to prevent -- no quarry name may appear anywhere in a blinded session's own files,
+	// since that session declares no server and its scratch directory is the blinded agent's own cwd.
+	// Mirroring config.Allowed into allow below would be the same leak by a different route.
 	var deny []string
 	if len(config.Allowed) == 0 {
 		deny = []string{}
 	} else {
 		deny = DenyListFor(l, config)
+		for _, tool := range l.QuarryTools {
+			if stringSliceContains(config.Allowed, tool) {
+				allow = append(allow, MCPName(tool))
+			}
+		}
 	}
 	return SettingsDocument{
 		Permissions: Permissions{
-			Allow: []string{"Read", "Grep", "Glob", "Bash"},
+			Allow: allow,
 			Deny:  deny,
 		},
 	}

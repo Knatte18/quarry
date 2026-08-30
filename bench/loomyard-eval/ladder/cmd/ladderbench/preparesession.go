@@ -10,6 +10,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -145,6 +146,17 @@ func installOrchestrationSkill(repoRoot string) error {
 		return err
 	}
 	return nil
+}
+
+// printLaunchInfo prints inputs.ScratchDir as its own "scratch_dir: " line, then the launch command
+// ladder.LaunchCommand(inputs) prints -- the single print site every prepare-session path uses, so a
+// caller (a driver script automating many sessions in sequence, in particular) can always find the
+// scratch directory on its own line regardless of whether the launch command itself carries a
+// --mcp-config flag naming it (it never does for a blinded config, which has no server declaration at
+// all).
+func printLaunchInfo(out io.Writer, inputs ladder.SessionInputs) {
+	fmt.Fprintf(out, "scratch_dir: %s\n", inputs.ScratchDir)
+	fmt.Fprintln(out, ladder.LaunchCommand(inputs))
 }
 
 // sessionLabel names the cross-session lock label a run, scoring, or probe session takes --
@@ -312,7 +324,7 @@ func runPrepareScoringSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot,
 	if err := installOrchestrationSkill(repoRoot); err != nil {
 		return err
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), ladder.LaunchCommand(inputs))
+	printLaunchInfo(cmd.OutOrStdout(), inputs)
 	return nil
 }
 
@@ -351,7 +363,7 @@ func runPrepareProbeSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, r
 	if err := installOrchestrationSkill(repoRoot); err != nil {
 		return err
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), ladder.LaunchCommand(inputs))
+	printLaunchInfo(cmd.OutOrStdout(), inputs)
 	return nil
 }
 
@@ -415,7 +427,7 @@ func runPrepareRunSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, rep
 	if err := installOrchestrationSkill(repoRoot); err != nil {
 		return err
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), ladder.LaunchCommand(inputs))
+	printLaunchInfo(cmd.OutOrStdout(), inputs)
 	return nil
 }
 
@@ -509,7 +521,7 @@ func prepareColdSessionAfterGate(cmd *cobra.Command, l *ladder.Ladder, config la
 	if err := installOrchestrationSkill(repoRoot); err != nil {
 		return err
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), ladder.LaunchCommand(inputs))
+	printLaunchInfo(cmd.OutOrStdout(), inputs)
 	return nil
 }
 
