@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-daemon-cold-gates
+phase: approved-run-state
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-transcript-usage  '2026-08-30T12:43:43Z'
 approved-scoring  '2026-08-30T12:49:31Z'
 approved-transcript-gates  '2026-08-30T12:53:55Z'
 approved-daemon-cold-gates  '2026-08-30T13:00:31Z'
+approved-run-state  '2026-08-30T13:09:17Z'
 ```
 
 ## Batches
@@ -74,9 +75,10 @@ batches:
     commit_sha: 98a1466942c32778fd02dfca397bce7e8e23c490
     verify_baseline_failures: []
   - name: run-state
-    state: running
+    state: approved
     implementer_session: 50726992-c718-4c34-8568-7142c87bc071
     start_sha: ba5113c2f4229cf8e41826488b111abae771c176
+    commit_sha: c9fc59856bb458736bb7665f8cbf67fdb65f7b1f
     verify_baseline_failures: []
   - name: summarize
     state: pending
