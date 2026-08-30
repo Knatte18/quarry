@@ -95,7 +95,9 @@ batches:
     commit_sha: 3b0b5021e5edc418dcdacf7a44e129431ba243d4
     verify_baseline_failures: []
   - name: task-schema-planning
-    state: pending
+    state: running
+    implementer_session: 8efe05e2-5f60-4885-9645-fe64bc92fa5f
+    start_sha: 64a7276f0a466fbcc934ae7a821e604e0df3f736
     verify_baseline_failures: []
   - name: session-provisioning
     state: pending
