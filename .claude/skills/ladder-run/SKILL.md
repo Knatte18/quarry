@@ -38,10 +38,13 @@ for attempt k in 1..MAX_ATTEMPTS:
   ingest --config-id <id> --rep <n> # correlates the transcript, extracts usage/answer, runs the gates
   restore-worktree --config-id <id> --rep <n>   # unconditional, every attempt, whatever the outcome
                                                  # -- never called for the cold config, see below
-  if ingest reported truncated: halt the whole matrix, do not retry
+  if ingest reported truncated: outcome = truncated; halt the whole matrix, do not retry; break
   if ingest reported failed:    invalidate --config-id <id> --rep <n>; go to the next attempt
-  break                          # ingest reported "ingested" -- this repetition's run session is done
+  outcome = ingested; break      # ingest reported "ingested" -- this repetition's run session is done
+if the loop ran out of attempts without breaking: outcome = exhausted
 prepare-session --release
+write outcome (exactly the string "ingested", "truncated", or "exhausted", nothing else) to
+  <scratch-dir>/.ladder-run-outcome
 ```
 
 `restore-worktree` runs unconditionally, immediately after `ingest` and before the loop even looks at
@@ -51,9 +54,18 @@ observation before the restore, not after, since the restore is precisely what w
 A `truncated` outcome from `ingest` is never retried. `max_turns` is a matrix-wide constant, so a second
 attempt would hit the same ceiling identically; halt the matrix rather than burn another attempt on it.
 
-Releasing the session lock (`prepare-session --release`) is always the session's last step, whether the
-repetition finished, was truncated, or exhausted its attempts. A held lock blocks every later session
-from starting.
+Releasing the session lock (`prepare-session --release`) is always the session's last step before the
+outcome-file write below, whether the repetition finished, was truncated, or exhausted its attempts. A
+held lock blocks every later session from starting.
+
+**Always write `<scratch-dir>/.ladder-run-outcome` as the session's actual final step, after the lock is
+released, exactly once, for every terminal state.** A `claude` session never exits on its own once it
+finishes responding — it waits for the next human message indefinitely, the same as any other interactive
+session. An operator driving this by hand does not need the file (they can just read this session's own
+final message and close it, or type the next prompt themselves), but an automated driver polling for
+"is this session done, and did it succeed" from outside has no other reliable signal to watch for short of
+scraping this session's own transcript, which this file exists to make unnecessary. Do not write it for
+any other reason, and do not write it more than once per session.
 
 ### The cold config
 
@@ -83,7 +95,11 @@ for each run directory with an ingest marker and no run marker, in (config, rep)
   record-score --config-id <id> --rep <n> # reads the scorer's reply from stdin, writes score.json,
                                            # and -- once the run's artifact set is complete -- run.json
 prepare-session --release
+write "scored" to <scratch-dir>/.ladder-run-outcome
 ```
+
+Same reason and same rule as the run-session loop's own outcome-file step: write it once, as the actual
+final step, after the lock is released.
 
 `next-run --scoring` reports the next pending run in this order; iterate it until nothing is pending.
 Every run in this loop was ingested by a run session that has already ended, so this session never

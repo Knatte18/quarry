@@ -1,14 +1,24 @@
 // Command runmatrix drives every warm-matrix run session (14 configs x 3 reps = 42) to completion,
-// automatically, one live claude session at a time -- the Go+tmux counterpart to ../run-matrix.sh, for an
-// operator who wants a session survivable across a dropped terminal and attachable from elsewhere.
+// automatically, one live claude session at a time.
 //
-// This does not run headless. Each session is launched inside a named tmux session
-// ("tmux new-session -s ladder-run", never claude -p/--print) with "/ladder-run" pre-submitted as its
-// first message via claude's own positional prompt argument, so the operator never types it. This
-// process's own stdin/stdout/stderr are wired straight through to that tmux session, so running this
-// command in a terminal is exactly as interactive and killable as running claude directly there --
-// nothing about it is unattended. The one thing tmux adds is that the session keeps running, reattachable
-// with `tmux attach -t ladder-run`, if the terminal driving this command is itself lost.
+// This does not run headless. Each session is launched inside a detached tmux session
+// ("tmux new-session -d -s ladder-run", never claude -p/--print) with "/ladder-run" pre-submitted as its
+// first message via claude's own positional prompt argument, so the operator never types it. The operator
+// is expected to `tmux attach -t ladder-run` to watch, exactly as they would watch any other session in
+// this suite -- free to intervene, answer a permission prompt, or kill the session if something looks
+// wrong. Detecting "this session is done, and did it succeed" is not scraped from the pane's own text: a
+// claude session never exits on its own once it finishes responding (it waits for the next human message
+// indefinitely, same as any other interactive session), so ladder-run/SKILL.md's run-session loop writes
+// a completion marker (<scratch-dir>/.ladder-run-outcome, naming "ingested", "truncated", or "exhausted")
+// as its own actual final step -- this command polls for that file and kills the tmux session once it
+// sees it, after a short grace period so an operator who is watching still gets to read the session's own
+// final summary message before the pane disappears.
+//
+// A "truncated" or "exhausted" outcome halts this command outright rather than continuing to the next
+// config -- matching ladder-run/SKILL.md's own "a truncated outcome halts the whole matrix, never
+// retried" rule. So does the tmux session disappearing without ever writing a marker: that means the
+// operator closed it themselves, and there is then no reliable way to tell whether the attempt actually
+// finished, so this command stops and leaves it to the operator to sort out rather than guessing.
 //
 // It shells out to the ladderbench binary for every state-touching step (next-run, prepare-session,
 // warm) rather than calling internal/ladder directly, deliberately: those CLI paths already own the
@@ -27,7 +37,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -36,12 +48,21 @@ const (
 	binPath     = "/tmp/ladderbench"
 	resultsRoot = ladderDir + "/results/2026-08-30"
 	tmuxSession = "ladder-run"
+
+	// outcomeMarkerName is ladder-run/SKILL.md's own fixed filename for its run-session loop's completion
+	// signal -- see that file's own doc comment for why it exists and what writes it.
+	outcomeMarkerName = ".ladder-run-outcome"
+	pollInterval      = 2 * time.Second
+	// completionGraceDelay is how long this command waits, once it sees the outcome marker, before
+	// killing the tmux session -- purely so an operator who is attached and watching still gets a moment
+	// to read the session's own final summary message before the pane disappears.
+	completionGraceDelay = 5 * time.Second
 )
 
 // warmConfigIDs lists the 14 warm-matrix config IDs in the exact order ladder.yaml's own configs: list
-// declares them. Kept as a literal here, mirroring run-matrix.sh's own literal, rather than derived from
-// ladder.yaml, since no ladderbench subcommand currently lists config IDs; if ladder.yaml's configs: list
-// ever changes, this list must be updated to match.
+// declares them. Kept as a literal here rather than derived from ladder.yaml, since no ladderbench
+// subcommand currently lists config IDs; if ladder.yaml's configs: list ever changes, this list must be
+// updated to match.
 var warmConfigIDs = []string{
 	"a0-none", "a1-toc-file", "a2-toc-dir", "a3-toc-pair", "a4-toc-pair-symbol", "a5-bundle",
 	"b0-none", "b1-symbol", "b2-definition", "b3-references", "b4-lsp-trio", "b5-impact",
@@ -96,15 +117,21 @@ func run() error {
 				return fmt.Errorf("warm --config-id %s: %w", configID, err)
 			}
 
-			fmt.Printf("== %s rep %s: launching in tmux session %q -- `tmux attach -t %s` from another terminal to watch; close the pane or `tmux kill-session -t %s` if anything looks wrong ==\n",
-				configID, rep, tmuxSession, tmuxSession, tmuxSession)
-			if err := launchInTmux(scratchDir); err != nil {
-				return fmt.Errorf("launch tmux session for %s rep %s: %w", configID, rep, err)
+			fmt.Printf("== %s rep %s: launching in tmux session %q -- `tmux attach -t %s` to watch ==\n",
+				configID, rep, tmuxSession, tmuxSession)
+			outcome, err := launchAndWait(scratchDir)
+			if err != nil {
+				return fmt.Errorf("session for %s rep %s: %w", configID, rep, err)
 			}
+			fmt.Printf("== %s rep %s: outcome = %s ==\n", configID, rep, outcome)
 
-			// /ladder-run's own last step already releases the lock on a normal completion; this is a
-			// defensive backstop for a session that was closed before it got that far.
+			// /ladder-run's own last step already releases the lock before it writes the outcome marker;
+			// this is a defensive backstop for the operator-killed-it path, where that never happened.
 			_ = runVisible(binPath, "prepare-session", "--release", "--results-root", resultsRoot)
+
+			if outcome != "ingested" {
+				return fmt.Errorf("%s rep %s outcome was %q, not \"ingested\" -- halting rather than continuing past it, per ladder-run/SKILL.md's own halt-on-truncated rule", configID, rep, outcome)
+			}
 		}
 	}
 
@@ -113,17 +140,44 @@ func run() error {
 	return nil
 }
 
-// launchInTmux runs launch-session.sh inside a fresh tmux session named tmuxSession, with this process's
-// own stdin/stdout/stderr wired straight through -- `tmux new-session` without -d attaches in the calling
-// terminal exactly like a direct foreground exec would, blocking until the session's pane exits (tmux's
-// default behaviour is to destroy a session once its last pane's command exits), while the session itself
-// stays reattachable from elsewhere for as long as it runs.
-func launchInTmux(scratchDir string) error {
-	cmd := exec.Command("tmux", "new-session", "-s", tmuxSession, ladderDir+"/launch-session.sh", scratchDir)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+// launchAndWait starts scratchDir's session detached inside tmuxSession and polls for either its
+// completion marker (outcomeMarkerName) to appear or the tmux session itself to disappear.
+//
+// On a marker appearing, it waits completionGraceDelay, kills the tmux session, and returns the marker's
+// trimmed contents as the outcome.
+//
+// On the tmux session disappearing first, it returns an error: that only happens if the operator closed
+// the pane themselves (tmux's own default is to keep a session alive until its pane's command exits, and
+// nothing this suite launches inside it ever does that on its own before writing the marker), and there
+// is then no reliable way to tell whether the attempt actually finished -- so this stops rather than
+// guessing.
+func launchAndWait(scratchDir string) (string, error) {
+	if err := runVisible("tmux", "new-session", "-d", "-s", tmuxSession, ladderDir+"/launch-session.sh", scratchDir); err != nil {
+		return "", fmt.Errorf("start tmux session: %w", err)
+	}
+
+	markerPath := filepath.Join(scratchDir, outcomeMarkerName)
+	for {
+		data, err := os.ReadFile(markerPath)
+		switch {
+		case err == nil:
+			time.Sleep(completionGraceDelay)
+			_ = runVisible("tmux", "kill-session", "-t", tmuxSession)
+			return strings.TrimSpace(string(data)), nil
+		case !os.IsNotExist(err):
+			return "", fmt.Errorf("read %s: %w", markerPath, err)
+		}
+
+		if !tmuxSessionExists() {
+			return "", fmt.Errorf("tmux session %q ended without ever writing %s -- assuming the operator closed it themselves; not guessing whether the attempt finished", tmuxSession, markerPath)
+		}
+		time.Sleep(pollInterval)
+	}
+}
+
+// tmuxSessionExists reports whether tmuxSession is still a live tmux session.
+func tmuxSessionExists() bool {
+	return exec.Command("tmux", "has-session", "-t", tmuxSession).Run() == nil
 }
 
 // runVisible runs name with args, streaming its own stdout/stderr straight through so build/warm/release
@@ -137,7 +191,7 @@ func runVisible(name string, args ...string) error {
 
 // ladderbenchOutput runs binPath with args and returns its captured stdout, with stderr streamed through
 // directly (so a failure's diagnostic still reaches the operator immediately, not just via the wrapped
-// error) -- next-run and prepare-session's own stdout is this tool's only source for the rep and
+// error) -- next-run's/prepare-session's own stdout is this tool's only source for the rep and
 // scratch_dir values fieldValue below extracts.
 func ladderbenchOutput(args ...string) (string, error) {
 	cmd := exec.Command(binPath, args...)
