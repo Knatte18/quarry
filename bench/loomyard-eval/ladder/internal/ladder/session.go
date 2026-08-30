@@ -135,9 +135,11 @@ func PrepareRunSession(l *Ladder, c LadderConfig, n int, serverPath, targetDir s
 const scoringSessionConfigID = "scoring"
 
 // PrepareScoringSession materialises the single shared scoring session's scratch directory: the scorer
-// agent definition at the fixed scorer.md filename, and a settings document denying only the
-// task-spawning tool -- no server declaration, no run agent definition, no worktree setup, and no server
-// build, since scoring never touches the target codebase at all.
+// agent definition at the fixed scorer.md filename, and a settings document denying nothing -- no server
+// declaration, no run agent definition, no worktree setup, and no server build, since scoring never
+// touches the target codebase at all. Task is deliberately not denied here -- see settings.go's
+// SettingsDocumentFor doc comment for why a session-wide Task deny leaves the operator's own live
+// session unable to dispatch the scorer agent at all.
 func PrepareScoringSession(l *Ladder) (SessionInputs, error) {
 	scratchDir, err := SessionDir(l, scoringSessionConfigID, 1)
 	if err != nil {
@@ -146,7 +148,7 @@ func PrepareScoringSession(l *Ladder) (SessionInputs, error) {
 
 	settingsDoc := SettingsDocument{Permissions: Permissions{
 		Allow: []string{"Read", "Grep", "Glob", "Bash"},
-		Deny:  []string{"Task"},
+		Deny:  []string{},
 	}}
 	if err := writeJSONDocument(filepath.Join(scratchDir, settingsRelativePath), settingsDoc); err != nil {
 		return SessionInputs{}, err
@@ -210,12 +212,15 @@ func PrepareProbeSession(l *Ladder, kind string) (SessionInputs, error) {
 		return SessionInputs{}, err
 	}
 
+	// Task is deliberately not part of either probe's deny-list -- see settings.go's SettingsDocumentFor
+	// doc comment for why a session-wide Task deny leaves the operator's own live session unable to
+	// dispatch the probe agent at all.
 	deniedName := MCPName(probeDeniedTool)
 	var deny []string
 	if kind == ProbeKindDenylist {
-		deny = []string{deniedName, "Task"}
+		deny = []string{deniedName}
 	} else {
-		deny = []string{"Task"}
+		deny = []string{}
 	}
 	settingsDoc := SettingsDocument{Permissions: Permissions{
 		Allow: []string{"Read", "Grep", "Glob", "Bash"},

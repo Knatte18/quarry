@@ -79,8 +79,8 @@ func TestPrepareRunSession_BlindedConfigWritesExactlyDefinitionAndSettings(t *te
 	if err != nil {
 		t.Fatalf("read settings.json: %v", err)
 	}
-	if !hasExactDenySet(t, settingsData, []string{"Task"}) {
-		t.Errorf("a0-none settings.json does not deny exactly [\"Task\"]: %s", settingsData)
+	if !hasExactDenySet(t, settingsData, []string{}) {
+		t.Errorf("a0-none settings.json does not deny exactly []: %s", settingsData)
 	}
 	defData, err := os.ReadFile(filepath.Join(inputs.ScratchDir, agentsRelativeDir, "a0-none.md"))
 	if err != nil {
@@ -172,8 +172,8 @@ func TestPrepareProbeSession_BothKindsExactWriteLists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read allowlist probe settings.json: %v", err)
 	}
-	if !hasExactDenySet(t, allowlistSettings, []string{"Task"}) {
-		t.Errorf("allowlist probe settings.json does not deny exactly [\"Task\"]: %s", allowlistSettings)
+	if !hasExactDenySet(t, allowlistSettings, []string{}) {
+		t.Errorf("allowlist probe settings.json does not deny exactly []: %s", allowlistSettings)
 	}
 
 	denylistInputs, err := PrepareProbeSession(l, ProbeKindDenylist)
@@ -192,8 +192,8 @@ func TestPrepareProbeSession_BothKindsExactWriteLists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read denylist probe settings.json: %v", err)
 	}
-	if !hasExactDenySet(t, denylistSettings, []string{MCPName(probeDeniedTool), "Task"}) {
-		t.Errorf("denylist probe settings.json does not deny exactly [%q, \"Task\"]: %s", MCPName(probeDeniedTool), denylistSettings)
+	if !hasExactDenySet(t, denylistSettings, []string{MCPName(probeDeniedTool)}) {
+		t.Errorf("denylist probe settings.json does not deny exactly [%q]: %s", MCPName(probeDeniedTool), denylistSettings)
 	}
 
 	if !allowlistInputs.HasServerDeclaration || !denylistInputs.HasServerDeclaration {

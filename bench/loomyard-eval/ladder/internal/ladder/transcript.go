@@ -8,6 +8,7 @@ package ladder
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,7 +50,52 @@ type ContentBlock struct {
 	IsError bool `json:"is_error,omitempty"`
 	// Content is a "tool_result" block's own nested content, typically one or more "text" blocks
 	// carrying the tool's output or error text.
-	Content []ContentBlock `json:"content,omitempty"`
+	Content ContentBlocks `json:"content,omitempty"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler for ContentBlock. A tool_use block's own identifier is
+// carried under the JSON key "id"; the tool_result block answering it carries the same value under
+// "tool_use_id" -- two different keys for the one ToolUseID field this package models both with. The
+// plain struct tag can only bind one key, so this reads both and prefers whichever is non-empty.
+func (c *ContentBlock) UnmarshalJSON(data []byte) error {
+	type contentBlockAlias ContentBlock
+	var aux struct {
+		contentBlockAlias
+		ID string `json:"id,omitempty"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*c = ContentBlock(aux.contentBlockAlias)
+	if c.ToolUseID == "" {
+		c.ToolUseID = aux.ID
+	}
+	return nil
+}
+
+// ContentBlocks is []ContentBlock with a custom unmarshaler tolerating Claude Code's plain-string
+// shorthand for simple text-only content: a plain user/text message's "content" field is a bare JSON
+// string, not an array of blocks, and real transcripts use both forms interchangeably depending on the
+// message. A bare string unmarshals into a single synthetic "text" block carrying that string.
+type ContentBlocks []ContentBlock
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (c *ContentBlocks) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '"' {
+		var text string
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		*c = ContentBlocks{{Type: "text", Text: text}}
+		return nil
+	}
+	var blocks []ContentBlock
+	if err := json.Unmarshal(data, &blocks); err != nil {
+		return err
+	}
+	*c = ContentBlocks(blocks)
+	return nil
 }
 
 // Message is the assistant/user payload embedded in one Record.
@@ -57,7 +103,7 @@ type Message struct {
 	// Model is the model id that produced this message, populated on assistant records.
 	Model string `json:"model,omitempty"`
 	// Content is the message's content blocks, in the order the model emitted them.
-	Content []ContentBlock `json:"content"`
+	Content ContentBlocks `json:"content"`
 	// Usage is this record's own token accounting. Zero-valued on records that carry no usage, such as
 	// a user record replaying a tool result.
 	Usage MessageUsage `json:"usage"`

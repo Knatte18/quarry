@@ -30,8 +30,9 @@ type Permissions struct {
 	// Allow is fixed to Read/Grep/Glob/Bash for every config -- prompt-avoidance only, per the plan's
 	// Shared Decision, never treated as an allowlist anywhere in this suite.
 	Allow []string `json:"allow"`
-	// Deny is config's quarry deny-list plus "Task", denied uniformly across all 45 runs so a
-	// dispatched subagent's tool calls can never produce an undercounted transcript.
+	// Deny is config's quarry deny-list. "Task" is deliberately not included here -- see
+	// SettingsDocumentFor's doc comment for why a session-wide deny of Task is incompatible with this
+	// architecture, confirmed by an actual live dispatch attempt against the generated document.
 	Deny []string `json:"deny"`
 }
 
@@ -41,21 +42,29 @@ type SettingsDocument struct {
 }
 
 // SettingsDocumentFor returns the full settings document a run of config is launched with.
-// permissions.allow is fixed to Read/Grep/Glob/Bash. For a config whose Allowed is non-empty,
-// permissions.deny is config's quarry deny-list plus "Task". For a config whose Allowed is empty (a
-// blinded "none" control), permissions.deny is exactly ["Task"] and nothing else -- no quarry name may
-// appear in a blinded config's settings document, because that document sits in the blinded agent's
-// own cwd.
+// permissions.allow is fixed to Read/Grep/Glob/Bash. permissions.deny is config's quarry deny-list only
+// (empty for a blinded "none" control, which declares no server at all).
+//
+// "Task" was originally included in this deny-list uniformly, as a backup against a run agent
+// definition that fails to load and falls back to a broader tool set that could recursively spawn
+// subagents. That reasoning only holds for the *dispatched* subagent -- but permissions.deny applies to
+// the whole session document, including the top-level context the operator's own live session runs in
+// before it has dispatched anything. A live run against the generated settings.json confirmed this
+// directly: with Task denied, the operator's own session has no Agent Tool available at all, so it
+// cannot dispatch the run agent in the first place -- the backup layer as originally written makes the
+// architecture inoperable, not merely redundant. The structural protection this was meant to back up
+// (a run agent definition's tools: frontmatter never lists Task, so a successfully loaded definition
+// cannot spawn subagents regardless of settings.json) still stands on its own.
 func SettingsDocumentFor(l *Ladder, config LadderConfig) SettingsDocument {
+	// A blinded "none" control denies nothing: DenyListFor(l, config) on an empty Allowed set would
+	// return every quarry name, which is exactly the leak this branch exists to prevent -- no quarry
+	// name may appear anywhere in a blinded session's own files, since that session declares no server
+	// and its scratch directory is the blinded agent's own cwd.
 	var deny []string
 	if len(config.Allowed) == 0 {
-		// A blinded "none" control: no quarry name may appear in its settings document, since that
-		// document sits in the blinded agent's own cwd.
-		deny = []string{"Task"}
+		deny = []string{}
 	} else {
-		deny = append(deny, DenyListFor(l, config)...)
-		deny = append(deny, "Task")
-		sort.Strings(deny)
+		deny = DenyListFor(l, config)
 	}
 	return SettingsDocument{
 		Permissions: Permissions{

@@ -82,13 +82,13 @@ func TestDenyListFor_TracksAMutatedQuarryTools(t *testing.T) {
 	}
 }
 
-func TestSettingsDocumentFor_EveryDocumentContainsTaskAndIdenticalAllow(t *testing.T) {
+func TestSettingsDocumentFor_NoDocumentContainsTaskAndAllowIsIdentical(t *testing.T) {
 	l := mustLoadLadder(t)
 	wantAllow := []string{"Read", "Grep", "Glob", "Bash"}
 	for _, config := range l.Configs {
 		settings := SettingsDocumentFor(l, config)
-		if !stringSliceContains(settings.Permissions.Deny, "Task") {
-			t.Errorf("SettingsDocumentFor(l, %q).Permissions.Deny = %v; want it to contain \"Task\"", config.ID, settings.Permissions.Deny)
+		if stringSliceContains(settings.Permissions.Deny, "Task") {
+			t.Errorf("SettingsDocumentFor(l, %q).Permissions.Deny = %v; want it not to contain \"Task\" -- a session-wide Task deny leaves the operator's own live session unable to dispatch the run agent at all", config.ID, settings.Permissions.Deny)
 		}
 		if !reflect.DeepEqual(settings.Permissions.Allow, wantAllow) {
 			t.Errorf("SettingsDocumentFor(l, %q).Permissions.Allow = %v; want %v", config.ID, settings.Permissions.Allow, wantAllow)
@@ -96,7 +96,7 @@ func TestSettingsDocumentFor_EveryDocumentContainsTaskAndIdenticalAllow(t *testi
 	}
 }
 
-func TestSettingsDocumentFor_NoNonQuarryNameOtherThanTaskAppearsInAnyDenyList(t *testing.T) {
+func TestSettingsDocumentFor_NoNonQuarryNameAppearsInAnyDenyList(t *testing.T) {
 	l := mustLoadLadder(t)
 	quarryNames := map[string]bool{}
 	for _, tool := range QuarryTools {
@@ -105,35 +105,34 @@ func TestSettingsDocumentFor_NoNonQuarryNameOtherThanTaskAppearsInAnyDenyList(t 
 	for _, config := range l.Configs {
 		settings := SettingsDocumentFor(l, config)
 		for _, name := range settings.Permissions.Deny {
-			if name != "Task" && !quarryNames[name] {
-				t.Errorf("SettingsDocumentFor(l, %q).Permissions.Deny contains %q; want only quarry names or \"Task\"", config.ID, name)
+			if !quarryNames[name] {
+				t.Errorf("SettingsDocumentFor(l, %q).Permissions.Deny contains %q; want only quarry names", config.ID, name)
 			}
 		}
 	}
 }
 
-func TestSettingsDocumentFor_BlindedConfigDeniesExactlyTask(t *testing.T) {
+func TestSettingsDocumentFor_BlindedConfigDeniesNothing(t *testing.T) {
 	l := mustLoadLadder(t)
 	a0, err := ConfigByID(l, "a0-none")
 	if err != nil {
 		t.Fatalf("ConfigByID(l, %q) = _, %v", "a0-none", err)
 	}
 	settings := SettingsDocumentFor(l, a0)
-	want := []string{"Task"}
+	want := []string{}
 	if !reflect.DeepEqual(settings.Permissions.Deny, want) {
 		t.Errorf("SettingsDocumentFor(l, a0).Permissions.Deny = %v; want %v", settings.Permissions.Deny, want)
 	}
 }
 
-func TestSettingsDocumentFor_RungConfigDeniesDenyListPlusTask(t *testing.T) {
+func TestSettingsDocumentFor_RungConfigDeniesExactlyItsDenyList(t *testing.T) {
 	l := mustLoadLadder(t)
 	b5, err := ConfigByID(l, "b5-impact")
 	if err != nil {
 		t.Fatalf("ConfigByID(l, %q) = _, %v", "b5-impact", err)
 	}
 	settings := SettingsDocumentFor(l, b5)
-	want := append(DenyListFor(l, b5), "Task")
-	sort.Strings(want)
+	want := DenyListFor(l, b5)
 	if !reflect.DeepEqual(settings.Permissions.Deny, want) {
 		t.Errorf("SettingsDocumentFor(l, b5).Permissions.Deny = %v; want %v", settings.Permissions.Deny, want)
 	}
