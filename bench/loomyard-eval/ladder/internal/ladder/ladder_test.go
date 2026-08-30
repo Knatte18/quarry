@@ -201,3 +201,158 @@ func TestLoadLadder_RejectsInvalidLadders(t *testing.T) {
 		})
 	}
 }
+
+// mustLoadLadder loads the committed ladder.yaml or fails the test.
+func mustLoadLadder(t *testing.T) *Ladder {
+	t.Helper()
+	l, err := LoadLadder(ladderYAMLPath)
+	if err != nil {
+		t.Fatalf("LoadLadder(%q) = _, %v; want nil error", ladderYAMLPath, err)
+	}
+	return l
+}
+
+func TestConfigByID(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	config, err := ConfigByID(l, "a5-bundle")
+	if err != nil {
+		t.Fatalf("ConfigByID(l, %q) = _, %v; want nil error", "a5-bundle", err)
+	}
+	if config.ID != "a5-bundle" {
+		t.Errorf("ConfigByID(l, %q).ID = %q; want %q", "a5-bundle", config.ID, "a5-bundle")
+	}
+
+	if _, err := ConfigByID(l, "not-a-real-id"); err == nil {
+		t.Error("ConfigByID(l, \"not-a-real-id\") = _, nil; want an error")
+	}
+}
+
+func TestControlFor_ResolvesWithinEachLadder(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	a5, err := ConfigByID(l, "a5-bundle")
+	if err != nil {
+		t.Fatalf("ConfigByID(l, %q) = _, %v", "a5-bundle", err)
+	}
+	b5, err := ConfigByID(l, "b5-impact")
+	if err != nil {
+		t.Fatalf("ConfigByID(l, %q) = _, %v", "b5-impact", err)
+	}
+
+	aControl, err := ControlFor(l, a5)
+	if err != nil {
+		t.Fatalf("ControlFor(l, a5) = _, %v; want nil error", err)
+	}
+	if aControl.ID != "a0-none" {
+		t.Errorf("ControlFor(l, a5).ID = %q; want %q", aControl.ID, "a0-none")
+	}
+
+	bControl, err := ControlFor(l, b5)
+	if err != nil {
+		t.Fatalf("ControlFor(l, b5) = _, %v; want nil error", err)
+	}
+	if bControl.ID != "b0-none" {
+		t.Errorf("ControlFor(l, b5).ID = %q; want %q", bControl.ID, "b0-none")
+	}
+}
+
+func TestWarmCounterpartFor_ResolvesTheColdConfigsWarmCell(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	cold, err := ConfigByID(l, "a5-bundle-cold")
+	if err != nil {
+		t.Fatalf("ConfigByID(l, %q) = _, %v", "a5-bundle-cold", err)
+	}
+	warm, err := WarmCounterpartFor(l, cold)
+	if err != nil {
+		t.Fatalf("WarmCounterpartFor(l, cold) = _, %v; want nil error", err)
+	}
+	if warm.ID != "a5-bundle" {
+		t.Errorf("WarmCounterpartFor(l, cold).ID = %q; want %q", warm.ID, "a5-bundle")
+	}
+}
+
+func TestRequirePins(t *testing.T) {
+	pinned := func() *string { s := "claude-opus-5"; return &s }
+	turns := func() *int { n := 60; return &n }
+
+	tests := []struct {
+		name    string
+		mutate  func(l *Ladder)
+		wantErr bool
+	}{
+		{
+			name:    "all_pins_set",
+			mutate:  func(l *Ladder) {},
+			wantErr: false,
+		},
+		{
+			name:    "run_model_unset",
+			mutate:  func(l *Ladder) { l.RunModel = nil },
+			wantErr: true,
+		},
+		{
+			name:    "max_turns_unset",
+			mutate:  func(l *Ladder) { l.MaxTurns = nil },
+			wantErr: true,
+		},
+		{
+			name:    "run_effort_unset",
+			mutate:  func(l *Ladder) { l.RunEffort = "" },
+			wantErr: true,
+		},
+		{
+			name:    "scorer_model_unset",
+			mutate:  func(l *Ladder) { l.Scorer.Model = "" },
+			wantErr: true,
+		},
+		{
+			name:    "scorer_effort_unset",
+			mutate:  func(l *Ladder) { l.Scorer.Effort = "" },
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := mustLoadLadder(t)
+			l.RunModel = pinned()
+			l.MaxTurns = turns()
+			// Set explicitly rather than relying on ladder.yaml's own value, so the baseline
+			// "all pins set" case is genuinely fully pinned regardless of the file's committed state.
+			l.RunEffort = "medium"
+			tt.mutate(l)
+
+			err := RequirePins(l)
+			if tt.wantErr && err == nil {
+				t.Error("RequirePins(l) = nil; want an error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("RequirePins(l) = %v; want nil error", err)
+			}
+		})
+	}
+}
+
+func TestRequireSessionPins(t *testing.T) {
+	l := mustLoadLadder(t)
+	l.MaxTurns = nil // session preparation must not depend on MaxTurns
+	// Set explicitly rather than relying on ladder.yaml's own value, matching TestRequirePins.
+	l.RunEffort = "medium"
+	l.SessionDirTemplate = "/tmp/ladder-session-{config_id}-{n}"
+
+	if err := RequireSessionPins(l, ""); err == nil {
+		t.Error("RequireSessionPins(l, \"\") = nil; want an error, RunModel is unset and no override was given")
+	}
+
+	if err := RequireSessionPins(l, "claude-opus-5"); err != nil {
+		t.Errorf("RequireSessionPins(l, %q) = %v; want nil error with MaxTurns unset", "claude-opus-5", err)
+	}
+
+	pinnedModel := "claude-opus-5"
+	l.RunModel = &pinnedModel
+	if err := RequireSessionPins(l, ""); err != nil {
+		t.Errorf("RequireSessionPins(l, \"\") = %v; want nil error once RunModel is set", err)
+	}
+}

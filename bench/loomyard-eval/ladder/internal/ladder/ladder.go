@@ -262,3 +262,78 @@ func stringSliceContains(s []string, v string) bool {
 	}
 	return false
 }
+
+// ConfigByID returns the LadderConfig with the given id, or an error if l carries none.
+func ConfigByID(l *Ladder, configID string) (LadderConfig, error) {
+	for _, config := range l.Configs {
+		if config.ID == configID {
+			return config, nil
+		}
+	}
+	return LadderConfig{}, fmt.Errorf("no config with id %q", configID)
+}
+
+// ControlFor returns the "none" control for config's ladder -- the config on the same ladder whose
+// Allowed is empty. Resolved by field lookup, never by parsing config.ID.
+func ControlFor(l *Ladder, config LadderConfig) (LadderConfig, error) {
+	for _, candidate := range l.Configs {
+		if candidate.Ladder == config.Ladder && len(candidate.Allowed) == 0 {
+			return candidate, nil
+		}
+	}
+	return LadderConfig{}, fmt.Errorf("no control config found for ladder %q", config.Ladder)
+}
+
+// WarmCounterpartFor returns the warm config a cold config's WarmCounterpart field names, resolved
+// through ConfigByID rather than an id-suffix convention.
+func WarmCounterpartFor(l *Ladder, config LadderConfig) (LadderConfig, error) {
+	return ConfigByID(l, config.WarmCounterpart)
+}
+
+// RequirePins returns an error naming the offending field when any pinned value the matrix depends on
+// is unset: RunModel, MaxTurns, RunEffort, Scorer.Model, or Scorer.Effort. Only RunModel ships null by
+// design; the other four ship with values, so this check exists to catch an edit that blanks one of
+// them before the matrix starts, rather than reaching --model/--max-turns/--effort as a null on the
+// command line.
+func RequirePins(l *Ladder) error {
+	if l.RunModel == nil {
+		return fmt.Errorf("ladder.yaml: run_model is unset -- set it to the pinned model id before starting the matrix")
+	}
+	if l.MaxTurns == nil {
+		return fmt.Errorf("ladder.yaml: max_turns is unset")
+	}
+	if l.RunEffort == "" {
+		return fmt.Errorf("ladder.yaml: run_effort is unset")
+	}
+	if l.Scorer.Model == "" {
+		return fmt.Errorf("ladder.yaml: scorer.model is unset")
+	}
+	if l.Scorer.Effort == "" {
+		return fmt.Errorf("ladder.yaml: scorer.effort is unset")
+	}
+	return nil
+}
+
+// RequireSessionPins returns an error naming the offending field when any pin session preparation
+// depends on is unset: RunModel (satisfied instead by a non-empty runModelOverride), RunEffort,
+// SessionDirTemplate, Scorer.Model, or Scorer.Effort. It deliberately does not check MaxTurns, because
+// the turn ceiling is a gate-time value -- checked at scoring, not at session preparation -- and
+// nothing about preparing a session touches it.
+func RequireSessionPins(l *Ladder, runModelOverride string) error {
+	if l.RunModel == nil && runModelOverride == "" {
+		return fmt.Errorf("ladder.yaml: run_model is unset and no --model override was supplied")
+	}
+	if l.RunEffort == "" {
+		return fmt.Errorf("ladder.yaml: run_effort is unset")
+	}
+	if l.SessionDirTemplate == "" {
+		return fmt.Errorf("ladder.yaml: session_dir_template is unset")
+	}
+	if l.Scorer.Model == "" {
+		return fmt.Errorf("ladder.yaml: scorer.model is unset")
+	}
+	if l.Scorer.Effort == "" {
+		return fmt.Errorf("ladder.yaml: scorer.effort is unset")
+	}
+	return nil
+}
