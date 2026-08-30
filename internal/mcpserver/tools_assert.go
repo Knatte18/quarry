@@ -15,10 +15,10 @@ import (
 	"github.com/Knatte18/quarry/internal/cli"
 )
 
-// assertInput is assert_no_callers' call-wide input: the "targets" array of nativeEntry, the three
-// call-wide resolution overrides every language-server-backed tool in this package accepts, plus
-// NoVerify — a whole-check mode, which is why it is call-wide while within and except are
-// per-entry.
+// assertInput is assert_no_callers' call-wide input: the "targets" array of nativeEntry, the two
+// call-wide resolution overrides every language-server-backed tool in this package accepts (lang
+// and buildTags), plus NoVerify — a whole-check mode, which is why it is call-wide while within
+// and except are per-entry.
 type assertInput struct {
 	// Targets is the array of entries this call resolves, 1 to 64 per call.
 	Targets []nativeEntry `json:"targets" jsonschema:"the entries to resolve, 1 to 64 per call"`

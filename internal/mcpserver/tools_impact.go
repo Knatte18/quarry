@@ -15,8 +15,9 @@ import (
 	"github.com/Knatte18/quarry/internal/cli"
 )
 
-// impactInput is impact's call-wide input: the "targets" array of nativeEntry plus the three
-// call-wide resolution overrides every language-server-backed tool in this package accepts.
+// impactInput is impact's call-wide input: the "targets" array of nativeEntry plus the two
+// call-wide resolution overrides every language-server-backed tool in this package accepts, lang
+// and buildTags.
 type impactInput struct {
 	// Targets is the array of entries this call resolves, 1 to 64 per call.
 	Targets []nativeEntry `json:"targets" jsonschema:"the entries to resolve, 1 to 64 per call"`

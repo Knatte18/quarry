@@ -1,6 +1,6 @@
 // tools_lsp.go implements textDocument_definition and textDocument_references, the two
 // LSP-mirrored tools whose per-entry shape is a definition or reference list: both share lspInput's
-// call-wide "targets" array plus lang/buildTags/targetDir overrides, and both resolve each entry
+// call-wide "targets" array plus lang/buildTags overrides, and both resolve each entry
 // through resolveLSPEntry, the one function that runs the unknown-key check, the query parse, the
 // facade call, the per-entry --within filter, and the error classification every LSP-mirrored
 // lookup needs. Only the wrapping into definitionEntry vs referencesEntry, and which facade seam
@@ -20,8 +20,9 @@ import (
 )
 
 // lspInput is the call-wide input every LSP-mirrored tool (textDocument_definition,
-// textDocument_references, workspace_symbol) shares: the "targets" array plus the three call-wide
-// resolution overrides every language-server-backed tool in this package accepts.
+// textDocument_references, workspace_symbol) shares: the "targets" array plus the two call-wide
+// resolution overrides every language-server-backed tool in this package accepts, lang and
+// buildTags.
 type lspInput struct {
 	// Targets is the array of entries this call resolves, 1 to 64 per call.
 	Targets []lspEntry `json:"targets" jsonschema:"the entries to resolve, 1 to 64 per call"`

@@ -20,8 +20,7 @@ func stripFileURI(s string) string {
 
 // resolveEntryFile resolves raw (a tool entry's file field, possibly a file:// URI) against
 // targetDir, which is always absolute by the time this is called — cli.AbsOrJoin's contract, and
-// this package's own callers only ever pass ResolveLaunchTargetDir's or effectiveTargetDir's
-// result.
+// this package's own callers only ever pass Config.TargetDir.
 //
 // The result must itself be absolute: quarry.Query.Pos.File and quarry.InFileQuery.File are turned
 // into file:// URIs by query.References with no further resolution, so a relative path here would

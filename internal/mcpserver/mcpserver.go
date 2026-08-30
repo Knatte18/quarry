@@ -27,12 +27,12 @@ const (
 )
 
 // Config holds the launch-only values NewServer needs to start the MCP server. Every field here is
-// resolved exactly once, at server startup, before any handler can run — a handler never sees these
-// raw values, only what resolveCall derives from them per call.
+// resolved exactly once, at server startup, before any handler can run — a language-server-backed
+// tool's handler never sees these raw values, only what resolveCall derives from them per call,
+// while the toc handlers read Config.TargetDir directly.
 type Config struct {
-	// TargetDir is the default project directory to detect the language in and root the server at,
-	// used whenever a call omits its own targetDir override. It is always absolute by the time
-	// NewServer runs.
+	// TargetDir is the project directory to detect the language in and root the server at. It is
+	// always absolute by the time NewServer runs.
 	TargetDir string
 	// ConfigPath is the explicit servers.yaml overlay path, mirroring the CLI's --config flag.
 	// An empty value defers to cli.ResolveConfigPath's own precedence.

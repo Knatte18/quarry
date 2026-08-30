@@ -5,7 +5,7 @@
 // bit-for-bit identical to the CLI's — a divergence would silently spawn a second gopls daemon and
 // forfeit warm-daemon reuse.
 //
-// The toc tools call effectiveTargetDir directly and never call resolveCall: tocFileCommand and
+// The toc tools read Config.TargetDir directly and never call resolveCall: tocFileCommand and
 // tocDirCommand (internal/cli/toc.go) never call resolveContext, quarry.LoadRegistry, or
 // ResolveStateDir either, so a malformed servers.yaml must not fail a toc call.
 
@@ -23,8 +23,8 @@ import (
 type callContext struct {
 	// Registry is the servers.yaml-backed language-server registry loaded for this call.
 	Registry quarry.Registry
-	// TargetDir is the absolute project directory this call resolved, either the launch default or
-	// an absolutised per-call override.
+	// TargetDir is the absolute project directory this call resolved, carried straight from
+	// Config.TargetDir.
 	TargetDir string
 	// StateDir is the absolute daemon state directory this call resolved, bit-for-bit identical to
 	// what internal/cli's own resolution produces for the same inputs.
@@ -38,7 +38,7 @@ type callContext struct {
 }
 
 // resolveCall resolves the full per-call context for a language-server-backed tool: the absolute
-// target directory (cfg.TargetDir), the normalized build-tag set (cli.ResolveBuildTags), the
+// target directory (Config.TargetDir), the normalized build-tag set (cli.ResolveBuildTags), the
 // servers.yaml config path (cli.ResolveConfigPath) and the registry loaded from it
 // (quarry.LoadRegistry), and the daemon state directory (cli.ResolveStateDir) — in that order,
 // exactly mirroring resolveContext's sequence in internal/cli/cli.go.
