@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
-plan: null
+plan: _mill/plan
 parent: main
 task: Rethink quarry-mcp's per-call targetDir ergonomics
 task_description: |
@@ -20,4 +20,5 @@ discussion-fix-r2  '2026-08-30T10:49:32Z'
 discussion-fix-r5  '2026-08-30T11:04:55Z'
 discussion-fix-r6  '2026-08-30T11:09:03Z'
 discussed  '2026-08-30T11:09:03Z'
+planning  '2026-08-30T11:15:55Z'
 ```
