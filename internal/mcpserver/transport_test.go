@@ -162,8 +162,8 @@ func TestToolsList_ExactlySevenToolsWithBothSchemas(t *testing.T) {
 // TestToolsList_PerToolParameterMatrix asserts the per-tool input-schema property matrix the plan's
 // schema-derivation-and-patching decision and this batch's card describe: workspace_symbol declares
 // no "within" on its entries, neither toc tool declares "buildTags", toc_dir declares no
-// "docSentences", impact's entry schema declares no "except" while assert_no_callers's does, and
-// "noVerify" appears on assert_no_callers alone.
+// "docSentences", impact's entry schema declares no "except" while assert_no_callers's does,
+// "noVerify" appears on assert_no_callers alone, and no tool declares a call-wide "targetDir".
 func TestToolsList_PerToolParameterMatrix(t *testing.T) {
 	cs := newConnectedPair(t, newTransportTestConfig(t))
 
@@ -206,6 +206,44 @@ func TestToolsList_PerToolParameterMatrix(t *testing.T) {
 		if hasNoVerify != wantNoVerify {
 			t.Errorf("%s call-wide schema has \"noVerify\" = %v; want %v (assert_no_callers alone)", name, hasNoVerify, wantNoVerify)
 		}
+	}
+
+	for _, name := range wantToolNames {
+		props := schemaProperties(t, toolByName(t, res.Tools, name).InputSchema)
+		if _, ok := props["targetDir"]; ok {
+			t.Errorf("%s call-wide schema declares \"targetDir\"; want it absent", name)
+		}
+	}
+}
+
+// TestCallTool_TargetDirIsRejectedAsWholeCallError asserts that a call still sending "targetDir"
+// fails as a whole-call error per the hard-removal-is-the-error-behaviour Shared Decision: the SDK's
+// own call-wide additionalProperties: false rejects it before any handler runs, so the stubbed
+// facade fn is never invoked and no per-entry "status": "error" result array comes back. This test
+// does not assert the SDK validator's exact error string — only that the call failed as a whole.
+func TestCallTool_TargetDirIsRejectedAsWholeCallError(t *testing.T) {
+	cfg := newTransportTestConfig(t)
+	withStubbedFacade(t, &definitionFn, failIfCalledLookupFn(t))
+	cs := newConnectedPair(t, cfg)
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "textDocument_definition",
+		Arguments: json.RawMessage(`{"targets":[{"symbol":"S"}],"targetDir":"/somewhere/else"}`),
+	})
+	if err != nil {
+		t.Fatalf("CallTool error = %v; want a result with IsError set, not a protocol-level error", err)
+	}
+	if !res.IsError {
+		t.Fatal("res.IsError = false; want true for a call carrying the removed \"targetDir\" property")
+	}
+
+	structuredData, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatalf("json.Marshal(res.StructuredContent) error = %v", err)
+	}
+	var out definitionOutput
+	if err := json.Unmarshal(structuredData, &out); err == nil && len(out.Results) > 0 {
+		t.Errorf("out.Results = %v (from structuredContent = %s); want no decodable results array for a whole-call rejection", out.Results, structuredData)
 	}
 }
 

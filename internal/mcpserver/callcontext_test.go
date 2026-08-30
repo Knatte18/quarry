@@ -1,7 +1,6 @@
 package mcpserver
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -9,44 +8,13 @@ import (
 	"github.com/Knatte18/quarry/quarry"
 )
 
-func TestEffectiveTargetDir_OverrideAbsolutised(t *testing.T) {
-	cfg := Config{TargetDir: "/launch/default"}
-
-	got, err := effectiveTargetDir(cfg, "relative/override")
-	if err != nil {
-		t.Fatalf("effectiveTargetDir(%v, %q) error = %v", cfg, "relative/override", err)
-	}
-	if !filepath.IsAbs(got) {
-		t.Fatalf("effectiveTargetDir(%v, %q) = %q; want an absolute path", cfg, "relative/override", got)
-	}
-	want, err := filepath.Abs("relative/override")
-	if err != nil {
-		t.Fatalf("filepath.Abs error = %v", err)
-	}
-	if got != want {
-		t.Errorf("effectiveTargetDir(%v, %q) = %q; want %q", cfg, "relative/override", got, want)
-	}
-}
-
-func TestEffectiveTargetDir_EmptyOverrideUsesLaunchDefault(t *testing.T) {
-	cfg := Config{TargetDir: "/launch/default"}
-
-	got, err := effectiveTargetDir(cfg, "")
-	if err != nil {
-		t.Fatalf("effectiveTargetDir(%v, \"\") error = %v", cfg, err)
-	}
-	if got != cfg.TargetDir {
-		t.Errorf("effectiveTargetDir(%v, \"\") = %q; want %q (the launch default)", cfg, got, cfg.TargetDir)
-	}
-}
-
 func TestResolveCall_StateDirMatchesCLIResolution(t *testing.T) {
 	stateDir := t.TempDir()
 	cfg := Config{TargetDir: t.TempDir(), StateDir: stateDir, Timeout: 5 * time.Second}
 
-	got, err := resolveCall(cfg, "", "")
+	got, err := resolveCall(cfg, "")
 	if err != nil {
-		t.Fatalf("resolveCall(%v, \"\", \"\") error = %v", cfg, err)
+		t.Fatalf("resolveCall(%v, \"\") error = %v", cfg, err)
 	}
 
 	want, err := cli.ResolveStateDir(cfg.StateDir, cfg.TargetDir, cli.ResolveBuildTags(""))
@@ -62,13 +30,13 @@ func TestResolveCall_BuildTagsSegment(t *testing.T) {
 	stateDir := t.TempDir()
 	cfg := Config{TargetDir: t.TempDir(), StateDir: stateDir}
 
-	withoutTags, err := resolveCall(cfg, "", "")
+	withoutTags, err := resolveCall(cfg, "")
 	if err != nil {
-		t.Fatalf("resolveCall(%v, \"\", \"\") error = %v", cfg, err)
+		t.Fatalf("resolveCall(%v, \"\") error = %v", cfg, err)
 	}
-	withTags, err := resolveCall(cfg, "", "sometag")
+	withTags, err := resolveCall(cfg, "sometag")
 	if err != nil {
-		t.Fatalf("resolveCall(%v, \"\", \"sometag\") error = %v", cfg, err)
+		t.Fatalf("resolveCall(%v, \"sometag\") error = %v", cfg, err)
 	}
 
 	if withoutTags.StateDir == withTags.StateDir {
@@ -83,6 +51,33 @@ func TestResolveCall_BuildTagsSegment(t *testing.T) {
 	}
 	if len(withTags.BuildTags) == 0 {
 		t.Error("resolveCall(..., \"sometag\").BuildTags is empty; want a non-empty normalized set")
+	}
+}
+
+// TestResolveCall_TargetDirIsAlwaysConfigTargetDir asserts the invariant the whole task now rests
+// on: resolveCall's returned callContext.TargetDir equals cfg.TargetDir, and its StateDir is
+// derived from that same value via cli.ResolveStateDir. Asserting both together is the point —
+// TargetDir == cfg.TargetDir alone does not show the state directory was derived from that same
+// value, and TestResolveCall_StateDirMatchesCLIResolution alone does not show which target
+// directory it was derived from. Neither assertion is redundant with the other now that the
+// override that could once make them disagree is gone.
+func TestResolveCall_TargetDirIsAlwaysConfigTargetDir(t *testing.T) {
+	cfg := Config{TargetDir: t.TempDir(), StateDir: t.TempDir()}
+
+	got, err := resolveCall(cfg, "")
+	if err != nil {
+		t.Fatalf("resolveCall(%v, \"\") error = %v", cfg, err)
+	}
+	if got.TargetDir != cfg.TargetDir {
+		t.Errorf("resolveCall(...).TargetDir = %q; want %q (cfg.TargetDir)", got.TargetDir, cfg.TargetDir)
+	}
+
+	wantStateDir, err := cli.ResolveStateDir(cfg.StateDir, cfg.TargetDir, cli.ResolveBuildTags(""))
+	if err != nil {
+		t.Fatalf("cli.ResolveStateDir error = %v", err)
+	}
+	if got.StateDir != wantStateDir {
+		t.Errorf("resolveCall(...).StateDir = %q; want %q (cli.ResolveStateDir's own result for cfg.TargetDir)", got.StateDir, wantStateDir)
 	}
 }
 
