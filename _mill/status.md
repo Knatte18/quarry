@@ -88,7 +88,9 @@ batches:
     commit_sha: 83ceb78a554f35d6fc5134f9fc6e6497b8ea458f
     verify_baseline_failures: []
   - name: worktree-server-warm
-    state: pending
+    state: running
+    implementer_session: d5f362dc-b406-4453-8b44-fd6360bc0f09
+    start_sha: c678eab946bfea75956d2ce2d1619380e61752ef
     verify_baseline_failures: []
   - name: task-schema-planning
     state: pending
