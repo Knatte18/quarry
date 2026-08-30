@@ -66,8 +66,8 @@ call-wide input with a ` + "`targets`" + ` array:
 
 %s
 
-Never set targetDir or buildTags on any of these calls -- the server is
-already rooted at the correct target codebase.
+Never set buildTags on any of these calls -- the default build-tag set is
+the one this run is scoped to.
 
 Use these tools as your PRIMARY tool for anything they cover: symbol
 lookups, "who calls this / where is this defined", file/directory surveys,

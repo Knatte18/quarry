@@ -96,8 +96,8 @@ func TestPreambleFor_RungListsExactlyItsAllowedToolsInCanonicalOrder(t *testing.
 					t.Errorf("PreambleFor(l, %q, ...) contains forbidden literal %q", config.ID, literal)
 				}
 			}
-			if !strings.Contains(prompt, "Never set targetDir or buildTags") {
-				t.Errorf("PreambleFor(l, %q, ...) does not contain the targetDir/buildTags warning", config.ID)
+			if !strings.Contains(prompt, "Never set buildTags on any of these calls") {
+				t.Errorf("PreambleFor(l, %q, ...) does not contain the buildTags warning", config.ID)
 			}
 			if !strings.Contains(prompt, PARALLEL_OPENING) {
 				t.Errorf("PreambleFor(l, %q, ...) does not contain PARALLEL_OPENING", config.ID)

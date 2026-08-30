@@ -32,7 +32,7 @@ const MCPPrefix = "mcp__quarry__"
 // DaemonBackedTools holds every canonical tool name except toc_dir and toc_file, derived from
 // QuarryTools rather than listed as a literal so it can never drift from the canonical set. toc_dir/
 // toc_file are tree-sitter-backed and never start a daemon (see tocFileHandler/tocDirHandler in
-// internal/mcpserver/tools_toc.go, which call effectiveTargetDir/tocPreflight directly and never
+// internal/mcpserver/tools_toc.go, which read cfg.TargetDir and call tocPreflight directly, never
 // resolveCall). Every other canonical tool routes through resolveCall/EnsureServer and can be used as
 // a warmth signal for the cold cell.
 var DaemonBackedTools = daemonBackedTools()
