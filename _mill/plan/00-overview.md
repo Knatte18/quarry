@@ -7,7 +7,7 @@ approved: false
 started: '20260830-112301'
 parent: 'main'
 root: ""
-verify: go vet ./bench/loomyard-eval/ladder/...
+verify: go vet ./...
 ```
 
 ## Batch Index
@@ -143,14 +143,19 @@ batches:
   implementer claim they were settled would not be.
 - **Applies to:** cli-session-commands, skill-docs-cleanup
 
-### Decision: verification scope
+### Decision: three verification tiers, and what each one is for
 
-- **Decision:** every batch verifies with `go test ./bench/loomyard-eval/ladder/...`, and the module-wide
-  check at each batch boundary is `go vet` over the same subtree. No batch runs the repository-wide
-  suite.
-- **Rationale:** nothing outside the ladder subtree imports this package, so a wider run buys no
-  coverage and costs the tree-sitter-linked packages' build time on every round. The repo-wide
-  regression check is already the configured done gate, which runs once at the end.
+- **Decision:** every batch's own `verify:` is `go test ./bench/loomyard-eval/ladder/...`, which runs
+  the tests. The module-wide check at each batch boundary is `go vet ./...`, which type-checks every
+  package in the module but runs no tests. The repo-wide test run is neither of these: it is the
+  pipeline's configured done gate, executed by the orchestrator from the repository root before the
+  task is marked done, and no batch invokes it.
+- **Rationale:** the three tiers answer three different questions. The batch verify asks whether this
+  batch's own code works, and scoping it to the ladder subtree keeps it fast, since nothing outside
+  that subtree imports the package. The module-wide vet asks whether anything else in the module
+  stopped compiling — worth checking at every boundary precisely because it is cheap, and worth being
+  repo-wide because a subtree-scoped vet could not answer that question at all. The done gate asks
+  whether the repository's full suite still passes, which is worth exactly once, at the end.
 - **Applies to:** all batches
 
 ### Decision: test seams substitute processes, never mock the logic
@@ -167,9 +172,9 @@ batches:
 ### Decision: repo-wide done gate is unchanged
 
 - **Decision:** the configured repo-wide done gate stays as it is. No lint command is added to it.
-- **Rationale:** the batch verify scopes cover only the ladder subtree, so a repo-wide check at the end
-  is warranted and already configured. A Go linter is not installed in this environment, so defaulting
-  the gate to one would make every future task in this hub depend on a tool that is not present.
+- **Rationale:** a Go linter is not installed in this environment, so defaulting the gate to one would
+  make every future task in this hub depend on a tool that is not present. The gate's existing
+  repo-wide test command is what the tier decision above relies on running once at the end.
 - **Applies to:** all batches
 
 ## All Files Touched

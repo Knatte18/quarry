@@ -73,12 +73,8 @@ the run session.
   `is_complete` as `IsComplete(runDir string) bool`, and `write_run_json` as `WriteRunJSON`, whose
   payload keeps the Python's contents: the config id, the repetition, the resolved run model, and the
   gate report's non-fatal observations. Under the session split those observations are produced in the
-  run session while this marker is written in the scoring session, so add
-  `RunJSONPayload(rec IngestRecord, runModel string) map[string]any` here, in this package, to build
-  that payload from an ingest record. It lives in the library rather than in the command that calls it
-  so the synthetic end-to-end test can drive it directly — this is the only path by which an
-  observation taken in the run session reaches the marker the summariser and the cold-cell disposition
-  read, which makes it exactly the handoff a per-unit test cannot cover on its own.
+  run session while this marker is written in the scoring session, so the payload is assembled from an
+  ingest record by a helper the next card adds, once the record type it takes exists.
   `IsComplete` keys on `run.json` alone and on its recorded state being complete — that definition is
   untouched by the session split, and the doc comment must say so explicitly so a later reader does not
   retarget it at the new marker. Test `IsComplete` false with no run marker, false when the recorded
@@ -104,7 +100,13 @@ the run session.
   `NewIngestRecord(configID string, rep, attempt int, report GateReport) IngestRecord` assembling that
   record from a gate report, and `ReadIngestRecord(runDir string) (IngestRecord, error)`. The assembler
   lives in this package rather than in the command that calls it so the synthetic end-to-end test can
-  drive the gate-report-to-record handoff directly. Port
+  drive the gate-report-to-record handoff directly. Add
+  `RunJSONPayload(rec IngestRecord, runModel string) map[string]any` in this card too, after
+  `IngestRecord` exists, building the run-marker payload the previous card's `WriteRunJSON` writes. It
+  lives in the library rather than in the command that calls it for the same reason: this is the only
+  path by which an observation taken in the run session reaches the marker the summariser and the
+  cold-cell disposition read, which makes it exactly the handoff a per-unit test cannot cover on its
+  own. Port
   `MAX_ATTEMPTS` as an exported `MaxAttempts` constant holding 3, and `invalidate` as
   `Invalidate(runDir string) (int, error)`, which renames the run directory aside to the lowest unused
   `<n>.invalid-<k>` sibling — taking `ingest.json` with it, since the whole directory moves — and
@@ -129,7 +131,8 @@ the run session.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Port `pending_runs` as `PendingRuns(pairs []RunPair, resultsRoot string) []RunPair`,
+- **Requirements:** Port `pending_runs` as `PendingRuns(resultsRoot string, pairs []RunPair) []RunPair`, taking its
+  arguments in the same order as its sibling below rather than in the Python's,
   filtering a run session's work on the absence of the ingest marker rather than on `run.json`, where
   `RunPair` names a config id and a repetition. Add
   `PendingScoring(resultsRoot string, pairs []RunPair) []RunPair` filtering on "ingest marker present,

@@ -63,6 +63,8 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/correlate.go`
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/transcript.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
   - `bench/loomyard-eval/ladder/internal/ladder/usage.go`
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
   - `bench/loomyard-eval/ladder/internal/ladder/agentdef.go`
@@ -83,8 +85,11 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   declaration when the config has one — into the run directory, at parity with what the Python wrote
   per run; extract usage and serialise it to `<run_dir>/usage.json`; parse the answer from the last fenced
   block of the final assistant record, taking `ExtractFencedJSON`'s `inner` half, and write it to
-  `<run_dir>/answer.json`. Usage extraction takes the granted-tool list read from the copied agent
-  definition. These two writes are named explicitly because `ingest` is their only write site anywhere
+  `<run_dir>/answer.json`. Usage extraction takes the granted-tool list produced by
+  `GrantedToolsFromDefinition` over the copied agent definition — that reader is its only source, so
+  the recorded list always comes from a harness-generated file rather than from anything the agent
+  said. Reading the transcript uses `ReadTranscript`, and the dirtiness observation uses
+  `ObserveWorktreeDirtied`, whose result is what `RunGates` takes as its injected observation. These two writes are named explicitly because `ingest` is their only write site anywhere
   in the plan, and both the complete-artifacts gate and the redaction step require the files by name;
   then take the worktree dirtiness observation;
   run the gates; assemble the ingest record with `NewIngestRecord` and write it on success; and print the outcome as ingested, truncated, or

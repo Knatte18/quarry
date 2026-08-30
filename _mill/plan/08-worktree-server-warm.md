@@ -62,8 +62,11 @@ the warm-versus-cold comparison the matrix exists to draw.
   - `bench/loomyard-eval/ladder/internal/ladder/server_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Port `build_server` as `BuildServer(repoRoot string) (string, error)`, returning
+- **Requirements:** Port `build_server` as
+  `BuildServer(repoRoot string, build func(args ...string) (string, error)) (string, error)`, returning
   the absolute path of the built binary and keeping the Python's error behaviour when the build fails.
+  The builder function is an explicit parameter, mirroring the git runner the previous card takes, so
+  the test has a seam to substitute rather than a package-level variable to mutate.
   Use `path/filepath` for every path join rather than a slash-joined literal. Test the failure path
   against a builder function the test substitutes; do not run a real build in the test.
 - **Commit:** `feat(ladder): port quarry-mcp build invocation`

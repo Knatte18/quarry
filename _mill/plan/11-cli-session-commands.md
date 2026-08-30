@@ -78,7 +78,11 @@ unverified. The documentation batch is where that gets stated in the README rath
   assembles no flags of its own. The scoring path materialises the scoring session and takes the lock like any other
   session; the probe path materialises the named probe session. `--release` clears the lock and does
   nothing else. `--run-model` overrides the pinned run model for this invocation only and is never
-  written back to the ladder file. `prepare-session` enforces the narrower session pin set rather than
+  written back to the ladder file. The discussion scoped this flag to the smoke launch, which this plan
+  does not perform, so it ships with no caller: it is kept deliberately for the follow-up matrix task,
+  whose two probe dispatches and first real runs need a way to run against the committed file before
+  the operator writes the pin into it. Its help text must say that, so a reader does not mistake an
+  unused flag for dead code. `prepare-session` enforces the narrower session pin set rather than
   the full one. Test the flag validation matrix: a run session without a repetition errors, mutually
   exclusive modes error together, and the model override satisfies the pin check that would otherwise
   fail.

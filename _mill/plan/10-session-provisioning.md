@@ -71,10 +71,17 @@ parameter, so this batch can land and be tested before the tracked skill file it
   never contains `Task`, which makes the old uniform `Task` denial structural — a run agent cannot
   spawn its own subagents. The doc comment must record that. For a config whose allowed set is empty
   the definition's name, description, and body must contain no case-insensitive "quarry" and no
-  prefixed name at all, because the definition sits in the blinded agent's own cwd. Test that a blinded
+  prefixed name at all, because the definition sits in the blinded agent's own cwd. Add the inverse reader
+  `GrantedToolsFromDefinition(path string) ([]string, error)`, parsing a written definition's `tools:`
+  frontmatter back into the allowlist. It is the sole producer of the granted-tool list the usage
+  extractor records, and it lives beside the generator so the two shapes cannot drift apart. It errors
+  on a missing file, on absent or unparseable frontmatter, and on a missing `tools:` key — never
+  returning an empty list for any of them, because an empty allowlist is a meaningful value that a
+  blinded config legitimately produces and silently conflating it with a parse failure would record a
+  false granted-tool set. Test that a blinded
   config's definition contains no case-insensitive "quarry" anywhere, that a rung's allowlist is
-  exactly its allowed tools prefixed plus the four base tools, that no definition grants `Task`, and
-  that an unmapped model id errors.
+  exactly its allowed tools prefixed plus the four base tools, that no definition grants `Task`, that an unmapped model id errors, and that the reader round-trips a generated
+  definition for both a blinded config and a rung while erroring on each malformed input.
 - **Commit:** `feat(ladder): generate the run agent definition with its tool allowlist`
 
 ### Card 44: Scorer and probe agent definitions
