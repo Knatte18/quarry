@@ -80,3 +80,95 @@ func TaskTextFor(l *Ladder, repoRoot, taskKey string) (string, error) {
 
 	return strings.Join(bodyLines, "\n"), nil
 }
+
+// firstFencedJSONBlock returns the first ```json ... ``` fenced block found in text, fences included --
+// the extracted schema is embedded verbatim into the preamble as measured stimulus, and the fences are
+// part of that text. Returns an error when none is present.
+func firstFencedJSONBlock(text string) (string, error) {
+	block, _, err := ExtractFencedJSON(text, "first")
+	if err != nil {
+		return "", fmt.Errorf("schema for: no fenced json block found in the expected section: %w", err)
+	}
+	return block, nil
+}
+
+// section returns the text between heading (exclusive) and the next line starting with "## "
+// (exclusive), or to the end of text when there is no next "## " line. Returns an error when heading is
+// absent.
+func section(text, heading string) (string, error) {
+	idx := strings.Index(text, heading)
+	if idx == -1 {
+		return "", fmt.Errorf("schema for: no %q section found", heading)
+	}
+	body := text[idx+len(heading):]
+	if nextHeadingIdx := strings.Index(body, "\n## "); nextHeadingIdx != -1 {
+		body = body[:nextHeadingIdx]
+	}
+	return body, nil
+}
+
+// impactSchemaHeading is the heading task 04's own task file uses to introduce its output schema.
+const impactSchemaHeading = "## Output schema (impact-analysis tasks)"
+
+// explorationSchemasHeading is the heading the benchmark README uses to introduce every task type's
+// output schema, including the exploration schema task 01's own task file has no section for.
+const explorationSchemasHeading = "## Output schemas"
+
+// explorationSchemaMarker is the bold marker under explorationSchemasHeading that introduces the
+// exploration schema specifically, among the README's other schema families.
+const explorationSchemaMarker = "**Exploration tasks:**"
+
+// benchmarkReadmePath is the repo-root-relative path to the benchmark README the exploration schema is
+// read from.
+const benchmarkReadmePath = "bench/loomyard-eval/README.md"
+
+// SchemaFor returns taskKey's output schema (a fenced ```json ... ``` block, with fences), from the
+// source that actually holds it -- which differs per task and is not uniform. repoRoot resolves both
+// the task file's and the benchmark README's repo-root-relative paths, for the same reason TaskTextFor
+// takes it.
+//
+// The impact schema is in the task's own file, under impactSchemaHeading. Task 01 has no schema section
+// at all, so the exploration schema comes from the benchmark README's explorationSchemasHeading section,
+// under its explorationSchemaMarker. Selection is driven by the task's declared Schema field, never by
+// the task key.
+//
+// Returns an error when the task or schema is unknown, or when the named section is absent.
+func SchemaFor(l *Ladder, repoRoot, taskKey string) (string, error) {
+	task, ok := l.Tasks[taskKey]
+	if !ok {
+		return "", fmt.Errorf("schema for: unknown task %q", taskKey)
+	}
+
+	switch task.Schema {
+	case "impact":
+		taskFile := filepath.Join(repoRoot, task.TaskFile)
+		data, err := os.ReadFile(taskFile)
+		if err != nil {
+			return "", fmt.Errorf("schema for: read %s: %w", taskFile, err)
+		}
+		impactSection, err := section(string(data), impactSchemaHeading)
+		if err != nil {
+			return "", err
+		}
+		return firstFencedJSONBlock(impactSection)
+
+	case "exploration":
+		readmePath := filepath.Join(repoRoot, benchmarkReadmePath)
+		data, err := os.ReadFile(readmePath)
+		if err != nil {
+			return "", fmt.Errorf("schema for: read %s: %w", readmePath, err)
+		}
+		schemasSection, err := section(string(data), explorationSchemasHeading)
+		if err != nil {
+			return "", err
+		}
+		markerIdx := strings.Index(schemasSection, explorationSchemaMarker)
+		if markerIdx == -1 {
+			return "", fmt.Errorf("schema for: %s's %q section has no %q marker", readmePath, explorationSchemasHeading, explorationSchemaMarker)
+		}
+		return firstFencedJSONBlock(schemasSection[markerIdx:])
+
+	default:
+		return "", fmt.Errorf("schema for: unknown schema %q for task %q", task.Schema, taskKey)
+	}
+}

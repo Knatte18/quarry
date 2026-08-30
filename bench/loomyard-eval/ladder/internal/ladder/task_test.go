@@ -84,3 +84,74 @@ func TestTaskTextFor_RaisesWhenTaskUnknown(t *testing.T) {
 		t.Errorf("TaskTextFor(no-such-task) = _, nil; want an error naming the unknown task")
 	}
 }
+
+func TestSchemaFor_ImpactSchemaComesFromTheImpactTasksOwnFile(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	schema, err := SchemaFor(l, testRepoRoot, "04-shedadapters-shuttle-impact")
+	if err != nil {
+		t.Fatalf("SchemaFor(04-shedadapters-shuttle-impact) = _, %v; want nil error", err)
+	}
+
+	if !strings.HasPrefix(schema, "```json") || !strings.HasSuffix(schema, "```") {
+		t.Errorf("SchemaFor(04-shedadapters-shuttle-impact) = %q; want a fenced json block with both fences", schema)
+	}
+	if !strings.Contains(schema, "callers_to_update") {
+		t.Errorf("SchemaFor(04-shedadapters-shuttle-impact) = %q; want the impact schema's callers_to_update field", schema)
+	}
+}
+
+func TestSchemaFor_ExplorationSchemaComesFromTheBenchmarkReadme(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	schema, err := SchemaFor(l, testRepoRoot, "01-reed-geometry-exploration")
+	if err != nil {
+		t.Fatalf("SchemaFor(01-reed-geometry-exploration) = _, %v; want nil error", err)
+	}
+
+	if !strings.HasPrefix(schema, "```json") || !strings.HasSuffix(schema, "```") {
+		t.Errorf("SchemaFor(01-reed-geometry-exploration) = %q; want a fenced json block with both fences", schema)
+	}
+	if !strings.Contains(schema, "relevant_files") {
+		t.Errorf("SchemaFor(01-reed-geometry-exploration) = %q; want the exploration schema's relevant_files field", schema)
+	}
+	if strings.Contains(schema, "callers_to_update") {
+		t.Errorf("SchemaFor(01-reed-geometry-exploration) = %q; want the exploration schema, not the impact schema", schema)
+	}
+}
+
+func TestSchemaFor_RaisesOnUnknownSchema(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	l.Tasks["bogus-schema"] = TaskEntry{
+		TaskFile:  l.Tasks["01-reed-geometry-exploration"].TaskFile,
+		PinnedSHA: "deadbeef",
+		Worktree:  filepath.Join(t.TempDir(), "wt"),
+		Schema:    "no-such-schema",
+		Fasit:     "unused",
+	}
+
+	if _, err := SchemaFor(l, testRepoRoot, "bogus-schema"); err == nil {
+		t.Errorf("SchemaFor(bogus-schema) = _, nil; want an error naming the unknown schema")
+	}
+}
+
+func TestSchemaFor_RaisesOnMissingSection(t *testing.T) {
+	l := mustLoadLadder(t)
+
+	bogusTaskFile := filepath.Join(t.TempDir(), "bogus.md")
+	if err := os.WriteFile(bogusTaskFile, []byte("# No output schema section here\n"), 0o644); err != nil {
+		t.Fatalf("write bogus task file: %v", err)
+	}
+	l.Tasks["bogus-impact"] = TaskEntry{
+		TaskFile:  bogusTaskFile,
+		PinnedSHA: "deadbeef",
+		Worktree:  filepath.Join(t.TempDir(), "wt"),
+		Schema:    "impact",
+		Fasit:     "unused",
+	}
+
+	if _, err := SchemaFor(l, "", "bogus-impact"); err == nil {
+		t.Errorf("SchemaFor(bogus-impact) = _, nil; want an error naming the absent section")
+	}
+}
