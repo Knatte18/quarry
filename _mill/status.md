@@ -67,7 +67,9 @@ batches:
     commit_sha: 3252b39883ecb1f00213d251028d55c6aa1aea3b
     verify_baseline_failures: []
   - name: daemon-cold-gates
-    state: pending
+    state: running
+    implementer_session: 7de998b4-871c-41c1-aaa4-bc3bca17ef28
+    start_sha: f1faca72e2d2437098d56b741bb29d7d9d68105b
     verify_baseline_failures: []
   - name: run-state
     state: pending
