@@ -106,16 +106,22 @@ identically-spelled branch in the redactor is a separate mechanism and is kept �
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `_redact_tool_result_content` as an unexported `redactToolResultContent` and
-  `gate_blinding` as `GateBlinding(records []Record, repoRoot string) []GateFinding`, keeping exactly
-  three checks, each fatal: an `mcp__quarry__` tool name anywhere in the transcript; any filesystem
-  path into `repoRoot`; and a bare case-insensitive "quarry" mention outside a `tool_result` payload,
-  with a mention confined to a `tool_result` staying non-fatal as it is today. Drop the
+  `gate_blinding` as `GateBlinding(records []Record, repoRoot string) []GateFinding`. Its structure is
+  two unconditional fatal checks — an `mcp__quarry__` tool name anywhere in the transcript, and any
+  filesystem path into `repoRoot` — followed by a short-circuit, then one conditional check with two
+  outcomes: a bare case-insensitive "quarry" mention outside a `tool_result` payload is fatal, while a
+  mention confined to a `tool_result` records a separate non-fatal observation, because the target
+  codebase mentions the word in its own tracked files and a bare-string gate would halt the matrix over
+  the target's own prose. The short-circuit is load-bearing and must be ported: when either
+  unconditional check has already fired, the function returns without evaluating the bare-mention
+  check at all, so the port never emits a finding the Python would not have. Drop the
   sibling-suite binary-path literal check and record in the doc comment that it is dropped because no such
   binary exists in this suite, so the check could never fire. The session scratch directory is never
   treated as a leak — it is legitimately the subagent's own cwd — and the doc comment must say so.
-  Test all four outcomes: fatal on an `mcp__quarry__` name, fatal on a repo-root path, fatal on a bare
-  mention outside a tool result, and non-fatal for the reshaped origin-mention fixture whose mention is
-  confined to a tool result.
+  Test each outcome: fatal on an `mcp__quarry__` name, fatal on a repo-root path, fatal on a bare
+  mention outside a tool result, the non-fatal observation for the reshaped origin-mention fixture whose
+  mention is confined to a tool result, and the short-circuit — a transcript tripping an unconditional
+  check and also carrying a bare mention yields no bare-mention finding.
 - **Commit:** `feat(ladder): port the blinding gate and drop its dead literal check`
 
 ### Card 17: Daemon-backed-call observation and the post-hoc max_turns ceiling

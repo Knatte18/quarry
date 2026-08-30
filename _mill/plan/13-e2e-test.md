@@ -19,6 +19,13 @@ rather than against the next stage's expectation.
 
 No dispatch of any kind happens: the scorer reply is canned, and the transcript is written by hand.
 
+Batch-local decision: this test lives in the library package and drives the library's own cross-stage
+assemblers, not the cobra commands. That is workable only because the run-state batch places both
+drift-prone assemblers — gate report to ingest record, and ingest record to run-marker payload — in the
+library, with the commands as thin callers. A test that re-implemented either assembly inline would be
+asserting against its own copy of the handoff and could not catch drift in the real one, which is the
+only reason this test exists.
+
 ## Cards
 
 ### Card 66: Synthetic ladder and transcript fixtures
@@ -64,11 +71,16 @@ No dispatch of any kind happens: the scorer reply is canned, and the transcript 
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Build a synthetic results tree in the test's temp directory and drive the four
-  stages in order: take transcript custody and extract usage, run the gates and write the ingest
-  marker, redact the answer and assemble the scorer prompt, record a canned scorer reply and write the
-  run marker, then summarise. Assert the final summary value in full rather than field by field, so a
+  stages in order: take transcript custody and extract usage, run the gates through `RunGates`,
+  assemble the record with `NewIngestRecord` and write it, redact the answer and assemble the scorer
+  prompt, parse a canned scorer reply and write the score, then read the record back with
+  `ReadIngestRecord`, build the marker payload with `RunJSONPayload`, write the run marker, and
+  summarise. Driving the two assemblers rather than constructing their outputs by hand is what makes
+  this test cover the handoffs it exists for. Assert the final summary value in full rather than field by field, so a
   renamed field fails the test rather than silently dropping out of the comparison. Assert also that
-  the provisional denial marker survives from the usage record onto the summarised cell. Dispatch
+  the provisional denial marker survives from the usage record onto the summarised cell, and that a
+  non-fatal observation taken at gate time reaches the summarised cell — the full gate-report to
+  ingest-record to run-marker to summary chain, which no per-unit test spans. Dispatch
   nothing: the scorer reply is a literal in the test.
 - **Commit:** `test(ladder): add the synthetic end-to-end test`
 

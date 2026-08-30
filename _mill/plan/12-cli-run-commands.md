@@ -76,7 +76,9 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add the `ingest` subcommand performing, in this order: enforce the single-flight
-  predicate; locate the transcript by description and copy it and its metadata into the run directory;
+  predicate; build this attempt's correlation description with `DispatchDescription`, taking the
+  attempt index from `NextAttempt` — the same derivation `next-run` uses, so the two commands provably
+  build the same string; locate the transcript by that description and copy it and its metadata into the run directory;
   copy the session's launch inputs — its settings document, its run agent definition, and its server
   declaration when the config has one — into the run directory, at parity with what the Python wrote
   per run; extract usage and serialise it to `<run_dir>/usage.json`; parse the answer from the last fenced
@@ -85,7 +87,7 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   definition. These two writes are named explicitly because `ingest` is their only write site anywhere
   in the plan, and both the complete-artifacts gate and the redaction step require the files by name;
   then take the worktree dirtiness observation;
-  run the gates; write the ingest marker on success; and print the outcome as ingested, truncated, or
+  run the gates; assemble the ingest record with `NewIngestRecord` and write it on success; and print the outcome as ingested, truncated, or
   failed. `ingest` enforces the full pin set before running the gates, which is what makes the turn
   ceiling readable — the ceiling value ships blank and the gate would otherwise compare against nothing.
   The dirtiness observation is taken before anything restores the worktree, because the restore
@@ -150,10 +152,11 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
 - **Requirements:** Add the `record-score` subcommand consuming a scorer reply, validating it, stamping
   the pinned scorer model and effort into the score record, writing it, running the complete-artifacts
   gate, and writing `run.json` last. It assembles the run marker's payload by reading the run
-  directory's ingest record and copying that record's non-fatal observations across verbatim. This is
-  the only path by which an observation taken in the run session reaches the marker the summariser and
-  the cold-cell disposition both read, and the doc comment must say so — without it every observation
-  would be stranded in the run session. Its help text must state that `run.json` is written last and
+  directory's ingest record with `ReadIngestRecord` and passing it to `RunJSONPayload`, rather than
+  building the mapping inline. This is the only path by which an observation taken in the run session
+  reaches the marker the summariser and the cold-cell disposition both read, and keeping the assembly in
+  the library is what lets the synthetic end-to-end test cover that handoff — without it every
+  observation would be stranded in the run session. Its help text must state that `run.json` is written last and
   remains the sole definition of a complete run. `record-score` enforces the full pin set. Test that an
   invalid reply is rejected before anything is written, that the artifacts gate failing prevents the run
   marker, and that a successful run leaves the directory complete.
@@ -189,6 +192,7 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   - `bench/loomyard-eval/ladder/scripts/run_ladder.py`
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
   - `bench/loomyard-eval/ladder/internal/ladder/ladder.go`
+  - `bench/loomyard-eval/ladder/cmd/ladderbench/preparesession.go`
   - `bench/loomyard-eval/ladder/tests/test_run_ladder.py`
 - **Edits:** none
 - **Creates:**
@@ -203,8 +207,9 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   not-run cause distinction between a live daemon before start and an exhausted native fallback. The
   Python tracked the live-daemon cause in the driver's own memory, which no longer exists: under the
   session split that cause arises in a session-preparation abort in a different process. It is
-  therefore read from the cold-abort record the cold preparation path leaves inside the invalidated
-  sibling directories, and the exhausted-fallback cause from the completed runs' observations. Both causes occurring for one cell
+  therefore read from the `cold_abort.json` records the cold preparation path leaves inside the
+  `<n>.invalid-<k>` sibling directories, matching on that file's `cause` key, and the
+  exhausted-fallback cause from the completed runs' observations. Both causes occurring for one cell
   must still produce a reason text naming both. Do not
   port the dispatch loop: dispatch happens in a session. Test all four outcomes and the case where both
   not-run causes occur, where the reason text must name both.

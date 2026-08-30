@@ -212,6 +212,7 @@ parameter, so this batch can land and be tested before the tracked skill file it
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/agentdef.go`
   - `bench/loomyard-eval/ladder/internal/ladder/settings.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/server.go`
   - `bench/loomyard-eval/ladder/internal/ladder/plan.go`
   - `bench/loomyard-eval/ladder/internal/ladder/ladder.go`
 - **Edits:**

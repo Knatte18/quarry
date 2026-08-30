@@ -18,8 +18,14 @@ then complete — is expressible without any session machinery.
 
 The external interface later batches consume is `RunGit`, `GateWorktreeNeutralised`,
 `ObserveWorktreeDirtied`, `RunDirPath`, `IsComplete`, `Invalidate`, `NextAttempt`, `WriteRunJSON`,
-`WriteIngestJSON`, `HasIngest`, `PendingRuns`, `PendingScoring`, `CheckSingleFlight`, `RunGates`, and
-`GateRunCompleteArtifacts`.
+`WriteIngestJSON`, `HasIngest`, `NewIngestRecord`, `ReadIngestRecord`, `RunJSONPayload`,
+`PendingRuns`, `PendingScoring`, `CheckSingleFlight`, `RunGates`, and `GateRunCompleteArtifacts`.
+
+Batch-local decision: the two cross-stage assemblers — gate report to ingest record, and ingest record
+to run-marker payload — live in this package rather than in the commands that call them. They are the
+two most drift-prone handoffs in the whole port, and a command-package home would put them out of reach
+of the synthetic end-to-end test whose entire purpose is catching drift across exactly those seams. The
+commands become thin callers.
 
 Batch-local decision: `run.json` keeps its existing meaning untouched — it is still written last and is
 still the sole definition of a complete run. `ingest.json` is a strictly additional marker, because run
@@ -67,8 +73,12 @@ the run session.
   `is_complete` as `IsComplete(runDir string) bool`, and `write_run_json` as `WriteRunJSON`, whose
   payload keeps the Python's contents: the config id, the repetition, the resolved run model, and the
   gate report's non-fatal observations. Under the session split those observations are produced in the
-  run session while this marker is written in the scoring session, so the payload is assembled by the
-  caller from the ingest record rather than from a live gate report.
+  run session while this marker is written in the scoring session, so add
+  `RunJSONPayload(rec IngestRecord, runModel string) map[string]any` here, in this package, to build
+  that payload from an ingest record. It lives in the library rather than in the command that calls it
+  so the synthetic end-to-end test can drive it directly — this is the only path by which an
+  observation taken in the run session reaches the marker the summariser and the cold-cell disposition
+  read, which makes it exactly the handoff a per-unit test cannot cover on its own.
   `IsComplete` keys on `run.json` alone and on its recorded state being complete — that definition is
   untouched by the session split, and the doc comment must say so explicitly so a later reader does not
   retarget it at the new marker. Test `IsComplete` false with no run marker, false when the recorded
@@ -90,7 +100,11 @@ the run session.
 - **Moves:** none
 - **Requirements:** Add `WriteIngestJSON(runDir string, rec IngestRecord) error` and
   `HasIngest(runDir string) bool` for a new `ingest.json` marker whose `IngestRecord` carries the config
-  id, the repetition, the attempt index, and the gate report's non-fatal observations. Port
+  id, the repetition, the attempt index, and the gate report's non-fatal observations. Add
+  `NewIngestRecord(configID string, rep, attempt int, report GateReport) IngestRecord` assembling that
+  record from a gate report, and `ReadIngestRecord(runDir string) (IngestRecord, error)`. The assembler
+  lives in this package rather than in the command that calls it so the synthetic end-to-end test can
+  drive the gate-report-to-record handoff directly. Port
   `MAX_ATTEMPTS` as an exported `MaxAttempts` constant holding 3, and `invalidate` as
   `Invalidate(runDir string) (int, error)`, which renames the run directory aside to the lowest unused
   `<n>.invalid-<k>` sibling — taking `ingest.json` with it, since the whole directory moves — and
@@ -149,11 +163,13 @@ the run session.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Port `run_gates` as `RunGates` with the same aggregation order the Python uses, deriving the denied
-  names through `DenyListFor` rather than accepting a precomputed list, so the suite keeps one
-  derivation site for them,
-  extended to include `GateMaxTurns` and to take the dirtied observation as an input rather than
-  computing it, so the caller can take that observation before restoring the worktree. Port
+- **Requirements:** Port `run_gates` as
+  `RunGates(records []Record, l *Ladder, c LadderConfig, runModel, repoRoot, worktree string, maxTurns int, dirtied GateFinding, cacheDir string, env []string) GateReport`,
+  with the same aggregation order the Python uses. It derives the denied names through `DenyListFor`
+  rather than accepting a precomputed list, so the suite keeps one derivation site for them; it drops
+  the Python's unused run-directory parameter rather than carrying it for symmetry; it adds
+  `GateMaxTurns`; and it takes the dirtied observation as an input rather than computing it, so the
+  caller can take that observation before restoring the worktree. Port
   `gate_run_complete_artifacts` as `GateRunCompleteArtifacts(runDir string) []GateFinding` — a
   slice, matching the Python, which emits one finding per missing artifact — updated to the artifact set
   the new results layout defines. It requires all seven unconditional artifacts by name:

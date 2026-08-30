@@ -90,6 +90,7 @@ unverified. The documentation batch is where that gets stated in the README rath
   - `bench/loomyard-eval/ladder/internal/ladder/daemon.go`
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
   - `bench/loomyard-eval/ladder/internal/ladder/session.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
   - `bench/loomyard-eval/ladder/internal/ladder/ladder.go`
   - `bench/loomyard-eval/ladder/scripts/run_ladder.py`
 - **Edits:**
@@ -103,10 +104,12 @@ unverified. The documentation batch is where that gets stated in the README rath
   committed timeout, builds the fresh per-repetition worktree from the cold worktree template with the
   repetition substituted, clears the resolved state directory, asserts the cold-before gate, and points
   that session's server declaration at the new worktree. When the cold-before gate fails, preparation
-  aborts by creating that repetition's run directory, writing a `cold_abort.json` inside it naming the
-  live-daemon cause, and then calling the same invalidation the run session uses — which renames the
-  directory to its `<n>.invalid-<k>` sibling and returns the next attempt index, or errors at the
-  ceiling, which is the matrix halt. Routing the abort through invalidation rather than through a
+  aborts by creating that repetition's run directory with `RunDirPath`, writing a `cold_abort.json`
+  inside it, and then calling `Invalidate` — the same invalidation the run session uses — which renames
+  the directory to its `<n>.invalid-<k>` sibling and returns the next attempt index, or errors once
+  `MaxAttempts` is reached, which is the matrix halt. `cold_abort.json`'s schema is fixed here and read
+  nowhere else by any other name: the keys are `config_id`, `rep`, `attempt`, and `cause`, with `cause`
+  holding the live-daemon cause token the cold-cell disposition matches on. Routing the abort through invalidation rather than through a
   filename of its own is what makes repeated aborts bounded: each one advances the attempt index the
   same way a failed run does, so the ceiling applies and every occurrence leaves its own record instead
   of overwriting the previous one. Those records are the only on-disk source for the cold cell's
