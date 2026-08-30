@@ -258,3 +258,81 @@ func NextAttempt(resultsRoot, configID string, n int) (int, error) {
 	}
 	return count + 1, nil
 }
+
+// RunPair names one (config, repetition) cell of the matrix -- the run-state batch's own pair type,
+// reused rather than duplicated by every later batch that enumerates or filters the matrix (plan_runs,
+// PendingRuns/PendingScoring here, and the CLI drivers alike).
+type RunPair struct {
+	// Config is the LadderConfig this pair belongs to.
+	Config LadderConfig
+	// N is the 1-based repetition index.
+	N int
+}
+
+// runJSONExists reports whether runDir carries a run.json file, independent of IsComplete's stricter
+// state == "complete" check -- PendingScoring's own resume rule is "run.json absent", not "not yet
+// complete", so it reads this rather than IsComplete's negation.
+func runJSONExists(runDir string) bool {
+	_, err := os.Stat(filepath.Join(runDir, "run.json"))
+	return err == nil
+}
+
+// PendingRuns filters pairs to those a run session still has work to do: the absence of the ingest
+// marker, rather than run.json's absence as the Python's own pending_runs read. Under the session split
+// a run session's job ends once ingest.json exists; scoring, and run.json's write, are the scoring
+// session's job (see PendingScoring), so filtering a run session's resume on run.json would leave it
+// re-dispatching a run whose ingest already succeeded. Preserves pairs's own order -- callers are
+// expected to pass an already config-then-repetition-ordered slice (see PlanRuns/MainRuns/ColdRuns).
+func PendingRuns(resultsRoot string, pairs []RunPair) []RunPair {
+	var pending []RunPair
+	for _, pair := range pairs {
+		dir := RunDirPath(resultsRoot, pair.Config.ID, pair.N)
+		if !HasIngest(dir) {
+			pending = append(pending, pair)
+		}
+	}
+	return pending
+}
+
+// PendingScoring filters pairs to those a scoring session still has work to do: the ingest marker
+// present and run.json absent. A pair with neither is a run session's own pending work (see
+// PendingRuns); a pair with both is already complete. Preserves pairs's own order, matching PendingRuns.
+func PendingScoring(resultsRoot string, pairs []RunPair) []RunPair {
+	var pending []RunPair
+	for _, pair := range pairs {
+		dir := RunDirPath(resultsRoot, pair.Config.ID, pair.N)
+		if HasIngest(dir) && !runJSONExists(dir) {
+			pending = append(pending, pair)
+		}
+	}
+	return pending
+}
+
+// CheckSingleFlight fails when repetition n of configID is being ingested while repetition n-1 of the
+// same config has none of: an ingest marker, a run.json, or an exhausted attempt record -- concretely,
+// MaxAttempts <n-1>.invalid-<k> sibling directories present, the same on-disk siblings NextAttempt
+// counts and the only artifact recording exhaustion, since invalidation past the ceiling errors rather
+// than writing a marker of its own. n == 1 always passes, since there is no n-1 to check.
+//
+// This predicate holds across sessions rather than merely within one: everything it reads is on disk, so
+// a caller in a freshly started session sees the same answer a caller mid-session would have seen.
+func CheckSingleFlight(resultsRoot, configID string, n int) error {
+	if n <= 1 {
+		return nil
+	}
+	prevDir := RunDirPath(resultsRoot, configID, n-1)
+	if HasIngest(prevDir) {
+		return nil
+	}
+	if runJSONExists(prevDir) {
+		return nil
+	}
+	if countInvalidSiblings(prevDir) >= MaxAttempts {
+		return nil
+	}
+	return fmt.Errorf(
+		"ladder: CheckSingleFlight: config %q rep %d cannot start: rep %d has neither an ingest marker, "+
+			"a run.json, nor an exhausted attempt record (%d invalid siblings)",
+		configID, n, n-1, MaxAttempts,
+	)
+}

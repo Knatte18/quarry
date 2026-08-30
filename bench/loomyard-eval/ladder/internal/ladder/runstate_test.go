@@ -178,6 +178,114 @@ func TestInvalidate_ErrorsAtTheCeiling(t *testing.T) {
 	}
 }
 
+func makeRunPairs(configID string, ns ...int) []RunPair {
+	pairs := make([]RunPair, len(ns))
+	for i, n := range ns {
+		pairs[i] = RunPair{Config: LadderConfig{ID: configID}, N: n}
+	}
+	return pairs
+}
+
+func TestPendingRuns_TreatsAnIngestedRepetitionAsDone(t *testing.T) {
+	root := t.TempDir()
+	pairs := makeRunPairs("a5-bundle", 1, 2, 3)
+
+	// n=1 has an ingest marker (a run session treats it as done, resume or not).
+	// n=2 has a run.json but no ingest marker -- can't happen in practice, but PendingRuns must still
+	// key on the ingest marker alone, not on run.json.
+	// n=3 has neither.
+	if err := WriteIngestJSON(RunDirPath(root, "a5-bundle", 1), IngestRecord{ConfigID: "a5-bundle", Rep: 1, Attempt: 1}); err != nil {
+		t.Fatalf("WriteIngestJSON(n=1) = %v; want nil error", err)
+	}
+	if _, err := WriteRunJSON(RunDirPath(root, "a5-bundle", 2), map[string]any{"config_id": "a5-bundle", "n": 2}); err != nil {
+		t.Fatalf("WriteRunJSON(n=2) = _, %v; want nil error", err)
+	}
+
+	pending := PendingRuns(root, pairs)
+	var gotNs []int
+	for _, p := range pending {
+		gotNs = append(gotNs, p.N)
+	}
+	if len(gotNs) != 2 || gotNs[0] != 2 || gotNs[1] != 3 {
+		t.Errorf("PendingRuns() ns = %v; want [2 3]", gotNs)
+	}
+}
+
+func TestPendingScoring_TreatsIngestedUnscoredAsPendingAndBothAsDone(t *testing.T) {
+	root := t.TempDir()
+	pairs := makeRunPairs("a5-bundle", 1, 2, 3)
+
+	// n=1: ingest only -- pending scoring.
+	// n=2: both ingest and run.json -- done.
+	// n=3: neither -- not a scoring session's job at all.
+	if err := WriteIngestJSON(RunDirPath(root, "a5-bundle", 1), IngestRecord{ConfigID: "a5-bundle", Rep: 1, Attempt: 1}); err != nil {
+		t.Fatalf("WriteIngestJSON(n=1) = %v; want nil error", err)
+	}
+	if err := WriteIngestJSON(RunDirPath(root, "a5-bundle", 2), IngestRecord{ConfigID: "a5-bundle", Rep: 2, Attempt: 1}); err != nil {
+		t.Fatalf("WriteIngestJSON(n=2) = %v; want nil error", err)
+	}
+	if _, err := WriteRunJSON(RunDirPath(root, "a5-bundle", 2), map[string]any{"config_id": "a5-bundle", "n": 2}); err != nil {
+		t.Fatalf("WriteRunJSON(n=2) = _, %v; want nil error", err)
+	}
+
+	pending := PendingScoring(root, pairs)
+	if len(pending) != 1 || pending[0].N != 1 {
+		t.Errorf("PendingScoring() = %+v; want exactly n=1", pending)
+	}
+}
+
+func TestCheckSingleFlight_ErrorsOutOfOrderAndPassesOnceAnyConditionIsMet(t *testing.T) {
+	t.Run("n=1 always passes", func(t *testing.T) {
+		root := t.TempDir()
+		if err := CheckSingleFlight(root, "a5-bundle", 1); err != nil {
+			t.Errorf("CheckSingleFlight(n=1) = %v; want nil error", err)
+		}
+	})
+
+	t.Run("errors when the prior repetition has none of the three conditions", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(RunDirPath(root, "a5-bundle", 1), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := CheckSingleFlight(root, "a5-bundle", 2); err == nil {
+			t.Error("CheckSingleFlight(n=2) = nil; want an error for an out-of-order repetition")
+		}
+	})
+
+	t.Run("passes when the prior repetition carries an ingest marker", func(t *testing.T) {
+		root := t.TempDir()
+		if err := WriteIngestJSON(RunDirPath(root, "a5-bundle", 1), IngestRecord{ConfigID: "a5-bundle", Rep: 1, Attempt: 1}); err != nil {
+			t.Fatalf("WriteIngestJSON = %v; want nil error", err)
+		}
+		if err := CheckSingleFlight(root, "a5-bundle", 2); err != nil {
+			t.Errorf("CheckSingleFlight(n=2) = %v; want nil error", err)
+		}
+	})
+
+	t.Run("passes when the prior repetition carries a run.json", func(t *testing.T) {
+		root := t.TempDir()
+		if _, err := WriteRunJSON(RunDirPath(root, "a5-bundle", 1), map[string]any{"config_id": "a5-bundle", "n": 1}); err != nil {
+			t.Fatalf("WriteRunJSON = _, %v; want nil error", err)
+		}
+		if err := CheckSingleFlight(root, "a5-bundle", 2); err != nil {
+			t.Errorf("CheckSingleFlight(n=2) = %v; want nil error", err)
+		}
+	})
+
+	t.Run("passes when the prior repetition has an exhausted attempt record", func(t *testing.T) {
+		root := t.TempDir()
+		prevDir := RunDirPath(root, "a5-bundle", 1)
+		for k := 1; k <= MaxAttempts; k++ {
+			if err := os.MkdirAll(invalidSiblingPath(prevDir, k), 0o755); err != nil {
+				t.Fatalf("mkdir invalid sibling %d: %v", k, err)
+			}
+		}
+		if err := CheckSingleFlight(root, "a5-bundle", 2); err != nil {
+			t.Errorf("CheckSingleFlight(n=2) = %v; want nil error", err)
+		}
+	})
+}
+
 func TestNextAttempt_DerivesFromExistingInvalidSiblings(t *testing.T) {
 	root := t.TempDir()
 
