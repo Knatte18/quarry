@@ -104,6 +104,12 @@ correctness fix. This is purely an API-surface decision.
 - The CLI's own `--target-dir` flag on `cmd/quarry`. The CLI is a different product surface and
   keeps per-invocation targeting.
 - The committed root `.mcp.json` — it already passes no `--target-dir` and needs no change.
+- `serverVersion` (`internal/mcpserver/mcpserver.go:19-20`) stays at `"0.1.0"`. This task does edit
+  `mcpserver.go` (the `Config.TargetDir` doc comment), so the omission would otherwise read as an
+  oversight: it is deliberate. The constant tracks the package's own development and there is no
+  release, changelog, or consumer that a bump would inform — the same absence of external consumers
+  that `drop-per-call-targetdir` cites as removing the deprecation obligation is what makes the bump
+  pointless here. Do not bump it just because the tool schemas changed shape.
 - `gates.py`'s `targetDir` check — deliberately retained (see `bench-ladder-update`).
 - The native `-remote=auto` shared-daemon build-tag leakage caveat noted in the task body. Already
   mitigated at `daemon/ensureserver.go:145-165`; unrelated to this task.
@@ -340,12 +346,30 @@ value, just always the launch value: `entry.query(callCtx.TargetDir)` in `tools_
 `callCtx.options(lang, query)` which threads it into `quarry.Options.TargetDir`
 (`callcontext.go:103-114`). None of these signatures change.
 
+**Gotcha — count-based doc comments a token grep cannot find.** Three input-struct doc comments
+state the override's existence purely by **count**, containing neither `targetDir` nor `TargetDir`,
+so no grep for the token will surface them: `tools_lsp.go:23-24`, `tools_impact.go:18-19`, and
+`tools_assert.go:18-19` each say "the **three** call-wide resolution overrides every
+language-server-backed tool in this package accepts". After this change that number is two
+(`lang`, `buildTags`). All three must be corrected.
+
+This is why the completeness check below cannot be a token grep alone. **Second enumeration
+criterion, mandatory:** re-read the doc comment on every input struct in `internal/mcpserver/` —
+`lspInput` (`tools_lsp.go:22`), `symbolInput` (`tools_symbol.go:48`), `impactInput`
+(`tools_impact.go:18`), `assertInput` (`tools_assert.go:18`), `tocFileInput` (`tools_toc.go:22`),
+`tocDirInput` (`tools_toc.go:40`) — and confirm each still describes the struct accurately.
+`symbolInput`'s says "the same call-wide resolution overrides" (a back-reference, no count) and the
+two toc comments enumerate their own fields; those need checking, not necessarily changing. Do not
+rely on grep to find this class of staleness.
+
 **Gotcha — stale doc comments.** Several comments describe the override as existing:
 `callcontext.go`'s file header ("either the launch default or an absolutised per-call override" at
 line 28-30, and the `effectiveTargetDir` paragraph), `mcpserver.go:33-35` ("used whenever a call
 omits its own targetDir override"), and `tools_lsp.go:3` ("plus lang/buildTags/targetDir
 overrides"). All must be corrected; a grep for `targetDir` and `TargetDir` across
-`internal/mcpserver/` after the change should surface only intentional survivors.
+`internal/mcpserver/` after the change should surface only intentional survivors — **necessary but
+not sufficient**, since three doc comments state the fact by count and contain neither token; see
+the second enumeration criterion above.
 
 **Gotcha — `Config.TargetDir` doc.** `mcpserver.go:29-31`'s comment "a handler never sees these raw
 values, only what `resolveCall` derives from them per call" becomes only half true once
@@ -415,8 +439,9 @@ fixture directory, convert it to setting `Config.TargetDir` at construction — 
 tool resolves relative paths against the target directory" is worth keeping, only the mechanism for
 setting that directory changes.
 
-**`tools_toc_test.go` specifically.** Keep a case proving an **absolute** `target` still resolves
-outside the launch root (`cli.ResolveTOCPath` ignores `targetDir` for an absolute arg). That is the
+**`tools_toc_test.go` specifically.** **Add** a new case — there is none today; every existing toc
+test roots its fixture at `cfg.TargetDir` — proving an **absolute** `target` still resolves outside
+the launch root (`cli.ResolveTOCPath` ignores `targetDir` for an absolute arg). That is the
 partial escape hatch named in `cross-repo-escape-hatch-is-a-second-server`, and it should be
 pinned by a test so the documentation stays true.
 
@@ -438,9 +463,15 @@ from the repo root, no `PYTHONPATH` prefix, since `conftest.py` handles `sys.pat
 uv run --no-project --with pytest --with pyyaml python -m pytest bench/loomyard-eval/ladder/tests -q
 ```
 
-Finally, `grep -rn 'targetDir' internal/mcpserver/ docs/mcp-setup.md` should return only intentional
-survivors — Go function parameters and prose about the server's target directory, never a schema
-property name and never per-call phrasing.
+Finally, `grep -rni 'targetdir' internal/mcpserver/ docs/mcp-setup.md` — case-insensitive, so it
+matches `TargetDir` as well as `targetDir`, agreeing with the completeness rule stated under
+Technical context. It should return only intentional survivors: Go identifiers (`Config.TargetDir`,
+`callContext.TargetDir`, `query(targetDir string)`) and prose about the server's target directory,
+never a schema property name and never per-call phrasing.
+
+This grep is necessary but not sufficient on its own — run the second enumeration criterion from
+Technical context (re-read all six input structs' doc comments) alongside it, because the
+count-based comments contain neither spelling of the token.
 
 ## Q&A log
 
