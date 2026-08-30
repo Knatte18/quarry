@@ -74,6 +74,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(recordScoreCommand())
 	cmd.AddCommand(probeRecordCommand())
 	cmd.AddCommand(coldCellCommand())
+	cmd.AddCommand(summarizeCommand())
 
 	return cmd
 }
