@@ -50,6 +50,8 @@ batches:
     commit_sha: 011acc7c66d3e844e9afbc0da2ec3e3f9e823e35
     verify_baseline_failures: []
   - name: docs-and-bench-alignment
-    state: pending
+    state: running
+    implementer_session: 14b02808-9398-40a9-b283-2905666420de
+    start_sha: f1e99187bff01e85e3182e2968ed25d89e7a4dd6
     verify_baseline_failures: []
 ```
