@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussed
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-30T10:22:04Z'
+discussed  '2026-08-30T11:20:29Z'
 ```
