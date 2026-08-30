@@ -1,6 +1,7 @@
 package ladder
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -311,6 +312,331 @@ func TestCompareWarmCold_EmitsNothingForNotRunOrPartialDisposition(t *testing.T)
 		if len(comparisons) != 0 {
 			t.Errorf("CompareWarmCold(%q) returned %d comparisons; want 0", disposition, len(comparisons))
 		}
+	}
+}
+
+/* CARD 34: summary building, writing, and the incomplete exit code */
+
+// writeFullMatrix writes ladder.Reps complete runs for every config in l, plus cold_cell.json and
+// probe.json, so BuildSummary sees a fully complete matrix. Individual tests perturb specific runs
+// afterwards.
+func writeFullMatrix(t *testing.T, resultsRoot string, l *Ladder, opts fullMatrixOptions) {
+	t.Helper()
+	for _, config := range l.Configs {
+		task := l.Tasks[config.Task]
+		var scoreExtra map[string]any
+		if task.Schema == "impact" {
+			scoreExtra = map[string]any{"decoy_admitted": false, "lookalikes_matched": 0}
+		} else {
+			scoreExtra = map[string]any{"summary_matches": true}
+		}
+
+		for n := 1; n <= l.Reps; n++ {
+			score := map[string]any{}
+			for k, v := range scoreExtra {
+				score[k] = v
+			}
+			if config.ID == opts.decoyAdmittedConfig && n == 1 {
+				score["decoy_admitted"] = true
+			}
+
+			runExtra := map[string]any{}
+			if config.ID == opts.worktreeDirtiedConfig && n == 1 {
+				runExtra["worktree_dirtied"] = true
+			}
+			if config.ID == opts.targetOriginConfig && n == 1 {
+				runExtra["target_origin_quarry_mention"] = true
+			}
+			if config.Cold {
+				if _, present := runExtra["cold_no_daemon_backed_call"]; !present {
+					runExtra["cold_no_daemon_backed_call"] = false
+				}
+			}
+
+			writeSummarizeRun(t, resultsRoot, config.ID, n, nil, score, runExtra, "complete")
+		}
+	}
+
+	if opts.coldCellPayload != nil {
+		writeJSONFile(t, filepath.Join(resultsRoot, "cold_cell.json"), opts.coldCellPayload)
+	}
+	if opts.probePayload != nil {
+		writeJSONFile(t, filepath.Join(resultsRoot, "probe.json"), opts.probePayload)
+	}
+}
+
+// fullMatrixOptions perturbs writeFullMatrix's synthetic tree. A nil coldCellPayload/probePayload
+// simulates the file genuinely being absent.
+type fullMatrixOptions struct {
+	decoyAdmittedConfig   string
+	worktreeDirtiedConfig string
+	targetOriginConfig    string
+	coldCellPayload       map[string]any
+	probePayload          map[string]any
+}
+
+func defaultFullMatrixOptions() fullMatrixOptions {
+	return fullMatrixOptions{
+		coldCellPayload: map[string]any{"disposition": "confirmed-cold", "confirmed_cold_reps": 3},
+		probePayload:    map[string]any{"denied_tools_advertised": true},
+	}
+}
+
+func TestBuildSummary_MetaRecordsPinnedScorerAndReps(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	writeFullMatrix(t, root, l, defaultFullMatrixOptions())
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	if summary.Meta.Scorer.Model != l.Scorer.Model || summary.Meta.Scorer.Effort != l.Scorer.Effort {
+		t.Errorf("BuildSummary().Meta.Scorer = %+v; want %+v", summary.Meta.Scorer, l.Scorer)
+	}
+	if summary.Meta.Reps != l.Reps {
+		t.Errorf("BuildSummary().Meta.Reps = %d; want %d", summary.Meta.Reps, l.Reps)
+	}
+}
+
+func TestBuildSummary_EveryConfigIDAppearsInCells(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	writeFullMatrix(t, root, l, defaultFullMatrixOptions())
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	if got := len(summary.Cells); got != len(l.Configs) {
+		t.Errorf("BuildSummary() produced %d cells; want %d", got, len(l.Configs))
+	}
+	for _, config := range l.Configs {
+		if _, ok := summary.Cells[config.ID]; !ok {
+			t.Errorf("BuildSummary().Cells missing config id %q", config.ID)
+		}
+	}
+}
+
+func TestBuildSummary_IncompleteListsExactlyTheShortCells(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	writeFullMatrix(t, root, l, defaultFullMatrixOptions())
+	if err := os.Remove(filepath.Join(RunDirPath(root, "a3-toc-pair", 2), "run.json")); err != nil {
+		t.Fatalf("os.Remove(run.json) = %v; want nil error", err)
+	}
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	if len(summary.Incomplete) != 1 || summary.Incomplete[0] != "a3-toc-pair" {
+		t.Errorf("BuildSummary().Incomplete = %v; want [a3-toc-pair]", summary.Incomplete)
+	}
+}
+
+func TestBuildSummary_ComparisonsContainsAllThreeKinds(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	writeFullMatrix(t, root, l, defaultFullMatrixOptions())
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	kinds := map[string]bool{}
+	for _, comparison := range summary.Comparisons {
+		kinds[comparison.Kind] = true
+	}
+	for _, want := range []string{"rung-vs-control", "rung-vs-rung", "warm-vs-cold"} {
+		if !kinds[want] {
+			t.Errorf("BuildSummary().Comparisons missing kind %q; got kinds %v", want, kinds)
+		}
+	}
+}
+
+func TestBuildSummary_AggregatesWorktreeDirtiedDecoyAdmittedAndDaemonBacked(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	opts := defaultFullMatrixOptions()
+	opts.decoyAdmittedConfig = "b6-assert-no-callers"
+	opts.worktreeDirtiedConfig = "a1-toc-file"
+	opts.targetOriginConfig = "a0-none"
+	writeFullMatrix(t, root, l, opts)
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	if got := summary.Cells["b6-assert-no-callers"].DecoyAdmittedCount; got != 1 {
+		t.Errorf("Cells[b6-assert-no-callers].DecoyAdmittedCount = %d; want 1", got)
+	}
+	if got := summary.Cells["a1-toc-file"].WorktreeDirtiedCount; got != 1 {
+		t.Errorf("Cells[a1-toc-file].WorktreeDirtiedCount = %d; want 1", got)
+	}
+	if got := summary.Cells["a0-none"].TargetOriginQuarryMentionCount; got != 1 {
+		t.Errorf("Cells[a0-none].TargetOriginQuarryMentionCount = %d; want 1", got)
+	}
+	if got := summary.Cells["a5-bundle-cold"].DaemonBackedRuns; got != l.Reps {
+		t.Errorf("Cells[a5-bundle-cold].DaemonBackedRuns = %d; want %d", got, l.Reps)
+	}
+}
+
+func TestBuildSummary_SummaryMatchesCarriedThroughVerbatim(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	writeFullMatrix(t, root, l, defaultFullMatrixOptions())
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	matches := summary.Cells["a1-toc-file"].SummaryMatches
+	if len(matches) != 3 {
+		t.Fatalf("Cells[a1-toc-file].SummaryMatches = %v; want 3 entries", matches)
+	}
+	for _, m := range matches {
+		if m != true {
+			t.Errorf("Cells[a1-toc-file].SummaryMatches entry = %v; want true", m)
+		}
+	}
+}
+
+func TestBuildSummary_NotRunColdCellAbsentFromIncompleteAndExitsZero(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	opts := defaultFullMatrixOptions()
+	opts.coldCellPayload = map[string]any{"disposition": "not-run", "confirmed_cold_reps": 0}
+	writeFullMatrix(t, root, l, opts)
+	if err := os.RemoveAll(filepath.Dir(RunDirPath(root, "a5-bundle-cold", 1))); err != nil {
+		t.Fatalf("os.RemoveAll(a5-bundle-cold) = %v; want nil error", err)
+	}
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	for _, id := range summary.Incomplete {
+		if id == "a5-bundle-cold" {
+			t.Error("BuildSummary().Incomplete contains a5-bundle-cold; want it absent for a not-run cold cell")
+		}
+	}
+	if SummaryExitCode(summary) != 0 {
+		t.Errorf("SummaryExitCode() = %d; want 0", SummaryExitCode(summary))
+	}
+}
+
+func TestBuildSummary_PartialColdCellAbsentFromIncompleteAndNoWarmColdComparison(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	opts := defaultFullMatrixOptions()
+	opts.coldCellPayload = map[string]any{"disposition": "partial", "confirmed_cold_reps": 1}
+	writeFullMatrix(t, root, l, opts)
+	if err := os.RemoveAll(filepath.Dir(RunDirPath(root, "a5-bundle-cold", 1))); err != nil {
+		t.Fatalf("os.RemoveAll(a5-bundle-cold) = %v; want nil error", err)
+	}
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	for _, id := range summary.Incomplete {
+		if id == "a5-bundle-cold" {
+			t.Error("BuildSummary().Incomplete contains a5-bundle-cold; want it absent for a partial cold cell")
+		}
+	}
+	for _, comparison := range summary.Comparisons {
+		if comparison.Kind == "warm-vs-cold" {
+			t.Error("BuildSummary().Comparisons contains a warm-vs-cold comparison; want none for a partial cold cell")
+		}
+	}
+	if SummaryExitCode(summary) != 0 {
+		t.Errorf("SummaryExitCode() = %d; want 0", SummaryExitCode(summary))
+	}
+}
+
+func TestBuildSummary_ShortColdCellForOtherReasonIsIncomplete(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	writeFullMatrix(t, root, l, defaultFullMatrixOptions())
+	if err := os.Remove(filepath.Join(RunDirPath(root, "a5-bundle-cold", 2), "run.json")); err != nil {
+		t.Fatalf("os.Remove(run.json) = %v; want nil error", err)
+	}
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	found := false
+	for _, id := range summary.Incomplete {
+		if id == "a5-bundle-cold" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("BuildSummary().Incomplete does not contain a5-bundle-cold; want it present when short for another reason")
+	}
+	if SummaryExitCode(summary) != 1 {
+		t.Errorf("SummaryExitCode() = %d; want 1", SummaryExitCode(summary))
+	}
+}
+
+func TestBuildSummary_AbsentColdCellJSONAndProbeJSONDoNotError(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	opts := defaultFullMatrixOptions()
+	opts.coldCellPayload = nil
+	opts.probePayload = nil
+	writeFullMatrix(t, root, l, opts)
+	if err := os.RemoveAll(filepath.Dir(RunDirPath(root, "a5-bundle-cold", 1))); err != nil {
+		t.Fatalf("os.RemoveAll(a5-bundle-cold) = %v; want nil error", err)
+	}
+
+	summary, err := BuildSummary(l, root)
+	if err != nil {
+		t.Fatalf("BuildSummary() = _, %v; want nil error", err)
+	}
+	if summary.Meta.ColdDisposition != "unknown" {
+		t.Errorf("BuildSummary().Meta.ColdDisposition = %q; want unknown", summary.Meta.ColdDisposition)
+	}
+	found := false
+	for _, id := range summary.Incomplete {
+		if id == "a5-bundle-cold" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("BuildSummary().Incomplete does not contain a5-bundle-cold; want it present when its runs are absent")
+	}
+}
+
+func TestWriteSummary_WritesSortedKeysJSONWithTrailingNewlineAndRoundTrips(t *testing.T) {
+	l := mustLoadLadder(t)
+	root := t.TempDir()
+	writeFullMatrix(t, root, l, defaultFullMatrixOptions())
+
+	built, err := WriteSummary(l, root)
+	if err != nil {
+		t.Fatalf("WriteSummary() = _, %v; want nil error", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(root, "summary.json"))
+	if err != nil {
+		t.Fatalf("os.ReadFile(summary.json) = _, %v; want nil error", err)
+	}
+	if len(content) == 0 || content[len(content)-1] != '\n' {
+		t.Error("summary.json does not end with a trailing newline")
+	}
+
+	var roundTripped Summary
+	if err := json.Unmarshal(content, &roundTripped); err != nil {
+		t.Fatalf("json.Unmarshal(summary.json) = %v; want nil error", err)
+	}
+	if len(roundTripped.Cells) != len(built.Cells) {
+		t.Errorf("round-tripped summary has %d cells; want %d", len(roundTripped.Cells), len(built.Cells))
+	}
+	if len(roundTripped.Incomplete) != len(built.Incomplete) {
+		t.Errorf("round-tripped summary has %d incomplete entries; want %d", len(roundTripped.Incomplete), len(built.Incomplete))
 	}
 }
 

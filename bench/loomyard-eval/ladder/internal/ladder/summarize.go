@@ -467,3 +467,271 @@ func CompareWarmCold(l *Ladder, cells map[string]Cell, coldDisposition string) (
 	}
 	return comparisons, nil
 }
+
+/* THE TRACKED summary.json */
+
+// readJSONOrDefault returns the parsed JSON object at path, or def when path does not exist. Neither
+// missing file this package reads with it (cold_cell.json, probe.json) is treated as an error --
+// summarising a partial matrix is a legitimate intermediate state.
+func readJSONOrDefault(path string, def map[string]any) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return def, nil
+		}
+		return nil, fmt.Errorf("ladder: readJSONOrDefault: read %s: %w", path, err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("ladder: readJSONOrDefault: parse %s: %w", path, err)
+	}
+	return m, nil
+}
+
+// SummaryScorerMeta carries the pinned scoring model and effort into SummaryMeta.
+type SummaryScorerMeta struct {
+	// Model is the pinned scoring client model id.
+	Model string `json:"model"`
+	// Effort is the pinned scoring reasoning-effort level.
+	Effort string `json:"effort"`
+}
+
+// SummaryMeta is summary.json's _meta block: the pinned run model, the pinned scorer mapping, reps, the
+// results-root date segment, the number of configs, and the cold cell's disposition (from
+// cold_cell.json, or "unknown" when absent).
+//
+// It carries no denied_tool_attempts_reported flag, unlike the ported Python's build_summary. That
+// flag's source was probe.json's advertised-tools key, itself derived from the client's own advertised
+// tool list under the retired claude -p port -- a list with no counterpart under agent dispatch, the
+// same reason the transcript-sourced advertised-tools usage field was replaced by the
+// definition-sourced Usage.GrantedTools (see usage.go). The deny-list probe's generated agent
+// definition now grants the denied tool by construction, so the question the old flag asked is answered
+// by the definition rather than observed, and the probe record's own observed-denial-shape key is the
+// real successor signal -- there is nothing left for a summary meta flag to add.
+type SummaryMeta struct {
+	// RunModel is the pinned model id all runs shared.
+	RunModel string `json:"run_model"`
+	// Scorer carries the pinned scoring model and effort.
+	Scorer SummaryScorerMeta `json:"scorer"`
+	// Reps is the repetitions per config.
+	Reps int `json:"reps"`
+	// ResultsRootDate is the results root directory's own base name, e.g. "2026-08-29".
+	ResultsRootDate string `json:"results_root_date"`
+	// NumConfigs is the count of configs in the ladder.
+	NumConfigs int `json:"num_configs"`
+	// ColdDisposition is cold_cell.json's disposition field, or "unknown" when the file is absent.
+	ColdDisposition string `json:"cold_disposition"`
+	// ColdConfirmedColdReps is cold_cell.json's confirmed_cold_reps field, or nil when the file is
+	// absent or carries no such field.
+	ColdConfirmedColdReps any `json:"cold_confirmed_cold_reps"`
+}
+
+// CellRecord is one config's summarised results as written into summary.json's cells mapping: its
+// Cell.Stats plus completeness and the per-run observations LoadRuns's flattening carried in.
+type CellRecord struct {
+	// Stats holds the config's per-metric summarised records.
+	Stats map[string]MetricStats `json:"stats"`
+	// Complete is true only when every repetition completed.
+	Complete bool `json:"complete"`
+	// DecoyAdmittedCount counts the runs whose decoy_admitted field was true.
+	DecoyAdmittedCount int `json:"decoy_admitted_count"`
+	// SummaryMatches carries every run's summary_matches value verbatim, in run order, for the runs
+	// that carried the field.
+	SummaryMatches []any `json:"summary_matches"`
+	// WorktreeDirtiedCount counts the runs whose worktree_dirtied observation was true.
+	WorktreeDirtiedCount int `json:"worktree_dirtied_count"`
+	// TargetOriginQuarryMentionCount counts the runs whose target_origin_quarry_mention observation was
+	// true.
+	TargetOriginQuarryMentionCount int `json:"target_origin_quarry_mention_count"`
+	// DaemonBackedRuns counts the runs that did not record cold_no_daemon_backed_call.
+	DaemonBackedRuns int `json:"daemon_backed_runs"`
+}
+
+// Summary is the full mapping WriteSummary serialises to summary.json.
+type Summary struct {
+	// Meta carries the pinned run parameters and the matrix's completeness signals.
+	Meta SummaryMeta `json:"_meta"`
+	// Cells maps every config id to its CellRecord.
+	Cells map[string]CellRecord `json:"cells"`
+	// Comparisons is every Comparison the three comparison builders produced.
+	Comparisons []Comparison `json:"comparisons"`
+	// Incomplete lists the ids of every cell that is not complete, except a cold cell whose
+	// cold_cell.json records "not-run" or "partial" -- both are legitimate terminal states of the
+	// cold-cell driver, not interrupted runs.
+	Incomplete []string `json:"incomplete"`
+}
+
+// buildCellRecord aggregates cell's per-run observations into a CellRecord.
+func buildCellRecord(cell Cell) CellRecord {
+	var summaryMatches []any
+	decoyAdmittedCount := 0
+	worktreeDirtiedCount := 0
+	targetOriginCount := 0
+	daemonBackedRuns := 0
+	for _, run := range cell.Runs {
+		if decoyAdmitted, ok := run["decoy_admitted"].(bool); ok && decoyAdmitted {
+			decoyAdmittedCount++
+		}
+		if match, ok := run["summary_matches"]; ok {
+			summaryMatches = append(summaryMatches, match)
+		}
+		if dirtied, ok := run["worktree_dirtied"].(bool); ok && dirtied {
+			worktreeDirtiedCount++
+		}
+		if mentioned, ok := run["target_origin_quarry_mention"].(bool); ok && mentioned {
+			targetOriginCount++
+		}
+		coldNoDaemon, _ := run["cold_no_daemon_backed_call"].(bool)
+		if !coldNoDaemon {
+			daemonBackedRuns++
+		}
+	}
+	return CellRecord{
+		Stats:                          cell.Stats,
+		Complete:                       cell.Complete,
+		DecoyAdmittedCount:             decoyAdmittedCount,
+		SummaryMatches:                 summaryMatches,
+		WorktreeDirtiedCount:           worktreeDirtiedCount,
+		TargetOriginQuarryMentionCount: targetOriginCount,
+		DaemonBackedRuns:               daemonBackedRuns,
+	}
+}
+
+// BuildSummary builds the full Summary: _meta, cells, comparisons, and incomplete.
+//
+// comparisons is every Comparison the three builders produce. rung-vs-control comparisons are built for
+// every config with a non-empty allowed set that is not the cold config; rung-vs-rung comparisons are
+// built for every pair of such configs within the same ladder; warm-vs-cold is built once, for the
+// ladder's single cold cell.
+func BuildSummary(l *Ladder, resultsRoot string) (Summary, error) {
+	cells := make(map[string]Cell, len(l.Configs))
+	for _, config := range l.Configs {
+		runs, err := LoadRuns(resultsRoot, config.ID, l.Reps)
+		if err != nil {
+			return Summary{}, err
+		}
+		cells[config.ID] = SummariseCell(config.ID, runs, l.Reps)
+	}
+
+	coldCellRecord, err := readJSONOrDefault(filepath.Join(resultsRoot, "cold_cell.json"), map[string]any{})
+	if err != nil {
+		return Summary{}, err
+	}
+	coldDisposition, _ := coldCellRecord["disposition"].(string)
+	if coldDisposition == "" {
+		coldDisposition = "unknown"
+	}
+	coldConfirmedColdReps := coldCellRecord["confirmed_cold_reps"]
+
+	runModel := ""
+	if l.RunModel != nil {
+		runModel = *l.RunModel
+	}
+
+	meta := SummaryMeta{
+		RunModel:              runModel,
+		Scorer:                SummaryScorerMeta{Model: l.Scorer.Model, Effort: l.Scorer.Effort},
+		Reps:                  l.Reps,
+		ResultsRootDate:       filepath.Base(resultsRoot),
+		NumConfigs:            len(l.Configs),
+		ColdDisposition:       coldDisposition,
+		ColdConfirmedColdReps: coldConfirmedColdReps,
+	}
+
+	cellRecords := make(map[string]CellRecord, len(l.Configs))
+	for _, config := range l.Configs {
+		cellRecords[config.ID] = buildCellRecord(cells[config.ID])
+	}
+
+	var nonControlConfigs []LadderConfig
+	for _, config := range l.Configs {
+		if len(config.Allowed) > 0 && !config.Cold {
+			nonControlConfigs = append(nonControlConfigs, config)
+		}
+	}
+
+	var comparisons []Comparison
+	for _, config := range nonControlConfigs {
+		configComparisons, err := CompareRungToControl(l, cells, config)
+		if err != nil {
+			return Summary{}, err
+		}
+		comparisons = append(comparisons, configComparisons...)
+	}
+	for _, ladderName := range []string{"a", "b"} {
+		var rungIDs []string
+		for _, config := range nonControlConfigs {
+			if config.Ladder == ladderName {
+				rungIDs = append(rungIDs, config.ID)
+			}
+		}
+		for i, leftID := range rungIDs {
+			for _, rightID := range rungIDs[i+1:] {
+				pairComparisons, err := CompareRungs(l, cells, leftID, rightID)
+				if err != nil {
+					return Summary{}, err
+				}
+				comparisons = append(comparisons, pairComparisons...)
+			}
+		}
+	}
+	warmColdComparisons, err := CompareWarmCold(l, cells, coldDisposition)
+	if err != nil {
+		return Summary{}, err
+	}
+	comparisons = append(comparisons, warmColdComparisons...)
+
+	var incomplete []string
+	for _, config := range l.Configs {
+		cell := cells[config.ID]
+		if cell.Complete {
+			continue
+		}
+		if config.Cold && (coldDisposition == "not-run" || coldDisposition == "partial") {
+			continue
+		}
+		incomplete = append(incomplete, config.ID)
+	}
+
+	return Summary{
+		Meta:        meta,
+		Cells:       cellRecords,
+		Comparisons: comparisons,
+		Incomplete:  incomplete,
+	}, nil
+}
+
+// WriteSummary serialises BuildSummary(l, resultsRoot) as summary.json into resultsRoot, with a
+// trailing newline.
+//
+// Returns the built Summary, so callers (including the ladderbench summarize subcommand a later batch
+// adds) do not have to re-read the file they just wrote.
+func WriteSummary(l *Ladder, resultsRoot string) (Summary, error) {
+	summary, err := BuildSummary(l, resultsRoot)
+	if err != nil {
+		return Summary{}, err
+	}
+
+	data, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return Summary{}, fmt.Errorf("ladder: WriteSummary: marshal summary: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(filepath.Join(resultsRoot, "summary.json"), data, 0o644); err != nil {
+		return Summary{}, fmt.Errorf("ladder: WriteSummary: write summary.json: %w", err)
+	}
+	return summary, nil
+}
+
+// SummaryExitCode returns 1 when summary's Incomplete list is non-empty, 0 otherwise -- a summary of a
+// partial matrix is written but must not be mistaken for a finished one.
+//
+// This ports _exit_code_for_summary. The Python's main -- the command-line entry point that called it --
+// has no counterpart here: dispatching that entry point is a cobra subcommand a later batch adds.
+func SummaryExitCode(summary Summary) int {
+	if len(summary.Incomplete) > 0 {
+		return 1
+	}
+	return 0
+}
