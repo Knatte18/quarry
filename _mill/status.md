@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -30,4 +30,39 @@ plan-fix-r5  '2026-08-30T12:15:01Z'
 plan-review-r6  '2026-08-30T12:20:47Z'
 plan-fix-r6  '2026-08-30T12:22:38Z'
 planned  '2026-08-30T12:22:53Z'
+implementing  '2026-08-30T12:23:21Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: ladder-config
+    state: pending
+  - name: transcript-usage
+    state: pending
+  - name: scoring
+    state: pending
+  - name: transcript-gates
+    state: pending
+  - name: daemon-cold-gates
+    state: pending
+  - name: run-state
+    state: pending
+  - name: summarize
+    state: pending
+  - name: worktree-server-warm
+    state: pending
+  - name: task-schema-planning
+    state: pending
+  - name: session-provisioning
+    state: pending
+  - name: cli-session-commands
+    state: pending
+  - name: cli-run-commands
+    state: pending
+  - name: e2e-test
+    state: pending
+  - name: skill-docs-cleanup
+    state: pending
 ```
