@@ -52,7 +52,8 @@ func TestWorkspaceKey_DeterministicAndDiffersByPath(t *testing.T) {
 		t.Fatalf("MkdirAll(second): %v", err)
 	}
 
-	if WorkspaceKey(first) != WorkspaceKey(first) {
+	firstKey, firstKeyAgain := WorkspaceKey(first), WorkspaceKey(first)
+	if firstKey != firstKeyAgain {
 		t.Error("WorkspaceKey(first) is not deterministic across calls")
 	}
 	if WorkspaceKey(first) == WorkspaceKey(second) {
@@ -347,7 +348,7 @@ func TestWaitForDaemonExit(t *testing.T) {
 		// thread.
 		done := make(chan struct{})
 		go func() {
-			cmd.Wait()
+			_ = cmd.Wait()
 			close(done)
 		}()
 
@@ -373,8 +374,8 @@ func TestWaitForDaemonExit(t *testing.T) {
 			t.Fatalf("Start(): %v", err)
 		}
 		defer func() {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		}()
 		writeDaemonStateFile(t, targetDir, cacheDir, cmd.Process.Pid, daemonLang)
 
