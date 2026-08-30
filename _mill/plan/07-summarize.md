@@ -105,7 +105,15 @@ reads as a measurement that failed rather than one that was never taken.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `_read_json_or_default` as an unexported `readJSONOrDefault`, `build_summary`
-  as `BuildSummary`, `write_summary` as `WriteSummary`, and `_exit_code_for_summary` as
+  as `BuildSummary`, with one field dropped: the summary's `denied_tool_attempts_reported` meta flag
+  goes away rather than being retargeted. Its source was the probe record's advertised-tools key, which
+  was derived from the client's own advertised tool list — a list that has no counterpart under agent
+  dispatch, which is the same reason the transcript-sourced advertised-tools field was replaced by a
+  definition-sourced granted-tools field. The deny-list probe's generated definition now grants the
+  denied tool by construction, so the question the flag asked is answered by the definition rather than
+  observed, and the probe record's observed-denial-shape key is the real successor signal. Record that
+  reasoning in the doc comment rather than leaving the field reading a key nothing writes. Port
+  `write_summary` as `WriteSummary`, and `_exit_code_for_summary` as
   `SummaryExitCode`, keeping the non-zero exit when any cell is incomplete and the incomplete-cell list
   the summary carries. Do not port `main` — the command-line entry point is a cobra subcommand added in
   a later batch. Test a summary built over a synthetic complete results tree, one with an incomplete

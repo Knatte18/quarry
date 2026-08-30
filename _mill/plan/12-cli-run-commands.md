@@ -79,9 +79,12 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   predicate; locate the transcript by description and copy it and its metadata into the run directory;
   copy the session's launch inputs — its settings document, its run agent definition, and its server
   declaration when the config has one — into the run directory, at parity with what the Python wrote
-  per run; extract usage, passing the granted-tool list read from the copied agent definition; parse the
-  answer from the last fenced block of the final assistant record, taking `ExtractFencedJSON`'s `inner`
-  half; take the worktree dirtiness observation;
+  per run; extract usage and serialise it to `<run_dir>/usage.json`; parse the answer from the last fenced
+  block of the final assistant record, taking `ExtractFencedJSON`'s `inner` half, and write it to
+  `<run_dir>/answer.json`. Usage extraction takes the granted-tool list read from the copied agent
+  definition. These two writes are named explicitly because `ingest` is their only write site anywhere
+  in the plan, and both the complete-artifacts gate and the redaction step require the files by name;
+  then take the worktree dirtiness observation;
   run the gates; write the ingest marker on success; and print the outcome as ingested, truncated, or
   failed. `ingest` enforces the full pin set before running the gates, which is what makes the turn
   ceiling readable — the ceiling value ships blank and the gate would otherwise compare against nothing.
@@ -200,8 +203,8 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   not-run cause distinction between a live daemon before start and an exhausted native fallback. The
   Python tracked the live-daemon cause in the driver's own memory, which no longer exists: under the
   session split that cause arises in a session-preparation abort in a different process. It is
-  therefore read from the on-disk cold-abort siblings the cold preparation path writes, and the
-  exhausted-fallback cause from the completed runs' observations. Both causes occurring for one cell
+  therefore read from the cold-abort record the cold preparation path leaves inside the invalidated
+  sibling directories, and the exhausted-fallback cause from the completed runs' observations. Both causes occurring for one cell
   must still produce a reason text naming both. Do not
   port the dispatch loop: dispatch happens in a session. Test all four outcomes and the case where both
   not-run causes occur, where the reason text must name both.

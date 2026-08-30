@@ -93,7 +93,9 @@ grandfather clause is removed in the same batch that earns its removal.
   accounting basis changed; that cross-session serialisation is an operator obligation with the
   lockfile catching only the ordinary mistake; that the matrix targets a pinned Linux checkout and is
   not expected to run on Windows; and the residual leak channels the harness cannot close, stated as
-  hygiene rather than as a structural guarantee. It must also record the two implementation risks that
+  hygiene rather than as a structural guarantee — naming among them that a session's skill listing
+  enumerates built-in and managed skills from outside the two scanned roots, so the launch-time scan
+  bounds only the installed skills it can see. It must also record the two implementation risks that
   remain unverified because no smoke launch was performed — the setting-source flag combination, and
   whether a server declaration's environment block replaces or augments the inherited environment —
   naming the documented fallback for each. Replace every reference to the deleted Python entry points

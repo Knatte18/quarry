@@ -174,8 +174,13 @@ prefix so Go's own `internal/` visibility rule makes it unimportable from the pr
 - **Moves:** none
 - **Requirements:** Port `_FENCED_JSON_RE` and `extract_fenced_json` as
   `ExtractFencedJSON(text, which string) (block, inner string, err error)` supporting the `first` and
-  `last` selectors with the same semantics, including the error on no block found and on an unknown
-  selector. Both halves are returned because both are load-bearing and neither is cheaply re-derivable
+  `last` selectors. Two behaviours deliberately change rather than port: the Python returns a nil
+  result when no fenced block is present, so each caller can raise its own contextually-worded error,
+  and it silently treats any selector other than `first` as `last`. The Go version returns an error in
+  both cases — a sentinel error for the no-block case, which every call site still wraps with its own
+  contextual message so no context is lost, and a plain error for an unrecognised selector, because a
+  silent fallthrough on a typo'd selector would pick the wrong block with nothing reporting it. Both
+  halves are returned because both are load-bearing and neither is cheaply re-derivable
   from the other: `block` includes the fences and is what the schema extractor embeds into the preamble
   as measured stimulus, while `inner` is the decode-ready content the answer parser and the
   scorer-reply parser consume. Every call site names which half it takes. Go's

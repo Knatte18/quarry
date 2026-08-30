@@ -141,7 +141,10 @@ parameter, so this batch can land and be tested before the tracked skill file it
   root and the plugin-cache root — because installed skills actually live under the plugin cache on this
   machine and scanning the user-scope root alone would pass vacuously. A root that does not exist is skipped
   rather than erroring, and `ScanReport` records every root scanned with the file count found at each
-  so a vacuous pass is visible rather than silent. The scan is advisory for a rung and hard-failing for
+  so a vacuous pass is visible rather than silent. The doc comment must state the scan's real limit:
+  a session's skill listing also enumerates built-in and managed skills that live under neither
+  scanned root, so a clean report bounds only the skills this harness or the operator installed, never
+  the whole channel. The blinding gate over the transcript remains the detector for the rest. The scan is advisory for a rung and hard-failing for
   a config whose allowed set is empty; the caller applies that distinction. Test that a
   quarry-mentioning frontmatter under either root is reported as an offender, that an absent root is
   recorded as skipped rather than erroring, that a clean tree yields no offenders, and that the report
