@@ -104,6 +104,7 @@ decision, it edits two existing files and creates no new Python anywhere.
 
 - **Context:**
   - `bench/loomyard-eval/ladder/scripts/gates.py`
+  - `_mill/discussion.md`
 - **Edits:**
   - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
   - `bench/loomyard-eval/ladder/tests/test_ladder_config.py`
