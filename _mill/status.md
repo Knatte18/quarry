@@ -116,7 +116,9 @@ batches:
     commit_sha: d5979f9ee596f10eda51504d318e5af7f62685aa
     verify_baseline_failures: []
   - name: cli-run-commands
-    state: pending
+    state: running
+    implementer_session: f8c4566a-95d6-4b25-96fd-fa9d05257e14
+    start_sha: 3fc07c750133c475e027ec484627d07e1a3f8f30
     verify_baseline_failures: []
   - name: e2e-test
     state: pending
