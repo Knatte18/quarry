@@ -3,7 +3,7 @@
 ```yaml
 task: "Rethink quarry-mcp's per-call targetDir ergonomics"
 slug: "mcp-target-dir-ergonomics"
-approved: false
+approved: true
 started: "20260830-111123"
 parent: "main"
 root: ""

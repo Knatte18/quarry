@@ -230,10 +230,19 @@ decision, it edits two existing files and creates no new Python anywhere.
   `TestCallTool_TargetDirIsRejectedAsWholeCallError`; test-local identifiers, which today are
   `launchTargetDir` and `gotTargetDir` in `transport_errors_test.go`, the `targetDir` local in
   `TestExceptSet_ResolvesAgainstTargetDirNotProcessCwd` in `nativeentry_test.go`, and the `targetDir`
-  table field in `translate_test.go`; and prose in test doc comments naming the server's target
-  directory. That prose survivor carries the same qualification check one applies to production
-  prose, and is not a blanket allowance: a test doc comment describing a per-call override, or
-  naming `targetDir` as something a call sets, fails check one-b exactly as it would fail check one.
+  table field in `translate_test.go`; `t.Errorf` and `t.Fatalf` format strings and failure messages
+  that name the `TargetDir` field or the `targetDir` parameter they are reporting on, which today
+  include the messages in `internal/mcpserver/callcontext_test.go`,
+  `internal/mcpserver/nativeentry_test.go`, `internal/mcpserver/tools_assert_test.go`, and
+  `internal/mcpserver/transport_errors_test.go`; test doc comments naming the `TargetDir` field a
+  helper populates, which today include the `newTestConfig` comment in
+  `internal/mcpserver/tools_lsp_test.go` and the `newTransportTestConfig` comment in
+  `internal/mcpserver/transport_test.go`; and prose in test doc comments naming the server's target
+  directory. Those last three categories carry the same qualification check one applies to production
+  prose, and are not a blanket allowance: a test doc comment or assertion message describing a
+  per-call override, or naming `targetDir` as something a call sets, fails check one-b exactly as it
+  would fail check one. What distinguishes a survivor here is that it reports on or names a live Go
+  field, parameter, or local — never a tool input property.
   What check one-b must never return is a `targetDir`
   key set inside a JSON arguments literal or an input-struct literal — with exactly one sanctioned
   exception, the deliberately-rejected `{"targets":[{"symbol":"S"}],"targetDir":"/somewhere/else"}`
