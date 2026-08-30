@@ -14,9 +14,10 @@ depends-on: [1]
 This batch aligns everything outside the Go package with the behaviour batch 1 established: the
 setup documentation gains the scoping contract and the honest statement of what the removal costs,
 and the bench ladder stops spending prompt tokens telling the model not to set a property the schema
-no longer permits. It closes with the completeness gate the discussion mandates — two greps plus a
-mandatory re-read of all six input structs' doc comments, since three of them state the removed
-override's existence purely by count and no token grep can find them.
+no longer permits. It closes with the completeness gate the discussion mandates — three greps plus a
+mandatory re-read of all six input structs' doc comments and `exceptSet`'s, since three of the
+structs state the removed override's existence purely by count and `exceptSet` paraphrases the
+deleted helper without naming it, so no token grep can find any of the four.
 
 It is a separate batch from the Go work because it shares almost no `Context:` with it and cannot be
 written correctly until batch 1's behaviour is real: the documentation describes what the tools now
@@ -54,7 +55,13 @@ decision, it edits two existing files and creates no new Python anywhere.
   rooted at its own worktree, with its own daemon state directory and its own gopls. State is keyed
   by a hash of the cleaned absolute target path, so two worktrees of the same repository never share
   a daemon, lock, socket, or language-server process. No configuration and no repointing is
-  involved.
+  involved. That keying claim must be qualified rather than stated as an absolute: `cli.ResolveStateDir`
+  reaches `workspaceKey` only in its default user-cache tier, and an explicit `--state-dir` or a set
+  `$QUARRY_STATE_DIR` becomes the leaf verbatim with the target path never entering the key. Write
+  the automatic-isolation guarantee as holding for the default tier, and name `--state-dir` and
+  `$QUARRY_STATE_DIR` as the exception where two servers pinned to one explicit state directory do
+  share it — the `## Launch-only flags` section this card leaves in place still documents
+  `--state-dir`, so an unqualified absolute here would contradict the same file two sections down.
   Third: the escape hatch for a genuinely cross-repository or cross-worktree query is a second named
   server entry in the client's own MCP configuration, with an explicit `--target-dir` pointing at the
   other root. Show it as a short JSON snippet in the same shape as the committed `.mcp.json`, with a
@@ -72,6 +79,12 @@ decision, it edits two existing files and creates no new Python anywhere.
   the `--config`, `--state-dir`, and `--timeout` bullets, the cold-start section, the
   missing-toolchain section, and the warm-start section unchanged. Follow the file's existing
   one-clause-per-line prose style.
+  Also extend the document's opening summary — the sentence beginning `This document covers` and the
+  clause list under it — with a clause naming the new scoping-contract section, so the enumeration
+  still describes what the file covers. Extending it is the deliberate choice here rather than
+  leaving it alone: the new section is a top-level one about the server's core contract, unlike
+  `## Launch-only flags`, which the summary already omits as reference material. Do not renumber or
+  reword the summary's existing clauses.
 - **Commit:** `docs: document quarry-mcp's launch-scoped target directory and its escape hatches`
 
 ### Card 7: Drop the targetDir half of the bench ladder's prompt instruction
@@ -126,32 +139,71 @@ decision, it edits two existing files and creates no new Python anywhere.
   - `internal/mcpserver/tools_impact.go`
   - `internal/mcpserver/tools_assert.go`
   - `internal/mcpserver/tools_toc.go`
+  - `internal/mcpserver/callcontext_test.go`
+  - `internal/mcpserver/layering_test.go`
+  - `internal/mcpserver/lspentry_test.go`
+  - `internal/mcpserver/nativeentry_test.go`
+  - `internal/mcpserver/result_test.go`
+  - `internal/mcpserver/schema_test.go`
+  - `internal/mcpserver/stdio_lsp_test.go`
+  - `internal/mcpserver/tocentry_test.go`
+  - `internal/mcpserver/tools_assert_test.go`
+  - `internal/mcpserver/tools_impact_test.go`
+  - `internal/mcpserver/tools_lsp_test.go`
+  - `internal/mcpserver/tools_toc_test.go`
+  - `internal/mcpserver/transport_errors_test.go`
+  - `internal/mcpserver/transport_test.go`
+  - `internal/mcpserver/translate_test.go`
   - `docs/mcp-setup.md`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Run the three checks this batch's `## Batch Tests` section specifies, in order,
-  and confirm each passes. This card exists because two of the three cannot be expressed as an
-  automated assertion and would otherwise be skipped.
+- **Requirements:** This card is purely diagnostic and produces no diff. Run the four checks this
+  batch's `## Batch Tests` section specifies, in order, and confirm each passes. The card exists
+  because two of the four cannot be expressed as an automated assertion and would otherwise be
+  skipped.
   Check one is a case-insensitive grep for the `targetdir` token across the `internal/mcpserver`
-  package and `docs/mcp-setup.md`. It must return only intentional survivors: Go identifiers —
+  package's **production** files only — every `.go` file except `_test.go` files — and across
+  `docs/mcp-setup.md`. It must return only intentional survivors: Go identifiers —
   `Config.TargetDir`, `callContext.TargetDir`, `quarry.Options.TargetDir`, `ResolveLaunchTargetDir`,
   the `targetDir` parameters of `nativeEntry.query`, `lspEntry.query`, `resolveEntryFile`, and
   `exceptSet`, and the local `targetDir` variables in `tocFileHandler` and `tocDirHandler` — plus
   prose naming the server's target directory. It must never return a schema property name, a
   `jsonschema` tag mentioning `targetDir` as a settable parameter, or per-call override phrasing.
-  Check two is a grep for `effectiveTargetDir` across the same package, which must return zero hits.
-  That identifier has no intentional survivors and is deliberately excluded from check one's
-  identifier whitelist, which otherwise reads as if any identifier spelling passes.
+  Check one-b is the same case-insensitive grep restricted to this package's `_test.go` files, run
+  as a separate pass with its own whitelist because the production whitelist above does not sanction
+  what legitimately appears in tests. Its intentional survivors are: `Config{TargetDir: ...}` struct
+  construction and `cfg.TargetDir` field reads used to root a fixture; `opts.TargetDir` reads inside
+  a facade stub; `ResolveLaunchTargetDir` calls; test-function names carrying the token, which today
+  are `TestExceptSet_ResolvesAgainstTargetDirNotProcessCwd`,
+  `TestCallTool_TargetDirIsAbsoluteEvenFromRelativeProcessCwd`,
+  `TestAssertHandler_RelativeExceptResolvesAgainstTargetDir`, and
+  `TestCallTool_AssertNoCallers_RelativeExceptResolvesAgainstTargetDir`, plus the two batch 1 adds,
+  `TestResolveCall_TargetDirIsAlwaysConfigTargetDir` and
+  `TestCallTool_TargetDirIsRejectedAsWholeCallError`; test-local identifiers, which today are
+  `launchTargetDir` and `gotTargetDir` in `transport_errors_test.go` and the `targetDir` table field
+  in `translate_test.go`; and prose in test doc comments. What it must never return is a `targetDir`
+  key set inside a JSON arguments literal or an input-struct literal — with exactly one sanctioned
+  exception, the deliberately-rejected `{"targets":[{"symbol":"S"}],"targetDir":"/somewhere/else"}`
+  literal batch 1's card 1 adds, whose whole purpose is to be refused.
+  Check two is a grep for `effectiveTargetDir` across the whole package including tests, which must
+  return zero hits. That identifier has no intentional survivors and is deliberately excluded from
+  both whitelists above, which otherwise read as if any identifier spelling passes.
   Check three is the second enumeration criterion, and it is mandatory rather than optional: re-read
   the doc comment on all six input structs — `lspInput`, `symbolInput`, `impactInput`, `assertInput`,
-  `tocFileInput`, and `tocDirInput` — and confirm each still describes its struct accurately. Neither
-  grep can substitute for it. Three of those comments stated the removed override's existence purely
-  by count and contain neither spelling of the token, and `exceptSet`'s comment paraphrased the
-  deleted helper without naming it, so a grep-only completeness check passes over all four.
-  If any check fails, fix the offending comment or string in the file it lives in and re-run all
-  three. Do not narrow a check to make it pass.
+  `tocFileInput`, and `tocDirInput` — and on `exceptSet`, and confirm each still describes its
+  subject accurately. `exceptSet` belongs on this list for the same reason the six structs do: its
+  comment paraphrased the deleted helper as `the effective absolute target directory` without naming
+  it, so no grep for either spelling of the token would have surfaced it. Three of the six struct
+  comments stated the removed override's existence purely by count and contain neither spelling
+  either. No grep can substitute for this check.
+  Do not narrow, scope down, or skip a check to make it pass. If any check fails, do not patch the
+  offending file from inside this card — this card declares no `Edits:` and makes no commit, and a
+  silent fix here would land uncommitted, unreviewed, and outside any card's declared file set.
+  Report the failure instead, naming the file, the line, and the offending text, so the batch fails
+  visibly and the card that owns that file is corrected. All four checks are expected to pass on
+  arrival, because cards 3, 4, 5, and 6 already did the work they verify.
 - **Commit:** none
 
 ## Batch Tests
@@ -171,14 +223,23 @@ Two assertions in that suite are load-bearing for this batch and must both still
 `test_gates.py`'s assertion that `"targetDir"` appears in the gate's finding messages, which is
 unaffected because the gate keeps both arms.
 
-The three completeness checks card 8 runs are:
+The four completeness checks card 8 runs are:
 
-1. `grep -rni 'targetdir' internal/mcpserver/ docs/mcp-setup.md` — case-insensitive, so it matches
-   `TargetDir` as well as `targetDir`. Expected: intentional survivors only, per card 8's
-   enumeration.
-2. `grep -rn 'effectiveTargetDir' internal/mcpserver/` — expected: zero hits, no exceptions.
-3. A re-read of all six input structs' doc comments, confirming each still describes its struct
-   accurately. This is not automatable and is why card 8 is a card rather than a line in this
-   section.
+1. `grep -rni --include='*.go' --exclude='*_test.go' 'targetdir' internal/mcpserver/` followed by
+   `grep -ni 'targetdir' docs/mcp-setup.md` — case-insensitive, so both match `TargetDir` as well as
+   `targetDir`. Expected: production-side intentional survivors only, per card 8's first
+   enumeration. Test files are deliberately excluded here and handled by check 1b, because the
+   production whitelist does not sanction what legitimately appears in tests.
+2. `grep -rni --include='*_test.go' 'targetdir' internal/mcpserver/` — expected: test-side
+   intentional survivors only, per card 8's second enumeration, and no `targetDir` key set in a JSON
+   arguments literal or an input-struct literal except the one deliberately-rejected literal batch
+   1's card 1 adds.
+3. `grep -rn 'effectiveTargetDir' internal/mcpserver/` — expected: zero hits, no exceptions, tests
+   included.
+4. A re-read of all six input structs' doc comments and `exceptSet`'s, confirming each still
+   describes its subject accurately. This is not automatable and is why card 8 is a card rather than
+   a line in this section.
 
-Neither grep is sufficient alone; check 3 runs alongside them, never instead of them.
+No grep is sufficient alone; check 4 runs alongside them, never instead of them. Card 8 is
+diagnostic only — it declares no `Edits:` and carries `Commit: none`, so a failing check is reported
+as a batch failure rather than patched in place.

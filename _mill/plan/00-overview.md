@@ -122,8 +122,11 @@ Batch-local decisions live in each batch file._
 
 ### Decision: greps-are-necessary-but-not-sufficient
 
-- **Decision:** Completeness is checked by two greps *plus* a mandatory re-read of all six input
-  structs' doc comments. Neither grep alone is treated as proof the change is complete.
+- **Decision:** Completeness is checked by three greps — a production-file token pass, a separate
+  `_test.go` token pass with its own whitelist, and a zero-hit pass for the deleted helper — *plus* a
+  mandatory re-read of all six input structs' doc comments and `exceptSet`'s. No grep alone is
+  treated as proof the change is complete, and the production and test passes are kept separate
+  because what counts as an intentional survivor differs between them.
 - **Rationale:** Three input-struct doc comments state the override's existence purely by count
   ("the three call-wide resolution overrides"), containing neither `targetDir` nor `TargetDir`, so
   no token grep surfaces them. `exceptSet`'s doc comment paraphrases the deleted helper without
