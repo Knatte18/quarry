@@ -53,7 +53,9 @@ batches:
     commit_sha: 3a1bad9389c44d68b9d5498639c747a368acfcdd
     verify_baseline_failures: []
   - name: scoring
-    state: pending
+    state: running
+    implementer_session: d12a1ebe-0141-4a3e-a7d6-f5e8341c9c2d
+    start_sha: 8cfec0428fcec2351cd55300c85836a663be6e56
     verify_baseline_failures: []
   - name: transcript-gates
     state: pending
