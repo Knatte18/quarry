@@ -73,7 +73,7 @@ any other reason, and do not write it more than once per session.
 starts with no resident daemon, and warming it up is precisely what would start one.
 
 The cold config's failure path is a **full session relaunch**, never an in-session retry. A cold
-session's `quarry-mcp`-equivalent server process lives for the whole session, so its daemon survives
+session's target MCP server process lives for the whole session, so its daemon survives
 across attempts within one session — re-clearing the state directory mid-session to retry would delete
 the state file the cold-before precondition reads the daemon's pid from, making a still-live daemon
 invisible to it. A second attempt would then be *reported* cold while actually running against the
