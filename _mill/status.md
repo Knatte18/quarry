@@ -6,6 +6,7 @@ slug: mcp-target-dir-ergonomics
 branch: mcp-target-dir-ergonomics
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Rethink quarry-mcp's per-call targetDir ergonomics
 task_description: |
   Rethink quarry-mcp's per-call targetDir ergonomics
@@ -42,7 +43,11 @@ implementing  '2026-08-30T11:53:19Z'
 ```yaml
 batches:
   - name: mcpserver-targetdir-removal
-    state: pending
+    state: running
+    implementer_session: da3fbefc-0dab-41fa-abf0-545ef7a9997a
+    start_sha: 4d9600aa282b86e78fe0b2b9fa9fc5323341664f
+    verify_baseline_failures: []
   - name: docs-and-bench-alignment
     state: pending
+    verify_baseline_failures: []
 ```
