@@ -48,9 +48,15 @@ correctness fix. This is purely an API-surface decision.
   (`tools_toc.go:167`, `tools_toc.go:189`) which call `effectiveTargetDir` directly.
 - Reword every jsonschema description string that names `targetDir` as if it were a parameter:
   `nativeentry.go:32`, `nativeentry.go:44`, `nativeentry.go:49`, `lspentry.go:21`,
-  `lspentry.go:55`. Go doc comments naming `targetDir` as a concept (e.g. `callcontext.go`'s
-  header, `nativeentry.go:76`'s `query(targetDir string)`) stay — the *concept* survives, only the
-  *parameter* goes.
+  `lspentry.go:55`.
+- Reword the Go doc comments that use **per-call** phrasing for the same concept —
+  `nativeentry.go:29`, `nativeentry.go:43`, `nativeentry.go:45`, `lspentry.go:19`, and
+  `lspentry.go:54` all say "relative to **the call's** targetDir", which goes stale for exactly the
+  same reason the three sites in "Gotcha — stale doc comments" below do: there is no longer any such
+  thing as *the call's* target directory. Reword these to "the server's target directory".
+  Go doc comments naming `targetDir` as a plain Go *identifier* (e.g. `nativeentry.go:76`'s
+  `query(targetDir string)` parameter, `translate.go:29`'s `resolveEntryFile(targetDir, raw string)`)
+  stay unchanged — they name a live function parameter, not a removed tool property.
 - Add a regression test asserting no registered tool's published input schema carries a
   `targetDir` property.
 - Update `docs/mcp-setup.md`: document that the server is scoped once at launch, that the cwd
@@ -59,13 +65,31 @@ correctness fix. This is purely an API-surface decision.
   partial absolute-path escape the five language-server-backed tools do not (the asymmetry spelled
   out in `cross-repo-escape-hatch-is-a-second-server`'s Note — it must not be dropped by a plan
   writer reading Scope alone).
-- Update `bench/loomyard-eval/ladder/scripts/ladder_config.py:383`'s prompt line to drop the
-  `targetDir` half of "Never set targetDir or buildTags".
-- Update `bench/loomyard-eval/ladder/tests/test_ladder_config.py:311`, which asserts the literal
+- Update `bench/loomyard-eval/ladder/scripts/ladder_config.py:383-384`'s prompt line. It currently
+  reads, across two source lines:
+
+  ```
+  Never set targetDir or buildTags on any of these calls -- the server is
+  already rooted at the correct target codebase.
+  ```
+
+  Replace it with:
+
+  ```
+  Never set buildTags on any of these calls -- the default build-tag set is
+  the one this run is scoped to.
+  ```
+
+  The rationale clause has to change too, not just the key list: "the server is already rooted at
+  the correct target codebase" justifies *only* the `targetDir` half, and leaving it attached to a
+  `buildTags`-only instruction would be a non-sequitur. Keep the two-line wrap so the surrounding
+  prompt block's shape is unchanged.
+- Update `bench/loomyard-eval/ladder/tests/test_ladder_config.py:311`, which asserts
   `"Never set targetDir or buildTags" in prompt` and therefore fails the moment the prompt line
-  changes. Disposition: narrow the asserted literal to match the reworded prompt, keeping it a
-  literal assertion — the point of the test is that the instruction survives prompt refactors, and
-  that value is preserved as long as the literal tracks the prompt.
+  changes. Narrow the asserted literal to exactly `"Never set buildTags on any of these calls"` —
+  still a literal assertion, and still short enough to sit on one source line despite the prompt's
+  two-line wrap. Keeping it literal is the point: the test exists so the instruction survives
+  prompt refactors, and that value holds as long as the literal tracks the prompt.
 - Update / delete the existing tests that exercise per-call `targetDir` overrides.
 
 **Out:**
@@ -128,12 +152,19 @@ correctness fix. This is purely an API-surface decision.
   call-wide schema validation. No compatibility shim, no silent ignore, no custom migration error.
 - **Rationale:** `inputSchemaFor` (`internal/mcpserver/schema.go`) deliberately clears
   `additionalProperties` **only** on the `targets` item schema and leaves the call-wide
-  `additionalProperties: false` that inference produced — a decision already recorded in the
-  function's doc comment ("the call-wide properties keep whatever inference produced, so a
-  call-level violation stays a whole-call failure") and asserted by `schema_test.go:106-111`.
-  Removing the Go field therefore inherits the existing, already-tested behaviour for stray
-  call-wide keys with no new code. The resulting error is loud and self-correcting: a model that
-  sends the property gets told it is not accepted and retries without it.
+  `additionalProperties: false` that inference produced — a decision recorded in the function's own
+  doc comment ("the call-wide properties keep whatever inference produced, so a call-level violation
+  stays a whole-call failure"). Removing the Go field therefore needs no new production code. The
+  resulting error is loud and self-correcting: a model that sends the property gets told it is not
+  accepted and retries without it.
+- **Strength of the existing evidence (be precise here).** The nearest existing test is
+  `TestInputSchemaFor_CallWidePropertySurvives` (`internal/mcpserver/schema_test.go:93`), and it is
+  weaker than "this behaviour is already tested": it runs `inputSchemaFor` over the local
+  `fixtureCall` fixture and asserts only that `s.AdditionalProperties != nil`
+  (`schema_test.go:106-111`). No existing test shows an unknown call-wide key actually failing a
+  real tool call at the transport. The behavioural claim this decision rests on is therefore proven
+  by the **new** transport case named under Testing, not inherited from an existing assertion. A
+  plan writer must not treat it as already covered.
 - **Rejected:** *Accept and silently ignore* — the model would believe it had retargeted the call
   and receive results from the wrong root, the single worst failure mode available here. *Keep the
   field, hide it from the schema via a call-wide analogue of `dropEntryProperty`, return a custom
@@ -348,14 +379,22 @@ reading before editing — do not blanket-delete on a grep hit.
 
 ## Testing
 
-**`internal/mcpserver/schema_test.go` — new regression test (TDD candidate).** Write it first, watch
-it fail, then remove the fields. Assert that the derived input schema for every registered tool
-carries no `targetDir` property at the call-wide level. Prefer driving this off the real
-registration path rather than the five input structs individually, so a future tool that
-reintroduces the property is caught too. Keep the existing
-`TestInputSchemaFor_CallWideAdditionalPropertiesUntouched`-style assertion
-(`schema_test.go:106-111`) intact — it is what makes a stray `targetDir` a whole-call failure, and
-this task depends on it.
+**Schema regression test — extend the existing matrix, do not add a fixture test (TDD candidate).**
+Write it first, watch it fail, then remove the fields. The assertion belongs in
+`TestToolsList_PerToolParameterMatrix` (`internal/mcpserver/transport_test.go:167`), which already
+does exactly this job: it stands up a real client/server pair via `newConnectedPair`, calls
+`ListTools`, and asserts call-wide and entry-level property presence/absence across the registered
+tools using its `schemaProperties`/`entryProperties` helpers — including a call-wide-absence loop
+for `buildTags` on the two toc tools that the new `targetDir` assertion can be modelled on
+directly. Extend it to assert `targetDir` is absent from the call-wide properties of **all seven**
+tools.
+
+Do **not** put this in `schema_test.go`: that file exercises `inputSchemaFor[T]` over local
+fixtures (`fixtureCall`), never the registration path, so an assertion there could not see a tool
+that reintroduced the property. Leave `TestInputSchemaFor_CallWidePropertySurvives`
+(`schema_test.go:93-111`) untouched — it pins the call-wide `additionalProperties` behaviour this
+task's hard-removal decision depends on, but it is a fixture-level test and is not the regression
+guard being added here.
 
 **`internal/mcpserver/callcontext_test.go`.** Delete the cases that exercise an override (including
 the relative-path-absolutisation case, which loses its subject with `effectiveTargetDir`). Retain
@@ -391,9 +430,17 @@ this task's own test surface beyond that single assertion.
 **No test is needed for** the launch flag, `ResolveLaunchTargetDir`, `workspaceKey`, or daemon
 isolation — none of them change, and all are covered today.
 
-**Verification.** `go build ./...` and `go test ./...` (cgo build required). A final
-`grep -rn 'targetDir' internal/mcpserver/ docs/mcp-setup.md` should return only intentional
-survivors — Go-level identifiers and prose about the concept, never a schema property name.
+**Verification.** `go build ./...` and `go test ./...` (cgo build required). Then the ladder suite,
+using the invocation its own README documents (`bench/loomyard-eval/ladder/README.md:361`) — run
+from the repo root, no `PYTHONPATH` prefix, since `conftest.py` handles `sys.path`:
+
+```
+uv run --no-project --with pytest --with pyyaml python -m pytest bench/loomyard-eval/ladder/tests -q
+```
+
+Finally, `grep -rn 'targetDir' internal/mcpserver/ docs/mcp-setup.md` should return only intentional
+survivors — Go function parameters and prose about the server's target directory, never a schema
+property name and never per-call phrasing.
 
 ## Q&A log
 
@@ -405,4 +452,4 @@ survivors — Go-level identifiers and prose about the concept, never a schema p
 - **Q:** What is the escape hatch for a genuinely cross-repo query? **A:** [auto-pick] A second named server entry with an explicit `--target-dir`, documented only. **Why:** MCP clients already support multiple named servers and `workspaceKey` proves the instances are isolated; documenting the real cost beats keeping a schema property to cover it.
 - **Q:** What about the `targetDir` mentions inside entry-field description strings? **A:** [auto-pick] Reword them to name "the server's target directory". **Why:** after removal they point at a parameter that no longer exists, in text the model reads as its only documentation.
 - **Q:** Keep `effectiveTargetDir` as a passthrough, or delete it? **A:** [auto-pick] Delete it; drop `resolveCall`'s override parameter and have the toc handlers read `cfg.TargetDir` directly. **Why:** it degenerates to a one-line return with an unreachable `filepath.Abs` error path, since `cfg.TargetDir` is already absolute and guarded by `NewServer`.
-- **Q:** What happens to the bench ladder's `targetDir` prompt line and fatal gate? **A:** [auto-pick] Drop the `targetDir` half of the prompt line at `ladder_config.py:383`; keep `gates.py`'s check on both keys. **Why:** the prompt line goes stale and distorts a benchmark that measures ergonomic overhead, while the gate is free and becomes a live end-to-end assertion that the property is gone; editing an existing file in the sanctioned Python exception is not extending it.
+- **Q:** What happens to the bench ladder's `targetDir` prompt line and fatal gate? **A:** [auto-pick] Drop the `targetDir` half of the prompt line at `ladder_config.py:383`; keep `gates.py`'s check on both keys. **Why:** the prompt line goes stale and distorts a benchmark that measures ergonomic overhead, while the gate costs nothing and still guards the constraint it was written for — a run must not retarget away from its pinned worktree, which stays fully reachable via `buildTags`. The gate is explicitly *not* a check that the property left the schema: it reads transcript `tool_input` maps only. That guarantee comes from the `internal/mcpserver` regression test instead. Editing an existing file in the sanctioned Python exception is not extending it.
