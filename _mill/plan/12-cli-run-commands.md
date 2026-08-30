@@ -37,10 +37,17 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
 - **Moves:** none
 - **Requirements:** Add `DispatchDescription(configID string, rep, attempt int) string` producing the
   unique per-call description, and
-  `LocateTranscript(projectsRoot, sessionDir, description string, wait time.Duration) (transcriptPath, metaPath string, err error)`
-  globbing the session's subagent metadata files under the project directory derived from the session's
-  working directory — the working-directory path with separators replaced — and selecting the one whose
-  recorded description matches exactly. Zero matches errors and more than one match errors; neither ever
+  `LocateTranscript(projectsRoot, sessionDir, description string, wait time.Duration) (transcriptPath, metaPath string, err error)`.
+  The search space is fixed here and no card may widen it: the projects root defaults to
+  `~/.claude/projects`, the project directory is the session's working-directory path with every path
+  separator replaced by a hyphen, and the glob is
+  `<projects-root>/<mangled-cwd>/*/subagents/*.meta.json` — one wildcard segment for the session id,
+  then the fixed subagents directory. The transcript is the `agent-<id>.jsonl` sibling of the matched
+  `agent-<id>.meta.json`. Select the metadata file whose recorded description matches exactly. The
+  session-id wildcard deliberately spans every session ever launched from that scratch directory:
+  because each run session has its own scratch directory and the description embeds the config, the
+  repetition, and the attempt index, a second match means two dispatches genuinely shared one
+  description, which is exactly the collision the multiple-match error exists to catch. Zero matches errors and more than one match errors; neither ever
   falls back. Exactly one match whose sibling transcript is absent is its own case: re-check on a short
   bounded wait for a not-yet-flushed transcript, then hard-error naming the matched metadata path and
   the description. Add `CopyTranscriptCustody(transcriptPath, metaPath, runDir string) error` copying
@@ -73,7 +80,8 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   copy the session's launch inputs — its settings document, its run agent definition, and its server
   declaration when the config has one — into the run directory, at parity with what the Python wrote
   per run; extract usage, passing the granted-tool list read from the copied agent definition; parse the
-  answer as the last fenced block of the final assistant record; take the worktree dirtiness observation;
+  answer from the last fenced block of the final assistant record, taking `ExtractFencedJSON`'s `inner`
+  half; take the worktree dirtiness observation;
   run the gates; write the ingest marker on success; and print the outcome as ingested, truncated, or
   failed. `ingest` enforces the full pin set before running the gates, which is what makes the turn
   ceiling readable — the ceiling value ships blank and the gate would otherwise compare against nothing.
@@ -138,7 +146,11 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
 - **Moves:** none
 - **Requirements:** Add the `record-score` subcommand consuming a scorer reply, validating it, stamping
   the pinned scorer model and effort into the score record, writing it, running the complete-artifacts
-  gate, and writing `run.json` last. Its help text must state that `run.json` is written last and
+  gate, and writing `run.json` last. It assembles the run marker's payload by reading the run
+  directory's ingest record and copying that record's non-fatal observations across verbatim. This is
+  the only path by which an observation taken in the run session reaches the marker the summariser and
+  the cold-cell disposition both read, and the doc comment must say so — without it every observation
+  would be stranded in the run session. Its help text must state that `run.json` is written last and
   remains the sole definition of a complete run. `record-score` enforces the full pin set. Test that an
   invalid reply is rejected before anything is written, that the artifacts gate failing prevents the run
   marker, and that a successful run leaves the directory complete.
@@ -185,7 +197,12 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   helper and the disposition half of `run_cold_cell` as
   `ColdCellDisposition(l *Ladder, resultsRoot string) (ColdCellRecord, error)`, producing the same four
   outcomes the Python produces — confirmed-cold, partial, not-run, and no-daemon-signal — with the same
-  not-run cause distinction between a live daemon before start and an exhausted native fallback. Do not
+  not-run cause distinction between a live daemon before start and an exhausted native fallback. The
+  Python tracked the live-daemon cause in the driver's own memory, which no longer exists: under the
+  session split that cause arises in a session-preparation abort in a different process. It is
+  therefore read from the on-disk cold-abort siblings the cold preparation path writes, and the
+  exhausted-fallback cause from the completed runs' observations. Both causes occurring for one cell
+  must still produce a reason text naming both. Do not
   port the dispatch loop: dispatch happens in a session. Test all four outcomes and the case where both
   not-run causes occur, where the reason text must name both.
 - **Commit:** `feat(ladder): port the cold-cell disposition logic`

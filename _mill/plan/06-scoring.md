@@ -111,7 +111,8 @@ matches removes nothing and asserts nothing, and a redactor's job is to over-rem
 - **Moves:** none
 - **Requirements:** Port `_extract_fenced_json` and the reply-validation half of `score_run` as
   `ParseScorerReply(reply string) (ScoreRecord, error)`, reusing `ExtractFencedJSON` rather than
-  compiling a second fence pattern, and keeping the Python's validation of the score record's required
+  compiling a second fence pattern, and taking its `inner` half — the decode-ready content — never the
+  fenced `block`, and keeping the Python's validation of the score record's required
   fields. Define `ScoreRecord` as the `score.json` shape, carrying the scorer's metrics plus the pinned
   scorer model and effort that `record-score` stamps in. Do not port `run_scorer_client` or
   `score_run`'s dispatch half — dispatch happens in a live session, never in a subprocess, and the doc

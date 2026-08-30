@@ -64,7 +64,11 @@ the run session.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `run_dir` as `RunDirPath(resultsRoot, configID string, n int) string`,
-  `is_complete` as `IsComplete(runDir string) bool`, and `write_run_json` as `WriteRunJSON`.
+  `is_complete` as `IsComplete(runDir string) bool`, and `write_run_json` as `WriteRunJSON`, whose
+  payload keeps the Python's contents: the config id, the repetition, the resolved run model, and the
+  gate report's non-fatal observations. Under the session split those observations are produced in the
+  run session while this marker is written in the scoring session, so the payload is assembled by the
+  caller from the ingest record rather than from a live gate report.
   `IsComplete` keys on `run.json` alone and on its recorded state being complete — that definition is
   untouched by the session split, and the doc comment must say so explicitly so a later reader does not
   retarget it at the new marker. Test `IsComplete` false with no run marker, false when the recorded
@@ -118,8 +122,12 @@ the run session.
   `run.json` absent", in config-then-repetition order. Add
   `CheckSingleFlight(resultsRoot, configID string, n int) error`, the predicate that fails when
   repetition `n` is being ingested while repetition `n-1` of the same config has none of an ingest
-  marker, a `run.json`, or an exhausted attempt record. Its doc comment must state that the predicate
-  holds across sessions rather than merely within one, because the marker it reads is on disk. Test run
+  marker, a `run.json`, or an exhausted attempt record. An exhausted attempt record is defined
+  concretely as `MaxAttempts` `<n>.invalid-<k>` sibling directories being present for that repetition —
+  the same on-disk siblings `NextAttempt` counts, and the only artifact recording exhaustion, since
+  invalidation past the ceiling errors rather than writing a marker of its own. Its doc comment must
+  state that the predicate holds across sessions rather than merely within one, because everything it
+  reads is on disk. Test run
   session resume treating an ingested repetition as done, scoring resume treating ingested-but-unscored
   as pending and both-present as done, and the single-flight predicate erroring for an out-of-order
   repetition and passing once any of the three conditions is met.
@@ -132,6 +140,7 @@ the run session.
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
   - `bench/loomyard-eval/ladder/internal/ladder/daemon.go`
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/settings.go`
   - `bench/loomyard-eval/ladder/internal/ladder/ladder.go`
   - `bench/loomyard-eval/ladder/tests/test_gates.py`
 - **Edits:**
@@ -140,7 +149,9 @@ the run session.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Port `run_gates` as `RunGates` with the same aggregation order the Python uses,
+- **Requirements:** Port `run_gates` as `RunGates` with the same aggregation order the Python uses, deriving the denied
+  names through `DenyListFor` rather than accepting a precomputed list, so the suite keeps one
+  derivation site for them,
   extended to include `GateMaxTurns` and to take the dirtied observation as an input rather than
   computing it, so the caller can take that observation before restoring the worktree. Port
   `gate_run_complete_artifacts` as `GateRunCompleteArtifacts(runDir string) []GateFinding` — a

@@ -102,7 +102,12 @@ unverified. The documentation batch is where that gets stated in the README rath
   daemons the warm sessions left resident on both task worktrees using the bounded exit wait at its
   committed timeout, builds the fresh per-repetition worktree from the cold worktree template with the
   repetition substituted, clears the resolved state directory, asserts the cold-before gate, and points
-  that session's server declaration at the new worktree. The doc comment must record that a failed cold
+  that session's server declaration at the new worktree. When the cold-before gate fails, preparation
+  aborts and records the cause by writing a `<n>.cold-abort-<k>.json` sibling beside that repetition's
+  run directory, where `k` is the current attempt index — the same sibling convention the invalidated
+  directories use, chosen so the record survives a later successful attempt without polluting its run
+  directory. This file is the only on-disk source for the cold cell's live-daemon not-run cause, which
+  the Python held in the driver's own memory. The doc comment must record that a failed cold
   attempt relaunches the whole session rather than retrying in place, because the session's server
   process outlives an attempt and re-clearing the state directory mid-session would delete the state
   file whose pid the cold-before gate reads, leaving a surviving warm daemon invisible. Test that the

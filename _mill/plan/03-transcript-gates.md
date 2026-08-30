@@ -38,8 +38,10 @@ identically-spelled branch in the redactor is a separate mechanism and is kept �
 - **Moves:** none
 - **Requirements:** Port `GateError` as an exported `GateError` type, `GateFinding` as a struct
   carrying the gate name, whether the finding is fatal, and its message, and `GateReport` as a struct
-  holding a finding slice with the same aggregate accessors the Python dataclass exposes (whether any
-  fatal finding is present, and the fatal and non-fatal subsets). Port `_tool_results_by_id` as an
+  holding a finding slice. It carries one ported accessor — whether any finding is fatal, which is the
+  only accessor the Python dataclass exposes — plus two additions this port introduces for the callers
+  that report the two kinds separately: the fatal subset and the non-fatal subset. Their doc comments
+  must mark them as additions rather than as ports. Port `_tool_results_by_id` as an
   unexported `toolResultsByID(records []Record) map[string]ContentBlock`. Test the report accessors
   over mixed fatal and non-fatal findings, and the tool-result indexing.
 - **Commit:** `feat(ladder): add gate finding and report value types`
@@ -83,9 +85,11 @@ identically-spelled branch in the redactor is a separate mechanism and is kept �
   `normaliseModelID`, and `gate_model_pinned` as
   `GateModelPinned(records []Record, runModel string) []GateFinding`, sourcing the reported id from the
   assistant records' `message.model` rather than from a `system`/`init` event — the doc comment must
-  record that provenance change. The gate stays fatal. Test the matching case, the mismatching case,
-  the `[1m]` context-window suffix normalising to a match, and a transcript with no assistant record at
-  all.
+  record that provenance change. The gate stays fatal. A transcript carrying no assistant record at all produces a fatal finding
+  naming the absence — never an error return and never a panic. The Python reached that state through
+  an uncaught exception out of its own event lookup, which is not behaviour to reproduce. Test the
+  matching case, the mismatching case, the `[1m]` context-window suffix normalising to a match, and
+  the no-assistant-record case.
 - **Commit:** `feat(ladder): port the model-pinning gate onto assistant records`
 
 ### Card 16: Blinding gate

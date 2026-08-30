@@ -13,7 +13,7 @@ depends-on: []
 
 Creates the `ladder` Go package under `bench/loomyard-eval/ladder/internal/ladder/` and ports
 `ladder_config.py` in full: the canonical tool constants, the four config value types, `LoadLadder` with
-all nine validation rules, the lookup helpers, the two pin-enforcement variants, deny-list and settings
+every one of its validation rules, the lookup helpers, the two pin-enforcement variants, deny-list and settings
 derivation, preamble generation, and fenced-JSON extraction. It also adds the two new `ladder.yaml`
 fields (`run_effort`, `session_dir_template`) and blanks `max_turns` to `null`.
 
@@ -52,7 +52,7 @@ prefix so Go's own `internal/` visibility rule makes it unimportable from the pr
   rationale in the corresponding Go doc comment.
 - **Commit:** `feat(ladder): add Go ladder package with tool constants and config types`
 
-### Card 2: LoadLadder and its nine validation rules
+### Card 2: LoadLadder and its validation rules
 
 - **Context:**
   - `bench/loomyard-eval/ladder/scripts/ladder_config.py`
@@ -65,14 +65,15 @@ prefix so Go's own `internal/` visibility rule makes it unimportable from the pr
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `load_ladder` as `LoadLadder(path string) (*Ladder, error)` using
-  `gopkg.in/yaml.v3`, preserving every one of its nine rejection rules and the `_fail` message shape
-  (each error names the offending file and the specific rule). The rules: duplicate config id; a
+  `gopkg.in/yaml.v3`, preserving every one of its rejection rules and the `_fail` message shape
+  (each error names the offending file and the specific rule). The enumeration below is authoritative;
+  do not treat it as a count to match: duplicate config id; a
   `ladder` value outside `a`/`b`; an unknown task key; an unknown entry in a config's `allowed`;
   `quarry_tools` drifting from `QuarryTools`; zero controls on a ladder; more than one control on a
   ladder; more than one cold config; `warm_counterpart` set on a non-cold config; a cold config with
   no `warm_counterpart`; and a `warm_counterpart` naming an unknown id or a cold config. Write
   table-driven tests covering every rejection rule plus a positive load of the committed ladder file.
-- **Commit:** `feat(ladder): port LoadLadder with its nine validation rules`
+- **Commit:** `feat(ladder): port LoadLadder with its validation rules`
 
 ### Card 3: Lookups and the two pin-enforcement variants
 
@@ -172,10 +173,15 @@ prefix so Go's own `internal/` visibility rule makes it unimportable from the pr
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `_FENCED_JSON_RE` and `extract_fenced_json` as
-  `ExtractFencedJSON(text, which string) (string, error)` supporting the `first` and `last` selectors
-  with the same semantics, including the error on no block found and on an unknown selector. Go's
+  `ExtractFencedJSON(text, which string) (block, inner string, err error)` supporting the `first` and
+  `last` selectors with the same semantics, including the error on no block found and on an unknown
+  selector. Both halves are returned because both are load-bearing and neither is cheaply re-derivable
+  from the other: `block` includes the fences and is what the schema extractor embeds into the preamble
+  as measured stimulus, while `inner` is the decode-ready content the answer parser and the
+  scorer-reply parser consume. Every call site names which half it takes. Go's
   `regexp` has no `DOTALL` flag — use the `(?s)` inline flag so the fence body may span lines. Test the
-  first selector, the last selector, the multiple-block case, and the no-block case.
+  first selector, the last selector, the multiple-block case, and the no-block case, asserting on both
+  returned halves in each.
 - **Commit:** `feat(ladder): port fenced-JSON extraction`
 
 ## Batch Tests

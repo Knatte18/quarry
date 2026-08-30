@@ -67,7 +67,8 @@ formats the template itself.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `_first_fenced_json_block` on top of `ExtractFencedJSON` rather than a second
-  fence pattern, port the impact-schema heading, the exploration-schemas heading, the exploration
+  fence pattern, taking its `block` half — fences included — because the extracted schema is embedded
+  verbatim into the preamble as measured stimulus and the fences are part of that text, port the impact-schema heading, the exploration-schemas heading, the exploration
   marker, and the benchmark README path as exported or unexported constants matching the Python's
   values, and port `schema_for` as `SchemaFor(l *Ladder, taskKey string) (string, error)`. Selection is
   driven by the task's declared schema field, never by the task key. Test that the impact schema comes
