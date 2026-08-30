@@ -69,6 +69,7 @@ func Command() *cobra.Command {
 	cmd.AddCommand(warmCommand())
 	cmd.AddCommand(restoreWorktreeCommand())
 	cmd.AddCommand(ingestCommand())
+	cmd.AddCommand(invalidateCommand())
 
 	return cmd
 }
