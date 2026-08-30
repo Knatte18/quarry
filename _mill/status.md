@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
-plan: null
+plan: _mill/plan
 parent: main
 task: Port the capability-ladder bench harness to Go
 task_description: |
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-08-30T10:22:04Z'
 discussed  '2026-08-30T11:20:29Z'
+planning  '2026-08-30T11:35:10Z'
 ```
