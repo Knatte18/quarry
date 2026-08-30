@@ -1,0 +1,52 @@
+// plan.go ports the matrix planning half of scripts/run_ladder.py: enumerating the ordered list of
+// (config, repetition) pairs the whole suite plans against, and deriving each pair's scratch session
+// directory from the ladder's session_dir_template.
+
+package ladder
+
+// PlanRuns returns the ordered list of all 45 RunPair values in l's matrix: every non-cold config's
+// Reps repetitions first, then the cold config's. It is the reporting view of the whole matrix; MainRuns
+// and ColdRuns each filter its own partition out of this same ordered list, so neither driver iterates
+// PlanRuns's output directly.
+func PlanRuns(l *Ladder) []RunPair {
+	var pairs []RunPair
+	for _, config := range l.Configs {
+		if config.Cold {
+			continue
+		}
+		for n := 1; n <= l.Reps; n++ {
+			pairs = append(pairs, RunPair{Config: config, N: n})
+		}
+	}
+	for _, config := range l.Configs {
+		if !config.Cold {
+			continue
+		}
+		for n := 1; n <= l.Reps; n++ {
+			pairs = append(pairs, RunPair{Config: config, N: n})
+		}
+	}
+	return pairs
+}
+
+// MainRuns is the main-matrix partition of PlanRuns -- every non-cold pair.
+func MainRuns(l *Ladder) []RunPair {
+	var pairs []RunPair
+	for _, pair := range PlanRuns(l) {
+		if !pair.Config.Cold {
+			pairs = append(pairs, pair)
+		}
+	}
+	return pairs
+}
+
+// ColdRuns is the cold-cell partition of PlanRuns -- every cold pair.
+func ColdRuns(l *Ladder) []RunPair {
+	var pairs []RunPair
+	for _, pair := range PlanRuns(l) {
+		if pair.Config.Cold {
+			pairs = append(pairs, pair)
+		}
+	}
+	return pairs
+}
