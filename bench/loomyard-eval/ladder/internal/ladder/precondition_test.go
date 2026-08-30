@@ -3,6 +3,7 @@ package ladder
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -121,6 +122,27 @@ func TestScanSkillsForLeak_ReportNamesEveryRootWithItsCount(t *testing.T) {
 	}
 	if report.RootsScanned[1].Root != absentB || !report.RootsScanned[1].Skipped {
 		t.Errorf("report.RootsScanned[1] = %+v; want Root %q, skipped", report.RootsScanned[1], absentB)
+	}
+}
+
+// TestTrackedLadderRunSkill_FrontmatterIsBlindingSafe is the mechanical half of the skill_listing
+// mitigation; the launch-time scan (ScanSkillsForLeak, tested above) is the other half. It reads the
+// tracked orchestration skill file itself, at its real repo-relative path, rather than a copy, so this
+// assertion is enforced against the artefact that actually ships and installs to every session's
+// user-scope skills root -- a copy could pass this check while the shipped file drifted.
+func TestTrackedLadderRunSkill_FrontmatterIsBlindingSafe(t *testing.T) {
+	path := filepath.Join(testRepoRoot, ".claude", "skills", "ladder-run", "SKILL.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read tracked ladder-run skill at %s: %v", path, err)
+	}
+
+	frontmatter, ok := extractFrontmatter(string(data))
+	if !ok {
+		t.Fatalf("%s has no --- delimited frontmatter", path)
+	}
+	if strings.Contains(strings.ToLower(frontmatter), "quarry") {
+		t.Errorf("%s frontmatter mentions \"quarry\" case-insensitively; want it blinding-safe:\n%s", path, frontmatter)
 	}
 }
 
