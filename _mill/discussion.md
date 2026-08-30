@@ -216,6 +216,13 @@ correctness fix. This is purely an API-surface decision.
   file is created and no new Python is introduced anywhere else.
 - **Rejected:** *Leave bench untouched* — leaves a stale instruction in the measured prompt.
   *Also remove the gate's `targetDir` arm* — throws away a free regression assertion.
+- **Ordering against #009 (`port-ladder-bench-to-go`, active in a sibling worktree):** that task
+  ports `bench/loomyard-eval/ladder/` to Go, which will eventually remove
+  `ladder/scripts/ladder_config.py` — the file this task edits one line of. This task is far
+  smaller and is expected to merge well before #009's port reaches parity. If #009 lands first, or
+  if the two collide in `mill-merge-in`, the conflict resolves **delete-wins**: drop this task's
+  one-line prompt edit and carry the same "never set `targetDir`" removal into the Go port's own
+  prompt construction instead. Nothing else in this task's scope touches `bench/`.
 
 ## Technical context
 
@@ -255,12 +262,24 @@ task should not add one.
 `NewServer` rejects a non-absolute `Config.TargetDir`. Nothing on this path changes.
 
 **Daemon isolation (the investigation that de-risked this task).**
-`cli.ResolveStateDir(cfg.StateDir, absTargetDir, tags)` derives per-workspace state via
-`workspaceKey` (`internal/cli/paths.go:76-97`), a SHA-256 over the absolute target path and the
-normalized build tags. `ensureSupervised` (`daemon/ensureserver.go:328-335`) derives separate state
-file, lock, and socket paths from it. Two worktrees of the same repo therefore never share a
-daemon, lock, or gopls process. This is why a long-lived server was already safe with per-call
-overrides — and equally why one server per session is safe now.
+`cli.ResolveStateDir(cfg.StateDir, absTargetDir, tags)` (`internal/cli/paths.go:118-140`) derives
+per-workspace state via `workspaceKey` (`internal/cli/paths.go:76-86`), which is the target
+directory's base name plus the first 12 hex characters of a SHA-256 over the **cleaned absolute
+target path only**. Build tags do not enter that digest: `buildTagsSegment`
+(`internal/cli/paths.go:88-99`) is a second, independent `tags-<hex>` path segment that
+`ResolveStateDir` appends to the resolved leaf, and only when the tag set is non-empty — two
+composed path segments, not one combined hash. `ensureSupervised`
+(`daemon/ensureserver.go:328-335`) derives separate state file, lock, and socket paths from the
+result. Two worktrees of the same repo therefore never share a daemon, lock, or gopls process.
+This is why a long-lived server was already safe with per-call overrides — and equally why one
+server per session is safe now.
+
+One wrinkle this refactor quietly *improves*: `ResolveStateDir`'s `--state-dir` and
+`$QUARRY_STATE_DIR` tiers bypass `workspaceKey` entirely (documented in its own doc comment), so an
+operator who pins `quarry-mcp --state-dir` today gets one state directory shared across every
+per-call `targetDir` that server is handed. With the override removed, one server serves exactly
+one target directory, so a pinned `--state-dir` can no longer collapse two workspaces onto one
+socket. No action required — noted so nobody re-derives it as a bug later.
 
 **Downstream consumers of `callCtx.TargetDir`.** After the change these all still receive the same
 value, just always the launch value: `entry.query(callCtx.TargetDir)` in `tools_lsp.go:121`,
