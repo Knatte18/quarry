@@ -1,6 +1,9 @@
 package ladder
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestIsBashGrepCommand(t *testing.T) {
 	tests := []struct {
@@ -31,7 +34,7 @@ func TestExtractUsage_SumsTokenClassesIndependently(t *testing.T) {
 		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
 	}
 
-	usage, err := ExtractUsage(records, "run/transcript.jsonl", nil)
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
 	if err != nil {
 		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
 	}
@@ -57,7 +60,7 @@ func TestExtractUsage_ToolUsesBreakdownAndQuarryCount(t *testing.T) {
 		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
 	}
 
-	usage, err := ExtractUsage(records, "run/transcript.jsonl", nil)
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
 	if err != nil {
 		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
 	}
@@ -91,7 +94,7 @@ func TestExtractUsage_BashGrepAndGrepToolCountsStaySeparate(t *testing.T) {
 		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
 	}
 
-	usage, err := ExtractUsage(records, "run/transcript.jsonl", nil)
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
 	if err != nil {
 		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
 	}
@@ -118,7 +121,7 @@ func TestExtractUsage_ZeroToolCallsYieldsZeroCountsAndEmptyBreakdown(t *testing.
 		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
 	}
 
-	usage, err := ExtractUsage(records, "run/transcript.jsonl", nil)
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
 	if err != nil {
 		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
 	}
@@ -131,5 +134,112 @@ func TestExtractUsage_ZeroToolCallsYieldsZeroCountsAndEmptyBreakdown(t *testing.
 	}
 	if usage.QuarryToolUses != 0 || usage.BashGrepCount != 0 || usage.GrepToolCount != 0 || usage.GrepFallbackTotal != 0 {
 		t.Errorf("usage = %+v; want all tool-use counters zero", usage)
+	}
+}
+
+func TestExtractUsage_DurationIsDerivedFromFirstAndLastTimestamp(t *testing.T) {
+	records, err := ReadTranscript("testdata/bundle-mixed-tools.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
+	if err != nil {
+		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
+	}
+
+	// Fixture spans 2026-08-30T09:00:00.000Z to 2026-08-30T09:00:10.000Z.
+	if usage.DurationMs != 10000 {
+		t.Errorf("usage.DurationMs = %d; want 10000", usage.DurationMs)
+	}
+}
+
+func TestExtractUsage_NumTurnsCountsAssistantRecords(t *testing.T) {
+	records, err := ReadTranscript("testdata/bundle-mixed-tools.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
+	if err != nil {
+		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
+	}
+
+	// Fixture carries three assistant records.
+	if usage.NumTurns != 3 {
+		t.Errorf("usage.NumTurns = %d; want 3", usage.NumTurns)
+	}
+	if usage.Model != "claude-opus-5" {
+		t.Errorf("usage.Model = %q; want %q", usage.Model, "claude-opus-5")
+	}
+	if usage.Effort != "medium" {
+		t.Errorf("usage.Effort = %q; want %q", usage.Effort, "medium")
+	}
+	if usage.AgentID != "agent-a5-bundle-1" {
+		t.Errorf("usage.AgentID = %q; want %q", usage.AgentID, "agent-a5-bundle-1")
+	}
+}
+
+func TestExtractUsage_DeniedAttemptFixtureCountsOneDenial(t *testing.T) {
+	records, err := ReadTranscript("testdata/denied-attempt.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
+	if err != nil {
+		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
+	}
+
+	if usage.DeniedToolAttempts != 1 {
+		t.Errorf("usage.DeniedToolAttempts = %d; want 1", usage.DeniedToolAttempts)
+	}
+	if !usage.DeniedToolAttemptsProvisional {
+		t.Error("usage.DeniedToolAttemptsProvisional = false; want true")
+	}
+}
+
+func TestExtractUsage_ErroredToolResultFixtureCountsZeroDenials(t *testing.T) {
+	// The errored-tool-result fixture's is_error tool result is a plain "file not found" error, not
+	// permission-denial shaped -- it must not be counted as a denied attempt.
+	records, err := ReadTranscript("testdata/errored-tool-result.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
+	if err != nil {
+		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
+	}
+
+	if usage.DeniedToolAttempts != 0 {
+		t.Errorf("usage.DeniedToolAttempts = %d; want 0", usage.DeniedToolAttempts)
+	}
+}
+
+func TestExtractUsage_SerialisedJSONCarriesNoDroppedField(t *testing.T) {
+	records, err := ReadTranscript("testdata/bundle-mixed-tools.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
+	if err != nil {
+		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
+	}
+
+	encoded, err := json.Marshal(usage)
+	if err != nil {
+		t.Fatalf("json.Marshal(usage) = _, %v; want nil error", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(encoded) = %v; want nil error", err)
+	}
+
+	for _, dropped := range []string{"cost_usd", "wall_clock_ms", "result_usage", "result_subtype", "result_is_error", "session_id"} {
+		if _, present := decoded[dropped]; present {
+			t.Errorf("serialised Usage carries dropped field %q; want it absent", dropped)
+		}
 	}
 }
