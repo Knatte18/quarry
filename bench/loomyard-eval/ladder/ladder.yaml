@@ -1,22 +1,33 @@
 # This file is the single declarative source of truth for the quarry-mcp
 # capability ladder's 15-config matrix. No other file in this suite writes
 # out a config table or a deny-list literal -- every deny-list is derived
-# from a config's `allowed` set at load time by ladder_config.py.
+# from a config's `allowed` set at load time by internal/ladder's
+# DenyListFor.
 #
-# `run_model` ships null and must be set to the pinned model id for this
-# matrix before batch 8 (the run) starts.
+# Two operator-supplied pins are required before the matrix starts:
+# `run_model` and `max_turns` (see its own comment below for why the
+# latter also ships null). Both ship null and RequirePins refuses every
+# gate-dependent subcommand while either is unset.
 
 run_model: null
 reps: 3
-max_turns: 60
+run_effort: medium
+# max_turns' meaning is now "maximum number of assistant records in a run's subagent transcript" --
+# the committed 60 was calibrated against a different accounting basis, so it does not carry over.
+# The operator must set max_turns before the matrix starts.
+max_turns: null
+
+# session_dir_template is the per-repetition session working-directory path. `{config_id}` and `{n}`
+# are substituted; `{n}` is the 1-based repetition index.
+session_dir_template: /tmp/ladder-session-{config_id}-{n}
 
 scorer:
   model: claude-opus-5
   effort: high
 
 # Canonical seven client-side tool names quarry-mcp exposes, bare (no
-# mcp__quarry__ prefix -- that is applied by ladder_config.py). load_ladder
-# validates this list against QUARRY_TOOLS and rejects any drift.
+# mcp__quarry__ prefix -- that is applied by internal/ladder's MCPName).
+# LoadLadder validates this list against QuarryTools and rejects any drift.
 quarry_tools:
   - toc_dir
   - toc_file
