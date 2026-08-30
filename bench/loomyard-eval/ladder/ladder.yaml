@@ -19,7 +19,14 @@ max_turns: null
 
 # session_dir_template is the per-repetition session working-directory path. `{config_id}` and `{n}`
 # are substituted; `{n}` is the 1-based repetition index.
-session_dir_template: /tmp/ladder-session-{config_id}-{n}
+#
+# This must live under an already-trusted ancestor directory, not a bare /tmp path: Claude Code treats a
+# fresh /tmp directory as an untrusted workspace and silently ignores permissions.allow from its
+# settings.json (deny rules still apply), which defeats the point of the fixed Read/Bash allow list
+# (prompt-avoidance only -- see settings.go). The quarry repo checkout itself is already trusted from
+# ordinary use, and trust inherits to subdirectories, so scratch dirs live under its gitignored .scratch/
+# tree -- a plain directory, deliberately not its own git repo (nested git repos need their own trust).
+session_dir_template: /home/knatte/Code/quarry/wts/quarry/.scratch/ladder-sessions/{config_id}-{n}
 
 scorer:
   model: claude-opus-5

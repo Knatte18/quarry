@@ -1,0 +1,5 @@
+{
+  "allowlist_blocks": true,
+  "denial_shape_observed": "TOOL-NOT-IN-SCHEMA",
+  "denylist_blocks": true
+}

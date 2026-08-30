@@ -32,6 +32,7 @@ func TestMangleProjectDir(t *testing.T) {
 		{"simple", "/home/user/scratch", "-home-user-scratch"},
 		{"trailing_slash", "/home/user/scratch/", "-home-user-scratch-"},
 		{"single_segment", "/scratch", "-scratch"},
+		{"dotted_hidden_dir", "/home/user/.scratch/x", "-home-user--scratch-x"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

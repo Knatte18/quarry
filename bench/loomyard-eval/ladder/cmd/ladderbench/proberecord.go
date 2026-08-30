@@ -180,10 +180,39 @@ func toolResultText(block ladder.ContentBlock) string {
 	return text.String()
 }
 
+// assistantTextContainsSentinel reports whether any assistant text content block across records contains
+// sentinel -- probe-record's ground-truth-free fallback for detecting a schema-absent tool, since a
+// subagent transcript carries no advertised-tools list an absence could otherwise be checked against (see
+// transcript.go's Record doc comment).
+func assistantTextContainsSentinel(records []ladder.Record, sentinel string) bool {
+	for _, record := range records {
+		if record.Type != "assistant" {
+			continue
+		}
+		for _, block := range record.Message.Content {
+			if block.Type == "text" && strings.Contains(block.Text, sentinel) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // probeOutcome finds the transcript's one call to a quarry tool (an mcp__quarry__* tool_use block --
 // every probe's own prompt asks for exactly one) and reports whether its matching tool_result errored,
-// alongside that result's verbatim text when it did. Returns an error when the transcript carries no
-// quarry tool call at all, or when the one it carries has no matching tool_result to read.
+// alongside that result's verbatim text when it did.
+//
+// When the transcript carries no quarry tool call at all, that is not itself an error: it is the expected
+// shape of a working block, since both enforcement layers this suite probes remove the tool from the
+// model's schema entirely rather than producing a call-time refusal (see
+// ladder.ProbeNotInSchemaSentinel's doc comment) -- the model is never offered the tool, so it can never
+// emit a tool_use block for it. That case is only accepted as blocked when the transcript's own assistant
+// text contains the fixed sentinel probePromptBody instructs the agent to reply with, so a probe agent
+// that simply failed to attempt the call for some unrelated reason still surfaces as an error rather than
+// a silently-accepted false blocked=true.
+//
+// Returns an error when the transcript carries a quarry tool call with no matching tool_result to read,
+// or when it carries neither a quarry tool call nor the not-in-schema sentinel.
 func probeOutcome(records []ladder.Record) (blocked bool, deniedText string, err error) {
 	resultsByID := toolResultBlocksByID(records)
 	for _, block := range ladder.IterToolUseBlocks(records) {
@@ -199,5 +228,8 @@ func probeOutcome(records []ladder.Record) (blocked bool, deniedText string, err
 		}
 		return false, "", nil
 	}
-	return false, "", fmt.Errorf("probe-record: transcript carries no call to a quarry tool")
+	if assistantTextContainsSentinel(records, ladder.ProbeNotInSchemaSentinel) {
+		return true, ladder.ProbeNotInSchemaSentinel, nil
+	}
+	return false, "", fmt.Errorf("probe-record: transcript carries no call to a quarry tool and no %s sentinel", ladder.ProbeNotInSchemaSentinel)
 }

@@ -54,7 +54,8 @@ func BuildServer(repoRoot string, build Builder) (string, error) {
 // environment in warm.go). Whether declaring this block on a server entry replaces or augments the
 // process environment the launching CLI would otherwise inherit into the spawned server is an open
 // question this port does not resolve; see the plan's Shared Decision on the settings-source risk this
-// shares an unverified-fallback posture with.
+// was originally recorded alongside (that one has since been verified working -- see session.go's
+// LaunchCommand doc comment -- this one has not).
 func MCPConfigDocument(serverPath, targetDir string) map[string]any {
 	return map[string]any{
 		"mcpServers": map[string]any{

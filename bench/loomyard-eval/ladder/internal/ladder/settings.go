@@ -28,7 +28,12 @@ func DenyListFor(l *Ladder, config LadderConfig) []string {
 // Permissions is the "permissions" block of a run's settings document.
 type Permissions struct {
 	// Allow is fixed to Read/Grep/Glob/Bash for every config -- prompt-avoidance only, per the plan's
-	// Shared Decision, never treated as an allowlist anywhere in this suite.
+	// Shared Decision, never treated as an allowlist anywhere in this suite. This intentionally still
+	// lists Grep/Glob even though baseRunTools (agentdef.go) does not grant them: this field only
+	// suppresses permission prompts for tools the agent actually has, so the two entries are simply
+	// inert here, not contradictory -- and this list only takes effect at all when the session's
+	// scratch directory sits under an already-trusted ancestor (see ladder.yaml's session_dir_template
+	// comment); a fresh, untrusted /tmp directory has this entire field silently ignored by Claude Code.
 	Allow []string `json:"allow"`
 	// Deny is config's quarry deny-list. "Task" is deliberately not included here -- see
 	// SettingsDocumentFor's doc comment for why a session-wide deny of Task is incompatible with this

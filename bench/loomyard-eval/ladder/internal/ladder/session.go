@@ -34,8 +34,9 @@ const installedSkillRelativePath = "ladder-run/SKILL.md"
 
 // launchSettingSources is the fixed --setting-sources flag value every session launches with, so the
 // scratch directory's settings document and agent definitions load as project scope while the installed
-// skill loads as user scope. This flag combination ships unverified -- see LaunchCommand's doc comment
-// for the documented fallback should project-scope agent discovery turn out to be suppressed by it.
+// skill loads as user scope. Verified working by the capability-ladder bench's own permission probe
+// investigation (see LaunchCommand's doc comment): project-scope agent discovery is not suppressed by
+// this combination.
 const launchSettingSources = "user,project"
 
 // SessionInputs records what one PrepareRunSession/PrepareScoringSession/PrepareProbeSession call wrote,
@@ -270,11 +271,13 @@ func InstallSkill(sourcePath, destRoot string) (string, error) {
 // inputs.ScratchDir's server declaration only when inputs.HasServerDeclaration.
 //
 // This flag combination -- isolating settings while still loading project-local agent definitions and
-// user-scope skills -- ships unverified; see the plan's Shared Decision on why no smoke launch is
-// performed. Should project-scope agent discovery turn out to be suppressed by this flag combination,
-// the documented fallback is to write the definitions into ~/.claude/agents/ under a "ladder-<config-id>"
-// name instead, with prepare-session responsible for removing them again; the installed skill is never
-// relocated into a scratch directory to work around anything.
+// user-scope skills -- was unverified when this suite's plan shipped (no smoke launch was performed by
+// an autonomous implementation run) and has since been verified working by a live empirical
+// investigation dispatching real subagents against it. inputs.ScratchDir must itself sit under an
+// already-trusted ancestor directory for permissions.allow to take effect at all -- see
+// ladder.yaml's session_dir_template comment; this function does not enforce that, it only formats the
+// launch command for whatever scratch directory PrepareRunSession/PrepareScoringSession/
+// PrepareProbeSession already wrote into.
 func LaunchCommand(inputs SessionInputs) string {
 	parts := []string{"claude", "--setting-sources", launchSettingSources}
 	if inputs.HasServerDeclaration {

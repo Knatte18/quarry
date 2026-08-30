@@ -96,12 +96,20 @@ one authoritative copy of the protocol, versioned alongside the binary whose sub
 what stops the two from drifting apart.
 
 **Each session runs from a disposable scratch directory**, derived from `ladder.yaml`'s
-`session_dir_template` (e.g. `/tmp/ladder-session-a5-bundle-1`). A run session's scratch directory holds
-the generated `.mcp.json` (config permitting), `settings.json`, and the run agent definition only; the
-scoring session's holds `settings.json` and the scorer definition only. Neither carries the other's, and
-neither carries the tracked skill — the skill is installed once per session, at `~/.claude/skills/`
-(user scope), never copied into the scratch directory, because the skill body names quarry throughout and
-a `none` session's scratch directory is the blinded agent's own working directory.
+`session_dir_template` (e.g. `<repo>/.scratch/ladder-sessions/a5-bundle-1`). A run session's scratch
+directory holds the generated `.mcp.json` (config permitting), `settings.json`, and the run agent
+definition only; the scoring session's holds `settings.json` and the scorer definition only. Neither
+carries the other's, and neither carries the tracked skill — the skill is installed once per session, at
+`~/.claude/skills/` (user scope), never copied into the scratch directory, because the skill body names
+quarry throughout and a `none` session's scratch directory is the blinded agent's own working directory.
+
+**The scratch directory must sit under an already-trusted ancestor, never a bare `/tmp` path.** Claude
+Code treats a fresh `/tmp` directory as an untrusted workspace and silently ignores
+`permissions.allow` from its `settings.json` (a warning is printed; `permissions.deny` is unaffected) —
+verified empirically, and the reason the committed `session_dir_template` lives under this repo's own
+gitignored `.scratch/` tree rather than `/tmp`: an ordinary checkout is already trusted from prior use,
+and trust inherits to subdirectories, as long as the scratch directory itself is a plain directory and
+not its own nested git repository.
 
 ## Enforcement
 
@@ -109,24 +117,34 @@ a `none` session's scratch directory is the blinded agent's own working director
 backup.**
 
 - **The allowlist: a generated per-config agent definition.** Each config gets a Claude Code agent
-  definition whose `tools:` frontmatter is an allowlist — `Read`, `Grep`, `Glob`, `Bash`, plus that
-  config's `allowed` quarry tools under their `mcp__quarry__*` client-side names. The Agent Tool has no
-  per-call `--settings` equivalent, so per-rung restriction has to be a static subagent-type definition.
-  An allowlist is structurally stronger than a deny-list: the `none` arm never sees the `mcp__quarry__*`
-  namespace at all, rather than seeing it and being denied. `Task` denial is structural too — an
-  allowlist that omits `Task` means a run agent cannot spawn its own subagents.
+  definition whose `tools:` frontmatter is an allowlist — `Read`, `Bash`, plus that config's `allowed`
+  quarry tools under their `mcp__quarry__*` client-side names. `Grep` and `Glob` are deliberately not
+  granted: this Claude Code build silently drops both from a subagent's effective tool set whenever
+  `Bash` is also granted (undocumented, verified empirically), so declaring them would round-trip a
+  `tools:` frontmatter the dispatched agent never actually receives — `Bash`'s own `rg`/`find` cover
+  search. The Agent Tool has no per-call `--settings` equivalent, so per-rung restriction has to be a
+  static subagent-type definition. An allowlist is structurally stronger than a deny-list: the `none` arm
+  never sees the `mcp__quarry__*` namespace at all, rather than seeing it and being denied. `Task` denial
+  is structural too — an allowlist that omits `Task` means a run agent cannot spawn its own subagents.
 - **The deny-list: the session's `settings.json`, as a backup layer.** Every run session's `settings.json`
-  additionally carries `permissions.deny`: the derived quarry deny-list (every canonical tool not in
-  `allowed`) plus `Task`, for every rung. This layer exists so a definition that fails to load does not
-  silently promote a rung to the full bundle.
+  additionally carries `permissions.deny`: the derived quarry deny-list, every canonical tool not in
+  `allowed`, for every rung. This layer exists so a definition that fails to load does not silently
+  promote a rung to the full bundle. `Task` is deliberately not part of this deny-list — `permissions.deny`
+  applies to the whole session document, including the operator's own live session before it has
+  dispatched anything, so denying `Task` here would leave the operator unable to dispatch the run agent
+  in the first place; the allowlist's own omission of `Task` from a definition's `tools:` is what makes
+  this layer structural, not `settings.json`. A bare-name `permissions.deny` entry also removes the
+  named tool from the model's schema entirely — the model is never offered it, so no call-time refusal is
+  observable in the transcript; see the deny-list probe below for what this means for how that probe is
+  scored.
 - **A blinded (`none`) session gets no server declaration at all.** `prepare-session` writes `.mcp.json`
   only when the config's `allowed` set is non-empty; a `none` config is launched with no `--mcp-config`
-  flag whatsoever, and its `settings.json` denies `Task` and nothing else — the quarry deny-list backup
-  guards nothing for a config that declares no server, so it is omitted rather than leaked into the
-  blinded agent's own working directory. A declared server named "quarry" exposing an `mcp__quarry__*`
-  namespace would itself be the structural leak the blinding forbids: this is what makes the claim "the
-  `none` arm never sees the `mcp__quarry__*` namespace" literally true rather than merely
-  allowlist-mediated — the namespace does not exist in that session.
+  flag whatsoever, and its `settings.json` denies nothing — the quarry deny-list backup guards nothing for
+  a config that declares no server, so it is omitted rather than leaked into the blinded agent's own
+  working directory. A declared server named "quarry" exposing an `mcp__quarry__*` namespace would itself
+  be the structural leak the blinding forbids: this is what makes the claim "the `none` arm never sees the
+  `mcp__quarry__*` namespace" literally true rather than merely allowlist-mediated — the namespace does
+  not exist in that session.
 - **The deny-list is derived, never hand-written.** `DenyListFor` computes, for a given config, every
   canonical tool in `quarry_tools` **not** in that config's `allowed` set, prefixed to its
   `mcp__quarry__*` client-side name. No config's deny-list is a literal anywhere in this suite.
@@ -134,14 +152,22 @@ backup.**
   cannot distinguish "primary works, backup silently broken" from "primary broken, backup catching it" —
   the call fails identically either way, defeating the point of having a backup. So the preflight stage
   runs two throwaway dispatches, each recorded into `probe.json` (`ladderbench probe-record`):
-  1. **Allowlist probe** — an agent definition granting `Read/Grep/Glob/Bash` but not
-     `mcp__quarry__impact`, in a session where the quarry server *is* declared and `impact` is *not*
-     denied. Records `allowlist_blocks`.
+  1. **Allowlist probe** — an agent definition granting `Read/Bash` but not `mcp__quarry__impact`, in a
+     session where the quarry server *is* declared and `impact` is *not* denied. Records
+     `allowlist_blocks`.
   2. **Deny-list probe** — an agent definition that *does* grant `mcp__quarry__impact`, in a session whose
      `settings.json` denies it. Records `denylist_blocks`.
   Either probe's `_blocks` field being false halts the matrix before a single paid run — every rung would
   otherwise silently be the full bundle. `prepare-session --probe allowlist|denylist` materialises each
   probe's inputs; dispatching them is a follow-up matrix task's first step, out of scope here.
+  Both probe agents are instructed to check for the probed tool first and, if it is absent from their own
+  schema, reply with the exact sentinel `ladder.ProbeNotInSchemaSentinel` (`TOOL-NOT-IN-SCHEMA`) rather
+  than attempt a call — schema absence, not a call-time refusal, is the expected signature of a working
+  block on this Claude Code build, since a bare-name allow/deny removes the tool from the model's schema
+  entirely. `probe-record` accepts either signal: a real `tool_use`/errored-`tool_result` pair (should the
+  client ever let a call through to the permission layer instead), or the sentinel with no call attempted
+  at all. A transcript with neither is treated as an error, not a silent pass — the probe agent may simply
+  have failed to follow instructions.
 - **Blinding is enforced by transcript detection, not by construction.** `GateBlinding`, applied only to
   a config whose `allowed` is empty, is fatal when the transcript contains an `mcp__quarry__` tool name or
   a filesystem path into `repo_root`. A bare "quarry" mention confined inside a `tool_result` payload is
@@ -186,12 +212,11 @@ Every session materialised for the main matrix, the cold cell, and both permissi
 
 - **The pinned model** — `ladder.yaml`'s `run_model`, identical across every run session (see "How to
   run" below for why it starts `null`).
-- **The identical base allowlist** — `Read`, `Grep`, `Glob`, `Bash` on every run agent definition
-  regardless of config, per Enforcement above.
+- **The identical base allowlist** — `Read`, `Bash` on every run agent definition regardless of config,
+  per Enforcement above.
 - **`--setting-sources user,project`** on every session launch — isolates the session's own settings
   (project scope: the scratch directory's `settings.json` and agent definitions) while still loading the
-  installed skill from user scope. **This flag combination ships unverified** — see "Two unverified
-  implementation risks" below.
+  installed skill from user scope. Verified working — see "One unverified implementation risk" below.
 - **`QUARRY_STATE_DIR` and `QUARRY_BUILD_TAGS` both cleared, at three separate application points**, since
   no harness process wraps the dispatch and owns the spawned server's environment the way the retired
   `claude -p` subprocess used to: the generated `.mcp.json`'s server entry carries an explicit `"env"`
@@ -226,27 +251,30 @@ Every session materialised for the main matrix, the cold cell, and both permissi
   that skipped the warm-up could dispatch against a cold daemon and silently contaminate the warm arm's
   timings. It is never called for the cold config.
 
-## Two unverified implementation risks
+## One unverified implementation risk
 
 No smoke launch was performed by this plan (a supervised interactive session is not something an
-autonomous implementation run can carry out). Two risks are therefore recorded as unverified rather than
-claimed settled, each with its documented fallback:
+autonomous implementation run can carry out). One risk was originally recorded as unverified alongside
+the one below, and has since been resolved:
 
-1. **The `--setting-sources user,project` flag combination** — isolating settings while still loading
-   project-local agent definitions and user-scope skills — is unverified. **Fallback:** if project-scope
-   agent discovery turns out to be suppressed by this flag combination, write the run/scorer/probe
-   definitions into `~/.claude/agents/` under a `ladder-<config-id>` name instead, with `prepare-session`
-   responsible for removing them again. If user-scope skill discovery is also suppressed, the operator
-   invokes the protocol by reading the installed `SKILL.md` path directly — the skill must never be
-   relocated into a scratch directory to work around this, since that would leak it into a blinded
-   session's own working directory.
-2. **Whether an MCP server declaration's `env` block replaces or augments the inherited environment** is
+- ~~The `--setting-sources user,project` flag combination is unverified~~ — **resolved.** A live
+  empirical investigation (dispatching real subagents against this exact flag combination) confirmed
+  project-scope agent definitions and user-scope skill discovery both work as designed. That
+  investigation also surfaced three unrelated, real behaviors this suite's design did not originally
+  account for, now folded into Enforcement and Session model above: `Bash` suppresses `Grep`/`Glob` in a
+  subagent's effective tool set, a bare-name `permissions.deny` removes a tool from the schema entirely
+  rather than refusing a call, and a fresh `/tmp` scratch directory is untrusted and silently ignores
+  `permissions.allow`.
+
+The remaining open risk:
+
+1. **Whether an MCP server declaration's `env` block replaces or augments the inherited environment** is
    unverified. If it augments, setting `QUARRY_STATE_DIR`/`QUARRY_BUILD_TAGS` to the empty string in the
    block is sufficient. If it replaces, `QUARRY_CONFIG` must be forwarded explicitly in the same block or
    the server will not start on a machine that needs a `servers.yaml` overlay. `prepare-session`'s
    environment precondition on the operator's own shell exists partly as cover for this uncertainty.
 
-Both risks move to the follow-up matrix task, whose first real runs are what settles them empirically.
+This risk moves to the follow-up matrix task, whose first real runs are what settle it empirically.
 
 ## Metrics
 
@@ -259,7 +287,9 @@ Every field a run's `usage.json` carries (`ExtractUsage`), partitioned against w
 assistant record's `message.usage` — never derived from another class, and never read off a result
 envelope, because there isn't one; `tool_uses` / `tool_uses_breakdown`; `quarry_tool_uses`;
 `bash_grep_count` (Bash-only, leading-command-word match, never a bare substring); `grep_tool_count`
-(the dedicated `Grep` tool, kept strictly separate from `bash_grep_count`); `grep_fallback_total` (their
+(the dedicated `Grep` tool, kept strictly separate from `bash_grep_count` — expected to read zero on
+every run now that `Grep` is not granted at all, per Enforcement above; the field is kept rather than
+removed in case a future Claude Code build stops suppressing it); `grep_fallback_total` (their
 sum, reported alongside both, never substituted for either); `transcript` (still the path to the run's
 transcript, now the copy inside the run directory); `model` (source moves from the `system/init` event to
 the assistant records' `message.model`).

@@ -40,10 +40,15 @@ func defaultProjectsRoot() (string, error) {
 	return filepath.Join(home, ".claude", "projects"), nil
 }
 
-// mangleProjectDir replaces every path separator in cwd with a hyphen, mirroring Claude Code's own
-// project-directory naming convention under its projects root.
+// mangleProjectDir replaces every path separator and every literal dot in cwd with a hyphen, mirroring
+// Claude Code's own project-directory naming convention under its projects root. Verified empirically
+// against a real scratch directory containing a hidden-directory component (".scratch"): Claude Code's
+// own on-disk project directory name has two consecutive hyphens there (one for the preceding "/", one
+// for the "."), not a literal dot -- a plain separator-only replacement leaves the dot in place and never
+// matches what Claude Code actually wrote to disk.
 func mangleProjectDir(cwd string) string {
-	return strings.ReplaceAll(cwd, string(filepath.Separator), "-")
+	replacer := strings.NewReplacer(string(filepath.Separator), "-", ".", "-")
+	return replacer.Replace(cwd)
 }
 
 // subagentMetadata is the shape of one agent-<id>.meta.json file: only its description field is read
