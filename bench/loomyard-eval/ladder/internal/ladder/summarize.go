@@ -273,3 +273,61 @@ func SummariseCell(configID string, runs []map[string]any, reps int) Cell {
 	}
 	return Cell{ConfigID: configID, Runs: runs, Complete: len(runs) == reps, Stats: stats}
 }
+
+/* THE THREE DISJOINT-RANGE COMPARISON TYPES */
+
+// Comparison is one structured, mechanically checkable comparison between two cells over one metric.
+type Comparison struct {
+	// Kind is "rung-vs-control", "rung-vs-rung", or "warm-vs-cold".
+	Kind string `json:"kind"`
+	// Left is the left-hand config id.
+	Left string `json:"left"`
+	// Right is the right-hand config id.
+	Right string `json:"right"`
+	// Metric is the Metrics name compared.
+	Metric string `json:"metric"`
+	// LeftMedian is the left-hand side's median.
+	LeftMedian float64 `json:"left_median"`
+	// RightMedian is the right-hand side's median.
+	RightMedian float64 `json:"right_median"`
+	// LeftRange is the left-hand side's (min, max) pair.
+	LeftRange [2]float64 `json:"left_range"`
+	// RightRange is the right-hand side's (min, max) pair.
+	RightRange [2]float64 `json:"right_range"`
+	// Separated is true only when LeftRange and RightRange do not overlap at all.
+	Separated bool `json:"separated"`
+}
+
+// RangesDisjoint reports whether the two closed ranges a and b -- each a (min, max) pair -- do not
+// overlap at all. Ranges that touch at a single value -- one's max equals the other's min -- are
+// treated as NOT disjoint.
+func RangesDisjoint(a, b [2]float64) bool {
+	return a[1] < b[0] || b[1] < a[0]
+}
+
+// buildComparison returns one Comparison for metric between leftCell and rightCell, and whether one
+// could be built at all -- false when either side carries no stats for that metric.
+func buildComparison(kind string, leftCell, rightCell Cell, metric string) (Comparison, bool) {
+	leftStats, ok := leftCell.Stats[metric]
+	if !ok {
+		return Comparison{}, false
+	}
+	rightStats, ok := rightCell.Stats[metric]
+	if !ok {
+		return Comparison{}, false
+	}
+
+	leftRange := [2]float64{leftStats.Min, leftStats.Max}
+	rightRange := [2]float64{rightStats.Min, rightStats.Max}
+	return Comparison{
+		Kind:        kind,
+		Left:        leftCell.ConfigID,
+		Right:       rightCell.ConfigID,
+		Metric:      metric,
+		LeftMedian:  leftStats.Median,
+		RightMedian: rightStats.Median,
+		LeftRange:   leftRange,
+		RightRange:  rightRange,
+		Separated:   RangesDisjoint(leftRange, rightRange),
+	}, true
+}
