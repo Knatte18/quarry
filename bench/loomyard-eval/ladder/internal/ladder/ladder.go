@@ -5,7 +5,12 @@
 // it unimportable from the product tree (see the plan's package-layout Shared Decision).
 package ladder
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
 
 // QuarryTools holds the canonical seven client-side tool names quarry-mcp exposes, bare (without the
 // mcp__quarry__ prefix). This is the VALIDATION constant: LoadLadder checks the ladder file's own
@@ -132,4 +137,128 @@ type Ladder struct {
 	Configs []LadderConfig `yaml:"configs"`
 	// ColdWorktreeTemplate is the per-repetition cold worktree path template.
 	ColdWorktreeTemplate string `yaml:"cold_worktree_template"`
+}
+
+// LoadLadder loads and validates ladder.yaml, returning a *Ladder.
+//
+// It returns a *ConfigError naming the offending file and rule for any of: a duplicate config id; a
+// ladder value outside "a"/"b"; a task key absent from tasks; an allowed entry not present in
+// quarry_tools; a quarry_tools list that is not exactly the canonical seven; a ladder with zero or more
+// than one config whose allowed is empty (the control); more than one cold: true config; a
+// warm_counterpart set on a non-cold config; a cold config with no warm_counterpart; and a
+// warm_counterpart naming an unknown id, a cold config, or the cold config itself.
+func LoadLadder(path string) (*Ladder, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read ladder file %s: %w", path, err)
+	}
+
+	var l Ladder
+	if err := yaml.Unmarshal(data, &l); err != nil {
+		return nil, fmt.Errorf("parse ladder file %s: %w", path, err)
+	}
+
+	if !stringSlicesEqual(l.QuarryTools, QuarryTools) {
+		return nil, fail(path, "quarry_tools must be exactly the canonical seven %v, got %v", QuarryTools, l.QuarryTools)
+	}
+
+	seenIDs := make(map[string]bool, len(l.Configs))
+	for _, config := range l.Configs {
+		if seenIDs[config.ID] {
+			return nil, fail(path, "duplicate config id %q", config.ID)
+		}
+		seenIDs[config.ID] = true
+
+		if config.Ladder != "a" && config.Ladder != "b" {
+			return nil, fail(path, "config %q has ladder %q, must be 'a' or 'b'", config.ID, config.Ladder)
+		}
+
+		if _, ok := l.Tasks[config.Task]; !ok {
+			return nil, fail(path, "config %q references unknown task %q", config.ID, config.Task)
+		}
+
+		for _, tool := range config.Allowed {
+			if !stringSliceContains(l.QuarryTools, tool) {
+				return nil, fail(path, "config %q allows unknown tool %q", config.ID, tool)
+			}
+		}
+	}
+
+	// Each of ladder "a" and "b" must carry exactly one control config -- the one with empty Allowed.
+	for _, ladderName := range []string{"a", "b"} {
+		controlCount := 0
+		for _, config := range l.Configs {
+			if config.Ladder == ladderName && len(config.Allowed) == 0 {
+				controlCount++
+			}
+		}
+		if controlCount == 0 {
+			return nil, fail(path, "ladder %q has no control config (empty allowed)", ladderName)
+		}
+		if controlCount > 1 {
+			return nil, fail(path, "ladder %q has %d control configs (empty allowed); must have exactly one", ladderName, controlCount)
+		}
+	}
+
+	coldCount := 0
+	for _, config := range l.Configs {
+		if config.Cold {
+			coldCount++
+		}
+	}
+	if coldCount > 1 {
+		return nil, fail(path, "found %d configs with cold: true; must have at most one", coldCount)
+	}
+
+	byID := make(map[string]LadderConfig, len(l.Configs))
+	for _, config := range l.Configs {
+		byID[config.ID] = config
+	}
+	for _, config := range l.Configs {
+		if config.WarmCounterpart != "" && !config.Cold {
+			return nil, fail(path, "config %q sets warm_counterpart but is not cold", config.ID)
+		}
+		if config.Cold && config.WarmCounterpart == "" {
+			return nil, fail(path, "cold config %q has no warm_counterpart", config.ID)
+		}
+		if config.Cold {
+			target, ok := byID[config.WarmCounterpart]
+			if !ok {
+				return nil, fail(path, "cold config %q names unknown warm_counterpart %q", config.ID, config.WarmCounterpart)
+			} else if target.Cold {
+				return nil, fail(path, "cold config %q names a cold config as warm_counterpart: %q", config.ID, config.WarmCounterpart)
+			}
+		}
+	}
+
+	return &l, nil
+}
+
+// fail builds a *ConfigError naming path and the formatted message, mirroring the Python module's
+// _fail wrapper.
+func fail(path, format string, args ...any) error {
+	return &ConfigError{Path: path, Message: fmt.Sprintf(format, args...)}
+}
+
+// stringSlicesEqual reports whether a and b hold the same strings in the same order.
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// stringSliceContains reports whether s holds v.
+func stringSliceContains(s []string, v string) bool {
+	for _, item := range s {
+		if item == v {
+			return true
+		}
+	}
+	return false
 }
