@@ -6,6 +6,7 @@ slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Port the capability-ladder bench harness to Go
 task_description: |
   Port the capability-ladder bench harness to Go
@@ -38,31 +39,47 @@ implementing  '2026-08-30T12:23:21Z'
 ```yaml
 batches:
   - name: ladder-config
-    state: pending
+    state: running
+    implementer_session: 2bcb57e9-8308-4bc3-9110-7547dd58272e
+    start_sha: acc5bef33d076a24114e43f2a76ca4f40818fbda
+    verify_baseline_failures: []
   - name: transcript-usage
     state: pending
+    verify_baseline_failures: []
   - name: scoring
     state: pending
+    verify_baseline_failures: []
   - name: transcript-gates
     state: pending
+    verify_baseline_failures: []
   - name: daemon-cold-gates
     state: pending
+    verify_baseline_failures: []
   - name: run-state
     state: pending
+    verify_baseline_failures: []
   - name: summarize
     state: pending
+    verify_baseline_failures: []
   - name: worktree-server-warm
     state: pending
+    verify_baseline_failures: []
   - name: task-schema-planning
     state: pending
+    verify_baseline_failures: []
   - name: session-provisioning
     state: pending
+    verify_baseline_failures: []
   - name: cli-session-commands
     state: pending
+    verify_baseline_failures: []
   - name: cli-run-commands
     state: pending
+    verify_baseline_failures: []
   - name: e2e-test
     state: pending
+    verify_baseline_failures: []
   - name: skill-docs-cleanup
     state: pending
+    verify_baseline_failures: []
 ```
