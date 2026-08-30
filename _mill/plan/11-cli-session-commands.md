@@ -71,7 +71,9 @@ unverified. The documentation batch is where that gets stated in the README rath
 - **Requirements:** Add the `prepare-session` subcommand with `--config-id`, `--rep`, `--scoring`,
   `--probe`, `--release`, and `--run-model` flags, where `--rep` is required for every run session of
   every config. The run-session path ensures the task worktrees are at their pins, builds the server
-  binary, runs the environment precondition, runs the skill-leak scan — hard-failing only for a config
+  binary, runs the environment precondition against `os.Environ()` — never against the scrubbed
+  environment, which forces both keys empty and would make the check pass unconditionally, the exact
+  dead-check failure this plan guards against elsewhere — runs the skill-leak scan — hard-failing only for a config
   whose allowed set is empty and naming the offending skill so the operator relocates it — takes the
   session lock, materialises the scratch directory, installs the orchestration skill, and prints the
   launch command exactly as the session-provisioning batch's fixed flag set defines it — this command
@@ -83,7 +85,12 @@ unverified. The documentation batch is where that gets stated in the README rath
   whose two probe dispatches and first real runs need a way to run against the committed file before
   the operator writes the pin into it. Its help text must say that, so a reader does not mistake an
   unused flag for dead code. `prepare-session` enforces the narrower session pin set rather than
-  the full one. Test the flag validation matrix: a run session without a repetition errors, mutually
+  the full one, on every path including the scoring one. This resolves a conflict inside the
+  discussion, which says in one place that the scoring path calls the full check and in another that
+  this command enforces the narrower set: the narrower set already covers the scorer model and effort
+  that the scoring session stamps, and the full check additionally demands the turn ceiling, which
+  ships blank and which nothing about preparing a session touches. Record that resolution in the
+  command's help text so the discrepancy is not rediscovered as a bug. Test the flag validation matrix: a run session without a repetition errors, mutually
   exclusive modes error together, and the model override satisfies the pin check that would otherwise
   fail.
 - **Commit:** `feat(ladderbench): add prepare-session for run, scoring, and probe sessions`

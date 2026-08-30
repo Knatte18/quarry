@@ -44,7 +44,10 @@ reads as a measurement that failed rather than one that was never taken.
   `SummarizeError` type, `Cell` as a struct, `load_runs` as `LoadRuns` keeping its
   `tokens.<class>` flattening, `_median` as an unexported `median`, and `summarise_cell` as
   `SummariseCell`. `LoadRuns` reads only `run.json`-complete runs — the ingest marker is invisible to
-  summarisation. Add the one shape change the new metric partition requires: a cell's
+  summarisation. Its observation lift reads the top-level keys the run-marker payload now writes, which
+  is what makes the lift fire at all; in the Python those keys are never written, so the lift and every
+  metric downstream of it are dead. Note that in the doc comment so a later reader does not
+  "restore" the Python's behaviour. Add the one shape change the new metric partition requires: a cell's
   `denied_tool_attempts` stats record carries a provisional marker through from the runs it summarised,
   set when any contributing run's usage record carries it. Test the median at odd and even lengths, the
   token flattening, the incomplete-cell path, and the provisional marker propagating in and clearing

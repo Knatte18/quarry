@@ -3,7 +3,7 @@
 ```yaml
 task: Port the capability-ladder bench harness to Go
 slug: port-ladder-bench-to-go
-approved: false
+approved: true
 started: '20260830-112301'
 parent: 'main'
 root: ""

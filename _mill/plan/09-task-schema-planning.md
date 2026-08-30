@@ -42,7 +42,14 @@ formats the template itself.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `TASK_TEXT_HEADING` as an exported constant, `_section` as an unexported
-  `section`, and `task_text_for` as `TaskTextFor(l *Ladder, taskKey string) (string, error)`. The
+  `section`, and `task_text_for` as `TaskTextFor(l *Ladder, repoRoot, taskKey string) (string, error)`.
+  The repository root is an explicit parameter because the ladder file's task and answer-key paths are
+  repo-root-relative and nothing else in this package can resolve them: the Python worked only because
+  pytest happened to run from the repository root, while Go runs each test binary with its own package
+  directory as the working directory, so a test reading a committed task file could not open it. Every
+  call site that resolves a ladder-declared path — the task text here, the schema below, and the
+  answer-key read in the scoring command — routes through this same parameter rather than deriving a
+  root of its own. The
   section boundary is load-bearing rather than tidiness: extraction stops at the next `## ` heading,
   because the following section carries task 01's fasit leads and names task 04's real callers and its
   decoy outright, so an extractor that over-reads pastes the answer key into every prompt. Say that in
@@ -70,7 +77,9 @@ formats the template itself.
   fence pattern, taking its `block` half — fences included — because the extracted schema is embedded
   verbatim into the preamble as measured stimulus and the fences are part of that text, port the impact-schema heading, the exploration-schemas heading, the exploration
   marker, and the benchmark README path as exported or unexported constants matching the Python's
-  values, and port `schema_for` as `SchemaFor(l *Ladder, taskKey string) (string, error)`. Selection is
+  values, and port `schema_for` as `SchemaFor(l *Ladder, repoRoot, taskKey string) (string, error)`, taking
+  the repository root for the same reason and resolving the benchmark README's repo-root-relative path
+  against it. Selection is
   driven by the task's declared schema field, never by the task key. Test that the impact schema comes
   from the impact task's own output-schema section, that the exploration schema comes from the
   benchmark README's schemas section under its exploration marker, and that an unknown schema and a

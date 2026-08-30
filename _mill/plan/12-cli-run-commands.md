@@ -134,7 +134,10 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add the `redact` subcommand writing the redacted answer beside the original and
-  printing the assembled scorer prompt on standard output for the session to dispatch. Its help text
+  printing the assembled scorer prompt on standard output for the session to dispatch. It resolves the
+  ladder-declared answer-key and task paths against the repository root the root command resolves,
+  never against the process working directory, matching how the task-text and schema helpers take that
+  root. Its help text
   must state that the printed prompt embeds the task's unstripped answer key, which is why it is only
   ever run inside the dedicated scoring session and never in a session that also hosts a run agent.
   `redact` enforces the full pin set. Test that the redacted file is written, that the original is left
@@ -154,8 +157,8 @@ a newest-mtime guess would silently pick the wrong transcript under any concurre
   - `bench/loomyard-eval/ladder/cmd/ladderbench/recordscore_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add the `record-score` subcommand consuming a scorer reply, validating it, stamping
-  the pinned scorer model and effort into the score record, writing it, running the complete-artifacts
+- **Requirements:** Add the `record-score` subcommand consuming a scorer reply, validating it against the task's schema,
+  stamping the pinned scorer model, effort, and prompt template into the score record, writing it, running the complete-artifacts
   gate, and writing `run.json` last. It assembles the run marker's payload by reading the run
   directory's ingest record with `ReadIngestRecord` and passing it to `RunJSONPayload`, rather than
   building the mapping inline. This is the only path by which an observation taken in the run session

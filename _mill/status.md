@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r6
+phase: plan-fix-r6
 slug: port-ladder-bench-to-go
 branch: port-ladder-bench-to-go
 plan: _mill/plan
@@ -28,4 +28,5 @@ plan-fix-r4  '2026-08-30T12:08:13Z'
 plan-review-r5  '2026-08-30T12:13:09Z'
 plan-fix-r5  '2026-08-30T12:15:01Z'
 plan-review-r6  '2026-08-30T12:20:47Z'
+plan-fix-r6  '2026-08-30T12:22:38Z'
 ```

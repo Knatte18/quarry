@@ -109,15 +109,24 @@ matches removes nothing and asserts nothing, and a redactor's job is to over-rem
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Port `_extract_fenced_json` and the reply-validation half of `score_run` as
-  `ParseScorerReply(reply string) (ScoreRecord, error)`, reusing `ExtractFencedJSON` rather than
-  compiling a second fence pattern, and taking its `inner` half — the decode-ready content — never the
-  fenced `block`, and keeping the Python's validation of the score record's required
-  fields. Define `ScoreRecord` as the `score.json` shape, carrying the scorer's metrics plus the pinned
-  scorer model and effort that `record-score` stamps in. Do not port `run_scorer_client` or
+- **Requirements:** Port `_extract_fenced_json` as `ParseScorerReply(reply, schema string) (ScoreRecord, error)`,
+  reusing `ExtractFencedJSON` rather than compiling a second fence pattern, and taking its `inner`
+  half — the decode-ready content — never the fenced `block`. Validation is an addition, not a port:
+  the Python validates nothing beyond decoding, so a scorer reply missing a field would reach
+  `score.json` and surface later as an absent metric with nothing naming the cause. Take the task's
+  schema as a parameter, because the required set is schema-dependent, and derive that set from the two
+  rule constants' own declared output shape — the exploration rule's and the impact rule's — rather
+  than from a hand-written list, so the rules stay the single source. Independently of schema, every
+  metric the summariser reads out of the score record must be present, since a missing one silently
+  drops a cell's measurement. Define `ScoreRecord` as the `score.json` shape, carrying the scorer's
+  metrics plus the pinned scorer model, effort, and `prompt_template` — the task schema the template was
+  chosen from — which `record-score` stamps in. `prompt_template` is kept rather than dropped: its
+  purpose is making a drifting scorer prompt visible in the record, and that purpose is untouched by
+  the dispatch swap. Do not port `run_scorer_client` or
   `score_run`'s dispatch half — dispatch happens in a live session, never in a subprocess, and the doc
-  comment must say so. Test a well-formed reply, a reply with no fenced block, a reply whose block is
-  not valid JSON, and a reply missing a required field.
+  comment must say so. Test a well-formed reply for each schema, a reply with no fenced block, a reply whose block is
+  not valid JSON, a reply missing a schema-specific required field, and a reply missing a
+  summariser-read metric.
 - **Commit:** `feat(ladder): port scorer reply parsing`
 
 ## Batch Tests

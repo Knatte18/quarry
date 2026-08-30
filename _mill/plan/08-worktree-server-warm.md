@@ -63,12 +63,19 @@ the warm-versus-cold comparison the matrix exists to draw.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Port `build_server` as
-  `BuildServer(repoRoot string, build func(args ...string) (string, error)) (string, error)`, returning
-  the absolute path of the built binary and keeping the Python's error behaviour when the build fails.
-  The builder function is an explicit parameter, mirroring the git runner the previous card takes, so
-  the test has a seam to substitute rather than a package-level variable to mutate.
+  `BuildServer(repoRoot string, build func(dir string, env []string, args ...string) (string, error)) (string, error)`,
+  returning the absolute path of the built binary and keeping the Python's error behaviour when the
+  build fails. The builder function is an explicit parameter, mirroring the git runner the previous
+  card takes, so the test has a seam to substitute rather than a package-level variable to mutate; it
+  carries the working directory and environment because both are load-bearing here and the seam is the
+  only place they can live. `BuildServer` invokes it with the repository root as the working directory
+  and with `CGO_ENABLED=1` forced into the environment, and its failure message names the C-toolchain
+  requirement, because the toc verbs link tree-sitter C grammars and a missing toolchain fails at
+  compile time with output that otherwise reads as unrelated.
   Use `path/filepath` for every path join rather than a slash-joined literal. Test the failure path
-  against a builder function the test substitutes; do not run a real build in the test.
+  against a builder function the test substitutes, and assert that the substituted builder receives the
+  repository root as its working directory and an environment carrying `CGO_ENABLED=1`; do not run a
+  real build in the test.
 - **Commit:** `feat(ladder): port quarry-mcp build invocation`
 
 ### Card 37: The generated MCP server declaration and its environment block

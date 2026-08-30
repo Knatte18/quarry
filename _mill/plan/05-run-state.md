@@ -87,6 +87,7 @@ the run session.
 - **Context:**
   - `bench/loomyard-eval/ladder/scripts/gates.py`
   - `bench/loomyard-eval/ladder/scripts/run_ladder.py`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
   - `bench/loomyard-eval/ladder/tests/test_gates.py`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
@@ -102,7 +103,16 @@ the run session.
   lives in this package rather than in the command that calls it so the synthetic end-to-end test can
   drive the gate-report-to-record handoff directly. Add
   `RunJSONPayload(rec IngestRecord, runModel string) map[string]any` in this card too, after
-  `IngestRecord` exists, building the run-marker payload the previous card's `WriteRunJSON` writes. It
+  `IngestRecord` exists, building the run-marker payload the previous card's `WriteRunJSON` writes.
+  It emits the observations in **both** shapes, and this is a deliberate repair of a broken chain rather
+  than a port: the Python writes them only as a structured list of gate/message pairs, while its
+  summariser lifts them by looking for top-level keys named after each gate — keys nothing ever writes,
+  so the lift never fires and every metric downstream of it is dead. `RunJSONPayload` therefore writes
+  the structured list, which the cold-cell disposition reads by gate name, **and** lifts each of the
+  three named observations to a top-level key of that same name carrying its boolean value, which is
+  what the summariser reads. Record in the doc comment that the dual shape exists because the two
+  consumers read different ones, and that emitting only the Python's shape would port a dead lift.
+  Test that both shapes are present and agree. It
   lives in the library rather than in the command that calls it for the same reason: this is the only
   path by which an observation taken in the run session reaches the marker the summariser and the
   cold-cell disposition read, which makes it exactly the handoff a per-unit test cannot cover on its
