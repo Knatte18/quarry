@@ -60,7 +60,9 @@ batches:
     commit_sha: fe4f14a4f47a4229db34ec08f77cac62196c5329
     verify_baseline_failures: []
   - name: transcript-gates
-    state: pending
+    state: running
+    implementer_session: db465a42-120c-49b8-9906-b6f9ea53a30f
+    start_sha: bc4b2b55f80f53f952c1a8f28607ac914c1df863
     verify_baseline_failures: []
   - name: daemon-cold-gates
     state: pending
