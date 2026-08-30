@@ -207,6 +207,8 @@ func GateWorktreeNeutralised(worktree string) []GateFinding {
 func ObserveWorktreeDirtied(worktree string) GateFinding {
 	output, err := RunGit("-C", worktree, "status", "--porcelain")
 	if err != nil {
+		// Deliberate: mirrors the Python port's own uncaught CalledProcessError propagation out of
+		// this observation's git status call.
 		panic(err)
 	}
 	dirtied := strings.TrimSpace(output) != ""
