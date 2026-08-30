@@ -35,7 +35,7 @@ correctness fix. This is purely an API-surface decision.
 
 **In:**
 
-- Remove the call-wide `targetDir` field from all five input structs in `internal/mcpserver/`:
+- Remove the call-wide `targetDir` field from all six input structs in `internal/mcpserver/`:
   `lspInput` (`tools_lsp.go:33-34`, shared by `textDocument_definition` and
   `textDocument_references`), `workspace_symbol`'s input (`tools_symbol.go:58-59`), `impact`'s
   input (`tools_impact.go:27-28`), `assert_no_callers`'s input (`tools_assert.go:33-34`), and both
@@ -54,10 +54,18 @@ correctness fix. This is purely an API-surface decision.
 - Add a regression test asserting no registered tool's published input schema carries a
   `targetDir` property.
 - Update `docs/mcp-setup.md`: document that the server is scoped once at launch, that the cwd
-  default is what makes per-project scoping automatic, and that a second named server entry with an
-  explicit `--target-dir` is the cross-repo escape hatch.
+  default is what makes per-project scoping automatic, that a second named server entry with an
+  explicit `--target-dir` is the cross-repo escape hatch, and that `toc_file`/`toc_dir` retain a
+  partial absolute-path escape the five language-server-backed tools do not (the asymmetry spelled
+  out in `cross-repo-escape-hatch-is-a-second-server`'s Note — it must not be dropped by a plan
+  writer reading Scope alone).
 - Update `bench/loomyard-eval/ladder/scripts/ladder_config.py:383`'s prompt line to drop the
   `targetDir` half of "Never set targetDir or buildTags".
+- Update `bench/loomyard-eval/ladder/tests/test_ladder_config.py:311`, which asserts the literal
+  `"Never set targetDir or buildTags" in prompt` and therefore fails the moment the prompt line
+  changes. Disposition: narrow the asserted literal to match the reworded prompt, keeping it a
+  literal assertion — the point of the test is that the instruction survives prompt refactors, and
+  that value is preserved as long as the literal tracks the prompt.
 - Update / delete the existing tests that exercise per-call `targetDir` overrides.
 
 **Out:**
@@ -205,15 +213,27 @@ correctness fix. This is purely an API-surface decision.
 ### bench-ladder-update
 
 - **Decision:** Edit `bench/loomyard-eval/ladder/scripts/ladder_config.py:383` to drop the
-  `targetDir` half of its "Never set targetDir or buildTags" prompt instruction. Leave
-  `bench/loomyard-eval/ladder/scripts/gates.py:119-127` checking both keys.
+  `targetDir` half of its "Never set targetDir or buildTags" prompt instruction, and narrow
+  `bench/loomyard-eval/ladder/tests/test_ladder_config.py:311`'s literal assertion to match. Leave
+  `gate_no_target_override` (`bench/loomyard-eval/ladder/scripts/gates.py:117-136`) checking both
+  keys, `fatal=True` unchanged.
 - **Rationale:** The prompt line becomes stale the moment the property is gone, and it spends
   prompt tokens telling the model not to do something the schema no longer permits — which for a
-  benchmark measuring ergonomic overhead is measuring the wrong thing. The gate is different: it
-  costs nothing, and retaining the `targetDir` arm turns it into a cheap end-to-end assertion that
-  the property really is gone from the live server. Editing an existing file inside the
-  already-sanctioned Python exception is not "extending" it under `CLAUDE.md`'s rule; no new Python
-  file is created and no new Python is introduced anywhere else.
+  benchmark measuring ergonomic overhead is measuring the wrong thing. The gate is retained because
+  it costs nothing and still guards the constraint it was written for: a run must not retarget away
+  from its pinned worktree, which for `buildTags` remains fully reachable (that key is untouched by
+  this task and still breaks the cold cell's daemon key). Its `targetDir` arm becomes close to
+  unreachable rather than redundant, and `fatal=True` stays correct for both keys: the gate reads
+  transcript `tool_input` maps, so if the `targetDir` arm ever does fire it means a run diverged
+  from the pinned-worktree design and its numbers are not comparable with the rest of the matrix —
+  killing it is the honest outcome. Editing existing files inside the already-sanctioned Python
+  exception is not "extending" it under `CLAUDE.md`'s rule; no new Python file is created and no new
+  Python is introduced anywhere else.
+- **What the gate is not:** it is **not** a check that the property is gone from the published
+  schema. `gate_no_target_override` inspects what the *model emitted* in the transcript, never the
+  server's advertised tool schema, so it would pass unchanged with the property still in place.
+  The schema-level guarantee is the `internal/mcpserver` regression test named under Testing; the
+  two are independent and neither substitutes for the other.
 - **Rejected:** *Leave bench untouched* — leaves a stale instruction in the measured prompt.
   *Also remove the gate's `targetDir` arm* — throws away a free regression assertion.
 - **Ordering against #009 (`port-ladder-bench-to-go`, active in a sibling worktree):** that task
@@ -360,6 +380,13 @@ setting that directory changes.
 outside the launch root (`cli.ResolveTOCPath` ignores `targetDir` for an absolute arg). That is the
 partial escape hatch named in `cross-repo-escape-hatch-is-a-second-server`, and it should be
 pinned by a test so the documentation stays true.
+
+**Bench ladder pytest suite (`bench/loomyard-eval/ladder/tests/`).** One assertion changes:
+`test_ladder_config.py:311`'s `assert "Never set targetDir or buildTags" in prompt` must be narrowed
+to the reworded literal, or the prompt edit fails it. `test_gates.py:89` (which asserts `"targetDir"`
+appears in the gate's finding messages) is unaffected — the gate keeps both arms. Run the ladder
+suite once as part of verification to confirm exactly these, then leave it alone; it is not part of
+this task's own test surface beyond that single assertion.
 
 **No test is needed for** the launch flag, `ResolveLaunchTargetDir`, `workspaceKey`, or daemon
 isolation — none of them change, and all are covered today.
