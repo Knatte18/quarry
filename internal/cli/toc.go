@@ -173,9 +173,14 @@ when the language has a reliable rule for either. A file this cannot parse at al
 invalid UTF-8, or a designed-but-unimplemented language) is still listed, with an "error" field in
 place of the usual fields; the directory listing itself never fails because of one bad file.
 
-Each entry's "path" is the directory argument as the caller wrote it, joined with the file's base
-name — never the absolutised form — so an entry can be pasted straight into "quarry toc file" from
-the same working directory.
+It also reports "dirs": the base names of every direct subdirectory, sorted lexicographically. This
+is name-only and still non-recursive — toc dir never lists what a subdirectory itself contains, so
+a follow-up "toc dir" call on one of these names is how an agent walks deeper one level at a time.
+
+Each file entry's "path" is the directory argument as the caller wrote it, joined with the file's
+base name — never the absolutised form — so an entry can be pasted straight into "quarry toc file"
+from the same working directory. A "dirs" entry carries no such composed path: paste the name onto
+the same directory argument to descend into it.
 
 --lang restricts the listing to that language's own extensions, validated against toc's own
 supported set. Naming a designed-but-unimplemented language (e.g. --lang rust) is not an error
@@ -323,7 +328,10 @@ func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[strin
 
 // tocDirOne resolves arg (a "toc dir" positional argument) against baseDir, validates it names an
 // existing directory, calls quarry.TOCDir, composes each listed file's caller-relative "path" via
-// TOCDirEntries, and returns the batch outcome.
+// TOCDirEntries, and returns the batch outcome. The returned fields also carry "dirs", the
+// subdirectory-name list straight from result.Dirs — those names carry no caller-relative "path" of
+// their own the way a file entry does, since TOCDir never descends into a subdirectory and so has
+// nothing to compose a path for beyond the bare name.
 //
 // baseDir is cwd unless --target-dir was given (see resolveTOCBaseDir).
 //
@@ -353,7 +361,7 @@ func tocDirOne(baseDir, arg, lang string) (batchStatus, map[string]any) {
 	if err != nil {
 		return statusError, map[string]any{"error": err.Error()}
 	}
-	return statusFound, map[string]any{"files": files}
+	return statusFound, map[string]any{"files": files, "dirs": result.Dirs}
 }
 
 // TOCDirEntries builds the []any "files" entries "toc dir" emits for one directory argument as the

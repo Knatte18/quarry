@@ -73,6 +73,11 @@ type tocDirEntry struct {
 	// cli.TOCDirEntries so each file's "path" stays caller-relative and round-trips into a
 	// following toc_file call.
 	Files []any `json:"files,omitempty"`
+	// Dirs holds the direct subdirectory names on a statusFound entry, taken verbatim from
+	// quarry.TOCDirResult.Dirs — bare names only, never a composed path, since toc_dir never
+	// descends into a subdirectory and so has nothing else to report about one. Mirrors Files'
+	// omitempty: absent on every non-found entry.
+	Dirs []string `json:"dirs,omitempty"`
 	// Error holds a human-readable message on a statusError or statusNotFound entry.
 	Error string `json:"error,omitempty"`
 }
@@ -131,6 +136,8 @@ func resolveTOCFileEntry(arg, targetDir, lang, docString string) tocFileEntry {
 // sufficient here, because toc.DirEntry.Name carries json:"-" and the marshalled entries would
 // otherwise carry neither "name" nor "path". A cli.TOCDirEntries failure is this entry's own
 // statusError carrying the message verbatim, exactly as tocDirOne disposes of the same failure.
+// Dirs is copied straight from result.Dirs with no such composition step, since a subdirectory name
+// carries no path of its own for cli.TOCDirEntries to inject.
 func resolveTOCDirEntry(arg, targetDir, lang string) tocDirEntry {
 	abs := cli.ResolveTOCPath(targetDir, arg)
 
@@ -149,7 +156,7 @@ func resolveTOCDirEntry(arg, targetDir, lang string) tocDirEntry {
 	if err != nil {
 		return tocDirEntry{Target: arg, Status: statusError, Error: err.Error()}
 	}
-	return tocDirEntry{Target: arg, Status: statusFound, Files: files}
+	return tocDirEntry{Target: arg, Status: statusFound, Files: files, Dirs: result.Dirs}
 }
 
 // tocFileHandler returns toc_file's handler, closing over cfg. It reads cfg.TargetDir and calls
@@ -231,6 +238,8 @@ func registerTOCTools(s *mcp.Server, cfg Config) error {
 			"toc_file result shape. Each entry is a plain directory path, not an object. Each " +
 			"found entry's \"files\" carries a caller-relative \"path\" per file, composed against " +
 			"the argument as written, so it round-trips straight into a following toc_file call. " +
+			"Each found entry also carries \"dirs\", the sorted base names of every direct " +
+			"subdirectory (name only, never recursed into). " +
 			"lang, when given, is validated against toc's own supported language set, never a " +
 			"servers.yaml registry key. Up to 64 entries per call.",
 		InputSchema:  dirInputSchema,

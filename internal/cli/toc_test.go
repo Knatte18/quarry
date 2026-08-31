@@ -457,6 +457,43 @@ func TestRunCLI_TocDir_NoSupportedFilesReturnsEmptyFiles(t *testing.T) {
 	if !ok || len(files) != 0 {
 		t.Errorf("files = %v; want an empty array", env["files"])
 	}
+	dirs, ok := env["dirs"].([]any)
+	if !ok || len(dirs) != 0 {
+		t.Errorf("dirs = %v; want an empty array", env["dirs"])
+	}
+}
+
+// TestRunCLI_TocDir_SubdirectoryNamesListedSorted verifies "toc dir" reports every direct
+// subdirectory's bare name under "dirs", sorted lexicographically, alongside the usual "files".
+func TestRunCLI_TocDir_SubdirectoryNamesListedSorted(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "top.go", goFixture)
+	for _, name := range []string{"zebra", "apple"} {
+		sub := filepath.Join(dir, name)
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			t.Fatalf("os.Mkdir(%q) failed: %v", sub, err)
+		}
+		writeTOCFixture(t, sub, "nested.go", goFixture)
+	}
+
+	exitCode, env := runTOCCLI(t, dir, "toc", "dir", ".")
+	if exitCode != 0 {
+		t.Fatalf("RunCLIIn(toc dir .) = %d; want 0. envelope: %v", exitCode, env)
+	}
+	dirs, ok := env["dirs"].([]any)
+	if !ok {
+		t.Fatalf("dirs = %v; want an array", env["dirs"])
+	}
+	want := []any{"apple", "zebra"}
+	if len(dirs) != len(want) || dirs[0] != want[0] || dirs[1] != want[1] {
+		t.Errorf("dirs = %v; want %v", dirs, want)
+	}
+	files, _ := env["files"].([]any)
+	if len(files) != 1 {
+		t.Fatalf("files = %v; want exactly one entry (top.go), no nested.go leaking in", env["files"])
+	}
 }
 
 // TestRunCLI_TocDir_PathCompositionUsesArgumentAsWritten verifies every entry's "path" is the
