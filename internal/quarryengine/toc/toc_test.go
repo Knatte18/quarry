@@ -435,8 +435,8 @@ func TestTOCDir_MixedDirectoryOrdering(t *testing.T) {
 	}
 }
 
-// TestTOCDir_SubdirectoryNotListedNotRecursed asserts a subdirectory is skipped entirely, never
-// listed and never descended into.
+// TestTOCDir_SubdirectoryNotListedNotRecursed asserts a subdirectory never appears in Files and is
+// never descended into, while its bare name is reported in Dirs.
 func TestTOCDir_SubdirectoryNotListedNotRecursed(t *testing.T) {
 	dir := t.TempDir()
 	writeDirFile(t, dir, "top.go", "package p\n")
@@ -455,6 +455,54 @@ func TestTOCDir_SubdirectoryNotListedNotRecursed(t *testing.T) {
 	}
 	if got.Files[0].Name != "top.go" {
 		t.Errorf("Files[0].Name = %q; want %q", got.Files[0].Name, "top.go")
+	}
+	if len(got.Dirs) != 1 || got.Dirs[0] != "sub" {
+		t.Errorf("Dirs = %v; want [\"sub\"]", got.Dirs)
+	}
+}
+
+// TestTOCDir_SubdirectoryNamesListedSortedNoContentsLeak asserts multiple subdirectories are
+// reported by bare name only, sorted lexicographically regardless of creation order, with none of
+// their own contents (files nested inside them) appearing anywhere in the result.
+func TestTOCDir_SubdirectoryNamesListedSortedNoContentsLeak(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"zebra", "apple", "middle"} {
+		subdir := filepath.Join(dir, name)
+		if err := os.Mkdir(subdir, 0o755); err != nil {
+			t.Fatalf("os.Mkdir(%q) failed: %v", subdir, err)
+		}
+		writeDirFile(t, subdir, "nested.go", "package p\n")
+	}
+	writeDirFile(t, dir, "top.go", "package p\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	wantDirs := []string{"apple", "middle", "zebra"}
+	if !reflect.DeepEqual(got.Dirs, wantDirs) {
+		t.Errorf("Dirs = %v; want %v", got.Dirs, wantDirs)
+	}
+	if len(got.Files) != 1 || got.Files[0].Name != "top.go" {
+		t.Errorf("Files = %v; want only top.go, no nested.go from any subdirectory", got.Files)
+	}
+}
+
+// TestTOCDir_NoSubdirectoryEmptyNonNilDirs asserts a directory with no subdirectory returns an
+// empty, non-nil Dirs, mirroring Files' own empty-non-nil convention.
+func TestTOCDir_NoSubdirectoryEmptyNonNilDirs(t *testing.T) {
+	dir := t.TempDir()
+	writeDirFile(t, dir, "top.go", "package p\n")
+
+	got, err := TOCDir(dir, "")
+	if err != nil {
+		t.Fatalf("TOCDir returned error: %v", err)
+	}
+	if got.Dirs == nil {
+		t.Error("Dirs == nil; want empty, non-nil slice")
+	}
+	if len(got.Dirs) != 0 {
+		t.Errorf("len(Dirs) = %d; want 0", len(got.Dirs))
 	}
 }
 

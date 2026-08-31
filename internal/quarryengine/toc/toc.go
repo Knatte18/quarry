@@ -119,15 +119,19 @@ func applyDocSentences(symbols []Symbol, docSentences int) {
 }
 
 // TOCDir extracts a DirTOC from exactly one directory level of dir. It never recurses and never
-// descends into a subdirectory — a subdirectory entry is simply skipped.
+// descends into a subdirectory — a subdirectory entry contributes its bare name to Dirs and nothing
+// else; TOCDir never reads, stats, or lists what that subdirectory itself contains.
 //
-// For each remaining entry, the language is resolved from its extension; an extension mapping to no
-// language skips the file entirely, so a Markdown or YAML file never appears. When langOverride is
-// non-empty, the listing is restricted to that language's extensions via
-// registry.ExtensionsForLanguage, rather than reinterpreting every other file under the override.
+// For each remaining (non-directory) entry, the language is resolved from its extension; an
+// extension mapping to no language skips the file entirely, so a Markdown or YAML file never
+// appears. When langOverride is non-empty, the file listing is restricted to that language's
+// extensions via registry.ExtensionsForLanguage, rather than reinterpreting every other file under
+// the override. langOverride has no effect on Dirs: a subdirectory name carries no language, so
+// there is nothing for the override to restrict.
 //
-// The surviving entries are sorted lexicographically by base filename with an explicit sort.Slice,
-// never left in os.ReadDir's own order.
+// The surviving file entries are sorted lexicographically by base filename with an explicit
+// sort.Slice, never left in os.ReadDir's own order; Dirs is sorted the same way, independently, so
+// the two lists never influence each other's order.
 //
 // Error and Partial are mutually exclusive by construction: Partial is only ever set on the route
 // that actually parsed the file through treesitter.WithTree. A language with no registered
@@ -138,6 +142,7 @@ func applyDocSentences(symbols []Symbol, docSentences int) {
 //
 // A directory containing no file with a supported extension returns a DirTOC whose Files is an
 // empty, non-nil slice and a nil error — a true answer to "what code is in here", not a failure.
+// Dirs follows the identical empty-non-nil convention when the directory holds no subdirectory.
 //
 // TOCDir imposes no file-size cap: parse cost is linear and the runtime enforces its own work
 // budgets, so a pathological file surfaces as a slow parse or as Partial, never as a special-cased
@@ -160,9 +165,10 @@ func TOCDir(dir string, langOverride string) (DirTOC, error) {
 		}
 	}
 
-	result := DirTOC{Files: []DirEntry{}}
+	result := DirTOC{Files: []DirEntry{}, Dirs: []string{}}
 	for _, entry := range entries {
 		if entry.IsDir() {
+			result.Dirs = append(result.Dirs, entry.Name())
 			continue
 		}
 		base := entry.Name()
@@ -179,6 +185,7 @@ func TOCDir(dir string, langOverride string) (DirTOC, error) {
 	sort.Slice(result.Files, func(i, j int) bool {
 		return result.Files[i].Name < result.Files[j].Name
 	})
+	sort.Strings(result.Dirs)
 
 	return result, nil
 }
