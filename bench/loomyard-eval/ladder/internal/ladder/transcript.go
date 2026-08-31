@@ -100,6 +100,10 @@ func (c *ContentBlocks) UnmarshalJSON(data []byte) error {
 
 // Message is the assistant/user payload embedded in one Record.
 type Message struct {
+	// ID is the API message id, populated on assistant records. Claude Code writes one transcript
+	// record per content block, so every record of one API call carries the same ID — it is the
+	// grouping key ExtractUsage aggregates token usage by.
+	ID string `json:"id,omitempty"`
 	// Model is the model id that produced this message, populated on assistant records.
 	Model string `json:"model,omitempty"`
 	// Content is the message's content blocks, in the order the model emitted them.

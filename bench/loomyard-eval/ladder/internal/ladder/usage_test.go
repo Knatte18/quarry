@@ -156,7 +156,7 @@ func TestExtractUsage_DurationIsDerivedFromFirstAndLastTimestamp(t *testing.T) {
 	}
 }
 
-func TestExtractUsage_NumTurnsCountsAssistantRecords(t *testing.T) {
+func TestExtractUsage_RecordsWithoutMessageIDs_EachCountAsOneCall(t *testing.T) {
 	records, err := ReadTranscript("testdata/bundle-mixed-tools.jsonl")
 	if err != nil {
 		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
@@ -167,7 +167,8 @@ func TestExtractUsage_NumTurnsCountsAssistantRecords(t *testing.T) {
 		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
 	}
 
-	// Fixture carries three assistant records.
+	// Fixture carries three assistant records, none with a message id — the reshaped one-record-per-
+	// call format — so each record is its own API call and must never merge with its neighbours.
 	if usage.NumTurns != 3 {
 		t.Errorf("usage.NumTurns = %d; want 3", usage.NumTurns)
 	}
@@ -179,6 +180,41 @@ func TestExtractUsage_NumTurnsCountsAssistantRecords(t *testing.T) {
 	}
 	if usage.AgentID != "agent-a5-bundle-1" {
 		t.Errorf("usage.AgentID = %q; want %q", usage.AgentID, "agent-a5-bundle-1")
+	}
+}
+
+// TestExtractUsage_MultiRecordCall_CountsEachAPICallOnce pins the aggregation over the format
+// Claude Code actually writes: one record per content block, every record of one API call repeating
+// that call's usage snapshot under one message id. The fixture's first call spans three records
+// (thinking + two tool_use blocks) with progressive output snapshots (4, 88, 2); its second call is
+// a single text record. Per-record summing would report 5 turns and triple-count the first call's
+// input and cache tokens.
+func TestExtractUsage_MultiRecordCall_CountsEachAPICallOnce(t *testing.T) {
+	records, err := ReadTranscript("testdata/multi-record-call.jsonl")
+	if err != nil {
+		t.Fatalf("ReadTranscript() = _, %v; want nil error", err)
+	}
+
+	usage, err := ExtractUsage(records, "run/transcript.jsonl", "agent-1/agent-1.jsonl", nil)
+	if err != nil {
+		t.Fatalf("ExtractUsage() = _, %v; want nil error", err)
+	}
+
+	if usage.NumTurns != 2 {
+		t.Errorf("usage.NumTurns = %d; want 2 (two API calls, not four assistant records)", usage.NumTurns)
+	}
+	// Input and cache tokens count once per call: 100+200, 10+120, 5+40. Output takes each call's
+	// maximum snapshot (the final record does not reliably carry the final count): max(4,88,2)+1.
+	want := TokenUsage{InputTokens: 300, OutputTokens: 89, CacheReadInputTokens: 130, CacheCreationInputTokens: 45}
+	if usage.Tokens != want {
+		t.Errorf("usage.Tokens = %+v; want %+v", usage.Tokens, want)
+	}
+	// Tool uses stay block-level, unaffected by the per-call grouping.
+	if usage.ToolUses != 2 {
+		t.Errorf("usage.ToolUses = %d; want 2", usage.ToolUses)
+	}
+	if usage.BashGrepCount != 1 {
+		t.Errorf("usage.BashGrepCount = %d; want 1", usage.BashGrepCount)
 	}
 }
 

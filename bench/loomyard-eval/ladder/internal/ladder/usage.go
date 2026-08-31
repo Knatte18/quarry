@@ -3,6 +3,12 @@
 // retired claude -p result envelope's final-iteration-only usage object (see the plan's "token classes
 // are summed from assistant events" Shared Decision), keeping bash_grep_count and grep_tool_count in
 // the exact separate shape #006's own definitions used.
+//
+// One amendment to that Shared Decision, forced by the real subagent format: an "assistant event" is
+// an API call, not a transcript record. Claude Code writes one record per content block, each
+// repeating the call's usage snapshot under one message id, so the original per-record summing
+// multiply-counted every multi-block call — assistantCallGroups/perCallUsage below are the
+// deduplication.
 
 package ladder
 
@@ -35,15 +41,21 @@ const DenialShapePattern = `(?i)(permission denied|not permitted|access denied|d
 // denialShapeRe is DenialShapePattern compiled once at package init.
 var denialShapeRe = regexp.MustCompile(DenialShapePattern)
 
-// TokenUsage is the four independently-summed token classes carried on a run's Usage.
+// TokenUsage is the four independently-summed token classes carried on a run's Usage, each summed
+// once per API call — never once per transcript record. Claude Code writes one record per content
+// block, every record of one API call repeating that call's usage snapshot under one message id, so
+// record-level summing counted the same call's input and cache tokens once per block (observed at
+// 2.15x on a real matrix run before assistantCallGroups deduplicated it).
 type TokenUsage struct {
-	// InputTokens is the sum of every assistant record's message.usage.input_tokens.
+	// InputTokens is the sum of each API call's message.usage.input_tokens.
 	InputTokens int `json:"input_tokens"`
-	// OutputTokens is the sum of every assistant record's message.usage.output_tokens.
+	// OutputTokens is the sum of each API call's largest message.usage.output_tokens snapshot. The
+	// per-record snapshots grow as the call streams and the final record does not reliably carry
+	// the final count, so the per-call maximum is the best available value — still a lower bound.
 	OutputTokens int `json:"output_tokens"`
-	// CacheReadInputTokens is the sum of every assistant record's message.usage.cache_read_input_tokens.
+	// CacheReadInputTokens is the sum of each API call's message.usage.cache_read_input_tokens.
 	CacheReadInputTokens int `json:"cache_read_input_tokens"`
-	// CacheCreationInputTokens is the sum of every assistant record's
+	// CacheCreationInputTokens is the sum of each API call's
 	// message.usage.cache_creation_input_tokens.
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 }
@@ -53,8 +65,9 @@ type TokenUsage struct {
 // (cost_usd, wall_clock_ms, result_usage, result_subtype, result_is_error, session_id) have no
 // counterpart, because the subagent transcript has no terminal result record to read them from.
 type Usage struct {
-	// Tokens holds the four token classes, each summed independently across every assistant record's
-	// message.usage -- none derived from another.
+	// Tokens holds the four token classes, each summed independently once per API call -- none
+	// derived from another. See TokenUsage's own doc comment for the per-call (not per-record)
+	// aggregation rule.
 	Tokens TokenUsage `json:"tokens"`
 	// ToolUses is the total count of tool_use content blocks across the transcript.
 	ToolUses int `json:"tool_uses"`
@@ -78,8 +91,10 @@ type Usage struct {
 	// claude -p port read this off the result envelope's own duration_ms; a subagent transcript has no
 	// such envelope, so it is derived from the record stream instead.
 	DurationMs int64 `json:"duration_ms"`
-	// NumTurns is the count of assistant records. The retired port read this off the result envelope's
-	// own num_turns; here it is counted directly, since assistant records are the turns.
+	// NumTurns is the count of assistant API calls: assistant records grouped by message id, since
+	// one call's content blocks each land as their own record. A record with no message id counts
+	// as its own call. The retired port read this off the result envelope's own num_turns; counting
+	// raw assistant records here instead inflated a real matrix run's 4 calls to 10 "turns".
 	NumTurns int `json:"num_turns"`
 	// Model is the model id carried on the assistant records' message.model. The retired port read
 	// this off the system/init event, which a subagent transcript does not have.
@@ -122,13 +137,16 @@ func ExtractUsage(records []Record, transcriptPath, transcriptSource string, gra
 	}
 
 	assistantRecords := AssistantRecords(records)
-	usage.NumTurns = len(assistantRecords)
+	calls := assistantCallGroups(assistantRecords)
+	usage.NumTurns = len(calls)
+	for _, call := range calls {
+		callUsage := perCallUsage(call)
+		usage.Tokens.InputTokens += callUsage.InputTokens
+		usage.Tokens.OutputTokens += callUsage.OutputTokens
+		usage.Tokens.CacheReadInputTokens += callUsage.CacheReadInputTokens
+		usage.Tokens.CacheCreationInputTokens += callUsage.CacheCreationInputTokens
+	}
 	for _, record := range assistantRecords {
-		recordUsage := record.Message.Usage
-		usage.Tokens.InputTokens += recordUsage.InputTokens
-		usage.Tokens.OutputTokens += recordUsage.OutputTokens
-		usage.Tokens.CacheReadInputTokens += recordUsage.CacheReadInputTokens
-		usage.Tokens.CacheCreationInputTokens += recordUsage.CacheCreationInputTokens
 		if usage.Model == "" && record.Message.Model != "" {
 			usage.Model = record.Message.Model
 		}
@@ -165,6 +183,43 @@ func ExtractUsage(records []Record, transcriptPath, transcriptSource string, gra
 	usage.DeniedToolAttempts = countDeniedToolAttempts(records)
 
 	return usage, nil
+}
+
+// assistantCallGroups groups consecutive assistant records sharing one non-empty message id into
+// one API call each. A record with an empty message id always opens its own group: the reshaped
+// pre-subagent fixtures (and any hand-written transcript) carry one record per call and no id, and
+// merging those into one group would collapse every such call into a single turn.
+//
+// Grouping is consecutive rather than map-keyed because one API call's records are always adjacent
+// in a real transcript — a map would only add non-determinism over ordering for a case that cannot
+// occur.
+func assistantCallGroups(assistantRecords []Record) [][]Record {
+	var groups [][]Record
+	lastID := ""
+	for _, record := range assistantRecords {
+		id := record.Message.ID
+		if id == "" || id != lastID || len(groups) == 0 {
+			groups = append(groups, nil)
+		}
+		groups[len(groups)-1] = append(groups[len(groups)-1], record)
+		lastID = id
+	}
+	return groups
+}
+
+// perCallUsage reduces one API call's records to that call's own usage: input and cache counts are
+// constant across a call's records (every record repeats the call's snapshot), so any record
+// supplies them; output_tokens grows as the call streams, and the final record does not reliably
+// carry the final count, so the maximum across the call's records is taken — still a lower bound
+// on the true output.
+func perCallUsage(call []Record) MessageUsage {
+	reduced := call[len(call)-1].Message.Usage
+	for _, record := range call {
+		if record.Message.Usage.OutputTokens > reduced.OutputTokens {
+			reduced.OutputTokens = record.Message.Usage.OutputTokens
+		}
+	}
+	return reduced
 }
 
 // recordSpanMs returns the duration between first and last's Timestamp fields in milliseconds, and
