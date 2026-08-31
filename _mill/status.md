@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: done
 slug: toc-dir-list-subfolders
 branch: toc-dir-list-subfolders
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-08-31T07:13:01Z'
+done  '2026-08-31T07:21:29Z'
 ```
