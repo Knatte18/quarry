@@ -160,10 +160,13 @@ func TestToolsList_ExactlySevenToolsWithBothSchemas(t *testing.T) {
 }
 
 // TestToolsList_PerToolParameterMatrix asserts the per-tool input-schema property matrix the plan's
-// schema-derivation-and-patching decision and this batch's card describe: workspace_symbol declares
-// no "within" on its entries, neither toc tool declares "buildTags", toc_dir declares no
-// "docSentences", impact's entry schema declares no "except" while assert_no_callers's does,
-// "noVerify" appears on assert_no_callers alone, and no tool declares a call-wide "targetDir".
+// schema-derivation-and-patching decision and this batch's card describe, as amended by the ladder
+// benchmark's findings: workspace_symbol declares exactly "query" and "within" on its entries (the
+// within row was flipped after the benchmark showed unscoped workspace/symbol searches saturating
+// the server's result cap with out-of-project noise), neither toc tool declares "buildTags",
+// toc_dir declares no "docSentences", impact's entry schema declares no "except" while
+// assert_no_callers's does, "noVerify" appears on assert_no_callers alone, and no tool declares a
+// call-wide "targetDir".
 func TestToolsList_PerToolParameterMatrix(t *testing.T) {
 	cs := newConnectedPair(t, newTransportTestConfig(t))
 
@@ -173,8 +176,13 @@ func TestToolsList_PerToolParameterMatrix(t *testing.T) {
 	}
 
 	symbolEntryProps := entryProperties(t, schemaProperties(t, toolByName(t, res.Tools, "workspace_symbol").InputSchema))
-	if _, ok := symbolEntryProps["within"]; ok {
-		t.Error("workspace_symbol entry schema declares \"within\"; want it absent")
+	for _, want := range []string{"query", "within"} {
+		if _, ok := symbolEntryProps[want]; !ok {
+			t.Errorf("workspace_symbol entry schema does not declare %q; want it present", want)
+		}
+	}
+	if len(symbolEntryProps) != 2 {
+		t.Errorf("workspace_symbol entry schema declares %d properties; want exactly 2 (query, within)", len(symbolEntryProps))
 	}
 
 	for _, name := range []string{"toc_file", "toc_dir"} {

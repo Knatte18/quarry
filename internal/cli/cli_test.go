@@ -792,6 +792,73 @@ func TestFilterWithin(t *testing.T) {
 	}
 }
 
+// TestFilterSymbolsWithin tests symbol's own --within filtering, which cuts the dependency-module
+// noise a workspace/symbol fuzzy search returns for a short query. The normalization rules are
+// FilterWithin's exactly (shared through resolveWithinDir), so this covers the SymbolMatch-shaped
+// path: absolute and baseDir-relative within values, an out-of-project module-cache match, and the
+// prefix-collision sibling directory FilterWithin's own test pins.
+func TestFilterSymbolsWithin(t *testing.T) {
+	t.Parallel()
+
+	inScope := quarry.SymbolMatch{Name: "Poll", File: "/repo/internal/websterengine/poll.go", Line: 203}
+	crossPackage := quarry.SymbolMatch{Name: "Identity", File: "/repo/internal/perchengine/identity.go", Line: 44}
+	moduleCache := quarry.SymbolMatch{Name: "GenerateOrgJITConfig", File: "/home/u/go/pkg/mod/github.com/google/go-github/v75@v75.0.0/github/actions_runners.go", Line: 65}
+	prefixCollision := quarry.SymbolMatch{Name: "CLI", File: "/repo/internal/webstercli/cli.go", Line: 5}
+
+	tests := []struct {
+		name        string
+		within      string
+		baseDir     string
+		matches     []quarry.SymbolMatch
+		wantMatches []quarry.SymbolMatch
+	}{
+		{
+			name:        "absolute_within_keeps_only_in_scope",
+			within:      "/repo/internal/websterengine",
+			baseDir:     "/anything", // unused: within is already absolute
+			matches:     []quarry.SymbolMatch{inScope, crossPackage, moduleCache, prefixCollision},
+			wantMatches: []quarry.SymbolMatch{inScope},
+		},
+		{
+			name:        "relative_within_resolves_against_baseDir",
+			within:      "internal/websterengine",
+			baseDir:     "/repo",
+			matches:     []quarry.SymbolMatch{inScope, moduleCache},
+			wantMatches: []quarry.SymbolMatch{inScope},
+		},
+		{
+			name:        "whole_project_within_still_cuts_module_cache",
+			within:      "/repo",
+			baseDir:     "/anything",
+			matches:     []quarry.SymbolMatch{inScope, crossPackage, moduleCache},
+			wantMatches: []quarry.SymbolMatch{inScope, crossPackage},
+		},
+		{
+			name:        "prefix_collision_directory_excluded",
+			within:      "/repo/internal/webster",
+			baseDir:     "/anything",
+			matches:     []quarry.SymbolMatch{prefixCollision},
+			wantMatches: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := FilterSymbolsWithin(tt.matches, tt.within, tt.baseDir)
+			if len(got) != len(tt.wantMatches) {
+				t.Fatalf("FilterSymbolsWithin() = %v; want %v", got, tt.wantMatches)
+			}
+			for i := range got {
+				if got[i] != tt.wantMatches[i] {
+					t.Errorf("FilterSymbolsWithin()[%d] = %v; want %v", i, got[i], tt.wantMatches[i])
+				}
+			}
+		})
+	}
+}
+
 // TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous verifies symbol never produces
 // ambiguous status.
 func TestClassifySymbolError_MultipleMatchesIsFoundNotAmbiguous(t *testing.T) {

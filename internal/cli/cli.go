@@ -409,6 +409,7 @@ func symbolCommand() *cobra.Command {
 	var lang string
 	var timeout time.Duration
 	var buildTags string
+	var within string
 
 	symbol := &cobra.Command{
 		Use:   "symbol <query>",
@@ -421,6 +422,13 @@ Unlike refs/definition, the positional argument is always treated as a
 literal search string — even one that happens to look like "file:line:col" —
 never position-parsed:
     quarry symbol MyFunction
+
+The search is the language server's own fuzzy workspace/symbol match over
+the whole workspace, dependency modules included, and the server may cap
+the result count. --within <dir> restricts the result set to symbols whose
+file lies within that directory, cutting the out-of-project noise a short
+query otherwise drowns in:
+    quarry symbol --within internal/websterengine Run
 
 Passing 2 or more positional arguments switches to batch mode: each argument
 is looked up independently and the results are reported as one array, rather
@@ -475,6 +483,9 @@ matches into an ambiguity failure. Example:
 					SetExit(ctx, output.Err(out, err.Error()))
 					return nil
 				}
+				if within != "" {
+					results = FilterSymbolsWithin(results, within, dir)
+				}
 
 				SetExit(ctx, output.Ok(out, map[string]any{"symbols": symbolMatchFields(results)}))
 				return nil
@@ -488,6 +499,9 @@ matches into an ambiguity failure. Example:
 			// across both arg-count shapes.
 			runBatch(ctx, out, args, func(symbol string) (batchStatus, map[string]any) {
 				results, err := quarry.Symbol(ctx, buildOptions(registry, dir, stateDir, lang, quarry.Query{Symbol: symbol}, timeout, buildTagsResolved))
+				if err == nil && within != "" {
+					results = FilterSymbolsWithin(results, within, dir)
+				}
 				return classifySymbolError(err, results)
 			})
 			return nil
@@ -497,6 +511,7 @@ matches into an ambiguity failure. Example:
 	symbol.Flags().StringVar(&targetDir, "target-dir", "", "project directory to detect the language in and root the server at (default: cwd)")
 	symbol.Flags().StringVar(&lang, "lang", "", "override language detection with this registry key")
 	symbol.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "deadline for the workspace/symbol request phase")
+	symbol.Flags().StringVar(&within, "within", "", "restrict results to symbols whose file lies within this directory (relative to --target-dir, or absolute) — workspace/symbol fuzzy-matches the whole workspace, dependency modules included, so an unscoped search can return mostly out-of-project noise")
 	symbol.Flags().StringVar(&buildTags, "build-tags", "", "comma-separated Go build tags to scope the query to (default: $QUARRY_BUILD_TAGS, or none); an error, not a silent no-op, for a language whose registry entry carries no build-tag template")
 
 	return symbol
@@ -753,28 +768,51 @@ func FilterUnexpectedCallers(refs []quarry.Reference, declRefs []quarry.Referenc
 	return violations
 }
 
-// FilterWithin returns entries in refs whose file lies within the specified directory.
-func FilterWithin(refs []quarry.Reference, within, baseDir string) []quarry.Reference {
+// resolveWithinDir normalizes a --within argument to the absolute, cleaned directory the per-entry
+// file comparisons run against: joined onto baseDir when relative, then absolutised.
+//
+// baseDir itself may still be relative here (e.g. --target-dir "." passed through verbatim, never
+// resolved to absolute elsewhere in this file) — filepath.Abs resolves whatever remains against the
+// process's actual working directory, the same convention parseQuery's own "file:line:col" path
+// resolution already uses. Reference.File and SymbolMatch.File (what every filtered entry is
+// compared against) are always absolute, so the returned directory must be too, or every
+// comparison silently fails.
+func resolveWithinDir(within, baseDir string) string {
 	w := within
 	if !filepath.IsAbs(w) {
 		w = filepath.Join(baseDir, w)
 	}
-	// baseDir itself may still be relative here (e.g. --target-dir "."
-	// passed through verbatim, never resolved to absolute elsewhere in this
-	// file) — filepath.Abs resolves whatever remains against the process's
-	// actual working directory, the same convention parseQuery's own
-	// "file:line:col" path resolution already uses. Reference.File (what
-	// every entry in refs is compared against) is always absolute, so w
-	// must be too, or every comparison below silently fails.
 	if abs, err := filepath.Abs(w); err == nil {
 		w = abs
 	}
-	w = filepath.Clean(w)
+	return filepath.Clean(w)
+}
+
+// FilterWithin returns entries in refs whose file lies within the specified directory.
+func FilterWithin(refs []quarry.Reference, within, baseDir string) []quarry.Reference {
+	w := resolveWithinDir(within, baseDir)
 
 	var filtered []quarry.Reference
 	for _, r := range refs {
 		if isWithinDir(w, filepath.Clean(r.File)) {
 			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+// FilterSymbolsWithin returns entries in matches whose file lies within the specified directory,
+// applying FilterWithin's exact normalization to within. It exists because a workspace/symbol
+// search is the language server's own fuzzy match over the whole workspace — dependency-module
+// symbols included — so a caller scoping a search to one directory otherwise has to discard the
+// noise by hand.
+func FilterSymbolsWithin(matches []quarry.SymbolMatch, within, baseDir string) []quarry.SymbolMatch {
+	w := resolveWithinDir(within, baseDir)
+
+	var filtered []quarry.SymbolMatch
+	for _, m := range matches {
+		if isWithinDir(w, filepath.Clean(m.File)) {
+			filtered = append(filtered, m)
 		}
 	}
 	return filtered

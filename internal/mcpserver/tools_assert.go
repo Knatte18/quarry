@@ -46,8 +46,10 @@ type assertEntry struct {
 	// false — never omitted — when the check is clean.
 	Violation *bool `json:"violation,omitempty"`
 	// Callers holds every unexpected caller on a statusFound entry, always a non-nil, possibly-empty
-	// slice so it marshals as "[]" rather than "null" when there are none.
-	Callers []referenceField `json:"callers,omitempty"`
+	// slice so it marshals as "[]" rather than "null" when there are none. The tag is omitzero, not
+	// omitempty, because omitempty drops an empty non-nil slice too — it would strip the "callers"
+	// key from every clean (violation: false) entry, defeating the guarantee above.
+	Callers []referenceField `json:"callers,omitzero"`
 	// Candidates holds the ambiguous symbol's candidate positions on a statusAmbiguous entry.
 	Candidates []string `json:"candidates,omitempty"`
 	// Error holds a human-readable message on a statusError entry.
