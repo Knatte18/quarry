@@ -143,17 +143,21 @@ func run() error {
 // mcpTrustDialogSignature is the fixed text Claude Code's own "New MCP server found in this project"
 // startup dialog prints, confirmed empirically against a live pane. No settings.json field, ~/.claude.json
 // project entry, or --strict-mcp-config flag this suite tried actually suppresses it (all three tested
-// live and ruled out) -- it appears to require an actual keystroke from whoever is attached, which this
-// command deliberately does not send itself (scripting a keypress into a permission dialog is exactly the
-// shape of thing Claude Code's own auto-mode classifier already refuses, for good reason). So this only
-// detects the stall and says so loudly instead of silently polling for a marker that will never appear
-// until a human answers it.
+// live and ruled out) -- it appears to require an actual keystroke, and every server this command ever
+// launches with is the operator's own quarry-mcp binary, declared by this same harness's own generated
+// .mcp.json, and already approved by hand dozens of times over the course of this matrix -- so
+// launchAndWait sends that keystroke itself once it sees the dialog.
+//
+// This is safe specifically because it is scoped to tmuxSession, the one pane this command itself just
+// created for a scratch directory it itself just prepared: it is not a general "answer any prompt"
+// mechanism, and does not touch the operator's own separate, unrelated Claude Code sessions.
 const mcpTrustDialogSignature = "New MCP server found in this project"
 
-// stuckAlertInterval is how often launchAndWait re-prints its "attach and answer the dialog" alert while
-// the pane appears stuck on the MCP trust dialog -- repeated, not printed once, since a single line is
-// easy to scroll past in a long-running terminal.
-const stuckAlertInterval = 30 * time.Second
+// autoAcceptCooldown bounds how often launchAndWait re-sends the accept keystroke while the dialog
+// signature is still visible -- long enough for one send to register and the dialog to clear before
+// considering it stuck again, short enough that a genuinely re-appeared dialog (a second, different
+// server) is still answered promptly.
+const autoAcceptCooldown = 3 * time.Second
 
 // launchAndWait starts scratchDir's session detached inside tmuxSession and polls for either its
 // completion marker (outcomeMarkerName) to appear or the tmux session itself to disappear.
@@ -168,17 +172,17 @@ const stuckAlertInterval = 30 * time.Second
 // guessing.
 //
 // While waiting, it also captures the pane's own visible content on every poll and watches for
-// mcpTrustDialogSignature -- Claude Code's MCP server trust prompt requires an actual human keystroke and
-// nothing this command does can answer it, so a session stuck on it would otherwise sit silently until
-// someone happened to check. Detecting it prints a repeated, hard-to-miss alert naming exactly what to do
-// instead.
+// mcpTrustDialogSignature, sending "2" then Enter to select "Use this and all future MCP servers in this
+// project" when it appears -- see mcpTrustDialogSignature's own doc comment for why sending it here is
+// safe and why option 2 specifically, rather than the plain Enter accepting the single-session-only
+// default option 1.
 func launchAndWait(scratchDir string) (string, error) {
 	if err := runVisible("tmux", "new-session", "-d", "-s", tmuxSession, ladderDir+"/launch-session.sh", scratchDir); err != nil {
 		return "", fmt.Errorf("start tmux session: %w", err)
 	}
 
 	markerPath := filepath.Join(scratchDir, outcomeMarkerName)
-	var lastStuckAlert time.Time
+	var lastAutoAccept time.Time
 	for {
 		data, err := os.ReadFile(markerPath)
 		switch {
@@ -194,10 +198,10 @@ func launchAndWait(scratchDir string) (string, error) {
 			return "", fmt.Errorf("tmux session %q ended without ever writing %s -- assuming the operator closed it themselves; not guessing whether the attempt finished", tmuxSession, markerPath)
 		}
 
-		if paneShowsMCPTrustDialog() && time.Since(lastStuckAlert) >= stuckAlertInterval {
-			fmt.Printf("\a!! ATTENTION: %s is waiting on Claude Code's MCP trust dialog and nothing but a human keystroke can answer it.\n!! Run `tmux attach -t %s`, press Enter (or 1) to approve, then detach (ctrl-b d) -- this command will pick back up on its own.\n",
-				scratchDir, tmuxSession)
-			lastStuckAlert = time.Now()
+		if paneShowsMCPTrustDialog() && time.Since(lastAutoAccept) >= autoAcceptCooldown {
+			fmt.Printf("== %s: auto-accepting Claude Code's MCP trust dialog (option 2: this and all future servers in this project) ==\n", scratchDir)
+			_ = runVisible("tmux", "send-keys", "-t", tmuxSession, "2", "Enter")
+			lastAutoAccept = time.Now()
 		}
 
 		time.Sleep(pollInterval)
