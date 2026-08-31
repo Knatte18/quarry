@@ -106,6 +106,11 @@ type DirTOC struct {
 	// Files is every listed file's entry. Ordering is the caller's (internal/cli's) responsibility,
 	// not this package's.
 	Files []DirEntry `json:"files"`
+	// Dirs is every direct subdirectory's base name, sorted lexicographically, with no other detail
+	// per entry: TOCDir never descends into a subdirectory, so nothing beyond its name is ever known
+	// here. Like Files, it is always a non-nil, possibly-empty slice, so the emitted key is "[]"
+	// rather than "null" or an omitted key.
+	Dirs []string `json:"dirs"`
 }
 
 // AllSentences is the Options.DocSentences sentinel meaning "keep the whole docstring, unsplit".

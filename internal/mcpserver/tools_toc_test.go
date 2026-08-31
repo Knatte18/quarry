@@ -207,6 +207,40 @@ func TestTOCDirHandler_EntriesCarryCallerRelativePath(t *testing.T) {
 	}
 }
 
+// TestTOCDirHandler_EntryCarriesSubdirectoryNames asserts a toc_dir entry's "dirs" is copied
+// straight from quarry.TOCDirResult.Dirs, verbatim and in the order the stub returned it (TOCDir
+// itself is responsible for sorting; the handler must not re-sort or otherwise transform it).
+func TestTOCDirHandler_EntryCarriesSubdirectoryNames(t *testing.T) {
+	cfg := newTestConfig(t)
+	sub := filepath.Join(cfg.TargetDir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("os.MkdirAll(%q) error = %v", sub, err)
+	}
+
+	withStubbedFacade(t, &tocDirFn, stubTOCDirFn(t, map[string]struct {
+		result quarry.TOCDirResult
+		err    error
+	}{
+		sub: {result: quarry.TOCDirResult{Files: []quarry.TOCDirEntry{}, Dirs: []string{"apple", "zebra"}}},
+	}))
+
+	in := mustUnmarshal[tocDirInput](t, `{"targets":["sub"]}`)
+
+	_, out, err := tocDirHandler(cfg)(context.Background(), nil, in)
+	if err != nil {
+		t.Fatalf("tocDirHandler(cfg)(...) error = %v; want nil", err)
+	}
+	want := []string{"apple", "zebra"}
+	if len(out.Results[0].Dirs) != len(want) {
+		t.Fatalf("out.Results[0].Dirs = %v; want %v", out.Results[0].Dirs, want)
+	}
+	for i, name := range want {
+		if out.Results[0].Dirs[i] != name {
+			t.Errorf("out.Results[0].Dirs[%d] = %q; want %q", i, out.Results[0].Dirs[i], name)
+		}
+	}
+}
+
 // TestTOCFileHandler_ResolvesQuarryYAMLAgainstFilesOwnDirectory asserts each target's effective
 // DocSentences value is resolved against that target's own resolved file's parent directory, never
 // the server's target directory, using two fixture directories carrying different doc_sentences
