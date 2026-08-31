@@ -67,8 +67,10 @@ type symbolMatchEntry struct {
 	Target any `json:"target"`
 	// Status is this entry's outcome: statusFound, statusNotFound, or statusError.
 	Status string `json:"status"`
-	// Symbols holds the resolved workspace/symbol matches on a statusFound entry.
-	Symbols []symbolField `json:"symbols,omitempty"`
+	// Symbols holds the resolved workspace/symbol matches on a statusFound entry. omitzero, not
+	// omitempty, matching definitionEntry.Definitions' rule: symbolFieldsWire always returns a
+	// non-nil slice, and a found entry must emit its "symbols" key even when the slice is empty.
+	Symbols []symbolField `json:"symbols,omitzero"`
 	// Error holds a human-readable message on a statusError entry.
 	Error string `json:"error,omitempty"`
 }
@@ -142,7 +144,13 @@ func registerSymbolTool(s *mcp.Server, cfg Config) error {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "workspace_symbol",
 		Description: "workspace_symbol reports 0-based line and character in its results. " +
-			"\"query\" is the only accepted entry property. Up to 64 entries per call.",
+			"\"query\" is the only accepted entry property. Matching is the language server's own " +
+			"fuzzy search: a short query like \"Run\" returns every loosely-matching symbol up to " +
+			"the server's result cap, including symbols from dependency modules outside the " +
+			"project. A discovery tool for when a symbol's file is not yet known — once it is, " +
+			"prefer textDocument_definition/textDocument_references, which resolve one symbol " +
+			"exactly. Result names may be qualified as Type.Method; strip to the bare method name " +
+			"before reusing one as another tool's symbol input. Up to 64 entries per call.",
 		InputSchema:  inputSchema,
 		OutputSchema: outputSchema,
 	}, symbolHandler(cfg))

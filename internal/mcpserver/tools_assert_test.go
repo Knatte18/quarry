@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -70,6 +71,24 @@ func TestAssertHandler_CleanCheck_IsFoundWithViolationFalseAndEmptyCallers(t *te
 	}
 	if len(entry.Callers) != 0 {
 		t.Errorf("entry.Callers = %v; want empty", entry.Callers)
+	}
+
+	// The runtime half of the non-nil-slice guarantee: the marshaled clean entry must still carry
+	// "callers": []. omitempty would drop the empty-but-non-nil slice; the omitzero tag keeps it.
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("json.Marshal(entry) error = %v", err)
+	}
+	var asMap map[string]any
+	if err := json.Unmarshal(data, &asMap); err != nil {
+		t.Fatalf("json.Unmarshal(data) error = %v", err)
+	}
+	callers, ok := asMap["callers"].([]any)
+	if !ok {
+		t.Fatalf("marshaled clean entry \"callers\" = %v; want a present, empty JSON array", asMap["callers"])
+	}
+	if len(callers) != 0 {
+		t.Errorf("marshaled clean entry \"callers\" = %v; want empty", callers)
 	}
 }
 

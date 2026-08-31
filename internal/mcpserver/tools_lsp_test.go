@@ -294,6 +294,86 @@ func TestReferencesHandler_PerEntryWithinFiltersOnlyThatEntry(t *testing.T) {
 	}
 }
 
+// TestFoundEntryWithZeroResults_StillMarshalsEmptyResultsKey asserts a statusFound entry whose
+// facade call returned no locations still emits its results key as "[]" on the wire. The language
+// server answers an empty location list (not an error) for a position that names no identifier, so
+// without the key an agent cannot tell "found, nothing there" apart from a malformed result — the
+// exact shape observed in the ladder benchmark's b2-definition/3 run before this was fixed.
+// omitempty would drop the empty-but-non-nil slice referenceFieldsWire guarantees; the omitzero tag
+// is what keeps it.
+func TestFoundEntryWithZeroResults_StillMarshalsEmptyResultsKey(t *testing.T) {
+	cfg := newTestConfig(t)
+
+	empty := map[string]struct {
+		refs []quarry.Reference
+		err  error
+	}{
+		"Nothing": {refs: nil, err: nil},
+	}
+
+	tests := []struct {
+		name       string
+		resultsKey string
+		marshal    func(t *testing.T) []byte
+	}{
+		{
+			name:       "Definition",
+			resultsKey: "definitions",
+			marshal: func(t *testing.T) []byte {
+				t.Helper()
+				withStubbedFacade(t, &definitionFn, stubLookupFn(t, empty))
+				in := mustUnmarshal[lspInput](t, `{"targets":[{"symbol":"Nothing"}]}`)
+				_, out, err := definitionHandler(cfg)(context.Background(), nil, in)
+				if err != nil {
+					t.Fatalf("definitionHandler(cfg)(...) error = %v", err)
+				}
+				data, err := json.Marshal(out.Results[0])
+				if err != nil {
+					t.Fatalf("json.Marshal(out.Results[0]) error = %v", err)
+				}
+				return data
+			},
+		},
+		{
+			name:       "References",
+			resultsKey: "references",
+			marshal: func(t *testing.T) []byte {
+				t.Helper()
+				withStubbedFacade(t, &referencesFn, stubLookupFn(t, empty))
+				in := mustUnmarshal[lspInput](t, `{"targets":[{"symbol":"Nothing"}]}`)
+				_, out, err := referencesHandler(cfg)(context.Background(), nil, in)
+				if err != nil {
+					t.Fatalf("referencesHandler(cfg)(...) error = %v", err)
+				}
+				data, err := json.Marshal(out.Results[0])
+				if err != nil {
+					t.Fatalf("json.Marshal(out.Results[0]) error = %v", err)
+				}
+				return data
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := tt.marshal(t)
+			var asMap map[string]any
+			if err := json.Unmarshal(data, &asMap); err != nil {
+				t.Fatalf("json.Unmarshal(%s) error = %v", data, err)
+			}
+			if asMap["status"] != statusFound {
+				t.Fatalf("marshaled entry status = %v; want %q", asMap["status"], statusFound)
+			}
+			results, ok := asMap[tt.resultsKey].([]any)
+			if !ok {
+				t.Fatalf("marshaled entry %q = %v; want a present, empty JSON array", tt.resultsKey, asMap[tt.resultsKey])
+			}
+			if len(results) != 0 {
+				t.Errorf("marshaled entry %q = %v; want empty", tt.resultsKey, results)
+			}
+		})
+	}
+}
+
 // TestDefinitionHandler_SpawnTimeoutIsPerEntryErrorNotWholeCallFailure asserts a stub returning
 // quarry.ErrServerSpawnTimeoutSentinel produces a per-entry status: "error" rather than a whole-call
 // failure, since a daemon spawn failure surfaces only from a per-entry facade call.

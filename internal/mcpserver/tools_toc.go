@@ -31,7 +31,12 @@ type tocFileInput struct {
 	// DocSentences controls how much of each symbol's docstring reaches "docstring" in the result:
 	// 0 omits the key entirely, N keeps the first N sentences, and "all" keeps the docstring
 	// unchanged. Resolved per entry against that entry's own resolved file's parent directory.
-	DocSentences docSentences `json:"docSentences,omitempty" jsonschema:"number of leading docstring sentences to emit (0 omits the key entirely), or \"all\"; resolved per entry against that entry's own file's parent directory"`
+	//
+	// The jsonschema description deliberately writes the sentinel without quotation marks: 5 of the
+	// 6 benchmarked toc_file sessions that supplied the sentinel copied the description's quoted
+	// "all" as the JSON string "\"all\"" — quotes inside the value — and burned a round trip on the
+	// validation error.
+	DocSentences docSentences `json:"docSentences,omitempty" jsonschema:"number of leading docstring sentences to emit (0 omits the key entirely), or the string all (unquoted sentinel word, not nested quotes); resolved per entry against that entry's own file's parent directory"`
 }
 
 // tocDirInput is toc_dir's call-wide input: a "targets" array of plain directory-path strings,
@@ -227,12 +232,13 @@ func registerTOCTools(s *mcp.Server, cfg Config) error {
 	}
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "toc_dir",
-		Description: "toc_dir reports 1-based, inclusive line numbers on every listed file's own " +
-			"toc_file result shape. Each entry is a plain directory path, not an object. Each " +
-			"found entry's \"files\" carries a caller-relative \"path\" per file, composed against " +
-			"the argument as written, so it round-trips straight into a following toc_file call. " +
-			"lang, when given, is validated against toc's own supported language set, never a " +
-			"servers.yaml registry key. Up to 64 entries per call.",
+		Description: "toc_dir lists one directory level of source files — no symbols, signatures, " +
+			"or line numbers; per file it reports only path, language, package, the header " +
+			"comment's first paragraph, and test/generated flags. Each entry is a plain directory " +
+			"path, not an object. Each found entry's \"files\" carries a caller-relative \"path\" " +
+			"per file, composed against the argument as written, so it round-trips straight into a " +
+			"following toc_file call. lang, when given, is validated against toc's own supported " +
+			"language set, never a servers.yaml registry key. Up to 64 entries per call.",
 		InputSchema:  dirInputSchema,
 		OutputSchema: dirOutputSchema,
 	}, tocDirHandler(cfg))

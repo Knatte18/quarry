@@ -44,8 +44,11 @@ type definitionEntry struct {
 	Status string `json:"status"`
 	// Resolution is resolutionComplete on a statusFound entry, and absent otherwise.
 	Resolution string `json:"resolution,omitempty"`
-	// Definitions holds the resolved definition positions on a statusFound entry.
-	Definitions []referenceField `json:"definitions,omitempty"`
+	// Definitions holds the resolved definition positions on a statusFound entry. The tag is
+	// omitzero, not omitempty: referenceFieldsWire always returns a non-nil slice, so a statusFound
+	// entry with zero definitions still emits "definitions": [] — omitempty would drop the key and
+	// leave a found entry indistinguishable from one that never carried definitions at all.
+	Definitions []referenceField `json:"definitions,omitzero"`
 	// Candidates holds the ambiguous symbol's candidate positions on a statusAmbiguous entry.
 	Candidates []string `json:"candidates,omitempty"`
 	// Error holds a human-readable message on a statusError entry.
@@ -62,8 +65,10 @@ type referencesEntry struct {
 	Status string `json:"status"`
 	// Resolution is resolutionComplete on a statusFound entry, and absent otherwise.
 	Resolution string `json:"resolution,omitempty"`
-	// References holds the resolved reference positions on a statusFound entry.
-	References []referenceField `json:"references,omitempty"`
+	// References holds the resolved reference positions on a statusFound entry. omitzero, not
+	// omitempty, for the same reason definitionEntry.Definitions is: a statusFound entry with zero
+	// references must still emit "references": [].
+	References []referenceField `json:"references,omitzero"`
 	// Candidates holds the ambiguous symbol's candidate positions on a statusAmbiguous entry.
 	Candidates []string `json:"candidates,omitempty"`
 	// Error holds a human-readable message on a statusError entry.
@@ -200,7 +205,12 @@ func registerLSPTools(s *mcp.Server, cfg Config) error {
 		Name: "textDocument_definition",
 		Description: "textDocument_definition reports 0-based line and character on both input and " +
 			"output. Each entry accepts one of three forms: textDocument+position, symbol alone, or " +
-			"textDocument+symbol. Up to 64 entries per call.",
+			"textDocument+symbol. Prefer a symbol form unless an exact position is already known: " +
+			"symbol is an exact bare name (Run, never Shuttle.Run or pkg.Run), searched file-wide " +
+			"when textDocument is present and project-wide otherwise. On a status \"ambiguous\" " +
+			"entry, candidates are 1-based file:line:col display strings — do not paste one into a " +
+			"0-based position; retry with textDocument+symbol instead. A per-entry \"within\" " +
+			"directory restricts that entry's results. Up to 64 entries per call.",
 		InputSchema:  definitionInputSchema,
 		OutputSchema: definitionOutSchema,
 	}, definitionHandler(cfg))
@@ -217,7 +227,14 @@ func registerLSPTools(s *mcp.Server, cfg Config) error {
 		Name: "textDocument_references",
 		Description: "textDocument_references reports 0-based line and character on both input and " +
 			"output. Each entry accepts one of three forms: textDocument+position, symbol alone, or " +
-			"textDocument+symbol. Up to 64 entries per call.",
+			"textDocument+symbol. Prefer a symbol form unless an exact position is already known: " +
+			"symbol is an exact bare name (Run, never Shuttle.Run or pkg.Run), searched file-wide " +
+			"when textDocument is present and project-wide otherwise. On a status \"ambiguous\" " +
+			"entry, candidates are 1-based file:line:col display strings — do not paste one into a " +
+			"0-based position; retry with textDocument+symbol instead. A per-entry \"within\" " +
+			"directory restricts that entry's results — use it to scope a caller search to one " +
+			"package. Results cover only the one resolved symbol; same-named methods on other types " +
+			"are never included. Up to 64 entries per call.",
 		InputSchema:  referencesInputSchema,
 		OutputSchema: referencesOutSchema,
 	}, referencesHandler(cfg))
