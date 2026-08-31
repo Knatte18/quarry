@@ -29,11 +29,20 @@
 // build/lock/worktree orchestration this tool has no business re-deriving, and reusing the exact binary
 // the operator would otherwise run by hand keeps this tool and that binary provably in sync.
 //
-// Two things are deliberately not run by this command:
-//   - The cold config (a5-bundle-cold). Its per-attempt lifecycle is a full session relaunch on failure,
-//     never an in-session retry (see ladder-run/SKILL.md's "The cold config" section) -- structurally
-//     different from a warm session's loop, and driven separately.
+// One thing is deliberately still not run by this command:
 //   - The scoring session. It must run after every run (warm AND cold) has ingested, not partway through.
+//
+// The cold config (a5-bundle-cold) IS driven by this command, via --cold-config, but through a separate
+// loop (runCold) rather than run's warm-matrix loop: its per-attempt lifecycle is a full session relaunch
+// on failure, never an in-session retry (see ladder-run/SKILL.md's "The cold config" section) --
+// structurally different from a warm session's loop. runCold never calls warm (a cold repetition's whole
+// premise is that its worktree starts with no resident daemon), and tears down that repetition's
+// disposable worktree via `cold-cell --teardown --rep <n>` unconditionally after every attempt -- whatever
+// the outcome -- since prepare-session's BuildWorktree refuses to reuse a stale path and the next attempt
+// (or the next repetition) needs that path clear. Because prepare-session always rebuilds the worktree
+// from scratch on every call, this loop is naturally self-healing against the worktree simply not
+// existing when expected (e.g. a reboot clearing a /tmp-backed worktree between attempts) -- no special
+// case is needed for that, only for the documented cold-before live-daemon self-abort (see runCold).
 package main
 
 import (
@@ -81,7 +90,25 @@ func main() {
 	ladderPath := flag.String("ladder", defaultLadderPath, "path to the ladder file to drive")
 	resultsRoot := flag.String("results-root", defaultResultsRoot, "the results directory to read and write under")
 	configsFlag := flag.String("configs", "", "comma-separated config IDs to drive, in order (default: the main matrix's 14 warm configs)")
+	coldConfig := flag.String("cold-config", "", "drive this single cold config's full lifecycle (prepare-session, session, teardown, repeat, finalize) instead of the warm-matrix loop; --configs is ignored when set")
+	scoring := flag.Bool("scoring", false, "drive the single shared scoring session (prepare-session --scoring, one live session, wait for its \"scored\" outcome) instead of the warm-matrix loop; --configs and --cold-config are ignored when set")
 	flag.Parse()
+
+	if *scoring {
+		if err := runScoring(*ladderPath, *resultsRoot); err != nil {
+			fmt.Fprintln(os.Stderr, "runmatrix:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *coldConfig != "" {
+		if err := runCold(*ladderPath, *resultsRoot, *coldConfig); err != nil {
+			fmt.Fprintln(os.Stderr, "runmatrix:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	configIDs := defaultConfigIDs
 	if *configsFlag != "" {
@@ -95,6 +122,133 @@ func main() {
 		fmt.Fprintln(os.Stderr, "runmatrix:", err)
 		os.Exit(1)
 	}
+}
+
+// runCold drives one cold config's full lifecycle to completion: repeatedly resolve the next pending
+// repetition via next-run, prepare-session it (which unconditionally rebuilds that repetition's
+// disposable worktree -- see this file's own top comment for why that makes the loop self-healing against
+// the worktree not existing), launch and wait for exactly one live session, tear down that repetition's
+// worktree unconditionally regardless of outcome, and either loop to the next repetition (on "ingested")
+// or halt the whole run (on anything else, matching run's own halt-on-non-ingested rule). Once next-run
+// reports nothing pending, it finalises the cold cell (`cold-cell`, no flags) and returns.
+//
+// warm is never called here, per this file's own top comment.
+//
+// prepare-session can itself fail here in one expected, recoverable way: the cold-before gate finding a
+// live daemon still resident from the previous attempt and self-aborting -- ladder.go's own
+// prepareColdSessionAfterGate already invalidates that attempt and records why (see abortColdAttempt in
+// cmd/ladderbench/preparesession.go); this loop treats that specific failure as "retry immediately", not
+// as a fatal error, by checking the printed message for its own fixed "aborted as attempt" substring.
+func runCold(ladderPath, resultsRoot, configID string) error {
+	if err := runVisible("go", "build", "-o", binPath, ladderDir+"/cmd/ladderbench"); err != nil {
+		return fmt.Errorf("build ladderbench: %w", err)
+	}
+
+	// Defensive, same reasoning as run's own release-before-start call.
+	_ = runVisible(binPath, "prepare-session", "--release", "--ladder", ladderPath, "--results-root", resultsRoot)
+
+	for {
+		nextOut, err := ladderbenchOutput("next-run", "--config-id", configID, "--ladder", ladderPath, "--results-root", resultsRoot)
+		if err != nil {
+			return fmt.Errorf("next-run --config-id %s: %w", configID, err)
+		}
+		if strings.Contains(nextOut, "nothing pending") {
+			fmt.Printf("== %s: all repetitions already ingested ==\n", configID)
+			break
+		}
+		rep := fieldValue(nextOut, "rep")
+		if rep == "" {
+			return fmt.Errorf("next-run --config-id %s printed no rep: line", configID)
+		}
+
+		fmt.Printf("== %s rep %s: preparing cold session (rebuilding disposable worktree) ==\n", configID, rep)
+		prepOut, err := ladderbenchOutput("prepare-session", "--config-id", configID, "--rep", rep, "--ladder", ladderPath, "--results-root", resultsRoot)
+		if err != nil {
+			if strings.Contains(err.Error(), "aborted as attempt") {
+				fmt.Printf("== %s rep %s: cold-before gate found a live daemon, self-invalidated -- retrying next attempt ==\n", configID, rep)
+				continue
+			}
+			return fmt.Errorf("prepare-session --config-id %s --rep %s: %w", configID, rep, err)
+		}
+		scratchDir := fieldValue(prepOut, "scratch_dir")
+		if scratchDir == "" {
+			return fmt.Errorf("prepare-session --config-id %s --rep %s printed no scratch_dir: line", configID, rep)
+		}
+
+		fmt.Printf("== %s rep %s: launching in tmux session %q (no warm -- cold config) -- `tmux attach -t %s` to watch ==\n",
+			configID, rep, tmuxSession, tmuxSession)
+		outcome, waitErr := launchAndWait(scratchDir)
+
+		// /ladder-run's own last step already releases the lock before it writes the outcome marker; this
+		// is a defensive backstop for the operator-killed-it path, same as run's own call.
+		_ = runVisible(binPath, "prepare-session", "--release", "--ladder", ladderPath, "--results-root", resultsRoot)
+
+		if waitErr != nil {
+			return fmt.Errorf("session for %s rep %s: %w", configID, rep, waitErr)
+		}
+		fmt.Printf("== %s rep %s: outcome = %s ==\n", configID, rep, outcome)
+
+		fmt.Printf("== %s rep %s: tearing down disposable worktree ==\n", configID, rep)
+		if err := runVisible(binPath, "cold-cell", "--teardown", "--rep", rep, "--ladder", ladderPath, "--results-root", resultsRoot); err != nil {
+			return fmt.Errorf("cold-cell --teardown --rep %s: %w", rep, err)
+		}
+
+		if outcome != "ingested" {
+			return fmt.Errorf("%s rep %s outcome was %q, not \"ingested\" -- halting rather than continuing past it, per ladder-run/SKILL.md's own halt-on-truncated rule", configID, rep, outcome)
+		}
+	}
+
+	// Deliberately does NOT call `cold-cell` (finalize) here: ColdCellDisposition classifies a repetition
+	// as "cold" vs "no_daemon_signal" by reading run.json's own state, and WriteRunJSON -- see its own doc
+	// comment in runstate.go -- is written only by the scoring session, after score.json exists. Calling
+	// finalize before every one of this config's repetitions has been scored makes every repetition look
+	// incomplete to ColdCellDisposition, which falls through to a bogus "not-run" disposition even though
+	// every repetition actually ran and ingested cleanly. Run `cold-cell` (no flags) by hand once the
+	// scoring session has scored every ingested run.
+	fmt.Printf("== %s: all repetitions ingested. Do NOT finalize yet -- run the scoring session first, then `ladderbench cold-cell --ladder %s --results-root %s` by hand ==\n", configID, ladderPath, resultsRoot)
+	return nil
+}
+
+// runScoring drives the single shared scoring session to completion: prepare-session --scoring once,
+// launch and wait for exactly one live session (ladder-run/SKILL.md's own scoring-session loop iterates
+// every ingested-but-unscored run internally, inside that one session, so there is only ever one session
+// to launch here -- unlike the per-repetition warm/cold loops), and report its outcome.
+//
+// Unlike run/runCold, a non-"scored" outcome is reported but not treated as fatal -- there is no next
+// config or repetition to halt ahead of; this is the whole scoring pass.
+func runScoring(ladderPath, resultsRoot string) error {
+	if err := runVisible("go", "build", "-o", binPath, ladderDir+"/cmd/ladderbench"); err != nil {
+		return fmt.Errorf("build ladderbench: %w", err)
+	}
+
+	// Defensive, same reasoning as run's own release-before-start call.
+	_ = runVisible(binPath, "prepare-session", "--release", "--ladder", ladderPath, "--results-root", resultsRoot)
+
+	fmt.Println("== scoring: preparing session ==")
+	prepOut, err := ladderbenchOutput("prepare-session", "--scoring", "--ladder", ladderPath, "--results-root", resultsRoot)
+	if err != nil {
+		return fmt.Errorf("prepare-session --scoring: %w", err)
+	}
+	scratchDir := fieldValue(prepOut, "scratch_dir")
+	if scratchDir == "" {
+		return fmt.Errorf("prepare-session --scoring printed no scratch_dir: line")
+	}
+
+	fmt.Printf("== scoring: launching in tmux session %q -- `tmux attach -t %s` to watch ==\n", tmuxSession, tmuxSession)
+	outcome, waitErr := launchAndWait(scratchDir)
+
+	// /ladder-run's own last step already releases the lock before it writes the outcome marker; this is
+	// a defensive backstop for the operator-killed-it path, same as run's/runCold's own call.
+	_ = runVisible(binPath, "prepare-session", "--release", "--ladder", ladderPath, "--results-root", resultsRoot)
+
+	if waitErr != nil {
+		return fmt.Errorf("scoring session: %w", waitErr)
+	}
+	fmt.Printf("== scoring: outcome = %s ==\n", outcome)
+	if outcome != "scored" {
+		return fmt.Errorf("scoring outcome was %q, not \"scored\"", outcome)
+	}
+	return nil
 }
 
 func run(ladderPath, resultsRoot string, configIDs []string) error {
