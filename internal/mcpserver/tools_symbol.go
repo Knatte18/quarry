@@ -1,9 +1,9 @@
 // tools_symbol.go implements workspace_symbol, the one LSP-mirrored tool whose entry carries no
 // position or textDocument at all: a bare name search against the language server's workspace/symbol
-// request. Its entry type, input type, and output shapes are declared separately from card 14's
-// lspEntry/lspInput/definitionOutput/referencesOutput family because a symbolEntry accepts exactly
-// one property, and reusing lspEntry here would advertise textDocument/position/within properties
-// this tool cannot accept.
+// request, scopable per entry with "within". Its entry type, input type, and output shapes are
+// declared separately from card 14's lspEntry/lspInput/definitionOutput/referencesOutput family
+// because a symbolEntry accepts exactly two properties, and reusing lspEntry here would advertise
+// textDocument/position properties this tool cannot accept.
 
 package mcpserver
 
@@ -14,10 +14,12 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Knatte18/quarry/internal/cli"
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// symbolEntry is one target of a workspace_symbol call: a bare symbol name to search project-wide.
+// symbolEntry is one target of a workspace_symbol call: a bare symbol name to search project-wide,
+// optionally scoped to one directory with Within.
 // raw carries the entry's original JSON bytes, following lspEntry's own per-type raw-capture
 // convention (see lspentry.go's header comment for why this is not a shared embedded helper type).
 type symbolEntry struct {
@@ -25,6 +27,11 @@ type symbolEntry struct {
 
 	// Query is the symbol name to search for, using LSP's own WorkspaceSymbolParams field name.
 	Query string `json:"query,omitempty" jsonschema:"the symbol name to search for, project-wide"`
+	// Within restricts this entry's own matches to files within the named directory, exactly as
+	// lspEntry.Within scopes a reference or definition lookup. workspace/symbol is the language
+	// server's fuzzy match over the whole workspace — dependency modules included — so an unscoped
+	// short query can return mostly out-of-project noise; this is the per-entry cut for it.
+	Within string `json:"within,omitempty" jsonschema:"restrict this entry's own matches to files within this directory (relative to the server's target directory, or absolute)"`
 }
 
 // symbolEntryAlias is a defined type (not a type alias) with symbolEntry's exact underlying type,
@@ -46,8 +53,8 @@ func (e *symbolEntry) UnmarshalJSON(data []byte) error {
 }
 
 // symbolInput is workspace_symbol's call-wide input: the same call-wide resolution overrides
-// lspInput carries, but with no "within" property — the CLI registers none for "symbol", and
-// query.Symbol has nothing to filter per-file against.
+// lspInput carries. "within" is per-entry on symbolEntry, not call-wide, matching where lspEntry
+// and nativeEntry place it — each entry names the directory sanctioned for that one search.
 type symbolInput struct {
 	// Targets is the array of entries this call resolves, 1 to 64 per call.
 	Targets []symbolEntry `json:"targets" jsonschema:"the entries to resolve, 1 to 64 per call"`
@@ -83,28 +90,33 @@ type symbolOutput struct {
 
 // resolveSymbolEntry resolves one symbolEntry: it reports an unknown key on entry.raw, or an empty
 // Query, as this entry's own statusError; otherwise it calls symbolFn with
-// callCtx.options(lang, quarry.Query{Symbol: entry.Query}) and maps the outcome with
-// classifySymbolError — not classifyLSPError, which would add an "ambiguous" branch quarry.Symbol
-// never reaches.
+// callCtx.options(lang, quarry.Query{Symbol: entry.Query}), applies cli.FilterSymbolsWithin when
+// entry.Within is non-empty and the call succeeded (the same post-hoc scoping resolveLSPEntry
+// applies through cli.FilterWithin), and maps the outcome with classifySymbolError — not
+// classifyLSPError, which would add an "ambiguous" branch quarry.Symbol never reaches.
 func resolveSymbolEntry(ctx context.Context, callCtx callContext, lang string, entry symbolEntry) symbolMatchEntry {
 	target := entryTargetAny(entry.raw)
 
-	if unknown := unknownEntryKeys(entry.raw, "query"); len(unknown) > 0 {
+	if unknown := unknownEntryKeys(entry.raw, "query", "within"); len(unknown) > 0 {
 		return symbolMatchEntry{
 			Target: target,
 			Status: statusError,
-			Error:  fmt.Sprintf("mcpserver: entry has unrecognized propert(y/ies) %v; the only accepted property is query", unknown),
+			Error:  fmt.Sprintf("mcpserver: entry has unrecognized propert(y/ies) %v; accepted properties are query, within", unknown),
 		}
 	}
 	if entry.Query == "" {
 		return symbolMatchEntry{
 			Target: target,
 			Status: statusError,
-			Error:  "mcpserver: entry's query must not be empty; query is the only accepted property",
+			Error:  "mcpserver: entry's query must not be empty; accepted properties are query, within",
 		}
 	}
 
 	matches, err := symbolFn(ctx, callCtx.options(lang, quarry.Query{Symbol: entry.Query}))
+	if err == nil && entry.Within != "" {
+		matches = cli.FilterSymbolsWithin(matches, entry.Within, callCtx.TargetDir)
+	}
+
 	status, message := classifySymbolError(err)
 	if status != statusFound {
 		return symbolMatchEntry{Target: target, Status: status, Error: message}
@@ -143,14 +155,16 @@ func registerSymbolTool(s *mcp.Server, cfg Config) error {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "workspace_symbol",
-		Description: "workspace_symbol reports 0-based line and character in its results. " +
-			"\"query\" is the only accepted entry property. Matching is the language server's own " +
-			"fuzzy search: a short query like \"Run\" returns every loosely-matching symbol up to " +
-			"the server's result cap, including symbols from dependency modules outside the " +
-			"project. A discovery tool for when a symbol's file is not yet known — once it is, " +
-			"prefer textDocument_definition/textDocument_references, which resolve one symbol " +
-			"exactly. Result names may be qualified as Type.Method; strip to the bare method name " +
-			"before reusing one as another tool's symbol input. Up to 64 entries per call.",
+		Description: "workspace_symbol reports 0-based line and character in its results. Each " +
+			"entry accepts \"query\" plus an optional \"within\" directory restricting that " +
+			"entry's matches. Matching is the language server's own fuzzy search: a short query " +
+			"like \"Run\" returns every loosely-matching symbol up to the server's result cap, " +
+			"including symbols from dependency modules outside the project — set \"within\" " +
+			"unless workspace-wide noise is wanted. A discovery tool for when a symbol's file is " +
+			"not yet known — once it is, prefer textDocument_definition/textDocument_references, " +
+			"which resolve one symbol exactly. Result names may be qualified as Type.Method; " +
+			"strip to the bare method name before reusing one as another tool's symbol input. Up " +
+			"to 64 entries per call.",
 		InputSchema:  inputSchema,
 		OutputSchema: outputSchema,
 	}, symbolHandler(cfg))

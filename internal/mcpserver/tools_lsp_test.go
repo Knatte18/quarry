@@ -294,6 +294,45 @@ func TestReferencesHandler_PerEntryWithinFiltersOnlyThatEntry(t *testing.T) {
 	}
 }
 
+// TestSymbolHandler_PerEntryWithinFiltersOnlyThatEntry asserts a workspace_symbol entry's "within"
+// filters only that entry's own matches — including a dependency-module match outside the target
+// directory entirely — while a sibling entry with no "within" keeps everything the server returned.
+func TestSymbolHandler_PerEntryWithinFiltersOnlyThatEntry(t *testing.T) {
+	cfg := newTestConfig(t)
+	inFile := filepath.Join(cfg.TargetDir, "in", "a.go")
+	moduleCacheFile := "/home/u/go/pkg/mod/example.com/dep@v1.0.0/dep.go"
+
+	withStubbedFacade(t, &symbolFn, func(_ context.Context, opts quarry.Options) ([]quarry.SymbolMatch, error) {
+		return []quarry.SymbolMatch{
+			{Name: opts.Query.Symbol, Kind: 12, File: inFile, Line: 1, Character: 1},
+			{Name: opts.Query.Symbol, Kind: 12, File: moduleCacheFile, Line: 2, Character: 2},
+		}, nil
+	})
+
+	in := mustUnmarshal[symbolInput](t, `{"targets":[{"query":"Scoped","within":"in"},{"query":"Unscoped"}]}`)
+
+	_, out, err := symbolHandler(cfg)(context.Background(), nil, in)
+	if err != nil {
+		t.Fatalf("symbolHandler(cfg)(...) error = %v", err)
+	}
+	if len(out.Results) != 2 {
+		t.Fatalf("len(out.Results) = %d; want 2", len(out.Results))
+	}
+
+	scoped := out.Results[0]
+	if scoped.Status != statusFound {
+		t.Fatalf("scoped entry Status = %q; want %q", scoped.Status, statusFound)
+	}
+	if len(scoped.Symbols) != 1 || scoped.Symbols[0].File != inFile {
+		t.Errorf("scoped entry Symbols = %v; want exactly the one match within \"in\"", scoped.Symbols)
+	}
+
+	unscoped := out.Results[1]
+	if len(unscoped.Symbols) != 2 {
+		t.Errorf("unscoped entry Symbols = %v; want both matches (no \"within\" filter applied)", unscoped.Symbols)
+	}
+}
+
 // TestFoundEntryWithZeroResults_StillMarshalsEmptyResultsKey asserts a statusFound entry whose
 // facade call returned no locations still emits its results key as "[]" on the wire. The language
 // server answers an empty location list (not an error) for a position that names no identifier, so
