@@ -1,5 +1,9 @@
-// Command runmatrix drives every warm-matrix run session (14 configs x 3 reps = 42) to completion,
-// automatically, one live claude session at a time.
+// Command runmatrix drives every warm-matrix run session for one ladder file to completion,
+// automatically, one live claude session at a time. Its defaults (no flags) reproduce its original
+// purpose exactly: the main 14-config x 3-rep = 42-run matrix against ladder.yaml. --ladder,
+// --results-root, and --configs override those three independently for a different matrix -- e.g. a
+// distilled companion file's own smaller config set, run against its own results root -- without
+// touching the main matrix's data or in-flight scratch dirs.
 //
 // This does not run headless. Each session is launched inside a detached tmux session
 // ("tmux new-session -d -s ladder-run", never claude -p/--print) with "/ladder-run" pre-submitted as its
@@ -34,6 +38,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,10 +48,13 @@ import (
 )
 
 const (
-	repoRoot    = "/home/knatte/Code/quarry/wts/quarry"
-	ladderDir   = repoRoot + "/bench/loomyard-eval/ladder"
-	binPath     = "/tmp/ladderbench"
-	resultsRoot = ladderDir + "/results/2026-08-30"
+	repoRoot  = "/home/knatte/Code/quarry/wts/quarry"
+	ladderDir = repoRoot + "/bench/loomyard-eval/ladder"
+	binPath   = "/tmp/ladderbench"
+
+	defaultLadderPath  = ladderDir + "/ladder.yaml"
+	defaultResultsRoot = ladderDir + "/results/2026-08-30"
+
 	tmuxSession = "ladder-run"
 
 	// outcomeMarkerName is ladder-run/SKILL.md's own fixed filename for its run-session loop's completion
@@ -59,24 +67,37 @@ const (
 	completionGraceDelay = 5 * time.Second
 )
 
-// warmConfigIDs lists the 14 warm-matrix config IDs in the exact order ladder.yaml's own configs: list
-// declares them. Kept as a literal here rather than derived from ladder.yaml, since no ladderbench
-// subcommand currently lists config IDs; if ladder.yaml's configs: list ever changes, this list must be
-// updated to match.
-var warmConfigIDs = []string{
+// defaultConfigIDs lists the main matrix's 14 warm-matrix config IDs in the exact order ladder.yaml's
+// own configs: list declares them. Kept as a literal here rather than derived from ladder.yaml, since no
+// ladderbench subcommand currently lists config IDs; if ladder.yaml's configs: list ever changes, this
+// list must be updated to match. --configs overrides this for a different ladder file's own config set.
+var defaultConfigIDs = []string{
 	"a0-none", "a1-toc-file", "a2-toc-dir", "a3-toc-pair", "a4-toc-pair-symbol", "a5-bundle",
 	"b0-none", "b1-symbol", "b2-definition", "b3-references", "b4-lsp-trio", "b5-impact",
 	"b6-assert-no-callers", "b7-bundle",
 }
 
 func main() {
-	if err := run(); err != nil {
+	ladderPath := flag.String("ladder", defaultLadderPath, "path to the ladder file to drive")
+	resultsRoot := flag.String("results-root", defaultResultsRoot, "the results directory to read and write under")
+	configsFlag := flag.String("configs", "", "comma-separated config IDs to drive, in order (default: the main matrix's 14 warm configs)")
+	flag.Parse()
+
+	configIDs := defaultConfigIDs
+	if *configsFlag != "" {
+		configIDs = strings.Split(*configsFlag, ",")
+		for i, id := range configIDs {
+			configIDs[i] = strings.TrimSpace(id)
+		}
+	}
+
+	if err := run(*ladderPath, *resultsRoot, configIDs); err != nil {
 		fmt.Fprintln(os.Stderr, "runmatrix:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(ladderPath, resultsRoot string, configIDs []string) error {
 	if err := runVisible("go", "build", "-o", binPath, ladderDir+"/cmd/ladderbench"); err != nil {
 		return fmt.Errorf("build ladderbench: %w", err)
 	}
@@ -85,11 +106,11 @@ func run() error {
 	// test, or a prior interrupted run of this same command) so the first prepare-session below never
 	// refuses to acquire it. Releasing an absent or already-released lock is not an error, so its own
 	// exit status is ignored here.
-	_ = runVisible(binPath, "prepare-session", "--release", "--results-root", resultsRoot)
+	_ = runVisible(binPath, "prepare-session", "--release", "--ladder", ladderPath, "--results-root", resultsRoot)
 
-	for _, configID := range warmConfigIDs {
+	for _, configID := range configIDs {
 		for {
-			nextOut, err := ladderbenchOutput("next-run", "--config-id", configID, "--results-root", resultsRoot)
+			nextOut, err := ladderbenchOutput("next-run", "--config-id", configID, "--ladder", ladderPath, "--results-root", resultsRoot)
 			if err != nil {
 				return fmt.Errorf("next-run --config-id %s: %w", configID, err)
 			}
@@ -103,7 +124,7 @@ func run() error {
 			}
 
 			fmt.Printf("== %s rep %s: preparing session ==\n", configID, rep)
-			prepOut, err := ladderbenchOutput("prepare-session", "--config-id", configID, "--rep", rep, "--results-root", resultsRoot)
+			prepOut, err := ladderbenchOutput("prepare-session", "--config-id", configID, "--rep", rep, "--ladder", ladderPath, "--results-root", resultsRoot)
 			if err != nil {
 				return fmt.Errorf("prepare-session --config-id %s --rep %s: %w", configID, rep, err)
 			}
@@ -113,7 +134,7 @@ func run() error {
 			}
 
 			fmt.Printf("== %s rep %s: warming daemon ==\n", configID, rep)
-			if err := runVisible(binPath, "warm", "--config-id", configID, "--results-root", resultsRoot); err != nil {
+			if err := runVisible(binPath, "warm", "--config-id", configID, "--ladder", ladderPath, "--results-root", resultsRoot); err != nil {
 				return fmt.Errorf("warm --config-id %s: %w", configID, err)
 			}
 
@@ -127,7 +148,7 @@ func run() error {
 
 			// /ladder-run's own last step already releases the lock before it writes the outcome marker;
 			// this is a defensive backstop for the operator-killed-it path, where that never happened.
-			_ = runVisible(binPath, "prepare-session", "--release", "--results-root", resultsRoot)
+			_ = runVisible(binPath, "prepare-session", "--release", "--ladder", ladderPath, "--results-root", resultsRoot)
 
 			if outcome != "ingested" {
 				return fmt.Errorf("%s rep %s outcome was %q, not \"ingested\" -- halting rather than continuing past it, per ladder-run/SKILL.md's own halt-on-truncated rule", configID, rep, outcome)
@@ -135,8 +156,8 @@ func run() error {
 		}
 	}
 
-	fmt.Println("== warm matrix complete (42 runs) ==")
-	fmt.Println("Still separate: the cold cell (3 reps) and the scoring session.")
+	fmt.Printf("== matrix complete (%d configs) ==\n", len(configIDs))
+	fmt.Println("Still separate: the cold cell and the scoring session, if applicable to this ladder file.")
 	return nil
 }
 
