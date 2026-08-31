@@ -184,8 +184,18 @@ func LoadLadder(path string) (*Ladder, error) {
 		}
 	}
 
-	// Each of ladder "a" and "b" must carry exactly one control config -- the one with empty Allowed.
+	// Each ladder letter actually present among l.Configs must carry exactly one control config -- the
+	// one with empty Allowed. A companion file (e.g. a distilled follow-up matrix scoped to a single
+	// ladder) legitimately declares configs for only "a" or only "b", not both -- the requirement
+	// applies per ladder actually in use, not unconditionally to both letters.
+	presentLadders := make(map[string]bool, 2)
+	for _, config := range l.Configs {
+		presentLadders[config.Ladder] = true
+	}
 	for _, ladderName := range []string{"a", "b"} {
+		if !presentLadders[ladderName] {
+			continue
+		}
 		controlCount := 0
 		for _, config := range l.Configs {
 			if config.Ladder == ladderName && len(config.Allowed) == 0 {

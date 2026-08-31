@@ -1,0 +1,80 @@
+# Companion matrix to ladder.yaml -- distilled follow-up, NOT a re-run of the full 14-config matrix.
+#
+# Scope: only the three configs whose observed behavior in the 2026-08-30 matrix (see
+# .../results/2026-08-30's raw data and the quarry-mcp-ladder-findings-review analysis, archived at
+# `git show archive/quarry-mcp-ladder-findings-review:_mill/analysis.md`) was driven by a quarry-mcp
+# defect since fixed on main:
+#
+#   - b1-symbol:   workspace_symbol had no scoping; unscoped "Run"/"Shuttle" queries saturated gopls's
+#                  100-hit cap (~25.6k chars). `within` scoping now exists (commit 1592f4e).
+#   - b4-lsp-trio: same workspace_symbol noise, compounding with the other two LSP tools (seed 5 of the
+#                  analysis). Same fix applies.
+#   - b2-definition: position-based (line/character) addressing caused observed agent friction (a
+#                  mis-aimed batch, an ad hoc awk column hunt, a retry). Tool descriptions now steer
+#                  to symbol-form addressing (commit ee84d8d).
+#
+# Every other 2026-08-30 config's behavior was NOT attributable to a since-fixed defect, so it is not
+# re-run here -- its existing (re-ingested, see tools/reingest) data stands. reps: 2, not the main
+# matrix's 3, since this is a targeted before/after check, not a fresh statistical baseline.
+#
+# Run against its own results root, e.g.:
+#   ladderbench next-run --ladder bench/loomyard-eval/ladder/ladder-followup.yaml \
+#     --results-root bench/loomyard-eval/ladder/results/2026-08-31-followup
+#
+# Do NOT point this at the main matrix's results root -- config ids intentionally match the original
+# ladder.yaml's ids (b1-symbol, b4-lsp-trio, b2-definition) for direct before/after comparison by id
+# across the two results roots, which only works if they stay in separate directories.
+
+run_model: claude-sonnet-5
+reps: 2
+run_effort: medium
+max_turns: 60
+
+# Distinct from ladder.yaml's session_dir_template so a follow-up dispatch never collides with (or
+# overwrites) the original matrix's already-used per-config-per-rep scratch directories.
+session_dir_template: /home/knatte/Code/quarry/wts/quarry/.scratch/ladder-sessions/followup-{config_id}-{n}
+
+scorer:
+  model: claude-opus-5
+  effort: high
+
+quarry_tools:
+  - toc_dir
+  - toc_file
+  - textDocument_definition
+  - textDocument_references
+  - workspace_symbol
+  - impact
+  - assert_no_callers
+
+tasks:
+  04-shedadapters-shuttle-impact:
+    task_file: bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    worktree: /tmp/loomyard-eval-04
+    schema: impact
+    fasit: bench/loomyard-eval/results/2026-08-28/04-shedadapters-shuttle-impact/c.json
+
+source_repo: /home/knatte/Code/loomyard/wts/loomyard
+
+configs:
+  - id: b0-none
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: []
+    cold: false
+  - id: b1-symbol
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: [workspace_symbol]
+    cold: false
+  - id: b2-definition
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: [textDocument_definition]
+    cold: false
+  - id: b4-lsp-trio
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: [workspace_symbol, textDocument_definition, textDocument_references]
+    cold: false
