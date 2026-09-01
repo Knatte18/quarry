@@ -95,6 +95,16 @@ This tests the integration Loomyard would actually ship (mechanical pre-processi
 research report) with the existing scoring machinery: does pre-computed verified truth at zero
 agent-side tool cost beat both the control and the tool-granted rungs?
 
+**Known negative prior, operator-reported (no committed writeup found):** an earlier informal
+bench injected a compact TOC into a *reviewer's* prompt and found little to no gain — consistent
+with the committed task-03 scorecard (a baseline reviewer won decisively; the diff already tells
+a reviewer where to look, and the compiler is ground truth for resolution breaks). The trace of
+that experiment is `bench/loomyard-eval/scripts/gen_compact_toc.py`. Consequence: scope the annex
+arm to **plan-time/implementer-shaped injection** (an `impact` annex when the task names symbols
+to change; a toc pack for *unfamiliar-code exploration*, where the toc win was actually
+measured), not reviewer prompts — and this run is the documented re-test of the injection
+question, so record its results either way.
+
 ### 2b. The weak-model arm
 
 Same task, at minimum `c0-none` + `c1-impact` (task 05 configs), with
@@ -153,8 +163,11 @@ Ranked list with rationale in the research report §5. Short form:
 
 The direction the evidence actually supports (report §6): quarry called mechanically from
 Loomyard's own Go code via the `quarry/` facade — plan-time impact annexes injected into
-implementer prompts, toc context packs, review-time diff impact, and deterministic `verify:`
-gates on Deletes/Moves. The gates are explicitly blocked on §5 item 4: a gate consuming
+implementer prompts, toc context packs for unfamiliar-code exploration, and deterministic
+`verify:` gates on Deletes/Moves. (Review-time diff-impact annexes are deliberately dropped from
+this list: an earlier informal bench found injecting a TOC into a reviewer prompt gained little —
+see the negative prior under §2a — and for compiling Go the compiler already polices resolution
+breaks; only re-add review-shaped annexes if the §2a re-test surprises.) The gates are explicitly blocked on §5 item 4: a gate consuming
 unverified results marked `resolution: complete` re-creates the 31-false-positive incident
 (`docs/research/scout-agent-usage-findings.md`). The annex arm (§2a) is the measurement of this
 integration's value.
