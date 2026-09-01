@@ -72,7 +72,7 @@ func repoRoot(t *testing.T) string {
 // TestAssertNoCallers_InterfaceConflation_Integration proves assert-no-callers' default
 // declaration-verified caller set excludes runner's and sched's own structurally-identical but
 // unrelated clock.Now call sites, matches the callers-verified figure
-// docs/implementation-widening-spike.md records, and that --no-verify reinstates the wider,
+// docs/research/implementation-widening-spike.md records, and that --no-verify reinstates the wider,
 // unfiltered set including those call sites — pinning both the fix and its escape hatch against a
 // live gopls.
 func TestAssertNoCallers_InterfaceConflation_Integration(t *testing.T) {
@@ -110,14 +110,14 @@ func TestAssertNoCallers_InterfaceConflation_Integration(t *testing.T) {
 		}
 	}
 
-	// callers-verified: 2, per docs/implementation-widening-spike.md's recorded figure for
+	// callers-verified: 2, per docs/research/implementation-widening-spike.md's recorded figure for
 	// this exact position — references-verified (3) minus the one declaration site
 	// FilterUnexpectedCallers removes. Not the spike's references-unfiltered (7, which
 	// still includes the declaration) or references-verified (3) figures, and not issue
 	// #1's pre-fix "31 -> 2" measurement, taken against a different repository.
 	const wantCallersVerified = 2
 	if len(verifiedCallers) != wantCallersVerified {
-		t.Errorf("assert-no-callers (verified) len(callers) = %d; want %d (docs/implementation-widening-spike.md's callers-verified figure)", len(verifiedCallers), wantCallersVerified)
+		t.Errorf("assert-no-callers (verified) len(callers) = %d; want %d (docs/research/implementation-widening-spike.md's callers-verified figure)", len(verifiedCallers), wantCallersVerified)
 	}
 	if verifiedExit != 1 {
 		t.Errorf("assert-no-callers (verified) exit = %d; want 1 (violation:true whenever callers is non-empty)", verifiedExit)

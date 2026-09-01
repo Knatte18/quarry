@@ -4,7 +4,7 @@ This document records the batch-5 comparison that proves the ported `quarry`
 binary answers exactly like `lyx scout` did, for a query set resolved fresh
 against this task's own worktree at the batch-5 commit — not against the
 stale, never-committed positions in the multi-language research document
-(see `docs/scout-multilang.md`'s benchmark:
+(see `docs/research/scout-multilang.md`'s benchmark:
 one package it queries was since renamed, two symbols moved five to ten
 lines, and the ground-truth file it was graded against was never
 committed). Feeding those stale positions to both binaries returns a
