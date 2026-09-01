@@ -2,8 +2,8 @@
 
 Practical guidance for whoever decides which quarry-mcp tools an agent gets — a `.mcp.json`/tool-allowlist
 choice, or a prompt telling an agent what's available. Grounded in three independent measurements that reach
-the same conclusion from different angles: [scout-vs-grep.md](scout-vs-grep.md) /
-[scout-agent-usage-findings.md](scout-agent-usage-findings.md) (hand-picked hard cases, n=1 per cell, pre-rename),
+the same conclusion from different angles: [scout-vs-grep.md](research/scout-vs-grep.md) /
+[scout-agent-usage-findings.md](research/scout-agent-usage-findings.md) (hand-picked hard cases, n=1 per cell, pre-rename),
 the loomyard-eval capability ladder (`bench/loomyard-eval/ladder`, n=3 per cell, 2026-08-30/31), and its
 task-05 follow-up (`bench/loomyard-eval/ladder/results/2026-09-01-task05`, n=3 per cell, 2026-09-01) built
 specifically to probe a genuine same-name symbol collision the main ladder never tested.
@@ -21,7 +21,7 @@ a real disambiguation problem grep can't solve on its own — not by default, no
 - **The symbol name is genuinely ambiguous and un-anchored.** Same bare name in multiple packages, an
   unexported interface method, a name so generic grep returns dozens of unrelated hits with no
   distinguishing token (`Run`, `Resolve`, `clock.Now`). This is where LSP resolution earns its cost — see
-  Task 2 in scout-vs-grep.md, the one clean, uncomplicated win in that document. Caveat: this isn't
+  Task 2 in research/scout-vs-grep.md, the one clean, uncomplicated win in that document. Caveat: this isn't
   automatic just because two symbols share a name — see the task-05 result below, where a comparably sharp
   `.Resolve(` collision was still fully solvable by grep alone.
 - **You need "what breaks if I change/delete this," not just "where is this mentioned."** `impact` and
@@ -56,7 +56,7 @@ a real disambiguation problem grep can't solve on its own — not by default, no
 - **Scope `workspace_symbol`/`textDocument_references`/`impact`/`assert_no_callers` with `within` whenever
   you already know the package or directory.** Unscoped queries on a generic name return every
   structurally-matching hit workspace-wide — gopls' own documented behavior for interface methods, not a
-  bug — and the caller pays for filtering that noise out by hand. Task 3 in scout-vs-grep.md is the
+  bug — and the caller pays for filtering that noise out by hand. Task 3 in research/scout-vs-grep.md is the
   cautionary tale: an unscoped `refs` call returned ~30 hits for a 3-site answer, *with* the
   `"resolution":"complete"` trust marker still set. `--within`/`within` (added specifically in response to
   that finding) turns the same query into the correct 3.

@@ -2,7 +2,7 @@
 // in-memory pipe transport, mirroring symbol_test.go's fake-server construction. It never drives
 // the exported Callers, which would require a spawn.
 //
-// docs/implementation-widening-spike.md records mode: directional, so every fake server in this
+// docs/research/implementation-widening-spike.md records mode: directional, so every fake server in this
 // file that is meant to let verification actually run advertises implementationProvider —
 // declarationMatchSet (verify.go) scopes match-set inclusion by directory identity between the
 // declaration- and implementation-side URIs, not by SymbolKind, so these fixtures distinguish

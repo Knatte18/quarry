@@ -9,10 +9,10 @@
 // The first three questions are answered over one uniform LSP ("Language
 // Server Protocol") path that works for every supported language,
 // generalizing the Go-only, in-process go/packages/go/types approach the
-// scout spike (docs/scout-spike.md) recommended for Go alone, trading the
+// scout spike (docs/research/scout-spike.md) recommended for Go alone, trading the
 // spike's sub-millisecond in-process query cost for one LSP round trip per
 // query — a deliberate scope trade the scout multilang research
-// (docs/scout-multilang.md) records in full. V1 (this tree's current
+// (docs/research/scout-multilang.md) records in full. V1 (this tree's current
 // shape) goes further for Go specifically: it wires a full
 // `daemon.EnsureServer` daemon lifecycle — toolchain-managed install,
 // spawn-or-reuse, health probing — so Go's language server is warm across

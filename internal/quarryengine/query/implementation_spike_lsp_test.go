@@ -5,7 +5,7 @@
 // three-package clock fixture (testdata/clockfixture) and logs the raw
 // textDocument/definition, textDocument/implementation, and textDocument/references results at
 // two query positions, so the widening-mode decision recorded in
-// docs/implementation-widening-spike.md is derived from an observed measurement rather than
+// docs/research/implementation-widening-spike.md is derived from an observed measurement rather than
 // asserted in code. It asserts nothing about the counts themselves — see
 // TestImplementationWidening_Spike's own doc comment for why.
 
@@ -109,7 +109,7 @@ func spikeQueryPosition(ctx context.Context, t *testing.T, client *lsp.Client, l
 // TestImplementationWidening_Spike is a measurement harness, not a correctness test: it logs the
 // raw location lists textDocument/definition, textDocument/implementation, and
 // textDocument/references return at two positions in the clock fixture, so
-// docs/implementation-widening-spike.md can record an observed widening-mode decision (card 4)
+// docs/research/implementation-widening-spike.md can record an observed widening-mode decision (card 4)
 // rather than an asserted one. It asserts only that each call returns without error, so a broken
 // harness fails loudly instead of silently logging nothing — asserting a specific count here
 // would defeat the point of running the spike at all.
@@ -149,7 +149,7 @@ func TestImplementationWidening_Spike(t *testing.T) {
 
 	fileURI := "file://" + pollFile
 
-	t.Logf("gopls version: run `gopls version` alongside this test to record it in docs/implementation-widening-spike.md")
+	t.Logf("gopls version: run `gopls version` alongside this test to record it in docs/research/implementation-widening-spike.md")
 	t.Logf("fixture root: %s", fixtureRoot)
 
 	interfaceRefs := spikeQueryPosition(ctx, t, client, "interface-method clock.Now", fileURI, interfaceWirePos)
