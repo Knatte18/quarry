@@ -42,10 +42,14 @@ a real disambiguation problem grep can't solve on its own — not by default, no
   `modelspec.Registry.Resolve`, both spelled `.Resolve(`, sitting in the same package that defines the real
   target method, three lines below a doc comment narrating that method's own resolution flow — a case a
   careless grep-and-skim pass looks primed to get wrong. It didn't: `impact`, `assert_no_callers`, and
-  `textDocument_references` all matched the no-tool control's perfect recall/precision, and two of the three
-  (`assert_no_callers`, `textDocument_references`) were measurably *slower* than the control for it. A name
-  collision alone doesn't guarantee grep fails — the collision has to actually be reachable by a plausible
-  grep-and-skim path the agent would take, not just theoretically confusable.
+  `textDocument_references` all landed on identical recall/precision as the no-tool control — recall 1.0 in
+  every cell, precision uniformly deflated to 0.133 by a task-text/fasit mismatch on test files (the task
+  asked for every call site needing a new argument threaded in, which the agent correctly includes for
+  `_test.go` files, while the fasit's scoring notes exclude them — an authoring bug, not a tool-capability
+  difference), and two of the three (`assert_no_callers`, `textDocument_references`) were measurably *slower*
+  than the control for it. A name collision alone doesn't guarantee grep fails — the collision has to
+  actually be reachable by a plausible grep-and-skim path the agent would take, not just theoretically
+  confusable.
 - **You're about to grant the full seven-tool bundle "to be safe."** The bundle configs (`a5-bundle`,
   `b7-bundle`) had the highest cost in every ladder cell they appeared in — the most cached context, the
   longest wall-clock — without beating the narrower, task-matched rungs on correctness. Pick the one or two

@@ -25,10 +25,12 @@
 # do not collide with either (c-prefixed, not a/b), but keeping results roots separate is still the
 # suite's own convention for any companion matrix.
 #
-# Paths below are native WSL2 filesystem paths (this run was moved off Windows after
+# This run was originally moved off Windows to WSL2 after
 # bench/loomyard-eval/ladder/internal/ladder/daemon.go's syscall.Kill dependency made
 # `go build ./bench/loomyard-eval/ladder/...` fail outright on native Windows -- see HANDOFF.md
-# history). quarry and loomyard are checked out as siblings under ~/Code/{quarry,loomyard}/wts/.
+# history. session_dir_template/source_repo below are now machine-portable (see ladder.yaml's own
+# comments on each): source_repo resolves from LADDER_LOOMYARD_REPO, wherever the operator's Loomyard
+# checkout actually lives.
 
 run_model: claude-sonnet-5
 reps: 3
@@ -37,7 +39,10 @@ max_turns: 60
 
 # Distinct from ladder.yaml's and ladder-followup.yaml's own session_dir_templates so this run never
 # collides with either's already-used per-config-per-rep scratch directories.
-session_dir_template: /home/hanf/Code/quarry/wts/quarry/.scratch/ladder-sessions/task05-{config_id}-{n}
+#
+# Relative to the quarry repo root, never an absolute machine-specific path -- see ladder.yaml's own
+# session_dir_template comment for why.
+session_dir_template: .scratch/ladder-sessions/task05-{config_id}-{n}
 
 scorer:
   model: claude-opus-5
@@ -60,7 +65,9 @@ tasks:
     schema: impact
     fasit: bench/loomyard-eval/results/2026-09-01/05-mergeresolve-resolve-impact/c.json
 
-source_repo: /home/hanf/Code/loomyard/wts/loomyard
+# Resolved from the LADDER_LOOMYARD_REPO environment variable at prepare-session time -- see
+# ladder.yaml's own source_repo comment.
+source_repo: env:LADDER_LOOMYARD_REPO
 
 configs:
   - id: c0-none

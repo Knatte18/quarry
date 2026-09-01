@@ -34,11 +34,11 @@ all three candidate lines below were verified to match exactly at this
 pin.
 
 ```
-git -C /home/knatte/Code/loomyard/wts/loomyard worktree add /tmp/loomyard-eval-04 975578cda8d6f3a81580bd4e73725e060211b766
+git -C "$LADDER_LOOMYARD_REPO" worktree add /tmp/loomyard-eval-04 975578cda8d6f3a81580bd4e73725e060211b766
 ```
 
 `<TARGET_DIR>` for this task is `/tmp/loomyard-eval-04`. Remove the worktree
-when done (`git -C /home/knatte/Code/loomyard/wts/loomyard worktree remove /tmp/loomyard-eval-04`).
+when done (`git -C "$LADDER_LOOMYARD_REPO" worktree remove /tmp/loomyard-eval-04`).
 
 No file is reverted or modified for this task — unlike task 03, this is a
 forward-looking "what would need to change" analysis on the code exactly as

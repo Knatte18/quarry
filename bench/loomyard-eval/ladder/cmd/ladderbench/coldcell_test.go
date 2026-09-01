@@ -13,6 +13,8 @@ import (
 
 func TestRunColdCellTeardown_RemovesWorktreeEvenAfterAFailedRun(t *testing.T) {
 	l := mustLoadLadderFixture(t)
+	sourceRepo := t.TempDir()
+	t.Setenv("LADDER_LOOMYARD_REPO", sourceRepo)
 
 	var calls [][]string
 	git := func(args ...string) (string, error) {
@@ -31,7 +33,7 @@ func TestRunColdCellTeardown_RemovesWorktreeEvenAfterAFailedRun(t *testing.T) {
 	wantTargetDir := coldWorktreeDir(l, 2)
 	found := false
 	for _, call := range calls {
-		if len(call) >= 4 && call[0] == "-C" && call[1] == l.SourceRepo && call[2] == "worktree" && call[3] == "remove" {
+		if len(call) >= 4 && call[0] == "-C" && call[1] == sourceRepo && call[2] == "worktree" && call[3] == "remove" {
 			for _, arg := range call {
 				if arg == wantTargetDir {
 					found = true

@@ -2,12 +2,17 @@ package ladder
 
 import "testing"
 
+// testSessionRepoRoot is an arbitrary but fixed repo root these tests join a relative
+// session_dir_template against -- its value has no bearing on the properties under test
+// (distinctness, error-on-unset), only that it is applied uniformly.
+const testSessionRepoRoot = "/fixture-repo-root"
+
 func TestSessionDir_All45RunPairsDeriveDistinctDirectories(t *testing.T) {
 	l := mustLoadLadder(t)
 
 	seen := make(map[string]bool)
 	for _, pair := range PlanRuns(l) {
-		dir, err := SessionDir(l, pair.Config.ID, pair.N)
+		dir, err := SessionDir(l, testSessionRepoRoot, pair.Config.ID, pair.N)
 		if err != nil {
 			t.Fatalf("SessionDir(l, %q, %d) = _, %v; want nil error", pair.Config.ID, pair.N, err)
 		}
@@ -26,22 +31,22 @@ func TestSessionDir_ScoringAndProbeSessionsAreDistinctFromRunsAndEachOther(t *te
 
 	runDirs := make(map[string]bool)
 	for _, pair := range PlanRuns(l) {
-		dir, err := SessionDir(l, pair.Config.ID, pair.N)
+		dir, err := SessionDir(l, testSessionRepoRoot, pair.Config.ID, pair.N)
 		if err != nil {
 			t.Fatalf("SessionDir(l, %q, %d) = _, %v; want nil error", pair.Config.ID, pair.N, err)
 		}
 		runDirs[dir] = true
 	}
 
-	scoringDir, err := SessionDir(l, "scoring", 1)
+	scoringDir, err := SessionDir(l, testSessionRepoRoot, "scoring", 1)
 	if err != nil {
 		t.Fatalf("SessionDir(l, \"scoring\", 1) = _, %v; want nil error", err)
 	}
-	allowlistDir, err := SessionDir(l, "probe-allowlist", 1)
+	allowlistDir, err := SessionDir(l, testSessionRepoRoot, "probe-allowlist", 1)
 	if err != nil {
 		t.Fatalf("SessionDir(l, \"probe-allowlist\", 1) = _, %v; want nil error", err)
 	}
-	denylistDir, err := SessionDir(l, "probe-denylist", 1)
+	denylistDir, err := SessionDir(l, testSessionRepoRoot, "probe-denylist", 1)
 	if err != nil {
 		t.Fatalf("SessionDir(l, \"probe-denylist\", 1) = _, %v; want nil error", err)
 	}
@@ -65,7 +70,7 @@ func TestSessionDir_ErrorsWhenTemplateUnset(t *testing.T) {
 	l := mustLoadLadder(t)
 	l.SessionDirTemplate = ""
 
-	if _, err := SessionDir(l, "a0-none", 1); err == nil {
+	if _, err := SessionDir(l, testSessionRepoRoot, "a0-none", 1); err == nil {
 		t.Errorf("SessionDir(l, \"a0-none\", 1) = _, nil; want an error naming the unset template")
 	}
 }

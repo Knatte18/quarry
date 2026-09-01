@@ -65,8 +65,12 @@ cold-cell enforces the full pin set.`,
 // runColdCellTeardown removes rep's disposable cold worktree unconditionally and waits for its daemon to
 // exit before returning.
 func runColdCellTeardown(out io.Writer, l *ladder.Ladder, rep int, git ladder.GitRunner) error {
+	sourceRepo, err := ladder.ResolveSourceRepo(l)
+	if err != nil {
+		return err
+	}
 	targetDir := coldWorktreeDir(l, rep)
-	if err := ladder.RemoveWorktree(l.SourceRepo, targetDir, git); err != nil {
+	if err := ladder.RemoveWorktree(sourceRepo, targetDir, git); err != nil {
 		return err
 	}
 

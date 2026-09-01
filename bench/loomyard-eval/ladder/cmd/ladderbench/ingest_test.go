@@ -85,7 +85,7 @@ func newIngestFixture(t *testing.T, configID string, maxTurns int) *ingestFixtur
 	l.Tasks[config.Task] = task
 
 	resultsRoot := t.TempDir()
-	scratchDir, err := ladder.SessionDir(l, config.ID, rep)
+	scratchDir, err := ladder.SessionDir(l, repoRootFixture, config.ID, rep)
 	if err != nil {
 		t.Fatalf("SessionDir: %v", err)
 	}

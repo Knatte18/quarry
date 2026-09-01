@@ -16,7 +16,7 @@ reps: 1
 run_effort: medium
 max_turns: 50
 
-session_dir_template: /tmp/e2e-session-{config_id}-{n}
+session_dir_template: .scratch/e2e-session-{config_id}-{n}
 
 scorer:
   model: claude-opus-5
@@ -42,7 +42,7 @@ tasks:
     schema: exploration
     fasit: testdata/e2e-answer-fasit.json
 
-source_repo: /tmp/e2e-source-repo
+source_repo: env:LADDER_LOOMYARD_REPO
 
 configs:
   # Ladder A's control -- carries no run in this test; exists only so ladder "a" has exactly one

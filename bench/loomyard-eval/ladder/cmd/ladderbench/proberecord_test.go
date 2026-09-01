@@ -22,7 +22,7 @@ func writeProbeFixtureTranscript(t *testing.T, l *ladder.Ladder, projectsRoot, k
 	if err != nil {
 		t.Fatalf("probeRecordSessionConfigID(%q): %v", kind, err)
 	}
-	scratchDir, err := ladder.SessionDir(l, configID, 1)
+	scratchDir, err := ladder.SessionDir(l, repoRootFixture, configID, 1)
 	if err != nil {
 		t.Fatalf("SessionDir: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestRunProbeRecord_AllowlistProbeWritesItsOwnKey(t *testing.T) {
 	writeProbeFixtureTranscript(t, l, projectsRoot, ladder.ProbeKindAllowlist, true, "permission denied by the user")
 
 	var out bytes.Buffer
-	if err := runProbeRecord(&out, l, resultsRoot, ladder.ProbeKindAllowlist, projectsRoot, 2*time.Second); err != nil {
+	if err := runProbeRecord(&out, l, repoRootFixture, resultsRoot, ladder.ProbeKindAllowlist, projectsRoot, 2*time.Second); err != nil {
 		t.Fatalf("runProbeRecord() error = %v; want nil", err)
 	}
 
@@ -119,13 +119,13 @@ func TestRunProbeRecord_DenylistProbeCapturesDeniedTextAndExtendsExistingRecord(
 	// The allowlist probe records first, establishing the half denylist-record must not clobber.
 	writeProbeFixtureTranscript(t, l, projectsRoot, ladder.ProbeKindAllowlist, true, "n/a")
 	var firstOut bytes.Buffer
-	if err := runProbeRecord(&firstOut, l, resultsRoot, ladder.ProbeKindAllowlist, projectsRoot, 2*time.Second); err != nil {
+	if err := runProbeRecord(&firstOut, l, repoRootFixture, resultsRoot, ladder.ProbeKindAllowlist, projectsRoot, 2*time.Second); err != nil {
 		t.Fatalf("runProbeRecord(allowlist) error = %v; want nil", err)
 	}
 
 	writeProbeFixtureTranscript(t, l, projectsRoot, ladder.ProbeKindDenylist, true, "permission denied by the user")
 	var secondOut bytes.Buffer
-	if err := runProbeRecord(&secondOut, l, resultsRoot, ladder.ProbeKindDenylist, projectsRoot, 2*time.Second); err != nil {
+	if err := runProbeRecord(&secondOut, l, repoRootFixture, resultsRoot, ladder.ProbeKindDenylist, projectsRoot, 2*time.Second); err != nil {
 		t.Fatalf("runProbeRecord(denylist) error = %v; want nil", err)
 	}
 
@@ -148,7 +148,7 @@ func TestRunProbeRecord_HaltsOnFalseLayer(t *testing.T) {
 	writeProbeFixtureTranscript(t, l, projectsRoot, ladder.ProbeKindDenylist, false, "")
 
 	var out bytes.Buffer
-	err := runProbeRecord(&out, l, resultsRoot, ladder.ProbeKindDenylist, projectsRoot, 2*time.Second)
+	err := runProbeRecord(&out, l, repoRootFixture, resultsRoot, ladder.ProbeKindDenylist, projectsRoot, 2*time.Second)
 	if err == nil {
 		t.Fatal("runProbeRecord() error = nil; want an error when the probe observed no block")
 	}
