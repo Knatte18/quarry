@@ -57,12 +57,7 @@ import (
 )
 
 const (
-	repoRoot  = "/home/hanf/Code/quarry/wts/quarry"
-	ladderDir = repoRoot + "/bench/loomyard-eval/ladder"
-	binPath   = "/tmp/ladderbench"
-
-	defaultLadderPath  = ladderDir + "/ladder.yaml"
-	defaultResultsRoot = ladderDir + "/results/2026-08-30"
+	binPath = "/tmp/ladderbench"
 
 	tmuxSession = "ladder-run"
 
@@ -86,7 +81,28 @@ var defaultConfigIDs = []string{
 	"b6-assert-no-callers", "b7-bundle",
 }
 
+// repoRoot, ladderDir, defaultLadderPath, and defaultResultsRoot are resolved once, at the top of main(),
+// from the process's current working directory -- never hardcoded to a specific machine's checkout path.
+// This command is documented as run from the quarry repo root, matching every ladderbench subcommand's
+// own resolveRepoRoot() convention (cmd/ladderbench/root.go).
+var (
+	repoRoot           string
+	ladderDir          string
+	defaultLadderPath  string
+	defaultResultsRoot string
+)
+
 func main() {
+	var err error
+	repoRoot, err = os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "runmatrix: resolve repo root:", err)
+		os.Exit(1)
+	}
+	ladderDir = filepath.Join(repoRoot, "bench/loomyard-eval/ladder")
+	defaultLadderPath = filepath.Join(ladderDir, "ladder.yaml")
+	defaultResultsRoot = filepath.Join(ladderDir, "results/2026-08-30")
+
 	ladderPath := flag.String("ladder", defaultLadderPath, "path to the ladder file to drive")
 	resultsRoot := flag.String("results-root", defaultResultsRoot, "the results directory to read and write under")
 	configsFlag := flag.String("configs", "", "comma-separated config IDs to drive, in order (default: the main matrix's 14 warm configs)")
