@@ -1,0 +1,90 @@
+# Companion matrix to ladder.yaml -- a single new task (05-mergeresolve-resolve-impact), not a
+# re-run of the main 15-config matrix. See bench/loomyard-eval/tasks/05-mergeresolve-resolve-impact.md
+# for why this task exists: task 04 (the main matrix's Ladder B) turned out fully solvable by grep
+# alone, so this task looks for a sharper same-package, comment-adjacent name-collision trap to
+# actually stress the "grep must work harder / eventually errs on symbol collisions" hypothesis
+# neither existing ladder task tested.
+#
+# reps: 3, matching the main matrix's own standard (not the 2-rep ladder-followup.yaml pattern,
+# which was a targeted before/after check on already-measured configs) -- this is a fresh baseline,
+# not a verification pass, so it gets the suite's normal n for a reportable result.
+#
+# Deliberately narrower than the main matrix: four configs (control, impact, assert_no_callers,
+# references) instead of the full eight-rung ladder B shape. impact and assert_no_callers were task
+# 04's cheapest, cleanest tool shapes (b5/b6); references was the shape that produced the tightest
+# scoped answer when the agent used `within` (b3). workspace_symbol, textDocument_definition, the
+# LSP trio, and the full bundle are deliberately omitted -- task 04 showed none of them beating the
+# narrower rungs on anything, and this run is scoped to test the new task's trap, not re-litigate
+# tool-vs-tool ordering the main matrix already settled.
+#
+# Run against its own results root:
+#   ladderbench next-run --ladder bench/loomyard-eval/ladder/ladder-task05.yaml \
+#     --results-root bench/loomyard-eval/ladder/results/2026-09-01-task05
+#
+# Do NOT point this at the main matrix's or the followup's results root -- config ids intentionally
+# do not collide with either (c-prefixed, not a/b), but keeping results roots separate is still the
+# suite's own convention for any companion matrix.
+#
+# UNVERIFIED: this is the first ladder run attempted on Windows (git-bash), not the Linux/WSL
+# environment every prior run in this suite used. tmux and claude are both confirmed on PATH and
+# Loomyard is confirmed checked out locally, but whether Claude Code accepts these git-bash-style
+# (/c/...) paths as a session working directory the same way it accepts native Windows paths has not
+# been tested. If prepare-session or the launched session fails on a path, the fix is switching every
+# path below (session_dir_template, worktree, source_repo) to native Windows form
+# (C:\Code\quarry\wts\quarry\.scratch\ladder-sessions\{config_id}-{n}, etc.) -- try git-bash form
+# first since the whole harness (including this file's own worktree/session paths) assumes forward
+# slashes throughout.
+
+run_model: claude-sonnet-5
+reps: 3
+run_effort: medium
+max_turns: 60
+
+# Distinct from ladder.yaml's and ladder-followup.yaml's own session_dir_templates so this run never
+# collides with either's already-used per-config-per-rep scratch directories.
+session_dir_template: /c/Code/quarry/wts/quarry/.scratch/ladder-sessions/task05-{config_id}-{n}
+
+scorer:
+  model: claude-opus-5
+  effort: high
+
+quarry_tools:
+  - toc_dir
+  - toc_file
+  - textDocument_definition
+  - textDocument_references
+  - workspace_symbol
+  - impact
+  - assert_no_callers
+
+tasks:
+  05-mergeresolve-resolve-impact:
+    task_file: bench/loomyard-eval/tasks/05-mergeresolve-resolve-impact.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    worktree: /tmp/loomyard-eval-05
+    schema: impact
+    fasit: bench/loomyard-eval/results/2026-09-01/05-mergeresolve-resolve-impact/c.json
+
+source_repo: /c/Code/loomyard/wts/loomyard
+
+configs:
+  - id: c0-none
+    ladder: c
+    task: 05-mergeresolve-resolve-impact
+    allowed: []
+    cold: false
+  - id: c1-impact
+    ladder: c
+    task: 05-mergeresolve-resolve-impact
+    allowed: [impact]
+    cold: false
+  - id: c2-assert-no-callers
+    ladder: c
+    task: 05-mergeresolve-resolve-impact
+    allowed: [assert_no_callers]
+    cold: false
+  - id: c3-references
+    ladder: c
+    task: 05-mergeresolve-resolve-impact
+    allowed: [textDocument_references]
+    cold: false
