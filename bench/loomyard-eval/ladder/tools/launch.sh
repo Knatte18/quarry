@@ -10,8 +10,13 @@
 
 set -eu
 
-pointer="/home/knatte/Code/quarry/wts/quarry/.scratch/ladder-sessions/.current"
-launcher="/home/knatte/Code/quarry/wts/quarry/bench/loomyard-eval/ladder/launch-session.sh"
+# Resolved from this script's own location, never a hardcoded machine-specific checkout path -- this
+# script sits at <repo_root>/bench/loomyard-eval/ladder/tools/launch.sh.
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+repo_root="$(cd "$script_dir/../../../.." && pwd)"
+
+pointer="$repo_root/.scratch/ladder-sessions/.current"
+launcher="$repo_root/bench/loomyard-eval/ladder/launch-session.sh"
 
 if [ ! -f "$pointer" ]; then
     echo "launch.sh: no current session recorded at $pointer -- ask for a session to be prepared first" >&2
