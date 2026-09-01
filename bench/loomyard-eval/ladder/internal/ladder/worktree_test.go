@@ -249,7 +249,7 @@ func TestEnsureTaskWorktrees_BuildsAMissingWorktree(t *testing.T) {
 		return "", nil
 	}
 
-	worktrees, err := EnsureTaskWorktrees(l, git)
+	worktrees, err := EnsureTaskWorktrees(l, l.SourceRepo, git)
 	if err != nil {
 		t.Fatalf("EnsureTaskWorktrees() error = %v", err)
 	}
@@ -287,7 +287,7 @@ func TestEnsureTaskWorktrees_AdoptsAnExistingWorktreeAtTheMatchingPin(t *testing
 		return "", nil
 	}
 
-	worktrees, err := EnsureTaskWorktrees(l, git)
+	worktrees, err := EnsureTaskWorktrees(l, l.SourceRepo, git)
 	if err != nil {
 		t.Fatalf("EnsureTaskWorktrees() error = %v", err)
 	}
@@ -312,7 +312,7 @@ func TestEnsureTaskWorktrees_LeavesACorrectlyPinnedWorktreeAlone(t *testing.T) {
 		return "", nil
 	}
 
-	if _, err := EnsureTaskWorktrees(l, git); err != nil {
+	if _, err := EnsureTaskWorktrees(l, l.SourceRepo, git); err != nil {
 		t.Fatalf("EnsureTaskWorktrees() error = %v", err)
 	}
 
@@ -338,7 +338,7 @@ func TestEnsureTaskWorktrees_RaisesWhenExistingWorktreeIsAtTheWrongPin(t *testin
 		return "", nil
 	}
 
-	_, err := EnsureTaskWorktrees(l, git)
+	_, err := EnsureTaskWorktrees(l, l.SourceRepo, git)
 	if err == nil {
 		t.Fatal("EnsureTaskWorktrees() = nil error; want a *HarnessError for a mispinned worktree")
 	}

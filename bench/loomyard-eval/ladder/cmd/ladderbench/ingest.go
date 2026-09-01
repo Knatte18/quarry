@@ -107,7 +107,7 @@ func runIngest(out io.Writer, l *ladder.Ladder, repoRoot, resultsRoot, configID 
 	}
 	description := ladder.DispatchDescription(configID, rep, attempt)
 
-	scratchDir, err := ladder.SessionDir(l, configID, rep)
+	scratchDir, err := ladder.SessionDir(l, repoRoot, configID, rep)
 	if err != nil {
 		return err
 	}

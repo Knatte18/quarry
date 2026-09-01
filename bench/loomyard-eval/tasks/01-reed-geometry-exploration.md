@@ -10,11 +10,11 @@ Pinned to `PINNED_SHA` from the top-level README (`975578cda8d6f3a81580bd4e73725
 not the live main checkout:
 
 ```
-git -C /home/knatte/Code/loomyard/wts/loomyard worktree add /tmp/loomyard-eval-01 975578cda8d6f3a81580bd4e73725e060211b766
+git -C "$LADDER_LOOMYARD_REPO" worktree add /tmp/loomyard-eval-01 975578cda8d6f3a81580bd4e73725e060211b766
 ```
 
 `<TARGET_DIR>` for this task is `/tmp/loomyard-eval-01`. Remove the worktree
-when done (`git -C /home/knatte/Code/loomyard/wts/loomyard worktree remove /tmp/loomyard-eval-01`).
+when done (`git -C "$LADDER_LOOMYARD_REPO" worktree remove /tmp/loomyard-eval-01`).
 
 ## Scope
 

@@ -30,7 +30,11 @@ max_turns: 60
 # (prompt-avoidance only -- see settings.go). The quarry repo checkout itself is already trusted from
 # ordinary use, and trust inherits to subdirectories, so scratch dirs live under its gitignored .scratch/
 # tree -- a plain directory, deliberately not its own git repo (nested git repos need their own trust).
-session_dir_template: /home/knatte/Code/quarry/wts/quarry/.scratch/ladder-sessions/{config_id}-{n}
+#
+# Relative to the quarry repo root, never an absolute machine-specific path (LoadLadder rejects an
+# absolute template): every ladderbench invocation runs from the repo root by documented convention (see
+# cmd/ladderbench's resolveRepoRoot), and SessionDir joins this template against that resolved root.
+session_dir_template: .scratch/ladder-sessions/{config_id}-{n}
 
 scorer:
   model: claude-opus-5
@@ -62,7 +66,11 @@ tasks:
     schema: impact
     fasit: bench/loomyard-eval/results/2026-08-28/04-shedadapters-shuttle-impact/c.json
 
-source_repo: /home/knatte/Code/loomyard/wts/loomyard
+# Resolved from the LADDER_LOOMYARD_REPO environment variable at the point a session actually needs a
+# real Loomyard checkout (LoadLadder requires this literal, ResolveSourceRepo reads the variable) -- never
+# a hardcoded machine-specific checkout path, so this same file runs unchanged on any machine that sets
+# the variable.
+source_repo: env:LADDER_LOOMYARD_REPO
 
 configs:
   # Ladder A -- task 01 (exploration)

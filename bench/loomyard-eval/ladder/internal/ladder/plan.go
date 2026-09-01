@@ -6,6 +6,7 @@ package ladder
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -61,15 +62,25 @@ func ColdRuns(l *Ladder) []RunPair {
 // configID and "{n}" with n in l.SessionDirTemplate -- the single derivation site every scratch
 // directory path in the suite goes through, so no caller ever formats the template itself.
 //
+// l.SessionDirTemplate is repo-root-relative (LoadLadder rejects an absolute template), so the
+// substituted result is joined against repoRoot -- the caller's own already-resolved quarry repo root
+// (see cmd/ladderbench's resolveRepoRoot) -- before it is returned. A template a caller set directly to
+// an already-absolute path (every session-prep test fixture does this, to redirect into t.TempDir())
+// is returned as-is, ignoring repoRoot, so this stays correct regardless of who set the field.
+//
 // n is the repetition index uniformly, not just a main-matrix rep: the scoring session uses a configID
 // of "scoring" with n of 1, and the two probe sessions use "probe-allowlist" and "probe-denylist" with n
 // of 1, alongside the 45 run sessions' own (config.ID, n) pairs.
 //
 // Returns an error naming l.SessionDirTemplate as unset when it is empty.
-func SessionDir(l *Ladder, configID string, n int) (string, error) {
+func SessionDir(l *Ladder, repoRoot, configID string, n int) (string, error) {
 	if l.SessionDirTemplate == "" {
 		return "", fmt.Errorf("session dir: ladder.yaml: session_dir_template is unset")
 	}
 	replacer := strings.NewReplacer("{config_id}", configID, "{n}", strconv.Itoa(n))
-	return replacer.Replace(l.SessionDirTemplate), nil
+	resolved := replacer.Replace(l.SessionDirTemplate)
+	if filepath.IsAbs(resolved) {
+		return resolved, nil
+	}
+	return filepath.Join(repoRoot, resolved), nil
 }

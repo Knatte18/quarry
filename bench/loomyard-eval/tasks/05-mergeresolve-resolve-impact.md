@@ -36,13 +36,13 @@ Pinned to `PINNED_SHA` from the top-level README
 verified to match exactly at this pin via `git show <sha>:<path>`.
 
 ```
-git -C /home/hanf/Code/loomyard/wts/loomyard worktree add /tmp/loomyard-eval-05 975578cda8d6f3a81580bd4e73725e060211b766
+git -C "$LADDER_LOOMYARD_REPO" worktree add /tmp/loomyard-eval-05 975578cda8d6f3a81580bd4e73725e060211b766
 ```
 
 `<TARGET_DIR>` for this task is `/tmp/loomyard-eval-05`. Remove the
-worktree when done (`git -C /home/hanf/Code/loomyard/wts/loomyard worktree remove
-/tmp/loomyard-eval-05`). Adjust the repo path above if run from a machine
-where Loomyard is checked out somewhere else.
+worktree when done (`git -C "$LADDER_LOOMYARD_REPO" worktree remove
+/tmp/loomyard-eval-05`). `$LADDER_LOOMYARD_REPO` is the environment variable naming the operator's
+local Loomyard checkout (see ladder.yaml's own source_repo comment) -- never a literal path here.
 
 No file is reverted or modified for this task — this is a forward-looking
 "what would need to change" analysis on the code exactly as it stands at

@@ -108,18 +108,21 @@ func RemoveWorktree(sourceRepo, path string, git GitRunner) error {
 }
 
 // EnsureTaskWorktrees returns a mapping from task key to worktree path, idempotently, because the
-// harness is re-invoked to resume and this runs on every invocation.
+// harness is re-invoked to resume and this runs on every invocation. sourceRepo is the caller's own
+// already-resolved Loomyard checkout path (see ResolveSourceRepo) -- this function never reads
+// l.SourceRepo itself, since that field only ever holds the unresolved "env:LADDER_LOOMYARD_REPO"
+// literal LoadLadder validates.
 //
 // For each task: when no directory exists at the declared path, BuildWorktree it. When one does exist,
 // read `git -C <path> rev-parse HEAD` -- if it equals the task's declared pin, adopt the existing
 // worktree by calling RestoreWorktree on it and continue; if it does not, return a *HarnessError naming
 // both SHAs, since a worktree at the wrong pin would silently benchmark a different codebase.
-func EnsureTaskWorktrees(l *Ladder, git GitRunner) (map[string]string, error) {
+func EnsureTaskWorktrees(l *Ladder, sourceRepo string, git GitRunner) (map[string]string, error) {
 	worktrees := make(map[string]string, len(l.Tasks))
 	for taskKey, task := range l.Tasks {
 		path := task.Worktree
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			if err := BuildWorktree(l.SourceRepo, path, task.PinnedSHA, git); err != nil {
+			if err := BuildWorktree(sourceRepo, path, task.PinnedSHA, git); err != nil {
 				return nil, err
 			}
 		} else {

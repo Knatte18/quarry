@@ -52,7 +52,7 @@ func TestPrepareRunSession_BlindedConfigWritesExactlyDefinitionAndSettings(t *te
 		t.Fatalf("ConfigByID(l, %q) = _, %v", "a0-none", err)
 	}
 
-	inputs, err := PrepareRunSession(l, a0, 1, "/path/to/quarry-mcp", "/path/to/target")
+	inputs, err := PrepareRunSession(l, a0, 1, testSessionRepoRoot, "/path/to/quarry-mcp", "/path/to/target")
 	if err != nil {
 		t.Fatalf("PrepareRunSession(l, a0, 1, ...) = _, %v; want nil error", err)
 	}
@@ -98,7 +98,7 @@ func TestPrepareRunSession_RungAlsoWritesServerDeclaration(t *testing.T) {
 		t.Fatalf("ConfigByID(l, %q) = _, %v", "b5-impact", err)
 	}
 
-	inputs, err := PrepareRunSession(l, b5, 1, "/path/to/quarry-mcp", "/path/to/target")
+	inputs, err := PrepareRunSession(l, b5, 1, testSessionRepoRoot, "/path/to/quarry-mcp", "/path/to/target")
 	if err != nil {
 		t.Fatalf("PrepareRunSession(l, b5, 1, ...) = _, %v; want nil error", err)
 	}
@@ -117,7 +117,7 @@ func TestPrepareRunSession_NeitherSessionWritesAScorerDefinition(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ConfigByID(l, %q) = _, %v", id, err)
 		}
-		inputs, err := PrepareRunSession(l, config, 1, "/path/to/quarry-mcp", "/path/to/target")
+		inputs, err := PrepareRunSession(l, config, 1, testSessionRepoRoot, "/path/to/quarry-mcp", "/path/to/target")
 		if err != nil {
 			t.Fatalf("PrepareRunSession(l, %q, ...) = _, %v; want nil error", id, err)
 		}
@@ -129,7 +129,7 @@ func TestPrepareRunSession_NeitherSessionWritesAScorerDefinition(t *testing.T) {
 
 func TestPrepareScoringSession_WritesScorerDefinitionAndNoRunInputs(t *testing.T) {
 	l := mustLoadLadderForSessions(t)
-	inputs, err := PrepareScoringSession(l)
+	inputs, err := PrepareScoringSession(l, testSessionRepoRoot)
 	if err != nil {
 		t.Fatalf("PrepareScoringSession(l) = _, %v; want nil error", err)
 	}
@@ -156,7 +156,7 @@ func TestPrepareScoringSession_WritesScorerDefinitionAndNoRunInputs(t *testing.T
 func TestPrepareProbeSession_BothKindsExactWriteLists(t *testing.T) {
 	l := mustLoadLadderForSessions(t)
 
-	allowlistInputs, err := PrepareProbeSession(l, ProbeKindAllowlist)
+	allowlistInputs, err := PrepareProbeSession(l, testSessionRepoRoot, ProbeKindAllowlist)
 	if err != nil {
 		t.Fatalf("PrepareProbeSession(l, ProbeKindAllowlist) = _, %v; want nil error", err)
 	}
@@ -179,7 +179,7 @@ func TestPrepareProbeSession_BothKindsExactWriteLists(t *testing.T) {
 		t.Errorf("allowlist probe settings.json does not pre-approve the quarry server: %s", allowlistSettings)
 	}
 
-	denylistInputs, err := PrepareProbeSession(l, ProbeKindDenylist)
+	denylistInputs, err := PrepareProbeSession(l, testSessionRepoRoot, ProbeKindDenylist)
 	if err != nil {
 		t.Fatalf("PrepareProbeSession(l, ProbeKindDenylist) = _, %v; want nil error", err)
 	}
@@ -248,7 +248,7 @@ func TestInstallSkill_NeverWritesIntoAScratchDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConfigByID(l, %q) = _, %v", "a0-none", err)
 	}
-	inputs, err := PrepareRunSession(l, a0, 1, "/path/to/quarry-mcp", "/path/to/target")
+	inputs, err := PrepareRunSession(l, a0, 1, testSessionRepoRoot, "/path/to/quarry-mcp", "/path/to/target")
 	if err != nil {
 		t.Fatalf("PrepareRunSession(l, a0, 1, ...) = _, %v; want nil error", err)
 	}

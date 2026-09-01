@@ -47,7 +47,11 @@ its job, which the matrix must not proceed past silently.`,
 			if err != nil {
 				return err
 			}
-			return runProbeRecord(cmd.OutOrStdout(), l, resultsRoot, probeKind, "", ingestTranscriptWait)
+			repoRoot, err := resolveRepoRoot()
+			if err != nil {
+				return err
+			}
+			return runProbeRecord(cmd.OutOrStdout(), l, repoRoot, resultsRoot, probeKind, "", ingestTranscriptWait)
 		},
 	}
 
@@ -73,13 +77,13 @@ func probeRecordSessionConfigID(kind string) (string, error) {
 // runProbeRecord locates kind's probe transcript, determines whether the probed call was blocked, and
 // writes or extends probe.json at resultsRoot with that outcome. projectsRoot and wait are threaded
 // through to ladder.LocateTranscript explicitly, matching runIngest's own testing seam.
-func runProbeRecord(out io.Writer, l *ladder.Ladder, resultsRoot, kind, projectsRoot string, wait time.Duration) error {
+func runProbeRecord(out io.Writer, l *ladder.Ladder, repoRoot, resultsRoot, kind, projectsRoot string, wait time.Duration) error {
 	configID, err := probeRecordSessionConfigID(kind)
 	if err != nil {
 		return err
 	}
 
-	scratchDir, err := ladder.SessionDir(l, configID, 1)
+	scratchDir, err := ladder.SessionDir(l, repoRoot, configID, 1)
 	if err != nil {
 		return err
 	}

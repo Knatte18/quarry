@@ -8,9 +8,19 @@ package ladder
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
+
+// sourceRepoEnvLiteral is the only value LoadLadder accepts for a ladder file's source_repo field. It is
+// never a machine-specific checkout path -- ResolveSourceRepo reads the real path from the
+// LADDER_LOOMYARD_REPO environment variable at the point a session actually needs a Loomyard checkout, so
+// the same ladder.yaml runs on any machine that sets the variable.
+const sourceRepoEnvLiteral = "env:LADDER_LOOMYARD_REPO"
+
+// sourceRepoEnvVar names the environment variable ResolveSourceRepo reads.
+const sourceRepoEnvVar = "LADDER_LOOMYARD_REPO"
 
 // QuarryTools holds the canonical seven client-side tool names quarry-mcp exposes, bare (without the
 // mcp__quarry__ prefix). This is the VALIDATION constant: LoadLadder checks the ladder file's own
@@ -160,6 +170,13 @@ func LoadLadder(path string) (*Ladder, error) {
 
 	if !stringSlicesEqual(l.QuarryTools, QuarryTools) {
 		return nil, fail(path, "quarry_tools must be exactly the canonical seven %v, got %v", QuarryTools, l.QuarryTools)
+	}
+
+	if l.SourceRepo != sourceRepoEnvLiteral {
+		return nil, fail(path, "source_repo must be the literal %q, resolved from the %s environment variable at the point a session needs a real checkout -- got %q; never hardcode a machine-specific checkout path", sourceRepoEnvLiteral, sourceRepoEnvVar, l.SourceRepo)
+	}
+	if l.SessionDirTemplate != "" && filepath.IsAbs(l.SessionDirTemplate) {
+		return nil, fail(path, "session_dir_template must be relative to the repo root, got absolute path %q -- never hardcode a machine-specific session directory", l.SessionDirTemplate)
 	}
 
 	seenIDs := make(map[string]bool, len(l.Configs))
@@ -346,4 +363,22 @@ func RequireSessionPins(l *Ladder, runModelOverride string) error {
 		return fmt.Errorf("ladder.yaml: scorer.effort is unset")
 	}
 	return nil
+}
+
+// ResolveSourceRepo resolves l.SourceRepo -- validated by LoadLadder to be exactly sourceRepoEnvLiteral
+// -- against the LADDER_LOOMYARD_REPO environment variable, returning a *HarnessError naming the
+// variable when it is unset or does not name an existing directory. Called immediately before the first
+// operation that actually needs a real Loomyard checkout (building or removing a disposable worktree),
+// never at LoadLadder time, so a command that never touches a worktree (summarize, redact, ingest, ...)
+// never requires the variable to be set.
+func ResolveSourceRepo(l *Ladder) (string, error) {
+	v := os.Getenv(sourceRepoEnvVar)
+	if v == "" {
+		return "", &HarnessError{Message: fmt.Sprintf("resolve source_repo: %s is unset -- set it to your local Loomyard checkout", sourceRepoEnvVar)}
+	}
+	info, err := os.Stat(v)
+	if err != nil || !info.IsDir() {
+		return "", &HarnessError{Message: fmt.Sprintf("resolve source_repo: %s=%q does not name an existing directory", sourceRepoEnvVar, v)}
+	}
+	return v, nil
 }

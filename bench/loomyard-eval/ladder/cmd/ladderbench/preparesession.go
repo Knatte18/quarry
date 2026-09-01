@@ -317,7 +317,7 @@ func runPrepareScoringSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot,
 		return err
 	}
 
-	inputs, err := ladder.PrepareScoringSession(l)
+	inputs, err := ladder.PrepareScoringSession(l, repoRoot)
 	if err != nil {
 		return err
 	}
@@ -338,7 +338,11 @@ func runPrepareProbeSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, r
 		return err
 	}
 
-	worktrees, err := ladder.EnsureTaskWorktrees(l, ladder.RunGit)
+	sourceRepo, err := ladder.ResolveSourceRepo(l)
+	if err != nil {
+		return err
+	}
+	worktrees, err := ladder.EnsureTaskWorktrees(l, sourceRepo, ladder.RunGit)
 	if err != nil {
 		return err
 	}
@@ -352,7 +356,7 @@ func runPrepareProbeSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, r
 		return err
 	}
 
-	inputs, err := ladder.PrepareProbeSession(l, kind)
+	inputs, err := ladder.PrepareProbeSession(l, repoRoot, kind)
 	if err != nil {
 		return err
 	}
@@ -398,11 +402,16 @@ func runPrepareRunSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, rep
 		}
 	}
 
-	if selectsColdPath(config) {
-		return runPrepareColdSession(cmd, l, config, rep, resultsRoot, repoRoot, ladder.RunGit, realBuild)
+	sourceRepo, err := ladder.ResolveSourceRepo(l)
+	if err != nil {
+		return err
 	}
 
-	worktrees, err := ladder.EnsureTaskWorktrees(l, ladder.RunGit)
+	if selectsColdPath(config) {
+		return runPrepareColdSession(cmd, l, config, rep, resultsRoot, repoRoot, sourceRepo, ladder.RunGit, realBuild)
+	}
+
+	worktrees, err := ladder.EnsureTaskWorktrees(l, sourceRepo, ladder.RunGit)
 	if err != nil {
 		return err
 	}
@@ -420,7 +429,7 @@ func runPrepareRunSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, rep
 		return err
 	}
 
-	inputs, err := ladder.PrepareRunSession(l, config, rep, serverPath, targetDir)
+	inputs, err := ladder.PrepareRunSession(l, config, rep, repoRoot, serverPath, targetDir)
 	if err != nil {
 		return err
 	}
@@ -467,7 +476,7 @@ func coldWorktreeDir(l *ladder.Ladder, rep int) string {
 // builds a fresh per-repetition worktree off the cold worktree template, clears its resolved state
 // directory, and asserts the cold-before gate before preparing the session -- pointing that session's
 // server declaration at the freshly built worktree via prepareColdSessionAfterGate.
-func runPrepareColdSession(cmd *cobra.Command, l *ladder.Ladder, config ladder.LadderConfig, rep int, resultsRoot, repoRoot string, git ladder.GitRunner, build ladder.Builder) error {
+func runPrepareColdSession(cmd *cobra.Command, l *ladder.Ladder, config ladder.LadderConfig, rep int, resultsRoot, repoRoot, sourceRepo string, git ladder.GitRunner, build ladder.Builder) error {
 	cacheDir, err := ladder.UserCacheDir()
 	if err != nil {
 		return err
@@ -485,7 +494,7 @@ func runPrepareColdSession(cmd *cobra.Command, l *ladder.Ladder, config ladder.L
 		return fmt.Errorf("prepare-session: cold config %q references unknown task %q", config.ID, config.Task)
 	}
 	targetDir := coldWorktreeDir(l, rep)
-	if err := ladder.BuildWorktree(l.SourceRepo, targetDir, task.PinnedSHA, git); err != nil {
+	if err := ladder.BuildWorktree(sourceRepo, targetDir, task.PinnedSHA, git); err != nil {
 		return err
 	}
 	if err := ladder.ClearStateDir(targetDir, cacheDir, env); err != nil {
@@ -514,7 +523,7 @@ func prepareColdSessionAfterGate(cmd *cobra.Command, l *ladder.Ladder, config la
 		return err
 	}
 
-	inputs, err := ladder.PrepareRunSession(l, config, rep, serverPath, targetDir)
+	inputs, err := ladder.PrepareRunSession(l, config, rep, repoRoot, serverPath, targetDir)
 	if err != nil {
 		return err
 	}

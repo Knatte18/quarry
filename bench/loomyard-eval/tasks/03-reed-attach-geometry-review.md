@@ -17,13 +17,13 @@ caller updated and silently reverts the second — reproducing exactly the
 class of bug `impact`/`refs` exists to catch.
 
 ```
-git -C /home/knatte/Code/loomyard/wts/loomyard worktree add /tmp/loomyard-review-03 8b14f32ba34c766d06787c6be5c084368287c90d
+git -C "$LADDER_LOOMYARD_REPO" worktree add /tmp/loomyard-review-03 8b14f32ba34c766d06787c6be5c084368287c90d
 git -C /tmp/loomyard-review-03 checkout 8b14f32ba34c766d06787c6be5c084368287c90d~1 -- internal/loomcli/run.go
 ```
 
 Point A/B/C's exploration at `/tmp/loomyard-review-03` instead of the main
 Loomyard checkout for this task only. Remove the worktree when done
-(`git -C /home/knatte/Code/loomyard/wts/loomyard worktree remove /tmp/loomyard-review-03`).
+(`git -C "$LADDER_LOOMYARD_REPO" worktree remove /tmp/loomyard-review-03`).
 
 Ground truth (do not reveal to A/B/C): `internal/loomcli/run.go` still calls
 the deleted free function `attachArgv`, which no longer exists after the

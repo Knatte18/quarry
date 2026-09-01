@@ -182,6 +182,18 @@ func TestLoadLadder_RejectsInvalidLadders(t *testing.T) {
 				configByRawID(t, raw, "a5-bundle-cold")["warm_counterpart"] = "a5-bundle-cold"
 			},
 		},
+		{
+			name: "absolute_session_dir_template",
+			mutate: func(t *testing.T, raw map[string]interface{}) {
+				raw["session_dir_template"] = "/home/someone/quarry/.scratch/ladder-sessions/{config_id}-{n}"
+			},
+		},
+		{
+			name: "hardcoded_source_repo_path",
+			mutate: func(t *testing.T, raw map[string]interface{}) {
+				raw["source_repo"] = "/home/someone/Code/loomyard/wts/loomyard"
+			},
+		},
 	}
 
 	for _, tt := range tests {

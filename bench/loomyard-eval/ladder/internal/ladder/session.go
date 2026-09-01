@@ -93,8 +93,8 @@ func writeAgentDefinition(scratchDir, filename, body string) error {
 // structural leak the blinding forbids -- ported verbatim from write_run_inputs's own rule. The scratch
 // directory this writes into never receives the scorer definition, and never receives the installed
 // skill (see InstallSkill, which never writes into a scratch directory for any session type).
-func PrepareRunSession(l *Ladder, c LadderConfig, n int, serverPath, targetDir string) (SessionInputs, error) {
-	scratchDir, err := SessionDir(l, c.ID, n)
+func PrepareRunSession(l *Ladder, c LadderConfig, n int, repoRoot, serverPath, targetDir string) (SessionInputs, error) {
+	scratchDir, err := SessionDir(l, repoRoot, c.ID, n)
 	if err != nil {
 		return SessionInputs{}, err
 	}
@@ -141,8 +141,8 @@ const scoringSessionConfigID = "scoring"
 // touches the target codebase at all. Task is deliberately not denied here -- see settings.go's
 // SettingsDocumentFor doc comment for why a session-wide Task deny leaves the operator's own live
 // session unable to dispatch the scorer agent at all.
-func PrepareScoringSession(l *Ladder) (SessionInputs, error) {
-	scratchDir, err := SessionDir(l, scoringSessionConfigID, 1)
+func PrepareScoringSession(l *Ladder, repoRoot string) (SessionInputs, error) {
+	scratchDir, err := SessionDir(l, repoRoot, scoringSessionConfigID, 1)
 	if err != nil {
 		return SessionInputs{}, err
 	}
@@ -195,12 +195,12 @@ func probeSessionConfigID(kind string) (string, error) {
 // cli-session-commands batch's dispatch command, out of scope here) still owes this scratch directory a
 // server declaration before launch. Generating the probe inputs is in scope here; dispatching them,
 // including that remaining write, is not.
-func PrepareProbeSession(l *Ladder, kind string) (SessionInputs, error) {
+func PrepareProbeSession(l *Ladder, repoRoot, kind string) (SessionInputs, error) {
 	configID, err := probeSessionConfigID(kind)
 	if err != nil {
 		return SessionInputs{}, err
 	}
-	scratchDir, err := SessionDir(l, configID, 1)
+	scratchDir, err := SessionDir(l, repoRoot, configID, 1)
 	if err != nil {
 		return SessionInputs{}, err
 	}
