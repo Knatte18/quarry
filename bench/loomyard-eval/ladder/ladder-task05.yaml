@@ -25,15 +25,10 @@
 # do not collide with either (c-prefixed, not a/b), but keeping results roots separate is still the
 # suite's own convention for any companion matrix.
 #
-# UNVERIFIED: this is the first ladder run attempted on Windows (git-bash), not the Linux/WSL
-# environment every prior run in this suite used. tmux and claude are both confirmed on PATH and
-# Loomyard is confirmed checked out locally, but whether Claude Code accepts these git-bash-style
-# (/c/...) paths as a session working directory the same way it accepts native Windows paths has not
-# been tested. If prepare-session or the launched session fails on a path, the fix is switching every
-# path below (session_dir_template, worktree, source_repo) to native Windows form
-# (C:\Code\quarry\wts\quarry\.scratch\ladder-sessions\{config_id}-{n}, etc.) -- try git-bash form
-# first since the whole harness (including this file's own worktree/session paths) assumes forward
-# slashes throughout.
+# Paths below are native WSL2 filesystem paths (this run was moved off Windows after
+# bench/loomyard-eval/ladder/internal/ladder/daemon.go's syscall.Kill dependency made
+# `go build ./bench/loomyard-eval/ladder/...` fail outright on native Windows -- see HANDOFF.md
+# history). quarry and loomyard are checked out as siblings under ~/Code/{quarry,loomyard}/wts/.
 
 run_model: claude-sonnet-5
 reps: 3
@@ -42,7 +37,7 @@ max_turns: 60
 
 # Distinct from ladder.yaml's and ladder-followup.yaml's own session_dir_templates so this run never
 # collides with either's already-used per-config-per-rep scratch directories.
-session_dir_template: /c/Code/quarry/wts/quarry/.scratch/ladder-sessions/task05-{config_id}-{n}
+session_dir_template: /home/hanf/Code/quarry/wts/quarry/.scratch/ladder-sessions/task05-{config_id}-{n}
 
 scorer:
   model: claude-opus-5
@@ -65,26 +60,26 @@ tasks:
     schema: impact
     fasit: bench/loomyard-eval/results/2026-09-01/05-mergeresolve-resolve-impact/c.json
 
-source_repo: /c/Code/loomyard/wts/loomyard
+source_repo: /home/hanf/Code/loomyard/wts/loomyard
 
 configs:
   - id: c0-none
-    ladder: c
+    ladder: b
     task: 05-mergeresolve-resolve-impact
     allowed: []
     cold: false
   - id: c1-impact
-    ladder: c
+    ladder: b
     task: 05-mergeresolve-resolve-impact
     allowed: [impact]
     cold: false
   - id: c2-assert-no-callers
-    ladder: c
+    ladder: b
     task: 05-mergeresolve-resolve-impact
     allowed: [assert_no_callers]
     cold: false
   - id: c3-references
-    ladder: c
+    ladder: b
     task: 05-mergeresolve-resolve-impact
     allowed: [textDocument_references]
     cold: false
