@@ -36,11 +36,11 @@ Pinned to `PINNED_SHA` from the top-level README
 verified to match exactly at this pin via `git show <sha>:<path>`.
 
 ```
-git -C /c/Code/loomyard/wts/loomyard worktree add /tmp/loomyard-eval-05 975578cda8d6f3a81580bd4e73725e060211b766
+git -C /home/hanf/Code/loomyard/wts/loomyard worktree add /tmp/loomyard-eval-05 975578cda8d6f3a81580bd4e73725e060211b766
 ```
 
 `<TARGET_DIR>` for this task is `/tmp/loomyard-eval-05`. Remove the
-worktree when done (`git -C /c/Code/loomyard/wts/loomyard worktree remove
+worktree when done (`git -C /home/hanf/Code/loomyard/wts/loomyard worktree remove
 /tmp/loomyard-eval-05`). Adjust the repo path above if run from a machine
 where Loomyard is checked out somewhere else.
 
@@ -100,7 +100,7 @@ describing the resolution flow around `Resolver.Resolve` — a natural
 place for a grep-then-skim pass over `internal/mergeresolve/` for
 `.Resolve(` to stop and assume it found a related call.
 
-## `<TASK TEXT>` (identical for every arm)
+## `<TASK TEXT>` (identical for A, B, C)
 
 > You are about to change `mergeresolve.Resolver.Resolve`'s signature in
 > `internal/mergeresolve/mergeresolve.go`, adding a `reason string`

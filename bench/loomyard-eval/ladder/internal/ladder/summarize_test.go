@@ -315,6 +315,25 @@ func TestCompareWarmCold_EmitsNothingForNotRunOrPartialDisposition(t *testing.T)
 	}
 }
 
+func TestCompareWarmCold_EmitsNothingWhenLadderDeclaresNoColdConfig(t *testing.T) {
+	l := &Ladder{Configs: []LadderConfig{
+		{ID: "c0-none", Ladder: "b", Task: "t"},
+		{ID: "c1-impact", Ladder: "b", Task: "t", Allowed: []string{"impact"}},
+	}}
+	cells := map[string]Cell{
+		"c0-none":   cellFromMetric("c0-none", "duration_ms", []int{1, 2, 3}),
+		"c1-impact": cellFromMetric("c1-impact", "duration_ms", []int{10, 11, 12}),
+	}
+
+	comparisons, err := CompareWarmCold(l, cells, "unknown")
+	if err != nil {
+		t.Fatalf("CompareWarmCold() = _, %v; want nil error", err)
+	}
+	if len(comparisons) != 0 {
+		t.Errorf("CompareWarmCold() returned %d comparisons; want 0 when the ladder declares no cold config", len(comparisons))
+	}
+}
+
 /* CARD 34: summary building, writing, and the incomplete exit code */
 
 // writeFullMatrix writes ladder.Reps complete runs for every config in l, plus cold_cell.json and

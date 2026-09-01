@@ -425,9 +425,11 @@ func allColdRunsLackDaemonBackedCall(runs []map[string]any) bool {
 // WarmCounterpart field, resolved through WarmCounterpartFor.
 //
 // Emits nothing when coldDisposition is "not-run" or "partial" -- a disjoint-range claim at n = reps
-// cannot be made from fewer than reps cold runs -- when either cell is incomplete, or when every cold
-// run recorded cold_no_daemon_backed_call: none of them started a daemon, so there is no warmth contrast
-// to draw.
+// cannot be made from fewer than reps cold runs -- when either cell is incomplete, when every cold run
+// recorded cold_no_daemon_backed_call (none of them started a daemon, so there is no warmth contrast to
+// draw), or when the ladder file declares no cold config at all -- a distilled companion matrix (e.g.
+// one scoped to a single new task) legitimately has no cold cell to compare against, the same as one
+// whose cold cell simply hasn't run yet.
 func CompareWarmCold(l *Ladder, cells map[string]Cell, coldDisposition string) ([]Comparison, error) {
 	if coldDisposition == "not-run" || coldDisposition == "partial" {
 		return nil, nil
@@ -443,7 +445,7 @@ func CompareWarmCold(l *Ladder, cells map[string]Cell, coldDisposition string) (
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("ladder: CompareWarmCold: no cold config found in ladder")
+		return nil, nil
 	}
 	warmConfig, err := WarmCounterpartFor(l, coldConfig)
 	if err != nil {

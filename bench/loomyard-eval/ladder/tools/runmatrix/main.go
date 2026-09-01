@@ -57,7 +57,7 @@ import (
 )
 
 const (
-	repoRoot  = "/home/knatte/Code/quarry/wts/quarry"
+	repoRoot  = "/home/hanf/Code/quarry/wts/quarry"
 	ladderDir = repoRoot + "/bench/loomyard-eval/ladder"
 	binPath   = "/tmp/ladderbench"
 
