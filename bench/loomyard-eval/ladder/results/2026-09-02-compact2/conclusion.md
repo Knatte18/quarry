@@ -4,10 +4,11 @@
 `f3d3caf` with a clean tracked tree (`provenance.json`). 6 runs, all ingested and scored, none excluded.
 One distinct `server_hashes` value across all six repetitions — the binary did not change mid-run.
 
-**This is a probe, not a dataset.** Two repetitions per cell were chosen deliberately to answer "does the
-compact form obviously change what the agent does" cheaply. Every "separated" verdict below is two
-non-overlapping two-point ranges; a single further repetition either way could erase any of them. Nothing
-here is strong enough to flip a default on. Read the last section before acting.
+**Two repetitions per cell, deliberately.** The question was whether the compact form is *free* — same
+behaviour, fewer bytes — and a claim of no effect only needs enough resolution to see the effect it claims
+to preserve. This root has that resolution: a2-toc-dir reproduces the established turn halving at n=2.
+Every "separated" verdict below is still two non-overlapping two-point ranges, so treat single metrics
+with care; the verdict rests on the pattern, not on any one of them. See the last section.
 
 The delivery mechanism worked exactly as designed: `toc_format` forced the form per cell, and the two
 cells' `toc_dir` results are the two forms of the same map.
@@ -80,28 +81,30 @@ sentence — appears to be doing work, not padding.
 This is §3's third bullet ("recall down → do not adopt until understood"), reached by a route §3 did not
 list.
 
-## Verdict
+## Verdict — the compact form as built is rejected. Do not re-run this ladder.
 
 **Do not flip the defaults.** The §3 plan — compact by default in the MCP server, a `quarry map` verb,
-`docs/when-to-use-quarry.md` pointed at it — is blocked. Adopting a form that halves the bill and takes
-precision from 0.96 to 0.82 would trade the one measured win for a cheaper wrong answer.
+`docs/when-to-use-quarry.md` pointed at it — is dropped, not deferred. Adopting a form that cuts the bill
+and takes precision from 0.96 to 0.82 would trade the one measured win for a cheaper wrong answer.
 
-**Do not discard the compact form either.** n=2 cannot carry this. The byte saving is a deterministic
-property of the form and is not in question; what is in question is a behavioural difference resting on
-two observations per cell, in a root whose within-cell spread is wide (a9's own two repetitions are 4 vs 7
-turns and 64k vs 158k cache_read).
+**Two repetitions are enough to decide this, because the claim under test was that the form is free.** A
+null-effect claim does not need the resolution a small-effect claim needs; it needs only enough resolution
+to see the effect it claims to preserve. This root has that: a2-toc-dir reproduced the established turn
+halving at n=2 (4.5 vs the control's 7.5, separated, zero greps vs 4.5). The effect is visible here at two
+repetitions. a9 did not show it at the same n, under the same task, on the same host, in the same root.
+And precision went 2/2 in the same direction — 0.78 and 0.86, below every one of a2's observations (0.92,
+1.00) and below both control observations (0.93, 0.94). Spending another 25 minutes to confirm that
+something advertised as free is not free is not worth it.
 
-Next, in order:
+What this does **not** establish: that a compact map is a bad idea. It rejects *this* form — one sentence
+per file, `leadMaxRunes` at 120 — whose truncation is the most likely cause of the agent answering from a
+thinner map. A two- or three-sentence-per-file form would still be far below 48 KB and is a different
+form, not a re-run of this one. If anyone builds it, it is a new cell (`a10-toc-dir-compact-wide` against
+a9) and a new question; nothing in the current programme depends on it.
 
-1. **Re-run this ladder at `reps: 5`**, into a fresh root. Same three cells, no changes. That is the
-   cheapest thing that can settle it, and it is the same 25 minutes the toc ladder cost. If precision
-   holds at ~0.82 across five repetitions the form is rejected on evidence; if it converges on a2's 0.96
-   this probe was noise and the flip proceeds.
-2. Only if it is rejected: the knob to try before abandoning the idea is the sentence cap. `leadMaxRunes`
-   at 120 is what produced the thin lines; the compact form at two or three sentences per file would still
-   be far below 48 KB. Cell `a10-toc-dir-compact-wide` against a9 is the shape.
-3. §6 item 6 (compact output for impact/refs) inherits this result — it was queued behind toc's compact
-   form being adopted, and is now queued behind step 1.
+**§6 item 6 (compact output for impact/refs) loses its premise.** It was queued behind toc's compact form
+being adopted. It is not blocked on more data; it is unmotivated until some compact form is shown to be
+free, which this one is not.
 
 ## Harness note — `server_vcs_modified` cannot read false
 

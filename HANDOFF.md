@@ -6,12 +6,11 @@ report it descends from is `docs/research/quarry-improvement-research.md`; the b
 enforcement gates). Every results root named below has a `conclusion.md` that is the record of that
 run; read those before re-deriving anything from `summary.json`.
 
-## 0. First thing: commit the working tree
+## 0. DONE: the working tree is committed
 
-Everything from 2026-09-02 is uncommitted (46 files). It is one coherent day of work and all tests
-pass (`go test ./...` at the repo root). Commit it before running anything, because the matrix
-builds the server under test from the working tree and a dirty tree is the single biggest source of
-invalid runs (see §2, rule 1). Suggested split, or one commit if you prefer:
+Committed 2026-09-02 as `40206e7`. Keep the rule it existed for: commit before running anything,
+because the matrix builds the server under test from the working tree and a dirty tree is the single
+biggest source of invalid runs (see §2, rule 1). What that commit contained:
 
 1. Engine + CLI + MCP: compact toc form — `internal/quarryengine/toc/compact.go` (+test),
    `quarry/facade.go` (`CompactTOCFile/Dir`), `internal/cli/toc.go` (`--compact`),
@@ -39,7 +38,7 @@ followup conclusion argues for un-ignoring it (1.8 MB per 12 runs); not done yet
 | `2026-09-02-followup` | fix verification, valid | `within` scoping works; description steering does not; b4 lost recall once from tool-surface friction |
 | `2026-09-02-toc` | toc-only ladder, reps 5 | **toc_dir reproduces: turns 8→4, cache_read 127k→83k, recall unchanged.** toc_file alone never helps. Named-file task: no toc gain. Three reps excluded (harness incidents, §2) |
 | `2026-09-02-compact` | compact ladder, two aborted starts | no data; `ABANDONED.md` says why the root and its stale lock are left in place |
-| `2026-09-02-compact2` | compact ladder, reps 2 (**a probe, not a dataset**) | compact delivers the bytes (49k→13k, cache_creation 57k→29k) but a2's turn win does not reproduce and precision drops 0.96→0.82. **Default flip blocked**; needs reps 5 to settle (§3) |
+| `2026-09-02-compact2` | compact ladder, reps 2 | compact delivers the bytes (49k→13k, cache_creation 57k→29k) but a2's turn win does not reproduce under it and precision drops 0.96→0.82. **The form as built is rejected; the default flip is dropped, not deferred.** n=2 settles it because the claim was that the form is free (§3) |
 
 The one-line summary of the whole programme so far: on Sonnet-class agents, quarry's LSP tools do
 not beat grep on correctness or cost; a directory table of contents halves exploration cost on
@@ -71,21 +70,29 @@ and deciding where it ships.
    exists. If a previous run was interrupted: `tmux kill-session -t ladder-run`, then re-run; the
    driver resumes from what the results root already records.
 
-## 3. NEXT: re-run the compact ladder at reps 5
+## 3. CLOSED: the compact ladder ran, and the compact form is rejected
 
-**Run once already, at reps 2, as a cheap probe: `results/2026-09-02-compact2/` — read its
-`conclusion.md`.** The short version: the compact form does cut the bytes exactly as designed (49 KB →
-13 KB, `cache_creation` 57k → 29k), but in that root a2's turn halving does not reproduce under it
-(5.5 [4–7], no longer separated from the control) and precision falls from 0.96 to 0.82 — below the
-control's 0.935. Read volume went *down*, not up, so the reading is that the agent answered from a
-thinner map rather than compensating for it. **The default flip below is blocked.** Two repetitions per
-cell cannot carry that conclusion either way, so the next action is this same ladder at `reps: 5` into a
-fresh root, no other changes: set `reps: 5` in `ladder-compact.yaml`, bump the `session_dir_template`
-prefix (see the comment there), and run. If precision holds near 0.82 the form is rejected on evidence;
-if it converges on 0.96 the probe was noise and the flip proceeds. The rest of this section is the
-still-current operating manual for that run.
+**Ran 2026-09-02 at reps 2: `results/2026-09-02-compact2/` — read its `conclusion.md`.** The compact form
+cuts the bytes exactly as designed (49 KB → 13 KB, `cache_creation` 57k → 29k), but a2's turn halving does
+not reproduce under it (5.5 [4–7], no longer separated from the control) and precision falls from 0.96 to
+0.82, below the control's 0.935. Read volume went *down*, not up: the agent answered from the thinner map
+rather than compensating for it.
 
-**Question.** The toc_dir win is paid as a 49 KB JSON tool result per run. The compact form
+**Two repetitions settle it, and there is no reps-5 re-run to do.** The claim under test was that the form
+is *free* — same behaviour, fewer bytes. A null-effect claim needs only enough resolution to see the effect
+it claims to preserve, and this root has it: a2 reproduced the established turn halving at n=2. a9 did not,
+and precision went 2/2 the wrong way, below every a2 and every control observation.
+
+So **the default flip below is dropped, not deferred**, and §6 item 6 (compact impact/refs) loses its
+premise with it. What is rejected is *this* form — one sentence per file, `leadMaxRunes` 120. A less
+aggressive compact form would be a new form and a new cell (`a10-toc-dir-compact-wide` against a9), not a
+re-run of this ladder; nothing in the programme currently depends on it. **Next real work is §6, headed by
+6.1.**
+
+The rest of this section is kept as the operating manual for `run.sh` and the per-root checks, which every
+future ladder still needs.
+
+**Question (as it stood).** The toc_dir win is paid as a 49 KB JSON tool result per run. The compact form
 (`quarry toc dir --compact`, MCP `compact: true`, forced per session by `--toc-format`) renders the
 same map — same paths, same line numbers — as plain text at a third of the bytes (10.9 KB → 3.1 KB
 for a 25-file package; ~12 KB for the task-01 scope). Does the agent do the same thing with it?
@@ -138,8 +145,8 @@ chars and tool chars from the transcripts), and the reading. The reading is deci
   used; try `leadMaxRunes` higher or `--doc-sentences`-style knobs before concluding.
 - recall down → same; do not adopt until understood.
 
-**If compact holds at reps 5 — it did not at reps 2, see the top of this section — flip the defaults**
-(about an hour, engine side, no benchmark needed):
+**~~If compact holds, flip the defaults~~ — DROPPED, it did not hold. Kept for the record only; do not
+do any of this:**
 - MCP server: default `compact` for both toc tools, JSON on `compact: false`. The only reader of MCP
   output is an LLM. Update the two tool descriptions to describe the compact lines.
 - CLI: keep `toc dir|file` JSON as the scripting contract; add a `quarry map <path…>` verb that
@@ -192,8 +199,9 @@ chars and tool chars from the transcripts), and the reading. The reading is deci
 5. 1-based positions at the MCP boundary, plus a `file + line + symbol` call-site form and lenient
    input (position and symbol together; `Type.Method` qualifiers stripped). Every b2/b4 failure in
    the followup was an addressing failure.
-6. Compact output — **done for toc**; pending for impact/refs (`file:line: enclosing signature`
-   lines) once toc's compact form is adopted (§3).
+6. ~~Compact output for impact/refs~~ — **dropped.** It was queued behind toc's compact form being
+   adopted, and that form was rejected (§3). Not blocked on more data; unmotivated until some compact
+   form is shown to cost nothing, which this one is not.
 7. Warm-daemon support beyond Go, or document the other languages as cold-spawn-only.
 
 ## 7. Loomyard mechanical integration (later)
@@ -209,8 +217,8 @@ ladder when the time comes.
 ## Dependency order
 
 ```
-3 probe at reps 2 (done, blocked the flip) ──► 3 re-run at reps 5 ──► 3's default flip ──► 6.6 (compact impact/refs)
+3 (compact ladder) ──► CLOSED: form rejected; 3's default flip and 6.6 dropped with it
+6.1–6.5               — the remaining work; 6.1 is next, 6.4 gates 7
 4 (toc-run tidy-ups)  — any time
 5 (annex run)         — only when 7 is being built
-6.1–6.5               — independent of runs; 6.4 gates 7
 ```
