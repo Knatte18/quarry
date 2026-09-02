@@ -8,8 +8,10 @@
 # cache_read 127k -> 83k, recall unchanged, on task 01); this ladder asks whether the same win comes
 # cheaper still.
 #
-# Ladder a -- task 01, unfamiliar two-package exploration, reps 5 (same as the toc ladder, same ids for
-# a0/a2, so the two roots line up cell for cell on this host).
+# Ladder a -- task 01, unfamiliar two-package exploration, reps 2. The ids for a0/a2 match the toc
+# ladder's, so the two roots line up cell for cell on this host -- but that ladder ran reps 5, so this
+# one is the cheaper probe, not its equal: two reps show a large form effect and the byte sizes, and
+# cannot separate a small one from run-to-run noise. Raise reps here if a9 vs a2 comes out close.
 #   a0-none              control
 #   a2-toc-dir           the tool, JSON form forced (toc_format: json -- the agent cannot opt into compact)
 #   a9-toc-dir-compact   the tool, compact form forced (toc_format: compact)
@@ -30,11 +32,17 @@
 # Run with: bench/loomyard-eval/ladder/run-compact.sh   (results land in results/<date>-compact)
 
 run_model: claude-sonnet-5
-reps: 5
+reps: 2
 run_effort: medium
 max_turns: 60
 
-session_dir_template: .scratch/ladder-sessions/compact-{config_id}-{n}
+# "compact2", not "compact": a first attempt at this ladder was stopped mid-flight and left one subagent
+# transcript under the projects-tree directory that "compact-a0-none-1" mangles to. LocateTranscript
+# hard-errors on two metadata files sharing a description, and a re-run reproduces the description
+# exactly (config id, repetition, attempt index), so re-using the old template would fail ingest on the
+# first repetition. Bumping the prefix gives every session a fresh projects-tree directory and leaves the
+# stale one where it lies. Bump again -- never delete under ~/.claude -- if a run is ever abandoned here.
+session_dir_template: .scratch/ladder-sessions/compact2-{config_id}-{n}
 
 scorer:
   model: claude-opus-5
