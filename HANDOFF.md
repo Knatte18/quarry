@@ -38,6 +38,8 @@ followup conclusion argues for un-ignoring it (1.8 MB per 12 runs); not done yet
 | `2026-09-01-followup` | fix verification, invalid | b1 never used its tool; one b4 row was an August transcript |
 | `2026-09-02-followup` | fix verification, valid | `within` scoping works; description steering does not; b4 lost recall once from tool-surface friction |
 | `2026-09-02-toc` | toc-only ladder, reps 5 | **toc_dir reproduces: turns 8→4, cache_read 127k→83k, recall unchanged.** toc_file alone never helps. Named-file task: no toc gain. Three reps excluded (harness incidents, §2) |
+| `2026-09-02-compact` | compact ladder, two aborted starts | no data; `ABANDONED.md` says why the root and its stale lock are left in place |
+| `2026-09-02-compact2` | compact ladder, reps 2 (**a probe, not a dataset**) | compact delivers the bytes (49k→13k, cache_creation 57k→29k) but a2's turn win does not reproduce and precision drops 0.96→0.82. **Default flip blocked**; needs reps 5 to settle (§3) |
 
 The one-line summary of the whole programme so far: on Sonnet-class agents, quarry's LSP tools do
 not beat grep on correctness or cost; a directory table of contents halves exploration cost on
@@ -69,7 +71,19 @@ and deciding where it ships.
    exists. If a previous run was interrupted: `tmux kill-session -t ladder-run`, then re-run; the
    driver resumes from what the results root already records.
 
-## 3. NEXT: run the compact ladder
+## 3. NEXT: re-run the compact ladder at reps 5
+
+**Run once already, at reps 2, as a cheap probe: `results/2026-09-02-compact2/` — read its
+`conclusion.md`.** The short version: the compact form does cut the bytes exactly as designed (49 KB →
+13 KB, `cache_creation` 57k → 29k), but in that root a2's turn halving does not reproduce under it
+(5.5 [4–7], no longer separated from the control) and precision falls from 0.96 to 0.82 — below the
+control's 0.935. Read volume went *down*, not up, so the reading is that the agent answered from a
+thinner map rather than compensating for it. **The default flip below is blocked.** Two repetitions per
+cell cannot carry that conclusion either way, so the next action is this same ladder at `reps: 5` into a
+fresh root, no other changes: set `reps: 5` in `ladder-compact.yaml`, bump the `session_dir_template`
+prefix (see the comment there), and run. If precision holds near 0.82 the form is rejected on evidence;
+if it converges on 0.96 the probe was noise and the flip proceeds. The rest of this section is the
+still-current operating manual for that run.
 
 **Question.** The toc_dir win is paid as a 49 KB JSON tool result per run. The compact form
 (`quarry toc dir --compact`, MCP `compact: true`, forced per session by `--toc-format`) renders the
@@ -105,7 +119,10 @@ has. Results land in `bench/loomyard-eval/ladder/results/<today>-compact/`.
 
 **Before reading any number**, check the root:
 - `provenance.json`: `quarry_dirty` false (or only the results files), one distinct value in
-  `server_hashes`, `server_vcs_modified` false.
+  `server_hashes`. **Do not check `server_vcs_modified`** — it is structurally `"true"` on every run,
+  because `runmatrix` creates the untracked results root before the binary is built; see the harness
+  note in `results/2026-09-02-compact2/conclusion.md`. `server_hashes` is the real evidence that the
+  binary did not change mid-run.
 - The printed table has no `!!` lines (an unused tool, or a changed server binary).
 - `raw/*/*/ingest.json` has no fatal findings; a rep that failed `run_prompt` was re-attempted.
 - Spot-check one `a9` transcript: the `toc_dir` result starts with `{"results":[{"compact":"# ` and is
@@ -121,7 +138,8 @@ chars and tool chars from the transcripts), and the reading. The reading is deci
   used; try `leadMaxRunes` higher or `--doc-sentences`-style knobs before concluding.
 - recall down → same; do not adopt until understood.
 
-**If compact holds, flip the defaults** (about an hour, engine side, no benchmark needed):
+**If compact holds at reps 5 — it did not at reps 2, see the top of this section — flip the defaults**
+(about an hour, engine side, no benchmark needed):
 - MCP server: default `compact` for both toc tools, JSON on `compact: false`. The only reader of MCP
   output is an LLM. Update the two tool descriptions to describe the compact lines.
 - CLI: keep `toc dir|file` JSON as the scripting contract; add a `quarry map <path…>` verb that
@@ -191,7 +209,7 @@ ladder when the time comes.
 ## Dependency order
 
 ```
-0 (commit) ──► 3 (compact run + conclusion) ──► 3's default flip ──► 6.6 (compact impact/refs)
+3 probe at reps 2 (done, blocked the flip) ──► 3 re-run at reps 5 ──► 3's default flip ──► 6.6 (compact impact/refs)
 4 (toc-run tidy-ups)  — any time
 5 (annex run)         — only when 7 is being built
 6.1–6.5               — independent of runs; 6.4 gates 7
