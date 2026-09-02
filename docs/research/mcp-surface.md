@@ -160,3 +160,21 @@ never separated from control:
 
 The CLI keeps all seven verbs: it is a different surface with different consumers, and its JSON
 envelope is already the right contract for mechanical callers.
+
+## Addendum — `workspace_symbol` is also the resolver, not only a tool
+
+Dropping `workspace_symbol` from the MCP surface removes an LLM-facing tool. It does **not** remove
+the mechanism. `internal/quarryengine/query/refs.go:4` states it plainly:
+
+> workspace/symbol is the name → position resolver: given a bare symbol name (no explicit position),
+> References/Definition issue workspace/symbol (via resolvePosition) …
+
+So `refs`, `definition`, `impact` and `assert-no-callers` all route a bare name through the same fuzzy,
+project-wide, dependency-module-inclusive match — without showing the caller the candidates. It is also
+the daemon warm-up call (`WarmUpTool`, `internal/ladder/warm.go`), because the toc verbs never reach
+`EnsureServer`.
+
+That makes the noise documented above a property of the **resolution layer**, not merely of
+`symbol`'s display. The `--in-file` resolver is the alternative and does "no fuzzy or project-wide
+matching" (`refs.go:17`) — one more reason to address by file plus name, as gopls's MCP does
+universally. Bare-name resolution keeps working after the tool is dropped.
