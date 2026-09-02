@@ -1,0 +1,29 @@
+$ quarry impact --in-file internal/logger/logger.go --within internal/logger newDualHandler
+
+{
+  "callers": [
+    {
+      "call_site_character": 20,
+      "call_site_line": 171,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "package": "logger"
+    }
+  ],
+  "definition": {
+    "end_line": 201,
+    "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+    "line": 199,
+    "sigend_line": 199,
+    "start_line": 197
+  },
+  "ok": true,
+  "resolution": "complete",
+  "target": {
+    "kind": "function",
+    "name": "newDualHandler",
+    "package": "logger",
+    "signature": "func newDualHandler() dualHandler"
+  }
+}
+
+(exit code: 0)

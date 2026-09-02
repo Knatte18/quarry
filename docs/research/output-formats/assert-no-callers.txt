@@ -1,0 +1,8 @@
+$ quarry assert-no-callers --within internal/logger --except internal/logger/logger.go stderrHandlerSnapshot
+
+{
+  "callers": [],
+  "ok": true
+}
+
+(exit code: 0)

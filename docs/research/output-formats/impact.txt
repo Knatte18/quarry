@@ -1,0 +1,38 @@
+$ quarry impact --in-file internal/logger/logger.go --within internal/logger stderrHandlerSnapshot
+
+{
+  "callers": [
+    {
+      "call_site_character": 21,
+      "call_site_line": 207,
+      "enclosing_range": {
+        "end_line": 208,
+        "sigend_line": 206,
+        "start_line": 203
+      },
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": "method",
+      "name": "stderr",
+      "owner": "dualHandler",
+      "package": "logger",
+      "signature": "func (d dualHandler) stderr() slog.Handler"
+    }
+  ],
+  "definition": {
+    "end_line": 163,
+    "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+    "line": 158,
+    "sigend_line": 158,
+    "start_line": 155
+  },
+  "ok": true,
+  "resolution": "complete",
+  "target": {
+    "kind": "function",
+    "name": "stderrHandlerSnapshot",
+    "package": "logger",
+    "signature": "func stderrHandlerSnapshot() slog.Handler"
+  }
+}
+
+(exit code: 0)

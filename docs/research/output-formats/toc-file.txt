@@ -1,0 +1,226 @@
+$ quarry toc file internal/logger/logger.go
+
+{
+  "header": "logger.go provides a thin log/slog wrapper for lyx: a package-level level threshold, an\ninjectable io.Writer stderr sink (defaulting to os.Stderr), and Debug/Info/Warn helpers that fan\nevery call out to that stderr sink and, independently, to the durable trace-file sink (sink.go)\nvia the composite dualHandler defined below.\nCallers never see slog directly;\nthey call SetVerbosity to raise the stderr threshold and Debug/Info/Warn to emit.",
+  "language": "go",
+  "ok": true,
+  "package": "logger",
+  "symbols": [
+    {
+      "docstring": "stderrHandlerSnapshot returns the current stderr-half handler under a\nnarrow critical section; caller must not hold sinkMu across the following\nHandle call to avoid deadlock.",
+      "end": 163,
+      "kind": "function",
+      "name": "stderrHandlerSnapshot",
+      "sigend": 158,
+      "signature": "func stderrHandlerSnapshot() slog.Handler",
+      "start": 155
+    },
+    {
+      "docstring": "dualHandler is the composite slog.Handler discussion.md's\ndual-handler-fan-out decision requires: Enabled is the OR of the stderr\nand durable halves' own Enabled, so an Info record is accepted by the\ncomposite even when the stderr half alone would reject it at the default\nWarn threshold (this is what lets an Info record reach the durable sink\nregardless of -v/-vv).",
+      "end": 195,
+      "kind": "type",
+      "name": "dualHandler",
+      "sigend": 184,
+      "signature": "type dualHandler struct",
+      "start": 173
+    },
+    {
+      "docstring": "newDualHandler builds the root dualHandler with no accumulated\nWithAttrs/WithGroup transform.",
+      "end": 201,
+      "kind": "function",
+      "name": "newDualHandler",
+      "sigend": 199,
+      "signature": "func newDualHandler() dualHandler",
+      "start": 197
+    },
+    {
+      "docstring": "stderr resolves this dualHandler's stderr-half handler by reading the\ncurrent package-level inner handler and applying this handler's\naccumulated WithAttrs/WithGroup transform on top of it.",
+      "end": 208,
+      "kind": "method",
+      "name": "stderr",
+      "owner": "dualHandler",
+      "sigend": 206,
+      "signature": "func (d dualHandler) stderr() slog.Handler",
+      "start": 203
+    },
+    {
+      "docstring": "Enabled implements slog.Handler as the OR of the stderr and durable halves' own Enabled -- see\nthe dualHandler doc comment for why this must be OR, not stderr's gate alone.",
+      "end": 214,
+      "kind": "method",
+      "name": "Enabled",
+      "owner": "dualHandler",
+      "sigend": 212,
+      "signature": "func (d dualHandler) Enabled(ctx context.Context, level slog.Level) bool",
+      "start": 210
+    },
+    {
+      "docstring": "Handle implements slog.Handler by independently re-checking each half's own Enabled and\ndelegating only to the halves that pass -- see the dualHandler doc comment for why this\nindependent re-check, rather than a single shared gate, is load-bearing.",
+      "end": 239,
+      "kind": "method",
+      "name": "Handle",
+      "owner": "dualHandler",
+      "sigend": 222,
+      "signature": "func (d dualHandler) Handle(ctx context.Context, record slog.Record) error",
+      "start": 216
+    },
+    {
+      "docstring": "WithAttrs implements slog.Handler by extending both halves' accumulated transform with the same\nattrs, so a logger built via slog.Logger.With keeps fanning out to both halves rather than\ncollapsing to one.",
+      "end": 250,
+      "kind": "method",
+      "name": "WithAttrs",
+      "owner": "dualHandler",
+      "sigend": 244,
+      "signature": "func (d dualHandler) WithAttrs(attrs []slog.Attr) slog.Handler",
+      "start": 241
+    },
+    {
+      "docstring": "WithGroup implements slog.Handler by extending both halves' accumulated transform with the same\ngroup, mirroring WithAttrs.",
+      "end": 260,
+      "kind": "method",
+      "name": "WithGroup",
+      "owner": "dualHandler",
+      "sigend": 254,
+      "signature": "func (d dualHandler) WithGroup(name string) slog.Handler",
+      "start": 252
+    },
+    {
+      "docstring": "durableWriter adapts the durable sink's ensureDurableSink/writeDurable\npair (sink.go) to an io.Writer so durableHandler can format records with\nan ordinary slog.NewTextHandler -- \"formats the record as\nslog.NewTextHandler would\" per the batch plan -- while the actual bytes\nstill flow through the sink's lazy-open and size-cap machinery.",
+      "end": 267,
+      "kind": "type",
+      "name": "durableWriter",
+      "sigend": 267,
+      "signature": "type durableWriter struct",
+      "start": 262
+    },
+    {
+      "docstring": "Write opens the durable sink on first use (a no-op on every call after the first, via sinkOnce)\nand writes p to it.",
+      "end": 279,
+      "kind": "method",
+      "name": "Write",
+      "owner": "durableWriter",
+      "sigend": 274,
+      "signature": "func (durableWriter) Write(p []byte) (int, error)",
+      "start": 269
+    },
+    {
+      "docstring": "durableHandler is dualHandler's durable-sink half.",
+      "end": 288,
+      "kind": "type",
+      "name": "durableHandler",
+      "sigend": 286,
+      "signature": "type durableHandler struct",
+      "start": 281
+    },
+    {
+      "docstring": "newDurableHandler builds the durable half over durableWriter, formatting\nexactly as slog.NewTextHandler would.",
+      "end": 294,
+      "kind": "function",
+      "name": "newDurableHandler",
+      "sigend": 292,
+      "signature": "func newDurableHandler() durableHandler",
+      "start": 290
+    },
+    {
+      "docstring": "Enabled reports whether level is Info or above, unconditionally of levelVar -- see the\ndurableHandler doc comment.",
+      "end": 300,
+      "kind": "method",
+      "name": "Enabled",
+      "owner": "durableHandler",
+      "sigend": 298,
+      "signature": "func (d durableHandler) Enabled(_ context.Context, level slog.Level) bool",
+      "start": 296
+    },
+    {
+      "docstring": "Handle formats and writes record via the wrapped text handler, which in turn writes through\ndurableWriter into the durable sink.",
+      "end": 306,
+      "kind": "method",
+      "name": "Handle",
+      "owner": "durableHandler",
+      "sigend": 304,
+      "signature": "func (d durableHandler) Handle(ctx context.Context, record slog.Record) error",
+      "start": 302
+    },
+    {
+      "docstring": "withAttrs returns a copy of d with attrs bound into the wrapped handler.",
+      "end": 314,
+      "kind": "method",
+      "name": "withAttrs",
+      "owner": "durableHandler",
+      "sigend": 312,
+      "signature": "func (d durableHandler) withAttrs(attrs []slog.Attr) durableHandler",
+      "start": 308
+    },
+    {
+      "docstring": "withGroup returns a copy of d with name bound into the wrapped handler,\nmirroring withAttrs.",
+      "end": 320,
+      "kind": "method",
+      "name": "withGroup",
+      "owner": "durableHandler",
+      "sigend": 318,
+      "signature": "func (d durableHandler) withGroup(name string) durableHandler",
+      "start": 316
+    },
+    {
+      "end": 325,
+      "kind": "function",
+      "name": "init",
+      "sigend": 322,
+      "signature": "func init()",
+      "start": 322
+    },
+    {
+      "docstring": "configureFromEnv applies LYX_LOG_LEVEL and LYX_LOG_FILE, if set, on top of\nthe just-initialised Warn/stderr defaults.",
+      "end": 349,
+      "kind": "function",
+      "name": "configureFromEnv",
+      "sigend": 331,
+      "signature": "func configureFromEnv()",
+      "start": 327
+    },
+    {
+      "docstring": "Debug logs msg at debug level with the given key/value args, stamping a trace key with\nTraceID()'s current value (batch 2) on every line as every level does.",
+      "end": 360,
+      "kind": "function",
+      "name": "Debug",
+      "sigend": 358,
+      "signature": "func Debug(msg string, args ...any)",
+      "start": 351
+    },
+    {
+      "docstring": "Info logs msg at info level with the given key/value args, stamping trace= as Debug does.",
+      "end": 367,
+      "kind": "function",
+      "name": "Info",
+      "sigend": 365,
+      "signature": "func Info(msg string, args ...any)",
+      "start": 362
+    },
+    {
+      "docstring": "Warn logs msg at warn level with the given key/value args, stamping trace= as Debug does.",
+      "end": 374,
+      "kind": "function",
+      "name": "Warn",
+      "sigend": 372,
+      "signature": "func Warn(msg string, args ...any)",
+      "start": 369
+    },
+    {
+      "docstring": "SetVerbosity maps a -v repeat count to a log level: count<=0 keeps the default Warn threshold\n(silent normal run), count==1 lowers it to Info, and count>=2 lowers it to Debug.",
+      "end": 388,
+      "kind": "function",
+      "name": "SetVerbosity",
+      "sigend": 379,
+      "signature": "func SetVerbosity(count int)",
+      "start": 376
+    },
+    {
+      "docstring": "SetOutput rebinds the stderr half of the log sink to w and rebuilds the composite handler's\nstderr-half inner handler in place;\nthe durable half (sink.go's ensureDurableSink/writeDurable) is untouched, per discussion.md's\ndual-handler-fan-out decision -- redirecting stderr must never silently detach the durable sink.",
+      "end": 413,
+      "kind": "function",
+      "name": "SetOutput",
+      "sigend": 408,
+      "signature": "func SetOutput(w io.Writer)",
+      "start": 390
+    }
+  ]
+}
