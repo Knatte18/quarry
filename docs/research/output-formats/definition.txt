@@ -1,0 +1,15 @@
+$ quarry definition --in-file internal/logger/logger.go stderrHandlerSnapshot
+
+{
+  "definitions": [
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "line": 158
+    }
+  ],
+  "ok": true,
+  "resolution": "complete"
+}
+
+(exit code: 0)

@@ -256,8 +256,9 @@ whole repo (439 non-test .go) 318 ms
    on a list.
 3. `within` scoping default-on (workspace-wide becomes the explicit opt-out). Verified working
    2026-09-02; both agents had to know to pass it.
-4. `rename_impact` tool wrapping LSP `textDocument/rename` — the fasit procedure as a product. Row 3
-   work: legitimate, but it inherits row 3's open question (does anyone act on it without verification).
+4. ~~`rename_impact` tool wrapping LSP `textDocument/rename`~~ — **shipped upstream.** `gopls mcp`
+   exposes `go_rename_symbol`, taking `file` + `symbol` + `new_name` (§8). Building it here would be
+   duplication. It also inherited row 3's open question — does anyone act on it without verification.
 5. Expose `implementations` (`textDocument/implementation` is already wired internally). Row 3.
 6. 1-based positions at the MCP boundary and lenient input. **But not "`Type.Method` qualifiers
    stripped"** — that was backwards. The receiver is half the key, not noise: `(package, receiver type,
@@ -298,6 +299,46 @@ and deterministic gates on deletes/moves/renames (`assert-no-callers`, before/af
 Blocked on §6 item 2 (per-entry `verified`): a gate that consumes unverified results marked `resolution: complete` recreates
 the 31-false-positive incident (`docs/research/scout-agent-usage-findings.md`). Measured by the annex
 ladder when the time comes.
+
+## 8. The MCP surface — gopls now ships its own (2026-09-02)
+
+Full write-up and the captured outputs: `docs/research/mcp-surface.md` and
+`docs/research/output-formats/`. Read that before touching the MCP layer. The short version:
+
+- **`gopls mcp` exists**, in the same binary quarry already spawns. Eight tools, four of which have no
+  LSP method at all. **Not one takes a position** — every symbol-addressing tool takes `file` +
+  a possibly-qualified `symbol`. `go_rename_symbol` is §6's old `rename_impact`, shipped upstream.
+- **It returns prose, not JSON, and carries no line numbers.** So §6's row 2 — where a symbol begins
+  and ends — is still quarry's alone, at 3–9× smaller output.
+- **The thin-wrapper layer is the layer that never measured well**, and `output-formats/symbol.txt`
+  shows why: undecoded `SymbolKind` integers, three naming conventions in one array, unlabelled fuzzy
+  matches. All faithful to LSP — which is the problem. **LSP assumes the client is an editor**; every
+  awkward thing there is an editor affordance with the editor removed.
+- **quarry sends every MCP payload twice** (`structuredContent` plus a serialized mirror in
+  `content[].text`), but **this costs no context**: verified against a ladder transcript, the agent
+  receives one string block. Transport-only, over a local pipe. Do not spend effort on it.
+- **JSON is not the MCP payload standard.** The envelope is JSON-RPC 2.0; `content[].text` is an
+  opaque string and gopls puts markdown in it. This is a free choice — but it does not rescue the
+  compact form, because the model reads `content`, which is exactly the trade-off §3 measured.
+
+**Recommendation, seven MCP tools to four:** keep `toc_file`, `toc_dir`, `impact`,
+`assert_no_callers`; drop `textDocument_definition` (a position grep already found),
+`textDocument_references` (superseded by `impact`), `workspace_symbol` (fuzzy, undecoded, noisy). The
+CLI keeps all seven verbs — different surface, different consumers.
+
+**What gopls MCP does not threaten:** it competes with one of quarry's three surfaces for one of its
+three focus languages. The Cobra CLI has no MCP equivalent (`assert-no-callers` is an exit-code
+contract for a plan card's `verify:` step), the `quarry/` facade has no MCP equivalent and is the whole
+basis of §7, and gopls MCP is Go-only.
+
+**Parked, operator to decide:** whether quarry should be stripped to its tree-sitter half, possibly
+folded into Loomyard. Note the layering before deciding — `impact` is built *on* toc
+(`enclosingSymbol(fileTOC.Symbols, ref.Line)`, and a target's provenance is "always that one
+`toc.Symbol` — never an LSP candidate"), so toc is the bottom layer and LSP sits on top of it.
+Stripping means removing the top, not carving out the bottom. quarry was also deliberately extracted
+*out* of Loomyard into its own module; reversing that should be a decision, not a side effect.
+
+Scope note: the focus is **three** languages — Go, Python, C# — not the five the engine doc lists.
 
 ## Dependency order
 

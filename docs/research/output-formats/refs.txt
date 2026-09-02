@@ -1,0 +1,18 @@
+$ quarry refs --in-file internal/logger/logger.go newDualHandler
+
+{
+  "ok": true,
+  "references": [
+    {
+      "character": 20,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "line": 171
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "line": 199
+    }
+  ],
+  "resolution": "complete"
+}

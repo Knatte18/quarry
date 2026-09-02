@@ -1,0 +1,168 @@
+$ quarry symbol dualHandler
+
+{
+  "ok": true,
+  "symbols": [
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/clihelp/exec_test.go",
+      "kind": 12,
+      "line": 42,
+      "name": "github.com/Knatte18/loomyard/internal/clihelp.TestExecute_FailHandlerReturnsOne"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 23,
+      "line": 184,
+      "name": "dualHandler"
+    },
+    {
+      "character": 2,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 8,
+      "line": 193,
+      "name": "dualHandler.transform"
+    },
+    {
+      "character": 2,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 8,
+      "line": 194,
+      "name": "dualHandler.durable"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 12,
+      "line": 199,
+      "name": "newDualHandler"
+    },
+    {
+      "character": 22,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 206,
+      "name": "dualHandler.stderr"
+    },
+    {
+      "character": 22,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 212,
+      "name": "dualHandler.Enabled"
+    },
+    {
+      "character": 22,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 222,
+      "name": "dualHandler.Handle"
+    },
+    {
+      "character": 22,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 244,
+      "name": "dualHandler.WithAttrs"
+    },
+    {
+      "character": 22,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 254,
+      "name": "dualHandler.WithGroup"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 23,
+      "line": 286,
+      "name": "durableHandler"
+    },
+    {
+      "character": 2,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 8,
+      "line": 287,
+      "name": "durableHandler.inner"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 12,
+      "line": 292,
+      "name": "newDurableHandler"
+    },
+    {
+      "character": 25,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 298,
+      "name": "durableHandler.Enabled"
+    },
+    {
+      "character": 25,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 304,
+      "name": "durableHandler.Handle"
+    },
+    {
+      "character": 25,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 312,
+      "name": "durableHandler.withAttrs"
+    },
+    {
+      "character": 25,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go",
+      "kind": 6,
+      "line": 318,
+      "name": "durableHandler.withGroup"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger_test.go",
+      "kind": 12,
+      "line": 151,
+      "name": "TestDualHandler_DebugReachesStderrOnlyNotDurableSink"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger_test.go",
+      "kind": 12,
+      "line": 170,
+      "name": "TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger_test.go",
+      "kind": 12,
+      "line": 204,
+      "name": "TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger_test.go",
+      "kind": 12,
+      "line": 235,
+      "name": "TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger_test.go",
+      "kind": 12,
+      "line": 249,
+      "name": "TestDualHandler_EveryLevelStampsCurrentTraceID"
+    },
+    {
+      "character": 6,
+      "file": "/home/knatte/Code/loomyard/wts/loomyard/internal/loomrecipe/coverage_guard_test.go",
+      "kind": 12,
+      "line": 104,
+      "name": "github.com/Knatte18/loomyard/internal/loomrecipe.TestCoverageGuard_PublishAndFinalizeRowNamesMatchTheirProducerIdentity"
+    }
+  ]
+}

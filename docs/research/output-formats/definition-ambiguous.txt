@@ -1,0 +1,11 @@
+$ quarry definition --in-file internal/logger/logger.go Handle
+
+{
+  "candidates": [
+    "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go:222:22",
+    "/home/knatte/Code/loomyard/wts/loomyard/internal/logger/logger.go:304:25"
+  ],
+  "ok": true
+}
+
+(exit code: 2)
