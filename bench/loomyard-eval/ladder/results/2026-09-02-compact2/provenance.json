@@ -1,0 +1,23 @@
+{
+  "written_at": "2026-09-02T19:47:38+02:00",
+  "ladder_file": "/home/knatte/Code/quarry/wts/quarry/bench/loomyard-eval/ladder/ladder-compact.yaml",
+  "quarry_commit": "f3d3caf75e41372baeae4e4456631989f66fefe0",
+  "quarry_dirty": false,
+  "loomyard_repo": "/home/knatte/Code/loomyard/wts/loomyard",
+  "loomyard_commit": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+  "server_binary": "/home/knatte/Code/quarry/wts/quarry/quarry-mcp",
+  "server_vcs_revision": "f3d3caf75e41372baeae4e4456631989f66fefe0",
+  "server_vcs_modified": "true",
+  "server_vcs_time": "2026-09-02T17:24:33Z",
+  "server_binary_mtime": "2026-09-02T19:39:32+02:00",
+  "hostname": "Neve",
+  "go_version": "go version go1.26.0 linux/amd64",
+  "server_hashes": {
+    "a0-none/1": "5982917254ada0b5ffe6551f1b582ead5cddbd47380d57fadc909b2db92e9d79",
+    "a0-none/2": "5982917254ada0b5ffe6551f1b582ead5cddbd47380d57fadc909b2db92e9d79",
+    "a2-toc-dir/1": "5982917254ada0b5ffe6551f1b582ead5cddbd47380d57fadc909b2db92e9d79",
+    "a2-toc-dir/2": "5982917254ada0b5ffe6551f1b582ead5cddbd47380d57fadc909b2db92e9d79",
+    "a9-toc-dir-compact/1": "5982917254ada0b5ffe6551f1b582ead5cddbd47380d57fadc909b2db92e9d79",
+    "a9-toc-dir-compact/2": "5982917254ada0b5ffe6551f1b582ead5cddbd47380d57fadc909b2db92e9d79"
+  }
+}
