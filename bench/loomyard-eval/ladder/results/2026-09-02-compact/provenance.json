@@ -1,0 +1,11 @@
+{
+  "written_at": "2026-09-02T19:16:50+02:00",
+  "ladder_file": "/home/knatte/Code/quarry/wts/quarry/bench/loomyard-eval/ladder/ladder-compact.yaml",
+  "quarry_commit": "40206e7a6f82e1744536af38c8a542f2a10ea25d",
+  "quarry_dirty": false,
+  "loomyard_repo": "/home/knatte/Code/loomyard/wts/loomyard",
+  "loomyard_commit": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+  "server_binary": "/home/knatte/Code/quarry/wts/quarry/quarry-mcp",
+  "hostname": "Neve",
+  "go_version": "go version go1.26.0 linux/amd64"
+}
