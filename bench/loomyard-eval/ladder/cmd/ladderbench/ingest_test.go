@@ -157,6 +157,7 @@ func writeIngestFixtureTranscript(t *testing.T, fixture *ingestFixture, turnCoun
 
 	var lines []string
 	base := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	lines = append(lines, promptRecordLine(t, fixture, base.Add(-time.Second)))
 	for i := 0; i < turnCount; i++ {
 		record := ladder.Record{
 			IsSidechain: true,
@@ -183,6 +184,31 @@ func writeIngestFixtureTranscript(t *testing.T, fixture *ingestFixture, turnCoun
 	if err := os.WriteFile(transcriptPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
 	}
+}
+
+// promptRecordLine is the first user record of a fixture transcript: the generated run prompt for
+// fixture.config, which GateRunPrompt requires every real transcript to open with.
+func promptRecordLine(t *testing.T, fixture *ingestFixture, at time.Time) string {
+	t.Helper()
+	taskText, err := ladder.TaskTextFor(fixture.l, repoRootFixture, fixture.config.Task)
+	if err != nil {
+		t.Fatalf("TaskTextFor: %v", err)
+	}
+	record := ladder.Record{
+		IsSidechain: true,
+		AgentID:     "fixture",
+		UUID:        "uuid-prompt",
+		Timestamp:   at.Format(time.RFC3339Nano),
+		Type:        "user",
+		Message: ladder.Message{
+			Content: []ladder.ContentBlock{{Type: "text", Text: ladder.PreambleFor(fixture.l, fixture.config, "/tmp/target", taskText, "{}", "")}},
+		},
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("marshal prompt record: %v", err)
+	}
+	return string(data)
 }
 
 // mangleProjectDirForTest duplicates ladder's own unexported mangleProjectDir, since this test lives in
@@ -291,7 +317,8 @@ func TestRunIngest_FailedOutcomeOnDeniedToolUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal record: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(subagentsDir, "agent-fixture.jsonl"), append(data, '\n'), 0o644); err != nil {
+	transcript := promptRecordLine(t, fixture, time.Date(2026, 8, 30, 11, 59, 59, 0, time.UTC)) + "\n" + string(data) + "\n"
+	if err := os.WriteFile(filepath.Join(subagentsDir, "agent-fixture.jsonl"), []byte(transcript), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
 	}
 

@@ -56,12 +56,19 @@ func BuildServer(repoRoot string, build Builder) (string, error) {
 // question this port does not resolve; see the plan's Shared Decision on the settings-source risk this
 // was originally recorded alongside (that one has since been verified working -- see session.go's
 // LaunchCommand doc comment -- this one has not).
-func MCPConfigDocument(serverPath, targetDir string) map[string]any {
+//
+// tocFormat, when non-empty, is passed as --toc-format so the server forces that form on every toc call
+// (see LadderConfig.TOCFormat).
+func MCPConfigDocument(serverPath, targetDir, tocFormat string) map[string]any {
+	args := []string{"--target-dir", targetDir}
+	if tocFormat != "" {
+		args = append(args, "--toc-format", tocFormat)
+	}
 	return map[string]any{
 		"mcpServers": map[string]any{
 			"quarry": map[string]any{
 				"command": serverPath,
-				"args":    []string{"--target-dir", targetDir},
+				"args":    args,
 				"env": map[string]string{
 					"QUARRY_STATE_DIR":  "",
 					"QUARRY_BUILD_TAGS": "",

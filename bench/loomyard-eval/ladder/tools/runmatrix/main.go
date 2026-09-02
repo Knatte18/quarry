@@ -29,7 +29,16 @@
 // build/lock/worktree orchestration this tool has no business re-deriving, and reusing the exact binary
 // the operator would otherwise run by hand keeps this tool and that binary provably in sync.
 //
-// One thing is deliberately still not run by this command:
+// --all runs the whole thing for one ladder file, end to end, in the only order that is valid: every
+// warm config (in the file's own declared order), then every cold config, then the single scoring
+// session, then cold-cell finalisation (when the file has a cold config), then summarize -- and finally
+// writes provenance.json (which quarry commit, whether the tree was dirty, which quarry-mcp binary was
+// built, which Loomyard commit) into the results root and prints a per-cell table. It is resumable:
+// every step skips work already recorded under the results root. bench/loomyard-eval/ladder/run.sh is
+// the operator-facing wrapper around it (preflight checks, shortnames for the ladder files, dated
+// results-root default).
+//
+// Without --all, one thing is deliberately still not run by this command:
 //   - The scoring session. It must run after every run (warm AND cold) has ingested, not partway through.
 //
 // The cold config (a5-bundle-cold) IS driven by this command, via --cold-config, but through a separate
@@ -47,13 +56,20 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/Knatte18/quarry/bench/loomyard-eval/ladder/internal/ladder"
 )
 
 const (
@@ -108,7 +124,26 @@ func main() {
 	configsFlag := flag.String("configs", "", "comma-separated config IDs to drive, in order (default: the main matrix's 14 warm configs)")
 	coldConfig := flag.String("cold-config", "", "drive this single cold config's full lifecycle (prepare-session, session, teardown, repeat, finalize) instead of the warm-matrix loop; --configs is ignored when set")
 	scoring := flag.Bool("scoring", false, "drive the single shared scoring session (prepare-session --scoring, one live session, wait for its \"scored\" outcome) instead of the warm-matrix loop; --configs and --cold-config are ignored when set")
+	all := flag.Bool("all", false, "drive the whole ladder file end to end: every warm config in declared order, every cold config, the scoring session, cold-cell finalisation, summarize, provenance.json, and a per-cell table; --configs, --cold-config and --scoring are ignored when set; --results-root defaults to results/<today>[-<ladder suffix>]")
 	flag.Parse()
+
+	if *all {
+		resultsRootGiven := false
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "results-root" {
+				resultsRootGiven = true
+			}
+		})
+		root := *resultsRoot
+		if !resultsRootGiven {
+			root = defaultDatedResultsRoot(*ladderPath)
+		}
+		if err := runAll(*ladderPath, root); err != nil {
+			fmt.Fprintln(os.Stderr, "runmatrix:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *scoring {
 		if err := runScoring(*ladderPath, *resultsRoot); err != nil {
@@ -302,6 +337,7 @@ func run(ladderPath, resultsRoot string, configIDs []string) error {
 			if scratchDir == "" {
 				return fmt.Errorf("prepare-session --config-id %s --rep %s printed no scratch_dir: line", configID, rep)
 			}
+			recordServerHash(configID, rep)
 
 			fmt.Printf("== %s rep %s: warming daemon ==\n", configID, rep)
 			if err := runVisible(binPath, "warm", "--config-id", configID, "--ladder", ladderPath, "--results-root", resultsRoot); err != nil {
@@ -452,4 +488,345 @@ func fieldValue(output, field string) string {
 		}
 	}
 	return ""
+}
+
+// defaultDatedResultsRoot derives --all's default results root from today's date and the ladder file's
+// own name: ladder.yaml -> results/<YYYY-MM-DD>, ladder-followup.yaml -> results/<YYYY-MM-DD>-followup.
+// Re-running the same file on the same day therefore resumes into the same root, which is what every
+// step under runAll expects; a fresh root on the same day is one --results-root away.
+func defaultDatedResultsRoot(ladderPath string) string {
+	base := strings.TrimSuffix(filepath.Base(ladderPath), filepath.Ext(ladderPath))
+	suffix := strings.TrimPrefix(base, "ladder")
+	// "ladder-followup" -> "-followup"; "ladder" -> ""; anything else keeps its own name as the suffix.
+	if suffix == base {
+		suffix = "-" + base
+	}
+	return filepath.Join(ladderDir, "results", time.Now().Format("2006-01-02")+suffix)
+}
+
+// runAll drives one ladder file to a written summary.json, in the only valid order, resuming past
+// anything the results root already records. See the package comment's --all paragraph.
+func runAll(ladderPath, resultsRoot string) error {
+	l, err := ladder.LoadLadder(ladderPath)
+	if err != nil {
+		return err
+	}
+	if err := ladder.RequirePins(l); err != nil {
+		return err
+	}
+
+	var warmIDs, coldIDs []string
+	for _, c := range l.Configs {
+		if c.Cold {
+			coldIDs = append(coldIDs, c.ID)
+		} else {
+			warmIDs = append(warmIDs, c.ID)
+		}
+	}
+
+	if err := os.MkdirAll(resultsRoot, 0o755); err != nil {
+		return fmt.Errorf("create results root %s: %w", resultsRoot, err)
+	}
+	serverHashes = loadServerHashes(resultsRoot)
+	prov := newProvenance(ladderPath, resultsRoot)
+	prov.ServerHashes = serverHashes
+	if err := prov.write(resultsRoot); err != nil {
+		return err
+	}
+	fmt.Printf("== runmatrix --all: %s -> %s (%d warm, %d cold configs, reps %d) ==\n",
+		ladderPath, resultsRoot, len(warmIDs), len(coldIDs), l.Reps)
+	if prov.QuarryDirty {
+		fmt.Println("== NOTE: the quarry working tree is dirty and quarry-mcp is rebuilt from it before every repetition;")
+		fmt.Println("   do not edit quarry source while this matrix runs -- provenance.json/server_hashes records every build ==")
+	}
+
+	if err := run(ladderPath, resultsRoot, warmIDs); err != nil {
+		return err
+	}
+	for _, id := range coldIDs {
+		if err := runCold(ladderPath, resultsRoot, id); err != nil {
+			return err
+		}
+	}
+
+	nextOut, err := ladderbenchOutput("next-run", "--scoring", "--ladder", ladderPath, "--results-root", resultsRoot)
+	if err != nil {
+		return fmt.Errorf("next-run --scoring: %w", err)
+	}
+	if strings.Contains(nextOut, "nothing pending") {
+		fmt.Println("== scoring: nothing pending, skipping the scoring session ==")
+	} else if err := runScoring(ladderPath, resultsRoot); err != nil {
+		return err
+	}
+
+	if len(coldIDs) > 0 {
+		fmt.Println("== cold-cell: finalising ==")
+		if err := runVisible(binPath, "cold-cell", "--ladder", ladderPath, "--results-root", resultsRoot); err != nil {
+			return fmt.Errorf("cold-cell finalise: %w", err)
+		}
+	}
+
+	fmt.Println("== summarize ==")
+	summarizeErr := runVisible(binPath, "summarize", "--ladder", ladderPath, "--results-root", resultsRoot)
+
+	// Written again now that prepare-session has built quarry-mcp, so the binary's own embedded VCS
+	// stamp is on record next to the checkout's.
+	prov.stampServerBinary()
+	prov.ServerHashes = serverHashes
+	if err := prov.write(resultsRoot); err != nil {
+		return err
+	}
+
+	if err := printSummaryTable(os.Stdout, l, resultsRoot); err != nil {
+		fmt.Fprintln(os.Stderr, "runmatrix: summary table:", err)
+	}
+	if summarizeErr != nil {
+		return fmt.Errorf("summarize: %w", summarizeErr)
+	}
+	fmt.Printf("== done: %s/summary.json and provenance.json written ==\n", resultsRoot)
+	return nil
+}
+
+// provenance is <results-root>/provenance.json: what exactly produced this results root. It exists
+// because the 2026-09-01 follow-up run could not answer "was the fixed server actually under test?"
+// from its committed artifacts -- nothing recorded the built quarry-mcp's own revision.
+type provenance struct {
+	WrittenAt          string `json:"written_at"`
+	LadderFile         string `json:"ladder_file"`
+	QuarryCommit       string `json:"quarry_commit"`
+	QuarryDirty        bool   `json:"quarry_dirty"`
+	QuarryDirtyFiles   string `json:"quarry_dirty_files,omitempty"`
+	LoomyardRepo       string `json:"loomyard_repo"`
+	LoomyardCommit     string `json:"loomyard_commit"`
+	ServerBinary       string `json:"server_binary"`
+	ServerVCSRevision  string `json:"server_vcs_revision,omitempty"`
+	ServerVCSModified  string `json:"server_vcs_modified,omitempty"`
+	ServerVCSTime      string `json:"server_vcs_time,omitempty"`
+	ServerBinaryMtime  string `json:"server_binary_mtime,omitempty"`
+	ServerStampMissing bool   `json:"server_stamp_missing,omitempty"`
+	Hostname           string `json:"hostname"`
+	GoVersion          string `json:"go_version"`
+	// ServerHashes is the sha256 of the quarry-mcp binary as built by prepare-session for each
+	// repetition, keyed "<config-id>/<rep>". The server is rebuilt from the working tree before every
+	// repetition, so an edit to quarry source while a matrix runs changes the thing under test
+	// mid-matrix; more than one distinct hash here means exactly that happened (2026-09-02 toc ladder).
+	ServerHashes map[string]string `json:"server_hashes,omitempty"`
+}
+
+// serverHashes is filled by run() as repetitions are prepared and merged into provenance.json at the
+// end; runAll seeds it from an existing provenance.json so a resumed root keeps earlier reps' hashes.
+var serverHashes = map[string]string{}
+
+// recordServerHash hashes the freshly built server binary for configID/rep into serverHashes.
+func recordServerHash(configID, rep string) {
+	data, err := os.ReadFile(filepath.Join(repoRoot, "quarry-mcp"))
+	if err != nil {
+		return
+	}
+	sum := sha256.Sum256(data)
+	serverHashes[configID+"/"+rep] = hex.EncodeToString(sum[:])
+}
+
+// distinctServerHashes returns the distinct hash values in hashes, sorted.
+func distinctServerHashes(hashes map[string]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, h := range hashes {
+		if !seen[h] {
+			seen[h] = true
+			out = append(out, h)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// loadServerHashes reads server_hashes from an existing provenance.json under resultsRoot, if any.
+func loadServerHashes(resultsRoot string) map[string]string {
+	data, err := os.ReadFile(filepath.Join(resultsRoot, "provenance.json"))
+	if err != nil {
+		return map[string]string{}
+	}
+	var p provenance
+	if err := json.Unmarshal(data, &p); err != nil || p.ServerHashes == nil {
+		return map[string]string{}
+	}
+	return p.ServerHashes
+}
+
+func newProvenance(ladderPath, resultsRoot string) *provenance {
+	p := &provenance{
+		LadderFile:   ladderPath,
+		QuarryCommit: gitOutput(repoRoot, "rev-parse", "HEAD"),
+		LoomyardRepo: os.Getenv("LADDER_LOOMYARD_REPO"),
+		ServerBinary: filepath.Join(repoRoot, "quarry-mcp"),
+		GoVersion:    strings.TrimSpace(commandOutput("go", "version")),
+	}
+	dirty := gitOutput(repoRoot, "status", "--porcelain")
+	p.QuarryDirty = dirty != ""
+	p.QuarryDirtyFiles = dirty
+	if p.LoomyardRepo != "" {
+		p.LoomyardCommit = gitOutput(p.LoomyardRepo, "rev-parse", "HEAD")
+	}
+	p.Hostname, _ = os.Hostname()
+	return p
+}
+
+// stampServerBinary reads the embedded VCS stamp out of the built quarry-mcp via `go version -m`.
+func (p *provenance) stampServerBinary() {
+	info, err := os.Stat(p.ServerBinary)
+	if err != nil {
+		p.ServerStampMissing = true
+		return
+	}
+	p.ServerBinaryMtime = info.ModTime().Format(time.RFC3339)
+	out := commandOutput("go", "version", "-m", p.ServerBinary)
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "build" {
+			continue
+		}
+		key, value, ok := strings.Cut(fields[1], "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "vcs.revision":
+			p.ServerVCSRevision = value
+		case "vcs.modified":
+			p.ServerVCSModified = value
+		case "vcs.time":
+			p.ServerVCSTime = value
+		}
+	}
+	p.ServerStampMissing = p.ServerVCSRevision == ""
+}
+
+func (p *provenance) write(resultsRoot string) error {
+	p.WrittenAt = time.Now().Format(time.RFC3339)
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal provenance: %w", err)
+	}
+	path := filepath.Join(resultsRoot, "provenance.json")
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+func gitOutput(dir string, args ...string) string {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func commandOutput(name string, args ...string) string {
+	out, err := exec.Command(name, args...).Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// tableMetrics is the per-cell column set printSummaryTable shows, in order: the cost-shaped metrics the
+// ladder is about, bracketed by the one tell that says whether a tool-granted cell measured anything at
+// all (quarry_tool_uses) and the two correctness metrics.
+var tableMetrics = []string{
+	"quarry_tool_uses", "num_turns", "tool_uses", "cache_read_input_tokens", "cache_creation_input_tokens",
+	"output_tokens", "duration_ms", "recall", "precision",
+}
+
+// printSummaryTable prints one row per cell of <results-root>/summary.json as median[min-max] per
+// metric, and flags every tool-granted cell whose agent never called a granted tool -- such a cell is a
+// control with an extra schema in its prompt, not a measurement of the tool, and the 2026-09-01
+// follow-up's b1-symbol cell was exactly that without anyone noticing.
+// serverChangedWarning returns the line printSummaryTable appends when provenance.json under
+// resultsRoot records more than one distinct server binary, or "" when it does not.
+func serverChangedWarning(resultsRoot string) string {
+	hashes := loadServerHashes(resultsRoot)
+	distinct := distinctServerHashes(hashes)
+	if len(distinct) <= 1 {
+		return ""
+	}
+	byHash := map[string][]string{}
+	for key, h := range hashes {
+		byHash[h] = append(byHash[h], key)
+	}
+	var groups []string
+	for _, h := range distinct {
+		keys := byHash[h]
+		sort.Strings(keys)
+		groups = append(groups, fmt.Sprintf("%s: %s", h[:12], strings.Join(keys, ",")))
+	}
+	return fmt.Sprintf("!! the quarry-mcp binary changed during this root: %d distinct builds (quarry source was edited while the matrix ran). Reps per build -- %s", len(distinct), strings.Join(groups, " | "))
+}
+
+func printSummaryTable(w io.Writer, l *ladder.Ladder, resultsRoot string) error {
+	if warning := serverChangedWarning(resultsRoot); warning != "" {
+		fmt.Fprintln(w, warning)
+	}
+	data, err := os.ReadFile(filepath.Join(resultsRoot, "summary.json"))
+	if err != nil {
+		return err
+	}
+	var summary ladder.Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		return fmt.Errorf("parse summary.json: %w", err)
+	}
+
+	ids := make([]string, 0, len(summary.Cells))
+	for id := range summary.Cells {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "%-24s", "cell")
+	for _, m := range tableMetrics {
+		fmt.Fprintf(w, " %24s", m)
+	}
+	fmt.Fprintln(w)
+
+	var unused []string
+	for _, id := range ids {
+		cell := summary.Cells[id]
+		fmt.Fprintf(w, "%-24s", id)
+		for _, m := range tableMetrics {
+			st, ok := cell.Stats[m]
+			if !ok {
+				fmt.Fprintf(w, " %24s", "-")
+				continue
+			}
+			fmt.Fprintf(w, " %24s", fmt.Sprintf("%s[%s-%s]", fmtNum(st.Median), fmtNum(st.Min), fmtNum(st.Max)))
+		}
+		if !cell.Complete {
+			fmt.Fprint(w, "  INCOMPLETE")
+		}
+		fmt.Fprintln(w)
+
+		if cfg, err := ladder.ConfigByID(l, id); err == nil && len(cfg.Allowed) > 0 {
+			if st, ok := cell.Stats["quarry_tool_uses"]; ok && st.Max == 0 {
+				unused = append(unused, id)
+			}
+		}
+	}
+	fmt.Fprintln(w)
+	for _, id := range unused {
+		fmt.Fprintf(w, "!! %s: tool-granted config whose agent never called a granted tool in any repetition -- this cell measures the tool's prompt cost, not the tool\n", id)
+	}
+	if len(summary.Incomplete) > 0 {
+		fmt.Fprintf(w, "!! incomplete cells: %s\n", strings.Join(summary.Incomplete, ", "))
+	}
+	return nil
+}
+
+func fmtNum(v float64) string {
+	if v == float64(int64(v)) {
+		return fmt.Sprintf("%d", int64(v))
+	}
+	return fmt.Sprintf("%.2f", v)
 }

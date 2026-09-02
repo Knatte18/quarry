@@ -354,10 +354,11 @@ func CheckSingleFlight(resultsRoot, configID string, n int) error {
 // Applies GateBlinding only when c.Allowed is empty, and GateColdAfter only when c.Cold is true --
 // GateColdBefore is a separate precondition the caller checks before starting an attempt, not part of
 // this composed report.
-func RunGates(records []Record, l *Ladder, c LadderConfig, runModel, repoRoot, worktree string, maxTurns int, dirtied GateFinding, cacheDir string, env []string) GateReport {
+func RunGates(records []Record, l *Ladder, c LadderConfig, runModel, repoRoot, worktree string, maxTurns int, dirtied GateFinding, cacheDir string, env []string, taskText string) GateReport {
 	deniedNames := DenyListFor(l, c)
 
 	var findings []GateFinding
+	findings = append(findings, GateRunPrompt(records, taskText)...)
 	findings = append(findings, GateDeniedToolsNotUsed(records, deniedNames)...)
 	findings = append(findings, GateNoTargetOverride(records)...)
 	findings = append(findings, GateModelPinned(records, runModel)...)

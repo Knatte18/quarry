@@ -3,6 +3,7 @@ package ladder
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -367,5 +368,95 @@ func TestRequireSessionPins(t *testing.T) {
 	l.RunModel = &pinnedModel
 	if err := RequireSessionPins(l, ""); err != nil {
 		t.Errorf("RequireSessionPins(l, \"\") = %v; want nil error once RunModel is set", err)
+	}
+}
+
+func TestLoadLadder_AnnexRules(t *testing.T) {
+	base := `
+run_model: m
+reps: 1
+run_effort: medium
+max_turns: 10
+session_dir_template: .scratch/x/{config_id}-{n}
+scorer: {model: s, effort: high}
+quarry_tools: [toc_dir, toc_file, textDocument_definition, textDocument_references, workspace_symbol, impact, assert_no_callers]
+tasks:
+  t:
+    task_file: f.md
+    pinned_sha: abc
+    worktree: /tmp/wt
+    schema: impact
+    fasit: c.json
+    annexes:
+      pack:
+        kind: plan-pack
+        change: [{symbol: Z, in_file: z.go}]
+source_repo: env:LADDER_LOOMYARD_REPO
+configs:
+  - {id: b0-none, ladder: b, task: t, allowed: []}
+`
+	cases := map[string]struct {
+		extra string
+		ok    bool
+	}{
+		"annex cell alongside control": {"  - {id: b1-annex, ladder: b, task: t, allowed: [], annex: pack}\n", true},
+		"annex plus tools rejected":    {"  - {id: b1-annex, ladder: b, task: t, allowed: [impact], annex: pack}\n", false},
+		"unknown annex name rejected":  {"  - {id: b1-annex, ladder: b, task: t, allowed: [], annex: nope}\n", false},
+		"two annex cells, one control": {"  - {id: b1-annex, ladder: b, task: t, allowed: [], annex: pack}\n  - {id: b2-annex, ladder: b, task: t, allowed: [], annex: pack}\n", true},
+		"second bare control rejected": {"  - {id: b1-none2, ladder: b, task: t, allowed: []}\n", false},
+	}
+	for name, c := range cases {
+		path := filepath.Join(t.TempDir(), "ladder.yaml")
+		if err := os.WriteFile(path, []byte(base+c.extra), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		l, err := LoadLadder(path)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: LoadLadder() error = %v, want ok=%v", name, err, c.ok)
+			continue
+		}
+		if !c.ok {
+			continue
+		}
+		for _, config := range l.Configs {
+			if config.Annex == "" {
+				continue
+			}
+			control, err := ControlFor(l, config)
+			if err != nil || control.ID != "b0-none" {
+				t.Errorf("%s: ControlFor(%s) = %v, %v", name, config.ID, control.ID, err)
+			}
+		}
+	}
+}
+
+func TestLoadLadder_RejectsMalformedAnnexSpec(t *testing.T) {
+	doc := `
+run_model: m
+reps: 1
+run_effort: medium
+max_turns: 10
+session_dir_template: .scratch/x/{config_id}-{n}
+scorer: {model: s, effort: high}
+quarry_tools: [toc_dir, toc_file, textDocument_definition, textDocument_references, workspace_symbol, impact, assert_no_callers]
+tasks:
+  t:
+    task_file: f.md
+    pinned_sha: abc
+    worktree: /tmp/wt
+    schema: impact
+    fasit: c.json
+    annexes:
+      broken: {kind: impact, symbol: Z}
+source_repo: env:LADDER_LOOMYARD_REPO
+configs:
+  - {id: b0-none, ladder: b, task: t, allowed: []}
+`
+	path := filepath.Join(t.TempDir(), "ladder.yaml")
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadLadder(path); err == nil || !strings.Contains(err.Error(), "in_file") {
+		t.Errorf("LoadLadder() error = %v, want an in_file rule violation", err)
 	}
 }

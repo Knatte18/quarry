@@ -303,7 +303,7 @@ func TestRunGates_PassesOverAPassingTranscript(t *testing.T) {
 	c := LadderConfig{ID: "a5-bundle", Allowed: []string{"toc_file", "workspace_symbol"}}
 	dirtied := ObserveWorktreeDirtied(worktree)
 
-	report := RunGates(records, l, c, "claude-opus-5", "/repo/root", worktree, 50, dirtied, "/cache", nil)
+	report := RunGates(records, l, c, "claude-opus-5", "/repo/root", worktree, 50, dirtied, "/cache", nil, "")
 	if !report.Passed() {
 		t.Errorf("RunGates() report = %+v; want passed", report)
 	}
@@ -333,7 +333,7 @@ func TestRunGates_TripsOneFatalAndOneNonFatalGate(t *testing.T) {
 
 	// runModel mismatches the fixture's own "claude-opus-5", tripping the fatal model_pinned gate
 	// alongside the fixture's own non-fatal target_origin_quarry_mention observation.
-	report := RunGates(records, l, c, "claude-sonnet-5", "/repo/root", worktree, 50, dirtied, "/cache", nil)
+	report := RunGates(records, l, c, "claude-sonnet-5", "/repo/root", worktree, 50, dirtied, "/cache", nil, "")
 	if report.Passed() {
 		t.Fatalf("RunGates() report = %+v; want not passed", report)
 	}

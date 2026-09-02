@@ -95,6 +95,15 @@ type LadderConfig struct {
 	// WarmCounterpart is the warm config id this cold config is contrasted against, empty for every
 	// non-cold config.
 	WarmCounterpart string `yaml:"warm_counterpart"`
+	// Annex names an entry of the task's Annexes to inject into this config's prompt (see annex.go). A
+	// config with an annex grants no tools: it is a blinded cell whose only difference from the control
+	// is the injected material. Empty for every control and every tool-granted rung.
+	Annex string `yaml:"annex"`
+	// TOCFormat pins the toc tools' output form for a tool-granted config: "json" or "compact" is
+	// passed to the server as --toc-format and overrides whatever the agent asks for, so a cell
+	// measures one form. Empty leaves the server honouring each call's own "compact" input. Only valid
+	// on a config that grants toc_dir or toc_file.
+	TOCFormat string `yaml:"toc_format"`
 }
 
 // TaskEntry is one entry of Ladder.Tasks: everything needed to set up and score one of the two target
@@ -110,6 +119,9 @@ type TaskEntry struct {
 	Schema string `yaml:"schema"`
 	// Fasit is the path to the task's committed reference answer.
 	Fasit string `yaml:"fasit"`
+	// Annexes are the named pre-computation recipes configs of this task may select via their Annex
+	// field. Optional; most ladder files define none.
+	Annexes map[string]AnnexSpec `yaml:"annexes"`
 }
 
 // ScorerConfig is the pinned scoring client parameters, shared by every config.
@@ -154,7 +166,8 @@ type Ladder struct {
 // It returns a *ConfigError naming the offending file and rule for any of: a duplicate config id; a
 // ladder value outside "a"/"b"; a task key absent from tasks; an allowed entry not present in
 // quarry_tools; a quarry_tools list that is not exactly the canonical seven; a ladder with zero or more
-// than one config whose allowed is empty (the control); more than one cold: true config; a
+// than one control config (empty allowed and no annex); an annex config that also grants tools, is
+// cold, or names an annex its task does not define; a malformed annex spec; more than one cold: true config; a
 // warm_counterpart set on a non-cold config; a cold config with no warm_counterpart; and a
 // warm_counterpart naming an unknown id, a cold config, or the cold config itself.
 func LoadLadder(path string) (*Ladder, error) {
@@ -199,10 +212,38 @@ func LoadLadder(path string) (*Ladder, error) {
 				return nil, fail(path, "config %q allows unknown tool %q", config.ID, tool)
 			}
 		}
+
+		if config.TOCFormat != "" {
+			if config.TOCFormat != "json" && config.TOCFormat != "compact" {
+				return nil, fail(path, "config %q has toc_format %q, must be json or compact", config.ID, config.TOCFormat)
+			}
+			if !stringSliceContains(config.Allowed, "toc_dir") && !stringSliceContains(config.Allowed, "toc_file") {
+				return nil, fail(path, "config %q sets toc_format but grants neither toc_dir nor toc_file", config.ID)
+			}
+		}
+
+		if config.Annex != "" {
+			if len(config.Allowed) != 0 {
+				return nil, fail(path, "config %q has both an annex and allowed tools; an annex cell grants no tools", config.ID)
+			}
+			if config.Cold {
+				return nil, fail(path, "config %q is cold and has an annex; annex cells are warm only", config.ID)
+			}
+			if _, ok := l.Tasks[config.Task].Annexes[config.Annex]; !ok {
+				return nil, fail(path, "config %q selects annex %q, which task %q does not define", config.ID, config.Annex, config.Task)
+			}
+		}
+	}
+	for taskKey, task := range l.Tasks {
+		for name, spec := range task.Annexes {
+			if rule := validateAnnexSpec(spec); rule != "" {
+				return nil, fail(path, "task %q annex %q: %s", taskKey, name, rule)
+			}
+		}
 	}
 
 	// Each ladder letter actually present among l.Configs must carry exactly one control config -- the
-	// one with empty Allowed. A companion file (e.g. a distilled follow-up matrix scoped to a single
+	// one with empty Allowed and no annex (IsControl). A companion file (e.g. a distilled follow-up matrix scoped to a single
 	// ladder) legitimately declares configs for only "a" or only "b", not both -- the requirement
 	// applies per ladder actually in use, not unconditionally to both letters.
 	presentLadders := make(map[string]bool, 2)
@@ -215,7 +256,7 @@ func LoadLadder(path string) (*Ladder, error) {
 		}
 		controlCount := 0
 		for _, config := range l.Configs {
-			if config.Ladder == ladderName && len(config.Allowed) == 0 {
+			if config.Ladder == ladderName && IsControl(config) {
 				controlCount++
 			}
 		}
@@ -300,11 +341,11 @@ func ConfigByID(l *Ladder, configID string) (LadderConfig, error) {
 	return LadderConfig{}, fmt.Errorf("no config with id %q", configID)
 }
 
-// ControlFor returns the "none" control for config's ladder -- the config on the same ladder whose
-// Allowed is empty. Resolved by field lookup, never by parsing config.ID.
+// ControlFor returns the "none" control for config's ladder -- the config on the same ladder with no
+// tools and no annex (IsControl). Resolved by field lookup, never by parsing config.ID.
 func ControlFor(l *Ladder, config LadderConfig) (LadderConfig, error) {
 	for _, candidate := range l.Configs {
-		if candidate.Ladder == config.Ladder && len(candidate.Allowed) == 0 {
+		if candidate.Ladder == config.Ladder && IsControl(candidate) {
 			return candidate, nil
 		}
 	}

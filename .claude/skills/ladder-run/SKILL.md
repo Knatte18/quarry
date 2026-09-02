@@ -44,7 +44,7 @@ for attempt k in 1..MAX_ATTEMPTS:
 if the loop ran out of attempts without breaking: outcome = exhausted
 prepare-session --release
 write outcome (exactly the string "ingested", "truncated", or "exhausted", nothing else) to
-  <scratch-dir>/.ladder-run-outcome
+  <scratch-dir>/.ladder-run-outcome        # with Bash: printf '%s' ingested > .ladder-run-outcome
 ```
 
 `restore-worktree` runs unconditionally, immediately after `ingest` and before the loop even looks at
@@ -59,7 +59,10 @@ outcome-file write below, whether the repetition finished, was truncated, or exh
 held lock blocks every later session from starting.
 
 **Always write `<scratch-dir>/.ladder-run-outcome` as the session's actual final step, after the lock is
-released, exactly once, for every terminal state.** A `claude` session never exits on its own once it
+released, exactly once, for every terminal state, and write it with Bash (`printf '%s' <outcome> >
+.ladder-run-outcome`), never with the Write or Edit tool.** This session's settings allow Read, Grep, Glob,
+and Bash only; a Write call is not on the allow list, so it stops on a permission prompt that nobody is
+watching, and the whole matrix waits behind it (observed 2026-09-02, a1-toc-file rep 3). A `claude` session never exits on its own once it
 finishes responding — it waits for the next human message indefinitely, the same as any other interactive
 session. An operator driving this by hand does not need the file (they can just read this session's own
 final message and close it, or type the next prompt themselves), but an automated driver polling for
@@ -95,7 +98,7 @@ for each run directory with an ingest marker and no run marker, in (config, rep)
   record-score --config-id <id> --rep <n> # reads the scorer's reply from stdin, writes score.json,
                                            # and -- once the run's artifact set is complete -- run.json
 prepare-session --release
-write "scored" to <scratch-dir>/.ladder-run-outcome
+write "scored" to <scratch-dir>/.ladder-run-outcome   # with Bash, as above -- never the Write tool
 ```
 
 Same reason and same rule as the run-session loop's own outcome-file step: write it once, as the actual

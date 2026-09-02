@@ -165,7 +165,11 @@ func runIngest(out io.Writer, l *ladder.Ladder, repoRoot, resultsRoot, configID 
 	}
 	env := ladder.ScrubbedEnv()
 
-	report := ladder.RunGates(records, l, config, *l.RunModel, repoRoot, worktree, *l.MaxTurns, dirtied, cacheDir, env)
+	taskText, err := ladder.TaskTextFor(l, repoRoot, config.Task)
+	if err != nil {
+		return err
+	}
+	report := ladder.RunGates(records, l, config, *l.RunModel, repoRoot, worktree, *l.MaxTurns, dirtied, cacheDir, env, taskText)
 
 	switch ingestOutcome(report) {
 	case "ingested":
@@ -208,6 +212,13 @@ func copySessionLaunchInputs(scratchDir, runDir string, config ladder.LadderConf
 	if len(config.Allowed) > 0 {
 		if err := copyFileInto(filepath.Join(scratchDir, ingestServerDeclarationFilename), filepath.Join(runDir, "mcp.json")); err != nil {
 			return err
+		}
+	}
+	if config.Annex != "" {
+		for _, name := range []string{ladder.AnnexTextFilename, ladder.AnnexMetaFilename} {
+			if err := copyFileInto(filepath.Join(scratchDir, name), filepath.Join(runDir, name)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
