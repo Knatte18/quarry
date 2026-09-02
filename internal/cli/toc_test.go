@@ -988,3 +988,47 @@ func TestRunCLI_TocDir_NoDocSentencesFlag(t *testing.T) {
 		t.Error("tocFileCommand() has no --doc-sentences registered; want it present")
 	}
 }
+
+// TestRunCLI_TocFile_CompactIsPlainText asserts --compact writes the text form, not a JSON envelope:
+// a header line naming the path, then one "start-end: signature" line per symbol, exit 0.
+func TestRunCLI_TocFile_CompactIsPlainText(t *testing.T) {
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "fixture.go", goFixture)
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(dir, &out, []string{"toc", "file", "--compact", "fixture.go"})
+	if exitCode != 0 {
+		t.Fatalf("exit = %d; output:\n%s", exitCode, out.String())
+	}
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "# fixture.go (package fixture)") || !strings.HasPrefix(lines[1], "4-7: func Greet(name string) string") {
+		t.Errorf("compact output:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "{") {
+		t.Errorf("compact output contains JSON: %s", out.String())
+	}
+}
+
+// TestRunCLI_TocCompactBatch_ErrorsAreLinesAndSetExit asserts a compact batch renders each path's
+// block in order separated by a blank line, a missing path as a "# <path>: not_found: ..." line, and
+// the worst status as the exit code -- mirroring runPathBatch.
+func TestRunCLI_TocCompactBatch_ErrorsAreLinesAndSetExit(t *testing.T) {
+	dir := t.TempDir()
+	writeTOCFixture(t, dir, "fixture.go", goFixture)
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTOCFixture(t, filepath.Join(dir, "sub"), "other.go", goFixture)
+
+	var out bytes.Buffer
+	exitCode := RunCLIIn(dir, &out, []string{"toc", "dir", "--compact", ".", "missing", "sub"})
+	if exitCode != statusRank[statusNotFound] {
+		t.Errorf("exit = %d, want %d; output:\n%s", exitCode, statusRank[statusNotFound], out.String())
+	}
+	text := out.String()
+	for _, want := range []string{"# . (package fixture), 1 files\nfixture.go: Package fixture is a tiny Go fixture", "\n\n# missing: not_found: ", "\n\n# sub (package fixture), 1 files\nsub/other.go: ", "dirs: sub"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("compact batch output lacks %q:\n%s", want, text)
+		}
+	}
+}

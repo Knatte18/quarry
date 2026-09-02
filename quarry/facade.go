@@ -200,6 +200,16 @@ func TOCDir(dir string, lang string) (TOCDirResult, error) {
 	return toc.TOCDir(dir, lang)
 }
 
+// CompactTOCFile delegates to toc.CompactFile.
+func CompactTOCFile(path string, result TOCFileResult) string {
+	return toc.CompactFile(path, result)
+}
+
+// CompactTOCDir delegates to toc.CompactDir.
+func CompactTOCDir(dirArg string, result TOCDirResult) string {
+	return toc.CompactDir(dirArg, result)
+}
+
 // TOCLanguages delegates to registry.ExtensionLanguages, returning the five languages the toc
 // survey designed for, regardless of whether each has a registered Strategy yet. internal/cli
 // validates --lang against this set, not TOCImplemented's: a designed-but-unimplemented language
