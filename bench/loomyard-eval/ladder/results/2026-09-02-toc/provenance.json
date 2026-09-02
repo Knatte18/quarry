@@ -1,0 +1,16 @@
+{
+  "written_at": "2026-09-02T15:13:29+02:00",
+  "ladder_file": "/home/hanf/Code/quarry/wts/quarry/bench/loomyard-eval/ladder/ladder-toc.yaml",
+  "quarry_commit": "6ddf73719abd9aff90dd4298f43d21be060f3dd7",
+  "quarry_dirty": true,
+  "quarry_dirty_files": "M HANDOFF.md\n M bench/loomyard-eval/ladder/README.md\n M bench/loomyard-eval/ladder/internal/ladder/worktree.go\n M bench/loomyard-eval/ladder/internal/ladder/worktree_test.go\n M bench/loomyard-eval/ladder/tools/runmatrix/main.go\n?? bench/loomyard-eval/ladder/ladder-toc.yaml\n?? bench/loomyard-eval/ladder/results/2026-09-01-followup/conclusion.md\n?? bench/loomyard-eval/ladder/results/2026-09-02-followup/\n?? bench/loomyard-eval/ladder/results/2026-09-02-toc/\n?? bench/loomyard-eval/ladder/run-followup.sh\n?? bench/loomyard-eval/ladder/run-main.sh\n?? bench/loomyard-eval/ladder/run-task05.sh\n?? bench/loomyard-eval/ladder/run-toc.sh\n?? bench/loomyard-eval/ladder/run.sh\n?? bench/loomyard-eval/ladder/tools/runmatrix/main_test.go",
+  "loomyard_repo": "/home/hanf/Code/loomyard/wts/loomyard",
+  "loomyard_commit": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+  "server_binary": "/home/hanf/Code/quarry/wts/quarry/quarry-mcp",
+  "server_vcs_revision": "6ddf73719abd9aff90dd4298f43d21be060f3dd7",
+  "server_vcs_modified": "true",
+  "server_vcs_time": "2026-09-01T19:13:36Z",
+  "server_binary_mtime": "2026-09-02T14:48:46+02:00",
+  "hostname": "OSL-1033",
+  "go_version": "go version go1.26.5 linux/amd64"
+}

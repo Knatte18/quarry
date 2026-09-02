@@ -1,0 +1,199 @@
+# Annex ladder -- quarry as mechanical pre-processing (HANDOFF.md §2a), measured.
+#
+# The question: when quarry is called by Loomyard's own Go code (never by the LLM) and its output is
+# injected into the agent's prompt as a pre-computed attachment, is anything gained -- in cost, in
+# correctness, or both -- over (a) the bare control and (b) handing the agent the same material as a
+# tool it has to call and address itself?
+#
+# Every annex cell grants zero tools. Its prompt is the control's prompt plus exactly one paragraph: the
+# attachment, introduced neutrally ("a pre-computed analysis ... use it as your starting point; you may
+# still read or search the code to confirm or extend it"). The attachment is produced by prepare-session
+# from the quarry CLI against the pinned worktree, written to the session dir as annex.txt /
+# annex.meta.json (kind, commands, bytes, sha256, dropped_callers), and copied into the run's results
+# directory at ingest. The blinding gate applies to annex cells as to controls; generation refuses any
+# text that would fail it.
+#
+# What is measured, per cell, exactly as for every other rung: recall/precision from the scorer; turns,
+# cache_read/creation tokens, duration (this host only), bash_grep_count and Read counts from the
+# transcript. Annex bytes are in annex.meta.json. Reading guide at the bottom.
+#
+# Ladder a -- task 01, unfamiliar two-package exploration. When: plan-time / "understand X".
+#   a0-none            control
+#   a2-toc-dir         the tool form (id as in the main matrix): the agent calls toc_dir itself
+#   a6-annex-toc-dir   the same listings, pre-computed and injected; the fair comparison to a2
+#   a7-annex-toc-full  listings plus every file's table of contents: the full symbol map of the scope,
+#                      several times larger. Does more map help, or only cost?
+#   a8-annex-toc-wide  listings of every package under internal/ (~70), most of them irrelevant: the
+#                      over-injection arm. Puts a number on "most of the toc is irrelevant context".
+#
+# Ladder b -- task 04, "you are about to change Shuttle.Run": the implementer's pre-change question.
+# When: implementer-time, following a plan of the shape "use X and Y to edit Z".
+#   b0-none                  control (id as in the main matrix)
+#   b5-impact                the tool form (id as in the main matrix): the agent calls impact itself
+#   b10-annex-impact         impact of Run, pre-computed and injected; the fair comparison to b5
+#   b11-annex-plan           the plan pack: declaration locations of the symbols the change involves
+#                            (Shuttle, Spec, Result) followed by the impact of Run. Everything the
+#                            implementer would otherwise look up, in one block. Compare to b10: do the
+#                            locations of the "use" symbols add anything once the callers are given?
+#   b12-annex-plan-degraded  the same pack with the last caller deliberately removed (annex.meta.json
+#                            records dropped_callers=1). Recall 1.0 here means the agent verified the
+#                            attachment; recall 0.67 means it trusted it. This is the cell that decides
+#                            whether an annex may ever be injected unverified (HANDOFF §5 item 4).
+#
+# Not here, on purpose:
+#   - a review-time annex (task 03): an earlier informal bench found injecting a toc into a reviewer
+#     prompt gained little, and the summarize schemas cover exploration and impact only.
+#   - an implementation task where the agent actually edits code and the fasit is `go vet` plus the
+#     expected file set. That is the real "use" of a plan pack and the next ladder once this one shows
+#     signal; it needs a new answer schema and scorer rule.
+#
+# Reading the result:
+#   - cost, rung vs control, within this root only; a6 vs a2 and b10 vs b5 are the tool-vs-annex pairs.
+#   - correctness by id against results/2026-08-30 is allowed.
+#   - a7 vs a6 and a8 vs a6: cache_creation grows with annex bytes; does anything else move?
+#   - b12: recall, and bash_grep_count -- did the agent grep at all after being handed the list?
+#
+# Measured annex sizes at the pin (2026-09-02): toc-dir over the task-01 scope 52 KB (94 files, long
+# header comments); toc-full 250 KB; toc-wide 480 KB across 69 packages -- roughly 120k tokens of
+# cache_creation per rep, which is the point of that arm, but budget for it. Task-04 impact: 1.4 KB,
+# and it lists exactly the fasit's three call sites (bouncer.go:466/580, singlellm.go:143); the degraded
+# pack drops singlellm.go:143.
+#
+# Run with: bench/loomyard-eval/ladder/run-annex.sh   (results land in results/<date>-annex)
+
+run_model: claude-sonnet-5
+reps: 3
+run_effort: medium
+max_turns: 60
+
+# Distinct template so an annex dispatch never collides with another matrix's scratch directories.
+# Relative to the quarry repo root, never absolute -- see ladder.yaml.
+session_dir_template: .scratch/ladder-sessions/annex-{config_id}-{n}
+
+scorer:
+  model: claude-opus-5
+  effort: high
+
+quarry_tools:
+  - toc_dir
+  - toc_file
+  - textDocument_definition
+  - textDocument_references
+  - workspace_symbol
+  - impact
+  - assert_no_callers
+
+tasks:
+  01-reed-geometry-exploration:
+    task_file: bench/loomyard-eval/tasks/01-reed-geometry-exploration.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    worktree: /tmp/loomyard-eval-01
+    schema: exploration
+    fasit: bench/loomyard-eval/results/2026-08-28/01-reed-geometry-exploration/c.json
+    # All paths are relative to the worktree. The task scope is internal/reedengine and
+    # internal/reedcli; reedengine/render is a subpackage the fasit's relevant_files reach into, and
+    # toc dir is non-recursive, so it is listed explicitly.
+    annexes:
+      toc-dir:
+        kind: toc-dir
+        dirs: [internal/reedengine, internal/reedengine/render, internal/reedcli]
+      toc-full:
+        kind: toc-full
+        dirs: [internal/reedengine, internal/reedengine/render, internal/reedcli]
+      toc-wide:
+        kind: toc-dir
+        dirs: ["internal/*"]
+  04-shedadapters-shuttle-impact:
+    task_file: bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    worktree: /tmp/loomyard-eval-04
+    schema: impact
+    fasit: bench/loomyard-eval/results/2026-08-28/04-shedadapters-shuttle-impact/c.json
+    annexes:
+      impact:
+        kind: impact
+        symbol: Run
+        in_file: internal/shedadapters/singlellm.go
+        within: internal/shedadapters
+      plan:
+        kind: plan-pack
+        use:
+          - {symbol: Shuttle, in_file: internal/shedadapters/singlellm.go}
+          - {symbol: Spec, in_file: internal/shuttleengine/spec.go}
+          - {symbol: Result, in_file: internal/shuttleengine/run.go}
+        change:
+          - {symbol: Run, in_file: internal/shedadapters/singlellm.go, within: internal/shedadapters}
+      plan-degraded:
+        kind: plan-pack
+        use:
+          - {symbol: Shuttle, in_file: internal/shedadapters/singlellm.go}
+          - {symbol: Spec, in_file: internal/shuttleengine/spec.go}
+          - {symbol: Result, in_file: internal/shuttleengine/run.go}
+        change:
+          - {symbol: Run, in_file: internal/shedadapters/singlellm.go, within: internal/shedadapters}
+        drop_callers: 1
+
+# Resolved from the LADDER_LOOMYARD_REPO environment variable at prepare-session time -- see
+# ladder.yaml's own source_repo comment.
+source_repo: env:LADDER_LOOMYARD_REPO
+
+configs:
+  # Ladder a -- task 01, plan-time exploration
+  - id: a0-none
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: []
+    cold: false
+  - id: a2-toc-dir
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: [toc_dir]
+    cold: false
+  - id: a6-annex-toc-dir
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: []
+    annex: toc-dir
+    cold: false
+  - id: a7-annex-toc-full
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: []
+    annex: toc-full
+    cold: false
+  - id: a8-annex-toc-wide
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: []
+    annex: toc-wide
+    cold: false
+
+  # Ladder b -- task 04, implementer-time impact
+  - id: b0-none
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: []
+    cold: false
+  - id: b5-impact
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: [impact]
+    cold: false
+  - id: b10-annex-impact
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: []
+    annex: impact
+    cold: false
+  - id: b11-annex-plan
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: []
+    annex: plan
+    cold: false
+  - id: b12-annex-plan-degraded
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: []
+    annex: plan-degraded
+    cold: false

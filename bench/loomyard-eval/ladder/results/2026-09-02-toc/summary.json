@@ -1,0 +1,1900 @@
+{
+  "_meta": {
+    "run_model": "claude-sonnet-5",
+    "scorer": {
+      "model": "claude-opus-5",
+      "effort": "high"
+    },
+    "reps": 5,
+    "results_root_date": "2026-09-02-toc",
+    "num_configs": 6,
+    "cold_disposition": "unknown",
+    "cold_confirmed_cold_reps": null
+  },
+  "cells": {
+    "a0-none": {
+      "stats": {
+        "bash_grep_count": {
+          "median": 4,
+          "min": 4,
+          "max": 6,
+          "n": 5
+        },
+        "cache_creation_input_tokens": {
+          "median": 26098,
+          "min": 22572,
+          "max": 32737,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 127006,
+          "min": 116400,
+          "max": 180346,
+          "n": 5
+        },
+        "denied_tool_attempts": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5,
+          "provisional": true
+        },
+        "duration_ms": {
+          "median": 67178,
+          "min": 51284,
+          "max": 72982,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 4,
+          "min": 4,
+          "max": 6,
+          "n": 5
+        },
+        "grep_tool_count": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "input_tokens": {
+          "median": 16,
+          "min": 14,
+          "max": 22,
+          "n": 5
+        },
+        "num_turns": {
+          "median": 8,
+          "min": 7,
+          "max": 11,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 66,
+          "min": 41,
+          "max": 242,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.94,
+          "min": 0.88,
+          "max": 0.95,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.43,
+          "min": 0.38,
+          "max": 0.54,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 11,
+          "min": 10,
+          "max": 12,
+          "n": 5
+        }
+      },
+      "complete": true,
+      "decoy_admitted_count": 0,
+      "summary_matches": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "worktree_dirtied_count": 5,
+      "target_origin_quarry_mention_count": 0,
+      "daemon_backed_runs": 5
+    },
+    "a1-toc-file": {
+      "stats": {
+        "bash_grep_count": {
+          "median": 1,
+          "min": 1,
+          "max": 3,
+          "n": 5
+        },
+        "cache_creation_input_tokens": {
+          "median": 38349,
+          "min": 31281,
+          "max": 70235,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 130528,
+          "min": 104681,
+          "max": 939022,
+          "n": 5
+        },
+        "denied_tool_attempts": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5,
+          "provisional": true
+        },
+        "duration_ms": {
+          "median": 67031,
+          "min": 60680,
+          "max": 162149,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 1,
+          "min": 1,
+          "max": 3,
+          "n": 5
+        },
+        "grep_tool_count": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "input_tokens": {
+          "median": 14,
+          "min": 12,
+          "max": 46,
+          "n": 5
+        },
+        "num_turns": {
+          "median": 7,
+          "min": 6,
+          "max": 23,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 1014,
+          "min": 361,
+          "max": 4427,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.86,
+          "min": 0.78,
+          "max": 0.94,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 2,
+          "min": 1,
+          "max": 2,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.35,
+          "min": 0.3,
+          "max": 0.45,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 9,
+          "min": 8,
+          "max": 24,
+          "n": 5
+        }
+      },
+      "complete": true,
+      "decoy_admitted_count": 0,
+      "summary_matches": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "worktree_dirtied_count": 5,
+      "target_origin_quarry_mention_count": 0,
+      "daemon_backed_runs": 5
+    },
+    "a2-toc-dir": {
+      "stats": {
+        "bash_grep_count": {
+          "median": 0,
+          "min": 0,
+          "max": 1,
+          "n": 5
+        },
+        "cache_creation_input_tokens": {
+          "median": 40284,
+          "min": 14432,
+          "max": 42436,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 83281,
+          "min": 82003,
+          "max": 125886,
+          "n": 5
+        },
+        "denied_tool_attempts": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5,
+          "provisional": true
+        },
+        "duration_ms": {
+          "median": 50731,
+          "min": 32646,
+          "max": 63353,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 0,
+          "min": 0,
+          "max": 1,
+          "n": 5
+        },
+        "grep_tool_count": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "input_tokens": {
+          "median": 8,
+          "min": 8,
+          "max": 12,
+          "n": 5
+        },
+        "num_turns": {
+          "median": 4,
+          "min": 4,
+          "max": 6,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 15,
+          "min": 9,
+          "max": 3816,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.94,
+          "min": 0.8,
+          "max": 0.94,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.4,
+          "min": 0.3,
+          "max": 0.47,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 7,
+          "min": 6,
+          "max": 10,
+          "n": 5
+        }
+      },
+      "complete": true,
+      "decoy_admitted_count": 0,
+      "summary_matches": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "worktree_dirtied_count": 5,
+      "target_origin_quarry_mention_count": 0,
+      "daemon_backed_runs": 5
+    },
+    "b0-none": {
+      "stats": {
+        "bash_grep_count": {
+          "median": 3,
+          "min": 2,
+          "max": 4,
+          "n": 5
+        },
+        "cache_creation_input_tokens": {
+          "median": 16155,
+          "min": 0,
+          "max": 20605,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 90115,
+          "min": 48812,
+          "max": 104773,
+          "n": 5
+        },
+        "denied_tool_attempts": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5,
+          "provisional": true
+        },
+        "duration_ms": {
+          "median": 22365,
+          "min": 14316,
+          "max": 27025,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 3,
+          "min": 2,
+          "max": 4,
+          "n": 5
+        },
+        "grep_tool_count": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "input_tokens": {
+          "median": 12,
+          "min": 8,
+          "max": 14,
+          "n": 5
+        },
+        "lookalikes_matched": {
+          "median": 1,
+          "min": 1,
+          "max": 2,
+          "n": 5
+        },
+        "num_turns": {
+          "median": 6,
+          "min": 4,
+          "max": 7,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 426,
+          "min": 20,
+          "max": 822,
+          "n": 5
+        },
+        "precision": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "recall": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 5,
+          "min": 4,
+          "max": 6,
+          "n": 5
+        }
+      },
+      "complete": true,
+      "decoy_admitted_count": 0,
+      "summary_matches": null,
+      "worktree_dirtied_count": 5,
+      "target_origin_quarry_mention_count": 0,
+      "daemon_backed_runs": 5
+    },
+    "b8-toc-dir": {
+      "stats": {
+        "bash_grep_count": {
+          "median": 2,
+          "min": 1,
+          "max": 5,
+          "n": 5
+        },
+        "cache_creation_input_tokens": {
+          "median": 23041,
+          "min": 11667,
+          "max": 41792,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 77296,
+          "min": 47877,
+          "max": 121501,
+          "n": 5
+        },
+        "denied_tool_attempts": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5,
+          "provisional": true
+        },
+        "duration_ms": {
+          "median": 29055,
+          "min": 18741,
+          "max": 30503,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 2,
+          "min": 1,
+          "max": 5,
+          "n": 5
+        },
+        "grep_tool_count": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "input_tokens": {
+          "median": 8,
+          "min": 8,
+          "max": 14,
+          "n": 5
+        },
+        "lookalikes_matched": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "num_turns": {
+          "median": 4,
+          "min": 4,
+          "max": 7,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 17,
+          "min": 8,
+          "max": 592,
+          "n": 5
+        },
+        "precision": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "recall": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 6,
+          "min": 4,
+          "max": 8,
+          "n": 5
+        }
+      },
+      "complete": true,
+      "decoy_admitted_count": 0,
+      "summary_matches": null,
+      "worktree_dirtied_count": 5,
+      "target_origin_quarry_mention_count": 0,
+      "daemon_backed_runs": 5
+    },
+    "b9-toc-file": {
+      "stats": {
+        "bash_grep_count": {
+          "median": 1,
+          "min": 0,
+          "max": 1,
+          "n": 5
+        },
+        "cache_creation_input_tokens": {
+          "median": 50709,
+          "min": 43793,
+          "max": 55418,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 100312,
+          "min": 49061,
+          "max": 102582,
+          "n": 5
+        },
+        "denied_tool_attempts": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5,
+          "provisional": true
+        },
+        "duration_ms": {
+          "median": 30760,
+          "min": 27997,
+          "max": 87970,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 1,
+          "min": 0,
+          "max": 1,
+          "n": 5
+        },
+        "grep_tool_count": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "input_tokens": {
+          "median": 10,
+          "min": 8,
+          "max": 10,
+          "n": 5
+        },
+        "lookalikes_matched": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "num_turns": {
+          "median": 5,
+          "min": 4,
+          "max": 5,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 528,
+          "min": 44,
+          "max": 1623,
+          "n": 5
+        },
+        "precision": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "recall": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 6,
+          "min": 5,
+          "max": 6,
+          "n": 5
+        }
+      },
+      "complete": true,
+      "decoy_admitted_count": 0,
+      "summary_matches": null,
+      "worktree_dirtied_count": 5,
+      "target_origin_quarry_mention_count": 0,
+      "daemon_backed_runs": 5
+    }
+  },
+  "comparisons": [
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "duration_ms",
+      "left_median": 67031,
+      "right_median": 67178,
+      "left_range": [
+        60680,
+        162149
+      ],
+      "right_range": [
+        51284,
+        72982
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "num_turns",
+      "left_median": 7,
+      "right_median": 8,
+      "left_range": [
+        6,
+        23
+      ],
+      "right_range": [
+        7,
+        11
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "tool_uses",
+      "left_median": 9,
+      "right_median": 11,
+      "left_range": [
+        8,
+        24
+      ],
+      "right_range": [
+        10,
+        12
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "quarry_tool_uses",
+      "left_median": 2,
+      "right_median": 0,
+      "left_range": [
+        1,
+        2
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "input_tokens",
+      "left_median": 14,
+      "right_median": 16,
+      "left_range": [
+        12,
+        46
+      ],
+      "right_range": [
+        14,
+        22
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "output_tokens",
+      "left_median": 1014,
+      "right_median": 66,
+      "left_range": [
+        361,
+        4427
+      ],
+      "right_range": [
+        41,
+        242
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "cache_read_input_tokens",
+      "left_median": 130528,
+      "right_median": 127006,
+      "left_range": [
+        104681,
+        939022
+      ],
+      "right_range": [
+        116400,
+        180346
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "cache_creation_input_tokens",
+      "left_median": 38349,
+      "right_median": 26098,
+      "left_range": [
+        31281,
+        70235
+      ],
+      "right_range": [
+        22572,
+        32737
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "denied_tool_attempts",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "recall",
+      "left_median": 0.35,
+      "right_median": 0.43,
+      "left_range": [
+        0.3,
+        0.45
+      ],
+      "right_range": [
+        0.38,
+        0.54
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a1-toc-file",
+      "right": "a0-none",
+      "metric": "precision",
+      "left_median": 0.86,
+      "right_median": 0.94,
+      "left_range": [
+        0.78,
+        0.94
+      ],
+      "right_range": [
+        0.88,
+        0.95
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "duration_ms",
+      "left_median": 50731,
+      "right_median": 67178,
+      "left_range": [
+        32646,
+        63353
+      ],
+      "right_range": [
+        51284,
+        72982
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "num_turns",
+      "left_median": 4,
+      "right_median": 8,
+      "left_range": [
+        4,
+        6
+      ],
+      "right_range": [
+        7,
+        11
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "tool_uses",
+      "left_median": 7,
+      "right_median": 11,
+      "left_range": [
+        6,
+        10
+      ],
+      "right_range": [
+        10,
+        12
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "quarry_tool_uses",
+      "left_median": 1,
+      "right_median": 0,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "input_tokens",
+      "left_median": 8,
+      "right_median": 16,
+      "left_range": [
+        8,
+        12
+      ],
+      "right_range": [
+        14,
+        22
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "output_tokens",
+      "left_median": 15,
+      "right_median": 66,
+      "left_range": [
+        9,
+        3816
+      ],
+      "right_range": [
+        41,
+        242
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "cache_read_input_tokens",
+      "left_median": 83281,
+      "right_median": 127006,
+      "left_range": [
+        82003,
+        125886
+      ],
+      "right_range": [
+        116400,
+        180346
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "cache_creation_input_tokens",
+      "left_median": 40284,
+      "right_median": 26098,
+      "left_range": [
+        14432,
+        42436
+      ],
+      "right_range": [
+        22572,
+        32737
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "denied_tool_attempts",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "recall",
+      "left_median": 0.4,
+      "right_median": 0.43,
+      "left_range": [
+        0.3,
+        0.47
+      ],
+      "right_range": [
+        0.38,
+        0.54
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "a2-toc-dir",
+      "right": "a0-none",
+      "metric": "precision",
+      "left_median": 0.94,
+      "right_median": 0.94,
+      "left_range": [
+        0.8,
+        0.94
+      ],
+      "right_range": [
+        0.88,
+        0.95
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "duration_ms",
+      "left_median": 29055,
+      "right_median": 22365,
+      "left_range": [
+        18741,
+        30503
+      ],
+      "right_range": [
+        14316,
+        27025
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "num_turns",
+      "left_median": 4,
+      "right_median": 6,
+      "left_range": [
+        4,
+        7
+      ],
+      "right_range": [
+        4,
+        7
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "tool_uses",
+      "left_median": 6,
+      "right_median": 5,
+      "left_range": [
+        4,
+        8
+      ],
+      "right_range": [
+        4,
+        6
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "quarry_tool_uses",
+      "left_median": 1,
+      "right_median": 0,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "input_tokens",
+      "left_median": 8,
+      "right_median": 12,
+      "left_range": [
+        8,
+        14
+      ],
+      "right_range": [
+        8,
+        14
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "output_tokens",
+      "left_median": 17,
+      "right_median": 426,
+      "left_range": [
+        8,
+        592
+      ],
+      "right_range": [
+        20,
+        822
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "cache_read_input_tokens",
+      "left_median": 77296,
+      "right_median": 90115,
+      "left_range": [
+        47877,
+        121501
+      ],
+      "right_range": [
+        48812,
+        104773
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "cache_creation_input_tokens",
+      "left_median": 23041,
+      "right_median": 16155,
+      "left_range": [
+        11667,
+        41792
+      ],
+      "right_range": [
+        0,
+        20605
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "denied_tool_attempts",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "recall",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "precision",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b8-toc-dir",
+      "right": "b0-none",
+      "metric": "lookalikes_matched",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        2
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "duration_ms",
+      "left_median": 30760,
+      "right_median": 22365,
+      "left_range": [
+        27997,
+        87970
+      ],
+      "right_range": [
+        14316,
+        27025
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "num_turns",
+      "left_median": 5,
+      "right_median": 6,
+      "left_range": [
+        4,
+        5
+      ],
+      "right_range": [
+        4,
+        7
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "tool_uses",
+      "left_median": 6,
+      "right_median": 5,
+      "left_range": [
+        5,
+        6
+      ],
+      "right_range": [
+        4,
+        6
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "quarry_tool_uses",
+      "left_median": 1,
+      "right_median": 0,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "input_tokens",
+      "left_median": 10,
+      "right_median": 12,
+      "left_range": [
+        8,
+        10
+      ],
+      "right_range": [
+        8,
+        14
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "output_tokens",
+      "left_median": 528,
+      "right_median": 426,
+      "left_range": [
+        44,
+        1623
+      ],
+      "right_range": [
+        20,
+        822
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "cache_read_input_tokens",
+      "left_median": 100312,
+      "right_median": 90115,
+      "left_range": [
+        49061,
+        102582
+      ],
+      "right_range": [
+        48812,
+        104773
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "cache_creation_input_tokens",
+      "left_median": 50709,
+      "right_median": 16155,
+      "left_range": [
+        43793,
+        55418
+      ],
+      "right_range": [
+        0,
+        20605
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "denied_tool_attempts",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "recall",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "precision",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-control",
+      "left": "b9-toc-file",
+      "right": "b0-none",
+      "metric": "lookalikes_matched",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        2
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "duration_ms",
+      "left_median": 67031,
+      "right_median": 50731,
+      "left_range": [
+        60680,
+        162149
+      ],
+      "right_range": [
+        32646,
+        63353
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "num_turns",
+      "left_median": 7,
+      "right_median": 4,
+      "left_range": [
+        6,
+        23
+      ],
+      "right_range": [
+        4,
+        6
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "tool_uses",
+      "left_median": 9,
+      "right_median": 7,
+      "left_range": [
+        8,
+        24
+      ],
+      "right_range": [
+        6,
+        10
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "quarry_tool_uses",
+      "left_median": 2,
+      "right_median": 1,
+      "left_range": [
+        1,
+        2
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "input_tokens",
+      "left_median": 14,
+      "right_median": 8,
+      "left_range": [
+        12,
+        46
+      ],
+      "right_range": [
+        8,
+        12
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "output_tokens",
+      "left_median": 1014,
+      "right_median": 15,
+      "left_range": [
+        361,
+        4427
+      ],
+      "right_range": [
+        9,
+        3816
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "cache_read_input_tokens",
+      "left_median": 130528,
+      "right_median": 83281,
+      "left_range": [
+        104681,
+        939022
+      ],
+      "right_range": [
+        82003,
+        125886
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "cache_creation_input_tokens",
+      "left_median": 38349,
+      "right_median": 40284,
+      "left_range": [
+        31281,
+        70235
+      ],
+      "right_range": [
+        14432,
+        42436
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "bash_grep_count",
+      "left_median": 1,
+      "right_median": 0,
+      "left_range": [
+        1,
+        3
+      ],
+      "right_range": [
+        0,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "grep_tool_count",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "grep_fallback_total",
+      "left_median": 1,
+      "right_median": 0,
+      "left_range": [
+        1,
+        3
+      ],
+      "right_range": [
+        0,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "denied_tool_attempts",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "recall",
+      "left_median": 0.35,
+      "right_median": 0.4,
+      "left_range": [
+        0.3,
+        0.45
+      ],
+      "right_range": [
+        0.3,
+        0.47
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "a1-toc-file",
+      "right": "a2-toc-dir",
+      "metric": "precision",
+      "left_median": 0.86,
+      "right_median": 0.94,
+      "left_range": [
+        0.78,
+        0.94
+      ],
+      "right_range": [
+        0.8,
+        0.94
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "duration_ms",
+      "left_median": 29055,
+      "right_median": 30760,
+      "left_range": [
+        18741,
+        30503
+      ],
+      "right_range": [
+        27997,
+        87970
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "num_turns",
+      "left_median": 4,
+      "right_median": 5,
+      "left_range": [
+        4,
+        7
+      ],
+      "right_range": [
+        4,
+        5
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "tool_uses",
+      "left_median": 6,
+      "right_median": 6,
+      "left_range": [
+        4,
+        8
+      ],
+      "right_range": [
+        5,
+        6
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "quarry_tool_uses",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "input_tokens",
+      "left_median": 8,
+      "right_median": 10,
+      "left_range": [
+        8,
+        14
+      ],
+      "right_range": [
+        8,
+        10
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "output_tokens",
+      "left_median": 17,
+      "right_median": 528,
+      "left_range": [
+        8,
+        592
+      ],
+      "right_range": [
+        44,
+        1623
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "cache_read_input_tokens",
+      "left_median": 77296,
+      "right_median": 100312,
+      "left_range": [
+        47877,
+        121501
+      ],
+      "right_range": [
+        49061,
+        102582
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "cache_creation_input_tokens",
+      "left_median": 23041,
+      "right_median": 50709,
+      "left_range": [
+        11667,
+        41792
+      ],
+      "right_range": [
+        43793,
+        55418
+      ],
+      "separated": true
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "bash_grep_count",
+      "left_median": 2,
+      "right_median": 1,
+      "left_range": [
+        1,
+        5
+      ],
+      "right_range": [
+        0,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "grep_tool_count",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "grep_fallback_total",
+      "left_median": 2,
+      "right_median": 1,
+      "left_range": [
+        1,
+        5
+      ],
+      "right_range": [
+        0,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "denied_tool_attempts",
+      "left_median": 0,
+      "right_median": 0,
+      "left_range": [
+        0,
+        0
+      ],
+      "right_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "recall",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "precision",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "kind": "rung-vs-rung",
+      "left": "b8-toc-dir",
+      "right": "b9-toc-file",
+      "metric": "lookalikes_matched",
+      "left_median": 1,
+      "right_median": 1,
+      "left_range": [
+        1,
+        1
+      ],
+      "right_range": [
+        1,
+        1
+      ],
+      "separated": false
+    }
+  ],
+  "incomplete": null
+}
