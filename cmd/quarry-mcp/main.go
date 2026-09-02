@@ -23,7 +23,13 @@ func main() {
 	configPath := flag.String("config", "", "explicit path to a servers.yaml overlay, overriding $QUARRY_CONFIG and the user config directory default")
 	stateDir := flag.String("state-dir", "", "explicit daemon state directory, overriding $QUARRY_STATE_DIR and the user cache directory default")
 	timeout := flag.Duration("timeout", 30*time.Second, "deadline applied per entry's facade call")
+	tocFormat := flag.String("toc-format", "", "force the toc tools' output form for every call: json or compact (default: honour each call's own compact input)")
 	flag.Parse()
+
+	if err := mcpserver.ValidateTOCFormat(*tocFormat); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	resolvedTargetDir, err := mcpserver.ResolveLaunchTargetDir(*targetDir)
 	if err != nil {
@@ -37,6 +43,7 @@ func main() {
 		ConfigPath: *configPath,
 		StateDir:   *stateDir,
 		Timeout:    *timeout,
+		TOCFormat:  *tocFormat,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

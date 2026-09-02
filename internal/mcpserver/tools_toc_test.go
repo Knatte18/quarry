@@ -474,3 +474,59 @@ func TestTOCFileHandler_AbsoluteTargetResolvesOutsideLaunchRoot(t *testing.T) {
 		t.Errorf("out.Results[0].Status = %q; want %q (an absolute target outside cfg.TargetDir still resolves)", got, statusFound)
 	}
 }
+
+// TestTOCHandlers_CompactInputAndForcedFormat asserts the per-call "compact" input renders the text
+// form under "compact" with "result"/"files" absent, that a forced TOCFormatJSON ignores that input,
+// and that a forced TOCFormatCompact renders compact without it.
+func TestTOCHandlers_CompactInputAndForcedFormat(t *testing.T) {
+	cfg := newTestConfig(t)
+	writeTOCTestFile(t, cfg.TargetDir, "fixture.go", "// Package fixture is a fixture.\npackage fixture\n\n// Greet greets.\nfunc Greet() {}\n")
+
+	cases := []struct {
+		name      string
+		format    string
+		requested bool
+		compact   bool
+	}{
+		{"default honours request", "", true, true},
+		{"default without request is json", "", false, false},
+		{"forced json ignores request", TOCFormatJSON, true, false},
+		{"forced compact needs no request", TOCFormatCompact, false, true},
+	}
+	for _, c := range cases {
+		cfg.TOCFormat = c.format
+		fileIn := tocFileInput{Targets: []string{"fixture.go"}, Compact: c.requested}
+		_, fileOut, err := tocFileHandler(cfg)(context.Background(), nil, fileIn)
+		if err != nil {
+			t.Fatalf("%s: toc_file error = %v", c.name, err)
+		}
+		e := fileOut.Results[0]
+		if e.Status != statusFound || (e.Compact != "") != c.compact || (e.Result != nil) == c.compact {
+			t.Errorf("%s: toc_file entry = %+v, want compact=%v", c.name, e, c.compact)
+		}
+		if c.compact && !strings.Contains(e.Compact, ": func Greet() -- Greet greets.") {
+			t.Errorf("%s: compact text = %q", c.name, e.Compact)
+		}
+
+		dirIn := tocDirInput{Targets: []string{"."}, Compact: c.requested}
+		_, dirOut, err := tocDirHandler(cfg)(context.Background(), nil, dirIn)
+		if err != nil {
+			t.Fatalf("%s: toc_dir error = %v", c.name, err)
+		}
+		d := dirOut.Results[0]
+		if d.Status != statusFound || (d.Compact != "") != c.compact || (d.Files != nil) == c.compact {
+			t.Errorf("%s: toc_dir entry = %+v, want compact=%v", c.name, d, c.compact)
+		}
+	}
+}
+
+func TestValidateTOCFormat(t *testing.T) {
+	for _, ok := range []string{"", TOCFormatJSON, TOCFormatCompact} {
+		if err := ValidateTOCFormat(ok); err != nil {
+			t.Errorf("ValidateTOCFormat(%q) = %v", ok, err)
+		}
+	}
+	if err := ValidateTOCFormat("yaml"); err == nil {
+		t.Error("ValidateTOCFormat(yaml) = nil")
+	}
+}

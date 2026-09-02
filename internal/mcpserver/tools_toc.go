@@ -37,6 +37,10 @@ type tocFileInput struct {
 	// "all" as the JSON string "\"all\"" — quotes inside the value — and burned a round trip on the
 	// validation error.
 	DocSentences docSentences `json:"docSentences,omitempty" jsonschema:"number of leading docstring sentences to emit (0 omits the key entirely), or the string all (unquoted sentinel word, not nested quotes); resolved per entry against that entry's own file's parent directory"`
+	// Compact asks for the compact text form under each entry's "compact" key instead of the JSON
+	// result under "result": one line per symbol, "start-end: signature -- docstring", about a fifth
+	// of the size. The server's forced TOCFormat, when set, overrides this.
+	Compact bool `json:"compact,omitempty" jsonschema:"return the compact plain-text table of contents under compact instead of the JSON result: one line per symbol as start-end: signature -- docstring, about a fifth of the size, same line numbers"`
 }
 
 // tocDirInput is toc_dir's call-wide input: a "targets" array of plain directory-path strings,
@@ -48,6 +52,9 @@ type tocDirInput struct {
 	// Lang restricts the listing to this language's own extensions, validated against
 	// quarry.TOCLanguages() rather than a servers.yaml registry key.
 	Lang string `json:"lang,omitempty" jsonschema:"restrict the listing to this language's own extensions, validated against toc's own supported language set rather than a servers.yaml registry key"`
+	// Compact asks for the compact text form under each entry's "compact" key instead of "files"
+	// and "dirs". The server's forced TOCFormat, when set, overrides this.
+	Compact bool `json:"compact,omitempty" jsonschema:"return the compact plain-text listing under compact instead of files and dirs: one line per file as path [test]: first sentence of its header comment, plus a dirs line, about a quarter of the size"`
 }
 
 // tocFileEntry is one target's own result in toc_file's "results" array. It declares no
@@ -63,6 +70,9 @@ type tocFileEntry struct {
 	// key — the same deliberate divergence batch 4 records for impact, applied here so the
 	// envelope's "target" stays unambiguously "the input entry, echoed".
 	Result map[string]any `json:"result,omitempty"`
+	// Compact holds the compact text form on a statusFound entry rendered compact, in which case
+	// Result is absent.
+	Compact string `json:"compact,omitempty"`
 	// Error holds a human-readable message on a statusError or statusNotFound entry.
 	Error string `json:"error,omitempty"`
 }
@@ -83,6 +93,9 @@ type tocDirEntry struct {
 	// descends into a subdirectory and so has nothing else to report about one. Mirrors Files'
 	// omitempty: absent on every non-found entry.
 	Dirs []string `json:"dirs,omitempty"`
+	// Compact holds the compact text form on a statusFound entry rendered compact, in which case
+	// Files and Dirs are absent.
+	Compact string `json:"compact,omitempty"`
 	// Error holds a human-readable message on a statusError or statusNotFound entry.
 	Error string `json:"error,omitempty"`
 }
@@ -107,7 +120,7 @@ type tocDirOutput struct {
 // cli.StructToFields failure is this entry's own statusError carrying the message verbatim:
 // rewordMarshalFailure is impact-only and must not be applied here, since the "toc: " prefix is
 // correctly attributed for a toc call.
-func resolveTOCFileEntry(arg, targetDir, lang, docString string) tocFileEntry {
+func resolveTOCFileEntry(arg, targetDir, lang, docString string, compact bool) tocFileEntry {
 	abs := cli.ResolveTOCPath(targetDir, arg)
 
 	status, message, err := tocStat(abs, false)
@@ -124,6 +137,9 @@ func resolveTOCFileEntry(arg, targetDir, lang, docString string) tocFileEntry {
 	if err != nil {
 		status, message := classifyTOCError(err)
 		return tocFileEntry{Target: arg, Status: status, Error: message}
+	}
+	if compact {
+		return tocFileEntry{Target: arg, Status: statusFound, Compact: quarry.CompactTOCFile(arg, result)}
 	}
 
 	fields, err := cli.StructToFields(result)
@@ -143,7 +159,7 @@ func resolveTOCFileEntry(arg, targetDir, lang, docString string) tocFileEntry {
 // statusError carrying the message verbatim, exactly as tocDirOne disposes of the same failure.
 // Dirs is copied straight from result.Dirs with no such composition step, since a subdirectory name
 // carries no path of its own for cli.TOCDirEntries to inject.
-func resolveTOCDirEntry(arg, targetDir, lang string) tocDirEntry {
+func resolveTOCDirEntry(arg, targetDir, lang string, compact bool) tocDirEntry {
 	abs := cli.ResolveTOCPath(targetDir, arg)
 
 	status, message, err := tocStat(abs, true)
@@ -155,6 +171,9 @@ func resolveTOCDirEntry(arg, targetDir, lang string) tocDirEntry {
 	if err != nil {
 		status, message := classifyTOCError(err)
 		return tocDirEntry{Target: arg, Status: status, Error: message}
+	}
+	if compact {
+		return tocDirEntry{Target: arg, Status: statusFound, Compact: quarry.CompactTOCDir(arg, result)}
 	}
 
 	files, err := cli.TOCDirEntries(arg, result)
@@ -176,8 +195,9 @@ func tocFileHandler(cfg Config) mcp.ToolHandlerFor[tocFileInput, tocFileOutput] 
 			return nil, tocFileOutput{}, err
 		}
 
+		compact := cfg.compactFor(in.Compact)
 		results := runTargets(in.Targets, func(_ int, arg string) tocFileEntry {
-			return resolveTOCFileEntry(arg, targetDir, in.Lang, docString)
+			return resolveTOCFileEntry(arg, targetDir, in.Lang, docString, compact)
 		})
 
 		return nil, tocFileOutput{Results: results}, nil
@@ -197,8 +217,9 @@ func tocDirHandler(cfg Config) mcp.ToolHandlerFor[tocDirInput, tocDirOutput] {
 			return nil, tocDirOutput{}, err
 		}
 
+		compact := cfg.compactFor(in.Compact)
 		results := runTargets(in.Targets, func(_ int, arg string) tocDirEntry {
-			return resolveTOCDirEntry(arg, targetDir, in.Lang)
+			return resolveTOCDirEntry(arg, targetDir, in.Lang, compact)
 		})
 
 		return nil, tocDirOutput{Results: results}, nil
@@ -224,7 +245,9 @@ func registerTOCTools(s *mcp.Server, cfg Config) error {
 			"\"start\"/\"sigend\"/\"end\" range. Each entry is a plain file path, not an object. " +
 			"The marshalled quarry.TOCFileResult is nested under \"result\" on each found entry. " +
 			"lang, when given, is validated against toc's own supported language set, never a " +
-			"servers.yaml registry key. Up to 64 entries per call.",
+			"servers.yaml registry key. Up to 64 entries per call. compact: true returns a " +
+			"plain-text form under \"compact\" instead (one line per symbol, same line numbers, " +
+			"about a fifth of the size).",
 		InputSchema:  fileInputSchema,
 		OutputSchema: fileOutputSchema,
 	}, tocFileHandler(cfg))
@@ -247,7 +270,8 @@ func registerTOCTools(s *mcp.Server, cfg Config) error {
 			"following toc_file call. Each found entry also carries \"dirs\", the sorted base names " +
 			"of every direct subdirectory (name only, never recursed into). lang, when given, is " +
 			"validated against toc's own supported language set, never a servers.yaml registry " +
-			"key. Up to 64 entries per call.",
+			"key. Up to 64 entries per call. compact: true returns a plain-text form under " +
+			"\"compact\" instead (one line per file, about a quarter of the size).",
 		InputSchema:  dirInputSchema,
 		OutputSchema: dirOutputSchema,
 	}, tocDirHandler(cfg))

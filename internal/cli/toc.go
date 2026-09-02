@@ -45,6 +45,7 @@ func tocFileCommand() *cobra.Command {
 	var lang string
 	var docSentences string
 	var targetDir string
+	var compact bool
 
 	cmd := &cobra.Command{
 		Use:   "file <path>",
@@ -131,6 +132,17 @@ default of 1.`,
 				}
 			}
 
+			if compact {
+				runCompactBatch(ctx, out, args, func(arg string) (batchStatus, string, string) {
+					status, result, msg := tocFileTyped(dir, arg, lang, docSentences)
+					if status != statusFound {
+						return status, "", msg
+					}
+					return status, quarry.CompactTOCFile(arg, result), ""
+				})
+				return nil
+			}
+
 			if len(args) > 1 {
 				runPathBatch(ctx, out, args, func(arg string) (batchStatus, map[string]any) {
 					return tocFileOne(dir, arg, lang, docSentences)
@@ -149,6 +161,7 @@ default of 1.`,
 		},
 	}
 
+	cmd.Flags().BoolVar(&compact, "compact", false, compactFlagHelp)
 	cmd.Flags().StringVar(&lang, "lang", "", "override language detection with this language name (validated against toc's own supported set)")
 	// --doc-sentences is registered on "toc file" only: "toc dir" emits
 	// headers and never docstrings, so the setting has nothing to affect
@@ -162,6 +175,7 @@ default of 1.`,
 func tocDirCommand() *cobra.Command {
 	var lang string
 	var targetDir string
+	var compact bool
 
 	cmd := &cobra.Command{
 		Use:   "dir <path>",
@@ -209,6 +223,17 @@ The process exit code is set to the worst status present across the batch.`,
 				return nil
 			}
 
+			if compact {
+				runCompactBatch(ctx, out, args, func(arg string) (batchStatus, string, string) {
+					status, result, msg := tocDirTyped(dir, arg, lang)
+					if status != statusFound {
+						return status, "", msg
+					}
+					return status, quarry.CompactTOCDir(arg, result), ""
+				})
+				return nil
+			}
+
 			if len(args) > 1 {
 				runPathBatch(ctx, out, args, func(arg string) (batchStatus, map[string]any) {
 					return tocDirOne(dir, arg, lang)
@@ -227,6 +252,7 @@ The process exit code is set to the worst status present across the batch.`,
 		},
 	}
 
+	cmd.Flags().BoolVar(&compact, "compact", false, compactFlagHelp)
 	cmd.Flags().StringVar(&lang, "lang", "", "restrict the listing to this language's extensions (validated against toc's own supported set)")
 	cmd.Flags().StringVar(&targetDir, "target-dir", "", "base directory to resolve a relative <path> against (default: cwd); accepted for consistency with refs/definition/symbol/impact/assert-no-callers, has no effect when <path> is already absolute")
 	return cmd
@@ -294,36 +320,46 @@ func resolveTOCBaseDir(cwd, targetDir string) string {
 // any config file — the caller has already validated the flag once, up front, before any
 // argument was processed.
 func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[string]any) {
-	abs := ResolveTOCPath(baseDir, arg)
-
-	info, err := os.Stat(abs)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return statusNotFound, map[string]any{"error": err.Error()}
-		}
-		return statusError, map[string]any{"error": err.Error()}
-	}
-	if info.IsDir() {
-		return statusError, map[string]any{"error": fmt.Sprintf("toc: %s is a directory; use %q for a directory listing", arg, "quarry toc dir")}
-	}
-
-	targetDir := filepath.Dir(abs)
-	resolvedDocSentences, err := ResolveDocSentences(docSentences, targetDir)
-	if err != nil {
-		return statusError, map[string]any{"error": err.Error()}
-	}
-
-	result, err := quarry.TOCFile(abs, lang, quarry.TOCOptions{DocSentences: resolvedDocSentences})
-	if err != nil {
-		status, msg := classifyTOCError(err)
+	status, result, msg := tocFileTyped(baseDir, arg, lang, docSentences)
+	if status != statusFound {
 		return status, map[string]any{"error": msg}
 	}
-
 	fields, err := StructToFields(result)
 	if err != nil {
 		return statusError, map[string]any{"error": err.Error()}
 	}
 	return statusFound, fields
+}
+
+// tocFileTyped is tocFileOne before the JSON shaping: the resolved, validated quarry.TOCFile result
+// for arg, or the batch status and message of the failure. The JSON path and the --compact path both
+// go through here, so the two cannot disagree about what a path resolves to.
+func tocFileTyped(baseDir, arg, lang, docSentences string) (batchStatus, quarry.TOCFileResult, string) {
+	abs := ResolveTOCPath(baseDir, arg)
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return statusNotFound, quarry.TOCFileResult{}, err.Error()
+		}
+		return statusError, quarry.TOCFileResult{}, err.Error()
+	}
+	if info.IsDir() {
+		return statusError, quarry.TOCFileResult{}, fmt.Sprintf("toc: %s is a directory; use %q for a directory listing", arg, "quarry toc dir")
+	}
+
+	targetDir := filepath.Dir(abs)
+	resolvedDocSentences, err := ResolveDocSentences(docSentences, targetDir)
+	if err != nil {
+		return statusError, quarry.TOCFileResult{}, err.Error()
+	}
+
+	result, err := quarry.TOCFile(abs, lang, quarry.TOCOptions{DocSentences: resolvedDocSentences})
+	if err != nil {
+		status, msg := classifyTOCError(err)
+		return status, quarry.TOCFileResult{}, msg
+	}
+	return statusFound, result, ""
 }
 
 // tocDirOne resolves arg (a "toc dir" positional argument) against baseDir, validates it names an
@@ -338,22 +374,8 @@ func tocFileOne(baseDir, arg, lang, docSentences string) (batchStatus, map[strin
 // Both the single-argument RunE above and runPathBatch's per-argument closure call this function,
 // so the two call paths cannot drift apart.
 func tocDirOne(baseDir, arg, lang string) (batchStatus, map[string]any) {
-	abs := ResolveTOCPath(baseDir, arg)
-
-	info, err := os.Stat(abs)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return statusNotFound, map[string]any{"error": err.Error()}
-		}
-		return statusError, map[string]any{"error": err.Error()}
-	}
-	if !info.IsDir() {
-		return statusError, map[string]any{"error": fmt.Sprintf("toc: %s is a file; use %q for a single file", arg, "quarry toc file")}
-	}
-
-	result, err := quarry.TOCDir(abs, lang)
-	if err != nil {
-		status, msg := classifyTOCError(err)
+	status, result, msg := tocDirTyped(baseDir, arg, lang)
+	if status != statusFound {
 		return status, map[string]any{"error": msg}
 	}
 
@@ -362,6 +384,58 @@ func tocDirOne(baseDir, arg, lang string) (batchStatus, map[string]any) {
 		return statusError, map[string]any{"error": err.Error()}
 	}
 	return statusFound, map[string]any{"files": files, "dirs": result.Dirs}
+}
+
+// tocDirTyped is tocDirOne before the JSON shaping: the resolved, validated quarry.TOCDir result for
+// arg, or the batch status and message of the failure. Shared by the JSON and --compact paths.
+func tocDirTyped(baseDir, arg, lang string) (batchStatus, quarry.TOCDirResult, string) {
+	abs := ResolveTOCPath(baseDir, arg)
+
+	info, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return statusNotFound, quarry.TOCDirResult{}, err.Error()
+		}
+		return statusError, quarry.TOCDirResult{}, err.Error()
+	}
+	if !info.IsDir() {
+		return statusError, quarry.TOCDirResult{}, fmt.Sprintf("toc: %s is a file; use %q for a single file", arg, "quarry toc file")
+	}
+
+	result, err := quarry.TOCDir(abs, lang)
+	if err != nil {
+		status, msg := classifyTOCError(err)
+		return status, quarry.TOCDirResult{}, msg
+	}
+	return statusFound, result, ""
+}
+
+// compactFlagHelp is --compact's help text on both toc verbs.
+const compactFlagHelp = "emit the compact plain-text form instead of JSON: one header line per path, one line per file or symbol, prose cut to its first sentence, no repeated keys; roughly a fifth of the JSON size. Line numbers are unchanged. Errors are \"# <path>: <status>: <message>\" lines"
+
+// runCompactBatch is runPathBatch's --compact counterpart, for one argument or many: each path's
+// compact text (or its "# <path>: <status>: <message>" error line) is written in argument order,
+// separated by a blank line, and the exit code is the worst status present, exactly as runPathBatch
+// sets it. There is no JSON envelope: the output is the document itself.
+func runCompactBatch(ctx context.Context, out io.Writer, args []string, renderOne func(path string) (batchStatus, string, string)) {
+	worst := statusFound
+	for i, arg := range args {
+		status, text, msg := renderOne(arg)
+		if statusRank[status] > statusRank[worst] {
+			worst = status
+		}
+		if i > 0 {
+			fmt.Fprintln(out)
+		}
+		if status != statusFound {
+			fmt.Fprintf(out, "# %s: %s: %s\n", arg, status, strings.TrimSpace(msg))
+			continue
+		}
+		fmt.Fprintln(out, text)
+	}
+	if statusRank[worst] != 0 {
+		SetExit(ctx, statusRank[worst])
+	}
 }
 
 // TOCDirEntries builds the []any "files" entries "toc dir" emits for one directory argument as the

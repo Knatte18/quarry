@@ -42,6 +42,40 @@ type Config struct {
 	StateDir string
 	// Timeout is the deadline applied per entry's facade call, mirroring the CLI's --timeout flag.
 	Timeout time.Duration
+	// TOCFormat forces the toc tools' output form: TOCFormatJSON ignores every call's "compact"
+	// input and always returns the JSON result, TOCFormatCompact always returns the compact text,
+	// and "" (the default) honours each call's own "compact" input. The forced modes exist so a
+	// benchmark can pin one form per cell regardless of what the agent asks for.
+	TOCFormat string
+}
+
+// The three Config.TOCFormat values.
+const (
+	// TOCFormatJSON forces the JSON result on every toc call.
+	TOCFormatJSON = "json"
+	// TOCFormatCompact forces the compact text on every toc call.
+	TOCFormatCompact = "compact"
+)
+
+// ValidateTOCFormat returns an error unless format is "", TOCFormatJSON, or TOCFormatCompact.
+func ValidateTOCFormat(format string) error {
+	switch format {
+	case "", TOCFormatJSON, TOCFormatCompact:
+		return nil
+	}
+	return fmt.Errorf("mcpserver: toc format %q is not one of \"\", %q, %q", format, TOCFormatJSON, TOCFormatCompact)
+}
+
+// compactFor resolves whether one toc call renders compact text: the forced Config.TOCFormat wins,
+// else the call's own request.
+func (cfg Config) compactFor(requested bool) bool {
+	switch cfg.TOCFormat {
+	case TOCFormatJSON:
+		return false
+	case TOCFormatCompact:
+		return true
+	}
+	return requested
 }
 
 // ResolveLaunchTargetDir resolves the server's default target directory at startup: flagValue,
@@ -74,6 +108,9 @@ func ResolveLaunchTargetDir(flagValue string) (string, error) {
 func NewServer(cfg Config) (*mcp.Server, error) {
 	if !filepath.IsAbs(cfg.TargetDir) {
 		return nil, fmt.Errorf("mcpserver: NewServer: cfg.TargetDir must be absolute, got %q", cfg.TargetDir)
+	}
+	if err := ValidateTOCFormat(cfg.TOCFormat); err != nil {
+		return nil, fmt.Errorf("mcpserver: NewServer: %w", err)
 	}
 
 	s := mcp.NewServer(&mcp.Implementation{Name: "quarry", Version: serverVersion}, nil)
