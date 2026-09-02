@@ -1,0 +1,123 @@
+# Toc-only ladder -- a separate matrix that tests exactly one thing: does a table of contents (toc_dir,
+# toc_file) pay for itself, and under what scope?
+#
+# Why this file exists. In the 2026-08-30 matrix, toc was the only rung with a clear effect: on task 01
+# (two-package, ~60-file exploration) a2-toc-dir halved the control's turns (9 -> 4) and cache_read
+# (154k -> 71k) at unchanged recall/precision (0.36/0.90 vs 0.45/0.88, within n=3 noise). That is a
+# cost win, not a correctness win, measured on one task at reps 3. Every other rung was flat or worse.
+# This ladder isolates that one signal and adds the missing scope contrast.
+#
+# Design:
+#
+#   ladder a -- task 01, exploration over an unfamiliar two-package scope. The condition where toc won.
+#       a0-none      control (id identical to the main matrix's for by-id comparison across roots)
+#       a1-toc-file  file-level toc only (id identical to the main matrix's)
+#       a2-toc-dir   directory-level toc only (id identical to the main matrix's)
+#
+#   ladder b -- task 04, impact analysis where the task text names the file. The negative control: the
+#   task hands the agent the map, so a toc should have nothing to add. If a toc cell is cheaper here
+#   too, the effect is not "map first" but something about how the agent reads; if the agent never
+#   calls the tool (the runmatrix table flags that), the cell measured the tool's prompt cost only.
+#       b0-none      control (id identical to the main matrix's)
+#       b8-toc-dir   new id (b1..b7 are taken by the main matrix)
+#       b9-toc-file  new id
+#
+# Deliberately NOT here:
+#   - toc_dir+toc_file together (August's a3-toc-pair): 120k cache_read vs 71k for toc_dir alone, five
+#     turns vs four. Granting both made the agent call both. Not worth five more runs.
+#   - a one-package exploration task and a whole-repo, no-scope-hint task, the two ends of the scope
+#     axis. Both need an exploration fasit (a reference-agent run, see results/2026-08-28's c.json
+#     files), which does not exist yet. Task 02 (three packages) has no fasit either. Add them to
+#     `tasks:` and a third/fourth config group when a fasit lands -- the ladder letters allow only two
+#     task groups per file, so that is a second toc file, not more rows here.
+#   - a "grep-toc" control: a no-tool cell whose prompt says `grep -n '^func\|^type' *.go` is fine.
+#     That is the real competitor to toc_dir and the cleanest test of whether the win is Quarry's
+#     output or the map-first strategy. The harness has no per-config prompt text and allows one
+#     control per ladder; both need harness changes before that cell can exist.
+#   - annex delivery (pre-computed toc injected, zero tools) and the compact output form. Those are
+#     HANDOFF.md §2a and §5 item 6 and need their own harness/engine work first.
+#
+# reps 5, not 3: recall varied more than cost in August, and the question here is whether recall
+# really is unchanged, not only whether cost drops.
+#
+# Reading the result: compare cost metrics rung vs control within this results root only. Correctness
+# (recall/precision) may be compared by id against results/2026-08-30. If a toc cell's agent never
+# used its tool, the per-cell table printed at the end says so; that cell is then a prompt-cost
+# measurement, not a toc measurement.
+#
+# Run with: bench/loomyard-eval/ladder/run-toc.sh   (results land in results/<date>-toc)
+
+run_model: claude-sonnet-5
+reps: 5
+run_effort: medium
+max_turns: 60
+
+# Distinct from every other ladder file's template so a toc dispatch never collides with another
+# matrix's scratch directories. Relative to the quarry repo root, never absolute -- see ladder.yaml.
+session_dir_template: .scratch/ladder-sessions/toc-{config_id}-{n}
+
+scorer:
+  model: claude-opus-5
+  effort: high
+
+quarry_tools:
+  - toc_dir
+  - toc_file
+  - textDocument_definition
+  - textDocument_references
+  - workspace_symbol
+  - impact
+  - assert_no_callers
+
+tasks:
+  01-reed-geometry-exploration:
+    task_file: bench/loomyard-eval/tasks/01-reed-geometry-exploration.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    worktree: /tmp/loomyard-eval-01
+    schema: exploration
+    fasit: bench/loomyard-eval/results/2026-08-28/01-reed-geometry-exploration/c.json
+  04-shedadapters-shuttle-impact:
+    task_file: bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    worktree: /tmp/loomyard-eval-04
+    schema: impact
+    fasit: bench/loomyard-eval/results/2026-08-28/04-shedadapters-shuttle-impact/c.json
+
+# Resolved from the LADDER_LOOMYARD_REPO environment variable at prepare-session time -- see
+# ladder.yaml's own source_repo comment.
+source_repo: env:LADDER_LOOMYARD_REPO
+
+configs:
+  # Ladder a -- task 01, unfamiliar two-package exploration (where toc won in August)
+  - id: a0-none
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: []
+    cold: false
+  - id: a1-toc-file
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: [toc_file]
+    cold: false
+  - id: a2-toc-dir
+    ladder: a
+    task: 01-reed-geometry-exploration
+    allowed: [toc_dir]
+    cold: false
+
+  # Ladder b -- task 04, the task text names the file (negative control for the map-first effect)
+  - id: b0-none
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: []
+    cold: false
+  - id: b8-toc-dir
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: [toc_dir]
+    cold: false
+  - id: b9-toc-file
+    ladder: b
+    task: 04-shedadapters-shuttle-impact
+    allowed: [toc_file]
+    cold: false
