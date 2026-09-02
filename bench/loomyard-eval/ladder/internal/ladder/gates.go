@@ -182,6 +182,50 @@ func GateModelPinned(records []Record, runModel string) []GateFinding {
 	return nil
 }
 
+// GateRunPrompt is fatal when the transcript's first user record is not the generated run prompt: it
+// must open with PARALLEL_OPENING and contain taskText verbatim. It exists because the orchestrating
+// session composes the Agent dispatch by hand, and on 2026-09-02 (toc ladder, a1-toc-file rep 4) it
+// passed the dispatch description as the whole prompt; the run agent then spent 15 tool calls reading
+// the harness to work out its task, and every other gate passed. An empty taskText disables the check
+// (fixture transcripts in tests carry no task).
+func GateRunPrompt(records []Record, taskText string) []GateFinding {
+	if strings.TrimSpace(taskText) == "" {
+		return nil
+	}
+	for _, record := range records {
+		if record.Type != "user" {
+			continue
+		}
+		var text strings.Builder
+		for _, block := range record.Message.Content {
+			if block.Type == "text" {
+				text.WriteString(block.Text)
+			}
+		}
+		prompt := text.String()
+		head := prompt
+		if len(head) > 80 {
+			head = head[:80] + "..."
+		}
+		if !strings.HasPrefix(prompt, PARALLEL_OPENING) {
+			return []GateFinding{{
+				Gate:    "run_prompt",
+				Fatal:   true,
+				Message: fmt.Sprintf("run agent's first user message is not the generated prompt (does not open with PARALLEL_OPENING): %q", head),
+			}}
+		}
+		if !strings.Contains(prompt, strings.TrimSpace(taskText)) {
+			return []GateFinding{{
+				Gate:    "run_prompt",
+				Fatal:   true,
+				Message: "run agent's first user message opens like the generated prompt but does not contain the task text",
+			}}
+		}
+		return nil
+	}
+	return []GateFinding{{Gate: "run_prompt", Fatal: true, Message: "transcript carries no user record; the run agent was never given a prompt"}}
+}
+
 // redactedPlaceholder replaces a tool_result block's own content in redactToolResultContent's output.
 const redactedPlaceholder = "REDACTED"
 

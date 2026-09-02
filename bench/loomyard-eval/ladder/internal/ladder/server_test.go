@@ -6,7 +6,7 @@ import (
 )
 
 func TestMCPConfigDocument_NamesOneServerCarriesTargetDirAndEmptiesScrubbedKeys(t *testing.T) {
-	document := MCPConfigDocument("/abs/quarry-mcp", "/tmp/target")
+	document := MCPConfigDocument("/abs/quarry-mcp", "/tmp/target", "")
 
 	servers, ok := document["mcpServers"].(map[string]any)
 	if !ok {

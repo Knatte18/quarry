@@ -292,3 +292,25 @@ func TestGateMaxTurns(t *testing.T) {
 		})
 	}
 }
+
+func TestGateRunPrompt(t *testing.T) {
+	task := "> Explain the thing."
+	good := []Record{{Type: "user", Message: Message{Content: ContentBlocks{{Type: "text", Text: PARALLEL_OPENING + "\n\nbody\n\n" + task + "\n\nschema"}}}}}
+	if f := GateRunPrompt(good, task); len(f) != 0 {
+		t.Errorf("good prompt flagged: %+v", f)
+	}
+	description := []Record{{Type: "user", Message: Message{Content: ContentBlocks{{Type: "text", Text: "ladderbench run a1-toc-file rep 4 attempt 1"}}}}}
+	if f := GateRunPrompt(description, task); len(f) != 1 || !f[0].Fatal || f[0].Gate != "run_prompt" {
+		t.Errorf("dispatch-description prompt not flagged: %+v", f)
+	}
+	noTask := []Record{{Type: "user", Message: Message{Content: ContentBlocks{{Type: "text", Text: PARALLEL_OPENING + " something else"}}}}}
+	if f := GateRunPrompt(noTask, task); len(f) != 1 || !f[0].Fatal {
+		t.Errorf("prompt without task text not flagged: %+v", f)
+	}
+	if f := GateRunPrompt(description, ""); len(f) != 0 {
+		t.Errorf("empty taskText must disable the gate: %+v", f)
+	}
+	if f := GateRunPrompt(nil, task); len(f) != 1 || !f[0].Fatal {
+		t.Errorf("no user record not flagged: %+v", f)
+	}
+}

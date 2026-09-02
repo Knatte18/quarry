@@ -156,7 +156,7 @@ func TestBuildWorktree_AddsAndNeutralisesAMissingWorktree(t *testing.T) {
 	var calls [][]string
 	git := func(args ...string) (string, error) {
 		calls = append(calls, args)
-		if args[0] == "-C" && len(args) > 2 && args[2] == "worktree" {
+		if args[0] == "-C" && len(args) > 3 && args[2] == "worktree" && args[3] == "add" {
 			if err := os.MkdirAll(path, 0o755); err != nil {
 				return "", err
 			}
@@ -171,9 +171,19 @@ func TestBuildWorktree_AddsAndNeutralisesAMissingWorktree(t *testing.T) {
 		t.Fatalf("BuildWorktree() error = %v", err)
 	}
 
-	wantArgs := []string{"-C", sourceRepo, "worktree", "add", path, "deadbeef"}
-	if len(calls) != 1 || strings.Join(calls[0], " ") != strings.Join(wantArgs, " ") {
-		t.Errorf("git calls = %v; want exactly one call with args %v", calls, wantArgs)
+	// prune first (a /tmp worktree wiped by a reboot is still registered in the source repo, and add
+	// would refuse), then add.
+	wantCalls := [][]string{
+		{"-C", sourceRepo, "worktree", "prune"},
+		{"-C", sourceRepo, "worktree", "add", path, "deadbeef"},
+	}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("git calls = %v; want exactly %v", calls, wantCalls)
+	}
+	for i := range wantCalls {
+		if strings.Join(calls[i], " ") != strings.Join(wantCalls[i], " ") {
+			t.Errorf("git call %d = %v; want %v", i, calls[i], wantCalls[i])
+		}
 	}
 	if _, err := os.Stat(filepath.Join(path, "CLAUDE.md")); !os.IsNotExist(err) {
 		t.Errorf("CLAUDE.md still present after BuildWorktree(); want it neutralised away")

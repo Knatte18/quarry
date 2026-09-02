@@ -102,7 +102,11 @@ func mcpPreambleBody(l *Ladder, config LadderConfig, targetDir string) string {
 // generates a freshly written MCP-shaped preamble naming config's allowed tools by their
 // mcp__quarry__* client-side names. Both shapes share PARALLEL_OPENING, PARALLEL_BLOCK, the closing
 // schema-only-output sentence, and schemaJSON.
-func PreambleFor(l *Ladder, config LadderConfig, targetDir, taskText, schemaJSON string) string {
+//
+// annexText is the pre-computed attachment for an annex config (see annex.go), inserted as its own
+// paragraph between the control body and the task text; it must be empty for every other config, so
+// that an annex cell's prompt is the control's prompt plus exactly that paragraph and nothing else.
+func PreambleFor(l *Ladder, config LadderConfig, targetDir, taskText, schemaJSON, annexText string) string {
 	var body string
 	if len(config.Allowed) > 0 {
 		body = mcpPreambleBody(l, config, targetDir)
@@ -110,5 +114,10 @@ func PreambleFor(l *Ladder, config LadderConfig, targetDir, taskText, schemaJSON
 		body = strings.ReplaceAll(B_PREAMBLE_BODY, "<TARGET_DIR>", targetDir)
 	}
 
-	return strings.Join([]string{PARALLEL_OPENING, body, taskText, PARALLEL_BLOCK, closingSentence, schemaJSON}, "\n\n")
+	sections := []string{PARALLEL_OPENING, body}
+	if annexText != "" {
+		sections = append(sections, annexText)
+	}
+	sections = append(sections, taskText, PARALLEL_BLOCK, closingSentence, schemaJSON)
+	return strings.Join(sections, "\n\n")
 }

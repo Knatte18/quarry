@@ -70,6 +70,39 @@ contrasted against `a5-bundle` only through its declared `warm_counterpart` fiel
 15 configs total: 6 (ladder A) + 8 (ladder B, including `b0`) + 1 (cold) = 15; 3 repetitions each = 45
 runs, plus the two preflight probes described under Enforcement.
 
+## Annex cells — quarry as mechanical pre-processing
+
+An annex cell (`annex: <name>` on a config, `annexes:` recipes on its task, see `ladder-annex.yaml`)
+grants **no** quarry tools. Instead `prepare-session` builds the quarry CLI (`.scratch/bin/quarry`,
+CGO), runs the task's named recipe against the pinned worktree with cwd = worktree and relative
+arguments, and writes the output into the session dir as `annex.txt` plus `annex.meta.json` (kind,
+every CLI argument vector, bytes, sha256, `dropped_callers`). `next-run` inserts that text into the
+prompt as one neutral paragraph between the control body and the task text -- the cell's prompt is
+the control's prompt plus exactly that paragraph. `ingest` copies both files into the run directory.
+
+Recipe kinds: `toc-dir` (dirs, glob allowed), `toc-full` (toc dir, then toc file for every listed
+file), `toc-file` (files), `impact` (symbol + in_file, optional within, optional `drop_callers`), and
+`plan-pack` (`use:` symbols whose declaration location is injected, `change:` symbols whose
+declaration and every call site are injected -- the implementer's "use X and Y to edit Z" pack).
+`drop_callers: N` deliberately removes the last N callers from an impact result so a cell can measure
+whether the agent verifies an attachment or trusts it; the count is recorded in `annex.meta.json`.
+
+**Compact form.** `quarry toc dir|file --compact` renders the same map as plain text (one line per
+file or symbol, prose cut to its first sentence and 120 characters, no repeated keys); the MCP server
+takes `compact: true` per call and `--toc-format json|compact` to force one form for a whole session. A
+tool-granted config pins it with `toc_format: compact` (or `json`, to stop the agent opting in); an
+annex recipe with `compact: true` generates it. `ladder-compact.yaml` measures JSON against compact
+as a tool (a2-toc-dir vs a9-toc-dir-compact).
+
+Annex cells are blinded cells: `GateBlinding` applies, and generation refuses any text carrying
+`mcp__quarry__` or the word "quarry" instead of letting ingest fail later. A control is a config with
+no tools **and** no annex (`IsControl`); a ladder may hold any number of annex cells beside its one
+control. Annex cells compare to the control like any rung (`rung-vs-control`), and to a tool-granted
+cell that hands the agent the same material (`a6-annex-toc-dir` vs `a2-toc-dir`, `b10-annex-impact`
+vs `b5-impact`) for the tool-form-vs-injection question. Measured sizes at the task pins:
+`toc-dir` over the task-01 scope is ~52 KB, `toc-full` ~250 KB, `toc-wide` (every package under
+`internal/`) ~480 KB; the task-04 `impact` is 1.4 KB.
+
 ## Session model
 
 **One session per repetition, for every config, running exactly one run agent and no scorer — plus one
@@ -420,6 +453,23 @@ suite-local.
 
 ## How to run
 
+**The one command.** From anywhere, no arguments, no flags:
+
+```
+bench/loomyard-eval/ladder/run-followup.sh          # or run-main.sh, run-task05.sh, run-toc.sh, run-annex.sh, run-compact.sh
+```
+
+(`run.sh <shortname|path> [results-root]` is the same thing for any ladder yaml or a chosen results root.)
+It runs that ladder file end to end -- preflight (toolchain, `claude`, `tmux`, the Loomyard checkout), every
+warm run session in declared order, every cold config, the scoring session, cold-cell finalisation,
+`summarize`, a `provenance.json` (quarry commit and dirty state, the built `quarry-mcp`'s embedded VCS
+stamp, the Loomyard commit, host) and a per-cell table that flags any tool-granted cell whose agent never
+called its tool. Results land in `results/<today>-<shortname>` unless a second argument names a root; the
+script is resumable into an existing root. The only machine-specific input is the Loomyard checkout:
+`export LADDER_LOOMYARD_REPO=...`, or put that one line in `<repo-root>/.scratch/ladder.env` (gitignored).
+Sessions are still live and watchable: `tmux attach -t ladder-run`. It wraps `tools/runmatrix --all`; the
+rest of this section is the step-by-step it automates, still valid for driving any single step by hand.
+
 **Operator prerequisites — set `run_model` and `max_turns` first.** `ladder.yaml` ships with
 `run_model: null` and `max_turns: null` — two operator-supplied pins now, not one. `RequirePins` refuses
 to run every gate-dependent subcommand while either, or `run_effort`, `scorer.model`, or `scorer.effort`,
@@ -459,8 +509,9 @@ watches and can close the pane exactly as with any other session in this suite, 
 type the launch command or the slash command by hand. `launch-session.sh` (repo root of this suite) is the
 single-session building block both this and `tools/launch.sh` (a zero-argument wrapper reading the
 scratch directory most recently prepared from `.scratch/ladder-sessions/.current`) are built on.
-`tools/runmatrix` deliberately stops short of the cold config and the scoring session -- see its own doc
-comment for why -- both are still driven by hand, per this section's own instructions below.
+Without `--all`, `tools/runmatrix` stops short of the scoring session -- see its own doc comment for why --
+which is then driven by `--scoring` (or by hand, per this section's own instructions below); the cold
+config is driven by `--cold-config`. `--all` (what `run.sh` runs) chains all of it in the one valid order.
 
 Once every run session for the matrix has ingested, prepare and launch the single scoring
 session:
@@ -516,6 +567,22 @@ run is a separate, repo-wide gate this suite's own tests do not invoke.
 bench/loomyard-eval/ladder/
 ├── README.md                    (this file)
 ├── ladder.yaml                  the single declarative source of truth
+├── ladder-followup.yaml         companion matrices (fix verification, task 05, toc-only, annex, compact), same schema
+├── ladder-task05.yaml
+├── ladder-toc.yaml
+├── ladder-annex.yaml
+├── ladder-compact.yaml
+├── run-main.sh                  THE one command, zero arguments: one per ladder file
+├── run-followup.sh
+├── run-task05.sh
+├── run-toc.sh
+├── run-annex.sh
+├── run-compact.sh
+├── run.sh                       what those exec: preflight + tools/runmatrix --all for one ladder file
+├── launch-session.sh            single-session building block (cd + claude flags) run.sh's tmux panes use
+├── tools/runmatrix/             matrix driver (--all: warm, cold, scoring, finalise, summarize, table)
+├── tools/reingest/              recompute usage.json for an existing results root
+├── tools/launch.sh              zero-argument relaunch of the most recently prepared session
 ├── cmd/ladderbench/              the eleven-subcommand session-boundary CLI (cobra)
 │   ├── root.go                  command tree; the package doc lists all eleven subcommands in order
 │   ├── preparesession.go        prepare-session
@@ -545,6 +612,8 @@ results/<YYYY-MM-DD>/
 ├── probe.json                   tracked
 ├── cold_cell.json               tracked
 ├── summary.json                 tracked
+├── provenance.json              tracked (written by run.sh / runmatrix --all: quarry commit + dirty
+│                                 state, built quarry-mcp's VCS stamp, Loomyard commit, host)
 ├── conclusion.md                tracked (written by the follow-up matrix task)
 └── raw/                         gitignored (results/**/raw/) — per-run transcript.jsonl,
                                   transcript.meta.json, answer.json, answer.redacted.json, usage.json,

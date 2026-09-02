@@ -54,8 +54,13 @@ func NeutraliseWorktree(path string) error {
 }
 
 // BuildWorktree builds one disposable task worktree at path, pinned to sha, off sourceRepo: `git -C
-// <sourceRepo> worktree add <path> <sha>`, then NeutraliseWorktree, then an assertion that
-// GateWorktreeNeutralised passes.
+// <sourceRepo> worktree prune`, then `git -C <sourceRepo> worktree add <path> <sha>`, then
+// NeutraliseWorktree, then an assertion that GateWorktreeNeutralised passes.
+//
+// The prune exists because the task worktrees live under /tmp, which WSL2 and many Linux hosts empty on
+// reboot while the source repo keeps the registration: `worktree add` then refuses with "missing but
+// already registered". prune drops exactly those registrations (a worktree whose directory is gone) and
+// touches nothing that still exists on disk, so it is safe to run unconditionally before every add.
 //
 // Returns a *HarnessError when a directory already exists at path, so a stale worktree is never silently
 // reused. EnsureTaskWorktrees is the idempotent caller; nothing else calls this directly.
@@ -64,6 +69,9 @@ func BuildWorktree(sourceRepo, path, sha string, git GitRunner) error {
 		return &HarnessError{Message: fmt.Sprintf("build_worktree: a directory already exists at %s -- refusing to reuse a stale worktree", path)}
 	}
 
+	if _, err := git("-C", sourceRepo, "worktree", "prune"); err != nil {
+		return fmt.Errorf("ladder: build worktree: prune stale registrations: %w", err)
+	}
 	if _, err := git("-C", sourceRepo, "worktree", "add", path, sha); err != nil {
 		return fmt.Errorf("ladder: build worktree: %w", err)
 	}

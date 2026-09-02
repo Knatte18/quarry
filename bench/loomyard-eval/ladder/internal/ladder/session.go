@@ -122,7 +122,7 @@ func PrepareRunSession(l *Ladder, c LadderConfig, n int, repoRoot, serverPath, t
 	hasServer := len(c.Allowed) > 0
 	if hasServer {
 		path := filepath.Join(scratchDir, serverDeclarationFilename)
-		if err := writeJSONDocument(path, MCPConfigDocument(serverPath, targetDir)); err != nil {
+		if err := writeJSONDocument(path, MCPConfigDocument(serverPath, targetDir, c.TOCFormat)); err != nil {
 			return SessionInputs{}, err
 		}
 	}

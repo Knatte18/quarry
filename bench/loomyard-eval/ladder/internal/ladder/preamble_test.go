@@ -22,7 +22,7 @@ func TestPreambleFor_ControlReproducesTheCommittedBPreambleShape(t *testing.T) {
 		t.Fatalf("ConfigByID(l, %q) = _, %v", "a0-none", err)
 	}
 
-	prompt := PreambleFor(l, a0, testTargetDir, testTaskText, testSchemaJSON)
+	prompt := PreambleFor(l, a0, testTargetDir, testTaskText, testSchemaJSON, "")
 
 	if !strings.Contains(prompt, PARALLEL_OPENING) {
 		t.Error("preamble does not contain PARALLEL_OPENING")
@@ -48,7 +48,7 @@ func TestPreambleFor_NoneControlNeverMentionsQuarry(t *testing.T) {
 			continue
 		}
 		t.Run(config.ID, func(t *testing.T) {
-			prompt := PreambleFor(l, config, testTargetDir, testTaskText, testSchemaJSON)
+			prompt := PreambleFor(l, config, testTargetDir, testTaskText, testSchemaJSON, "")
 			if strings.Contains(strings.ToLower(prompt), "quarry") {
 				t.Errorf("PreambleFor(l, %q, ...) mentions \"quarry\": %s", config.ID, prompt)
 			}
@@ -63,7 +63,7 @@ func TestPreambleFor_RungListsExactlyItsAllowedToolsInCanonicalOrder(t *testing.
 			continue
 		}
 		t.Run(config.ID, func(t *testing.T) {
-			prompt := PreambleFor(l, config, testTargetDir, testTaskText, testSchemaJSON)
+			prompt := PreambleFor(l, config, testTargetDir, testTaskText, testSchemaJSON, "")
 
 			// Every allowed tool's mcp__quarry__* name must appear, and no other canonical tool's
 			// name may appear.

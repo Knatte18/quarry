@@ -118,7 +118,20 @@ func printNextRun(out io.Writer, l *ladder.Ladder, repoRoot, resultsRoot, config
 	if err != nil {
 		return err
 	}
-	prompt := ladder.PreambleFor(l, pair.Config, targetDirFor(l, pair.Config, pair.N), taskText, schemaJSON)
+	targetDir := targetDirFor(l, pair.Config, pair.N)
+	annexText := ""
+	if pair.Config.Annex != "" {
+		scratchDir, err := ladder.SessionDir(l, repoRoot, pair.Config.ID, pair.N)
+		if err != nil {
+			return err
+		}
+		annex, err := ladder.ReadAnnex(scratchDir)
+		if err != nil {
+			return err
+		}
+		annexText = ladder.AnnexBlock(targetDir, annex)
+	}
+	prompt := ladder.PreambleFor(l, pair.Config, targetDir, taskText, schemaJSON, annexText)
 
 	fmt.Fprintf(out, "rep: %d\n", pair.N)
 	fmt.Fprintf(out, "attempt: %d\n", attempt)

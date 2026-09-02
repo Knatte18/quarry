@@ -170,11 +170,11 @@ func sessionLabel(kind, id string, n int) string {
 // a trailing newline to path, creating path's parent directory first. Used by the probe path only, which
 // is the one caller in this batch that owns a server path and target directory but calls a
 // PrepareXSession function (PrepareProbeSession) that writes no .mcp.json content of its own.
-func writeMCPConfigDocument(path, serverPath, targetDir string) error {
+func writeMCPConfigDocument(path, serverPath, targetDir, tocFormat string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("prepare-session: create %s: %w", filepath.Dir(path), err)
 	}
-	data, err := json.MarshalIndent(ladder.MCPConfigDocument(serverPath, targetDir), "", "  ")
+	data, err := json.MarshalIndent(ladder.MCPConfigDocument(serverPath, targetDir, tocFormat), "", "  ")
 	if err != nil {
 		return fmt.Errorf("prepare-session: marshal mcp config document: %w", err)
 	}
@@ -360,7 +360,7 @@ func runPrepareProbeSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, r
 	if err != nil {
 		return err
 	}
-	if err := writeMCPConfigDocument(filepath.Join(inputs.ScratchDir, mcpConfigFilename), serverPath, targetDir); err != nil {
+	if err := writeMCPConfigDocument(filepath.Join(inputs.ScratchDir, mcpConfigFilename), serverPath, targetDir, ""); err != nil {
 		return err
 	}
 
@@ -433,10 +433,38 @@ func runPrepareRunSession(cmd *cobra.Command, l *ladder.Ladder, resultsRoot, rep
 	if err != nil {
 		return err
 	}
+	if config.Annex != "" {
+		if err := generateAnnexInto(cmd.OutOrStdout(), l, config, repoRoot, targetDir, inputs.ScratchDir); err != nil {
+			return err
+		}
+	}
 	if err := installOrchestrationSkill(repoRoot); err != nil {
 		return err
 	}
 	printLaunchInfo(cmd.OutOrStdout(), inputs)
+	return nil
+}
+
+// generateAnnexInto builds the quarry CLI, runs config's annex recipe against targetDir, and writes the
+// attachment into scratchDir for next-run to inject and ingest to copy. Prints one line naming the kind
+// and size so the operator sees what every annex run is about to receive.
+func generateAnnexInto(out io.Writer, l *ladder.Ladder, config ladder.LadderConfig, repoRoot, targetDir, scratchDir string) error {
+	spec, err := ladder.AnnexFor(l, config)
+	if err != nil {
+		return err
+	}
+	cliPath, err := ladder.BuildCLI(repoRoot, realBuild)
+	if err != nil {
+		return err
+	}
+	annex, err := ladder.GenerateAnnex(spec, targetDir, cliPath, ladder.RunCLI)
+	if err != nil {
+		return err
+	}
+	if err := ladder.WriteAnnex(scratchDir, annex); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "annex: %s (%s), %d bytes, %d commands, dropped_callers=%d\n", config.Annex, annex.Kind, annex.Bytes, len(annex.Commands), annex.DroppedCallers)
 	return nil
 }
 
@@ -526,6 +554,11 @@ func prepareColdSessionAfterGate(cmd *cobra.Command, l *ladder.Ladder, config la
 	inputs, err := ladder.PrepareRunSession(l, config, rep, repoRoot, serverPath, targetDir)
 	if err != nil {
 		return err
+	}
+	if config.Annex != "" {
+		if err := generateAnnexInto(cmd.OutOrStdout(), l, config, repoRoot, targetDir, inputs.ScratchDir); err != nil {
+			return err
+		}
 	}
 	if err := installOrchestrationSkill(repoRoot); err != nil {
 		return err

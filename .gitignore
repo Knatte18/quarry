@@ -30,3 +30,6 @@ bench/loomyard-eval/ladder/results/**/.session-active
 **/.portals
 **/.vscode/
 # === end mill-managed ===
+
+# tools/runmatrix builds ladderbench here on every run
+/ladderbench

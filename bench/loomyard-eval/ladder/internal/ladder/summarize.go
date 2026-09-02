@@ -647,7 +647,7 @@ func BuildSummary(l *Ladder, resultsRoot string) (Summary, error) {
 
 	var nonControlConfigs []LadderConfig
 	for _, config := range l.Configs {
-		if len(config.Allowed) > 0 && !config.Cold {
+		if !IsControl(config) && !config.Cold {
 			nonControlConfigs = append(nonControlConfigs, config)
 		}
 	}

@@ -126,7 +126,7 @@ func TestSyntheticEndToEnd_MatchesFieldNamesAcrossEveryStageHandoff(t *testing.T
 		t.Fatalf("ObserveWorktreeDirtied() = %+v; want the fixture's own dirtied-true message", dirtied)
 	}
 
-	report := RunGates(records, l, config, *l.RunModel, "/repo/root", worktree, *l.MaxTurns, dirtied, t.TempDir(), nil)
+	report := RunGates(records, l, config, *l.RunModel, "/repo/root", worktree, *l.MaxTurns, dirtied, t.TempDir(), nil, "")
 	if !report.Passed() {
 		t.Fatalf("RunGates() = %+v; want a passing report", report.FatalFindings())
 	}
