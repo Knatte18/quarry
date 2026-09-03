@@ -43,7 +43,9 @@ batches:
     commit_sha: a1a21ddb2a669308d26bfbecd8ea5b4ac70d2e6c
     verify_baseline_failures: []
   - name: text-rules
-    state: pending
+    state: running
+    implementer_session: 7096c14b-9599-4fa0-840e-49dd203a6258
+    start_sha: c534f06430b2c78fb519f59c3e4b8cf0810e85c7
     verify_baseline_failures: []
   - name: answer-and-walk
     state: pending
