@@ -206,6 +206,10 @@ can host this code.
 - **The vocabulary, in full.** "Closed" is worth nothing unless the set is written down, so it is
   fixed here and the plan implements exactly these fifteen constants — no more, no fewer. `Detail`
   carries the offending segment, component or rune; the `Reason` is what tests assert on.
+  `errors.go` also declares `var Reasons = []Reason{…}` listing all fifteen in table order,
+  immediately below the constant block: Go cannot reflect over package-level constants, so this slice
+  is the only way a test or an exhaustive caller can enumerate them. Adding a constant means adding
+  it to `Reasons` in the same edit.
 
   | `Reason` | fires on | example input |
   |---|---|---|
@@ -225,14 +229,44 @@ can host this code.
   | `member_pointer` | the member carries `*` | `*dualHandler.Handle` |
   | `member_bad_rune` | a member rune is `#`, `/`, an ASCII control character, or whitespace | `a#b#c`, `A .b` |
 
-- **Precedence among the member reasons**, so a case that trips several is not ambiguous: `*`, then
-  `(`/`)`, then `[`/`]`, then the structural component checks (`member_empty`,
-  `member_empty_component`, `member_too_deep`), then per-component `member_keyword`, then
-  `member_not_identifier`, with `member_bad_rune` last as the fallback. `(*dualHandler).Handle`
-  therefore reports `member_pointer`, and `Renderer.Draw(int)` reports `member_parens`.
-  `internal/reedengine/render.Renderer.Draw` — the §7 `go doc` spelling — reports `no_separator`,
-  because it has no `#` at all and never reaches the member checks; that is the right message, since
-  the missing `#` is exactly what is wrong with it.
+- **Precedence among the member reasons**, so a case that trips several is not ambiguous. The order
+  is exactly this, and `member_bad_rune` is **not** a trailing fallback — it must be checked
+  *before* `member_not_identifier`, because every rune it covers (`#`, `/`, control, whitespace)
+  would otherwise also fail the identifier test and `member_bad_rune` could never fire at all:
+
+  1. the whole member half contains `*` → `member_pointer`
+  2. …contains `(` or `)` → `member_parens`
+  3. …contains `[` or `]` → `member_type_params`
+  4. structural component checks, in this order: `member_empty`, `member_empty_component`,
+     `member_too_deep`
+  5. then, per component, left to right, stopping at the first component that fails:
+     a. the component contains `#`, `/`, an ASCII control character, or whitespace →
+        `member_bad_rune`
+     b. the component is one of Go's 25 keywords → `member_keyword`
+     c. the component is not a Go identifier for any other reason → `member_not_identifier`
+
+  So `member_not_identifier` is the genuine last resort — a leading digit, a `-`, a `$` — and
+  `member_bad_rune` names the four rune classes that have a sharper explanation than "not an
+  identifier" (a stray separator, a path slash, or invisible whitespace the writer cannot see).
+  `(*dualHandler).Handle` reports `member_pointer`, `Renderer.Draw(int)` reports `member_parens`,
+  and `internal/reedengine/render.Renderer.Draw` — the §7 `go doc` spelling — reports
+  `no_separator`, because it has no `#` at all and never reaches the member checks; that is the
+  right message, since the missing `#` is exactly what is wrong with it.
+- **Precedence among the unit reasons**, stated to the same standard so a doubly-invalid unit has one
+  defined answer. Check the unit half as a whole first, then segment by segment, left to right,
+  stopping at the first segment that fails:
+
+  1. the unit half is empty → `unit_empty`
+  2. then, per segment, left to right, stopping at the first failing segment:
+     a. the segment is empty → `unit_empty_segment`
+     b. the segment is `.` or `..` → `unit_dot_segment`
+     c. the segment contains `\`, an ASCII control character, or whitespace → `unit_bad_rune`
+
+  Left-to-right, first-failure-wins is what makes the answer predictable, and the within-segment
+  order runs cheapest and most specific first. `internal/../lo gger#run` therefore reports
+  `unit_dot_segment`: the `..` segment comes before the segment holding the space, and the parser
+  stops there. `internal//lo gger#run` reports `unit_empty_segment` for the same reason.
+  The reject table below pins both of these.
 - **Why `member_type_params`, `member_parens` and `member_pointer` are separate** rather than folded
   into `member_bad_rune`: §3 says in as many words that type parameters are not part of a glyph and
   that pointer-ness is not part of a method's identity, and §7 warns that C# shapes and `go doc`
@@ -460,6 +494,8 @@ coverage by reading down the column. Each of the fifteen constants appears at le
 | `internal//logger#run` | `unit_empty_segment` |
 | `./internal/logger#run` | `unit_dot_segment` |
 | `internal/../logger#run` | `unit_dot_segment` |
+| `internal/../lo gger#run` (doubly invalid: `..` segment **and** a space) | `unit_dot_segment` |
+| `internal//lo gger#run` (doubly invalid: empty segment **and** a space) | `unit_empty_segment` |
 | `internal\logger#run` | `unit_bad_rune` |
 | `internal/my logger#run` | `unit_bad_rune` |
 | `" internal/logger#run"` (leading space, untrimmed) | `unit_bad_rune` |
@@ -482,14 +518,27 @@ coverage by reading down the column. Each of the fifteen constants appears at le
 | `"internal/logger#run "` (trailing space, untrimmed) | `member_bad_rune` |
 | `Parse(Language("python"), "no-hash")` | `unsupported_language` |
 
-The three rows that would otherwise be ambiguous are exactly the ones the precedence rule in
-Decisions settles: `(*dualHandler).Handle` carries both `*` and parentheses and reports
-`member_pointer`; `Renderer.Draw(int)` carries parentheses and reports `member_parens`; the §7
-dotted spelling never reaches the member checks at all and reports `no_separator`.
+The rows that would otherwise be ambiguous are exactly the ones the two precedence rules in Decisions
+settle, and they are in the table on purpose: `(*dualHandler).Handle` carries both `*` and
+parentheses and reports `member_pointer`; `Renderer.Draw(int)` carries parentheses and reports
+`member_parens`; `internal/../lo gger#run` and `internal//lo gger#run` each trip two unit checks and
+report the leftmost failing segment's reason; the §7 dotted spelling never reaches the member checks
+at all and reports `no_separator`.
 
-A completeness test iterates the `Reason` constants and fails if any constant has no reject case in
-the table. Because the vocabulary is closed and written down in Decisions, that test is a real
-check rather than a tautology: adding a sixteenth constant without a case fails the build.
+**The completeness test, and what it does and does not guarantee.** Go has no reflection over
+package-level constants, so no test can discover the `Reason` constants by itself. The enumeration
+is therefore an exported `var Reasons = []Reason{…}` in `errors.go`, declared immediately below the
+constant block, and the closed-vocabulary decision above is what obliges anyone adding a constant to
+add it there. The test ranges over `Reasons` and fails if any element has no reject case in the
+table.
+
+The honest statement of the guarantee: **adding a sixteenth constant and listing it in `Reasons`
+fails the build until a reject case exists; adding one without listing it in `Reasons` is not caught
+by any test.** That second gap is closed by review, not by the compiler — `errors.go` is one screen,
+the constant block and `Reasons` are adjacent in it, and a constant absent from `Reasons` is visible
+on sight. The earlier claim that this "fails the build" unconditionally was wrong and is not what the
+plan should implement. `Reasons` earns its place regardless: it is what makes the vocabulary
+enumerable at run time for any caller that wants to switch exhaustively over it.
 
 *Case sensitivity*: `internal/Logger#Foo` and `internal/logger#foo` are different glyphs and neither
 folds into the other.
