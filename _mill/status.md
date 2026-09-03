@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -32,4 +32,27 @@ plan-review-r6  '2026-09-03T18:15:50Z'
 plan-fix-r6  '2026-09-03T18:17:35Z'
 blocked  '2026-09-03T18:17:45Z'
 planned  '2026-09-03T18:30:07Z'
+implementing  '2026-09-03T18:30:31Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: foundations-and-config
+    state: pending
+  - name: stream-and-metrics
+    state: pending
+  - name: prompt-and-schema
+    state: pending
+  - name: gates-and-scorer
+    state: pending
+  - name: environment-and-provenance
+    state: pending
+  - name: run-loop
+    state: pending
+  - name: summarize-report-cli
+    state: pending
+  - name: integration-tests
+    state: pending
 ```
