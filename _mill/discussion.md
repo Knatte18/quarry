@@ -91,7 +91,9 @@ besides (see Constraints), under
 
 ### results-raw-ignored
 
-- Decision: `results/**/raw/` is **gitignored**. Committed per root:
+- Decision: raw output is **gitignored**, by the single pattern `results/*/raw/` in a new
+  `bench/loomyard-eval/ladder/.gitignore` (that spelling and that file, everywhere in this
+  document). Committed per root:
   `results/<root>/summary.json`, `results/<root>/provenance.json`, `results/<root>/table.txt` and
   `results/<root>/conclusion.md`. Ignored: `raw/<cell>/<rep>/{transcript.jsonl, answer.json,
   answer.redacted.json, usage.json, score.json, run.json}`.
@@ -159,13 +161,29 @@ besides (see Constraints), under
   `…/projects/-home-knatte-Code-loomyard-wts-loomyard/memory/` — the **main Loomyard repo's**
   memory, not the worktree's. Claude Code keys the project on the repository, not the working
   directory, so every cell loads whatever the operator has written about Loomyard.
-  Therefore: **after the first rep of a root completes**, the harness reads the directories named
-  in that rep's own `system.init.memory_paths`, scans them for the token (case-insensitive), and
-  aborts the run before any further rep if a file matches, naming it. Today those directories hold
-  six files and zero matches, but they are operator-mutable and will plausibly acquire quarry
-  mentions once T7 work reaches Loomyard — at which point every control would be silently
-  unblinded rather than loudly refused. `memory_paths` is also recorded in the session fingerprint
-  (see provenance), so a root stays auditable after the fact.
+  Therefore the harness scans those directories for the token (per token-matching) and aborts the
+  run if a file matches, naming it. Today they hold six files and zero matches, but they are
+  operator-mutable and will plausibly acquire quarry mentions once T7 work reaches Loomyard — at
+  which point every control would be silently unblinded rather than loudly refused.
+
+  **When the scan runs, including on resume.** The resolved paths are **persisted in
+  `provenance.json` as `memory_paths` — the paths themselves, not a boolean** (the session
+  fingerprint's `memory_paths_present` flag is a summary and is not what this check reads):
+  - Fresh root: the paths are unknown until a rep has run, so the scan happens **immediately after
+    the first rep completes**, before any further rep, and the paths are written to
+    `provenance.json` at that moment rather than at the end of the run.
+  - Resumed root: `provenance.json` already carries them, so the scan runs **at startup, before
+    the first new rep**, against the persisted paths. This is the case that would otherwise lapse
+    silently — rep 1 is already `complete` and gets skipped, so a resumed invocation would have
+    had nothing to scan.
+  - A resumed root whose `provenance.json` predates this field, or carries no `memory_paths`:
+    treated as unknown, and the harness re-derives it from the next completed rep exactly as in the
+    fresh case rather than assuming clean.
+
+  **Disposition of the rep that triggered it.** A rep run against a tainted memory directory was
+  not blinded, so it is discarded exactly like a gate-2 failure: `blinding_failed: true`, no
+  contribution to either median, counted in `blinding_failed_count`. It is not retried — the run
+  aborts.
 
   **The path is read, never derived.** This deliberately costs one rep rather than resolving the
   project directory ourselves: the only known way to compute
@@ -304,9 +322,11 @@ besides (see Constraints), under
   `terminal_reason`, `stop_reason`, `is_error`, `permission_denials`.
 
   Summed over **assistant records grouped by `message.id`** (never from `modelUsage`):
-  `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`. For
-  each group, take any record's `input_tokens`/cache figures and the **maximum**
-  `output_tokens` across the group's records.
+  `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and
+  `input_tokens_total` (= `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`,
+  reported alongside the three and never in place of them — see cache-contamination). For each
+  group, take any record's `input_tokens`/cache figures and the **maximum** `output_tokens` across
+  the group's records.
 
   From `tool_use` content blocks: `tool_uses` (total), `tool_uses_breakdown` (`map[name]count`),
   `quarry_tool_uses` (uses whose name starts with the MCP tool prefix — see mcp-tool-prefix, never
@@ -410,7 +430,11 @@ besides (see Constraints), under
   `quarry_dirty`, `quarry_dirty_files`, `loomyard_commit`, `loomyard_repo_sha256` (sha256 of the
   resolved `LADDER_LOOMYARD_REPO` path — the hash, never the path), `hostname`, `go_version`,
   `claude_version` (from `claude --version`), `server_hashes` (`"<cell>/<rep>" → sha256`, empty
-  when no cell grants an MCP tool), and `session_fingerprints`: for each rep, the fields lifted
+  when no cell grants an MCP tool), **`selected_cells`** (the config ids this run was asked to
+  execute, i.e. what `--cells` resolved to, defaulting to every cell in the file),
+  **`reps_effective`** (the `--reps` override, else the file's `reps`), **`memory_paths`** (the
+  resolved auto-memory directories — the paths, written as soon as the first rep reveals them; see
+  no-tmp-paths), and `session_fingerprints`: for each rep, the fields lifted
   from that run's `system.init` record — `claude_code_version`, `model`, `permissionMode`, `tools`,
   `mcp_servers`, whether `memory_paths` was non-empty, and the counts of `skills` and
   `slash_commands`.
@@ -440,7 +464,8 @@ besides (see Constraints), under
     field, `system.init`'s `cwd` included — not a selected subset of fields; check (d) runs on the
     rendered prompt before dispatch. In order, short-circuiting on a fatal:
     (a) the transcript contains the MCP tool prefix (see mcp-tool-prefix) → fatal;
-    (b) it contains the quarry repo root path → fatal; (c) case-insensitive bare `quarry`,
+    (b) it contains the quarry repo root path → fatal; (c) the bare token `quarry` (matched per
+    token-matching),
     recorded as the **always non-fatal** observation `target_origin_quarry_mention` (with a count
     and the record types it appeared in). It is an observation and not a verdict because the token
     has a legitimate source that the harness does not control — see below.
@@ -465,8 +490,10 @@ besides (see Constraints), under
     Rather than pretend, (c) is stated as what it is: an observation about the target's vocabulary.
 
   - **Check (d) — the prompt the harness itself renders.** Per rep, fatal, **before dispatch**: the
-    fully rendered prompt for a control cell must contain neither the token nor any name from the
-    file's `quarry_tools`, prefixed or bare. Fails the rep without spending an API call.
+    fully rendered prompt for a control cell must contain neither the bare token `quarry`, nor any
+    entry of the file's `quarry_tools`, nor the MCP prefix — each matched per token-matching, which
+    is what keeps a three-character tool name like `toc` from matching "protocol". Fails the rep
+    without spending an API call.
 
   The fatal checks are therefore (a), (b) and (d) — every one of them a property the *harness*
   controls and can be held to. (c) reports on the target's own contents, which the harness does not
@@ -640,7 +667,9 @@ besides (see Constraints), under
   as V1 did, so the rule text and its validator cannot drift. The answer is redacted before
   embedding: the alternation is built from the ladder file's own `quarry_tools` (bare and
   prefixed with the MCP tool prefix of mcp-tool-prefix), **the bare `server.name` token itself**,
-  the quarry repo root and the task worktree path.
+  the quarry repo root and the task worktree path — every one of them matched per token-matching,
+  so redacting a tool named `toc` cannot punch holes through words like "protocol" in the prose the
+  scorer grades.
   The bare server name is in the alternation deliberately: without it, an answer whose prose says
   "the quarry toc tool told me…" reaches the scorer intact and identifies the arm, defeating the
   decision's own stated invariant — and it is exactly the token gate 2's check (c) treats as
@@ -683,6 +712,29 @@ besides (see Constraints), under
   links C grammars and the failure otherwise reads as unrelated (V1's `BuildServer` doc comment).
 - Rejected: hardcoding the V1 build target and flags (blocks T2 until T6); taking the server
   binary as a CLI flag (a machine path on the command line, and no build-hash provenance).
+
+### token-matching
+
+- Decision: **one matching rule, used by gate 2 checks (c) and (d) and by the scorer's redactor
+  alike.** Two classes of pattern, and nothing else:
+  - **Bare identifier tokens** — the literal `quarry`, `server.name`, and each entry of the file's
+    `quarry_tools` — match **case-insensitively with word boundaries** (Go
+    `(?i)\b<token>\b`, the token regexp-quoted).
+  - **Composed strings** — the MCP prefix `mcp__<name>__`, the quarry repo root path, the task
+    worktree path — match as **case-sensitive plain substrings**, since they cannot occur
+    incidentally in prose.
+- Rationale: after ladder-toc-migration `quarry_tools` is the three-character token `toc`. Under a
+  substring reading, check (d) is fatal pre-dispatch on any control prompt containing "protocol",
+  "stochastic" or "October", killing every control rep before it runs; and the redactor would
+  punch holes through ordinary words in the answer prose that recall and precision are judged on,
+  silently degrading the scores it exists to protect. Word boundaries make a 3-character tool name
+  safe. The composed strings get substring matching because `\b` is meaningless against `__` and
+  path separators, and an accidental occurrence is not credible. Stating it once is the point:
+  check (c) said "bare `quarry`", check (d) said "any name … bare" and the redactor said
+  "bare and prefixed" — three phrasings of one idea, which is how they drift apart in code.
+- Rejected: substring everywhere (the `toc` failure above); word boundaries everywhere (breaks the
+  `mcp__x__` and path patterns); per-consumer rules (guarantees drift, which is the bug this
+  prevents).
 
 ### mcp-tool-prefix
 
@@ -771,13 +823,21 @@ besides (see Constraints), under
 - Decision: `ladder-toc.yaml` becomes: `quarry_tools: [toc]`; `a2-toc-dir` and `b8-toc-dir` get
   `allowed: [toc]` with their **ids unchanged**; `a1-toc-file` and `b9-toc-file` are deleted;
   `worktree:`, `session_dir_template:` and every `cold: false` line are removed. **At T2 merge the
-  file ships with its `server:` block fully written** (`build: ./cmd/quarry-mcp`, `name: quarry`,
-  and the args T6 will accept), because the block is inert until a tool-granting cell is actually
-  selected. T2's own end-to-end run is
-  `ladder run --config …/ladder-toc.yaml --cells a0-none --reps 1`, which selects only the control,
-  so nothing is built and the absent `cmd/quarry-mcp` is never referenced. T7 drops `--cells` and
-  runs the whole matrix. The file's long header comment is updated to describe the new harness,
-  keeping the design rationale for the a/b contrast.
+  `server:` block carries `name: quarry` and `build: ./cmd/quarry-mcp`, and omits `args:`
+  entirely** — T2 cannot write an argument list T6 has not chosen, and `args:` is optional (absent
+  ⇒ no arguments). T6/T7 add it when the server's flags exist. The block is inert either way until
+  a tool-granting cell is selected.
+
+  T2's own end-to-end run is
+  `ladder run --config …/ladder-toc.yaml --cells a0-none --reps 1`: only the control, so nothing is
+  built and the absent `cmd/quarry-mcp` is never referenced. **T7 runs `--cells a0-none,a2-toc-dir`**
+  at `reps: 5`, which is plan §12's T7 row exactly; `b0-none` and `b8-toc-dir` stay in the file as
+  the negative-control contrast the file's header describes, for a later run. (An earlier draft said
+  T7 "drops `--cells` and runs the whole matrix" — that would have silently widened §12's scope from
+  two cells to four.)
+
+  The file's long header comment is updated to describe the new harness, keeping the design
+  rationale for the a/b contrast.
 - Rationale: T6 ships exactly one tool, `toc`, so `toc_file` has no successor and its two cells
   cannot exist. The ids stay because the file's own comment says they are the cross-root join key
   and T7's done-criterion names `a0-none` and `a2-toc-dir` literally.
@@ -814,10 +874,11 @@ besides (see Constraints), under
 
   `allowed` and `is_control` drive gate 1 and the control identification; `ladder` and
   `control_for_ladder` drive the `RangesDisjoint` comparisons; `scored`/`max_turns_hit`/
-  `blinding_failed` drive the median exclusions and the three counters. The set of cells a root
-  *should* contain — needed for `incomplete[]` — comes from the directories present under `raw/`
-  plus `provenance.json`'s record of the run's selected cells (`ladder_file` is recorded for
-  provenance, and is not read back as configuration).
+  `blinding_failed` drive the median exclusions and the three counters. The set of reps a root
+  *should* contain — needed for `incomplete[]` — is `provenance.json`'s `selected_cells` ×
+  `reps_effective`; without both, `report` could not tell a cell that ran 3 of 5 reps from one that
+  ran 3 of 3. `ladder_file` is recorded for provenance only and is never read back as
+  configuration.
 
   No shell wrapper. The documented entry is
   `go run ./bench/loomyard-eval/ladder/cmd/ladder run --config bench/loomyard-eval/ladder/ladder-toc.yaml --results bench/loomyard-eval/ladder/results/<date>-toc`.
@@ -1008,6 +1069,11 @@ There is no `CONSTRAINTS.md` at the hub root. Constraints from the task brief, `
   `quarry_tools` entry, and passing on the real rendered control prompt. Plus gate 1 over a cell
   with reps where `quarry_tool_uses` is `0` in all versus `0` in some, and a summariser case proving
   a `blinding_failed` rep contributes to neither cost nor correctness medians.
+- `token-matching` — the shared matcher, table-tested with `quarry_tools: [toc]`: "protocol",
+  "stochastic" and "October" do **not** match; "toc", "TOC", "the toc tool" and "`toc`" do; the
+  `mcp__quarry__toc` prefix and a repo-root path match as substrings; a token containing regexp
+  metacharacters is quoted rather than interpreted. This is the test that keeps a 3-character tool
+  name from failing every control prompt.
 - `prompt.go` — `<TASK TEXT>` extraction, run against **both** ladder-referenced task files (`01-…`
   and `04-…`, whose answer-key headings differ) and asserting that no text from the `## Setup` or
   answer-key sections appears in the output. Since extraction is inclusion-based, the assertion is
@@ -1068,7 +1134,7 @@ contains. This is the acceptance step, not an automated test.
 ## Q&A log
 
 - **Q:** Package layout inside `bench/loomyard-eval/ladder/`? **A:** [auto-pick] `cmd/ladder/main.go` (thin) + `internal/ladder/` (one package, files per concern). **Why:** the shape V1 proved, keeps the yaml at its tracked paths, matches the plan's "files per concern, never a package per verb" rule, and keeps internals unit-testable.
-- **Q:** Is `results/**/raw/` committed or ignored (plan §11)? **A:** [auto-pick] Ignored; the derived artifacts (`summary.json`, `provenance.json`, `table.txt`, `conclusion.md`) are committed. **Why:** transcripts carry absolute host paths and no tracked file may carry a machine path; committing them would resurrect V1's whole redaction gate.
+- **Q:** Is `results/*/raw/` committed or ignored (plan §11)? **A:** [auto-pick] Ignored; the derived artifacts (`summary.json`, `provenance.json`, `table.txt`, `conclusion.md`) are committed. **Why:** transcripts carry absolute host paths and no tracked file may carry a machine path; committing them would resurrect V1's whole redaction gate.
 - **Q:** Worktree and scratch locations, given the yaml's `/tmp` paths? **A:** [auto-pick, revised in review rounds 1 and 2 — see the round-2 entry below for the final path] Task worktrees go **outside** the quarry repo and carry no `quarry` token; the harness's own scratch stays at `<repo>/.scratch/ladder/`. `worktree:`, `session_dir_template:`, `cold:`, `warm_counterpart:`, `cold_worktree_template:` are removed and the loader errors on them. **Why:** `/tmp` is banned, but the first answer — `<repo>/.scratch/ladder-worktrees/` — collided with the blinding gate: check (b) matches the quarry repo root, which would then be the cell's own `cwd` in every record. *(A round-1 revision of this entry also claimed a blinded agent with bare `Bash` could walk up into quarry's source. That was probed in round 2 and is false — Bash is confined to the session's working directory. The check-(b) reason stands alone.)*
 - **Q:** What happens to the other five `ladder*.yaml`? **A:** [auto-pick] Migrate `ladder-toc.yaml`; delete the other five. **Why:** they declare seven tools, annexes, cold cells and a daemon that no longer exist, so the new loader cannot load any of them; all five are recoverable at `origin/v1-final`. *(A round-1/2 draft justified this by generalising HANDOFF §2, which as written is about languages specifically — corrected in round 3; the unloadability argument stands on its own.)*
 - **Q:** Cell concurrency? **A:** [auto-pick] Strictly sequential, cell-minor rep ordering. **Why:** duration and cost are measured metrics and parallel runs share rate limits and the prompt cache; resume is what makes a serial run restartable.
@@ -1116,4 +1182,9 @@ contains. This is the acceptance step, not an automated test.
 - **Q:** [review round 5] Who reads `LADDER_LOOMYARD_REPO`? **A:** The harness. The environment variable wins; when unset it parses `KEY=VALUE` lines from `<quarry-repo>/.scratch/ladder.env` itself. **Why:** shell wrappers are banned and the documented entry is a bare `go run`, so nothing else could have sourced that file.
 - **Q:** [review round 5] Which `.gitignore` carries the raw rule? **A:** A new `bench/loomyard-eval/ladder/.gitignore` containing `results/*/raw/`. **Why:** a slash-bearing pattern in the repo-root `.gitignore` anchors to the root and would silently fail to match — and the consequence is tracked transcripts carrying machine paths.
 - **Q:** [review round 5] What happens to each task file's `## Scope` section? **A:** Dropped, like everything outside the two extracted blocks — and this matches V1 exactly. The operative scoping instruction is *inside* the `<TASK TEXT>` block in both ladder-referenced files (task 01 line 39, "Scope your answer to `internal/reedengine` and `internal/reedcli`"; task 04, "every real call site **within `internal/shedadapters`**"). The `## Scope` heading is documentation for the fasit author. **Why:** continuity with `v1-final` matters, and V1's `PreambleFor` likewise took only the task text.
+- **Q:** [review round 6] After migration `quarry_tools` is the 3-character token `toc` — what stops check (d) and the redactor matching "protocol"? **A:** A new token-matching decision, applied by checks (c) and (d) and the redactor alike: bare identifier tokens (`quarry`, `server.name`, each `quarry_tools` entry) match case-insensitively **with word boundaries**; composed strings (the `mcp__x__` prefix, the repo root, the worktree path) match as case-sensitive substrings. **Why:** substring matching on `toc` would fail every control prompt pre-dispatch and punch holes through the prose the scorer grades — and the three sites had three different phrasings of one idea, which is how they drift.
+- **Q:** [review round 6] On a resumed run, rep 1 is skipped — so what scans the auto-memory directories? **A:** The resolved paths are persisted in `provenance.json` as `memory_paths` (the paths, not a boolean), written the moment the first rep reveals them; a resumed run scans them **at startup**, before its first new rep. A root whose provenance predates the field is treated as unknown and re-derived, never assumed clean. The rep that exposed a tainted directory is discarded like a gate-2 failure. **Why:** as written the sole defence against operator-memory unblinding would silently lapse on exactly the runs most likely to be resumed — the long ones.
+- **Q:** [review round 6] How can T2 ship `server.args` that T6 has not chosen? **A:** It cannot, and now does not: the block ships `name` and `build`, and omits `args:` (optional, absent ⇒ no arguments) until T6's flags exist. **Why:** the migration and the server-block decision contradicted each other.
+- **Q:** [review round 6] Does T7 run the whole migrated matrix? **A:** No — `--cells a0-none,a2-toc-dir` at `reps: 5`, exactly plan §12's T7 row. `b0-none`/`b8-toc-dir` stay in the file for a later run. **Why:** an earlier draft would have silently widened §12 from two cells to four.
+- **Q:** [review round 6] Where does `report` learn how many reps a cell *should* have? **A:** `provenance.json` now carries `selected_cells` and `reps_effective`. **Why:** without them `report` cannot distinguish a cell that ran 3 of 5 from one that ran 3 of 3, so `incomplete[]` would be unreliable.
 - **Q:** Which V1 gates and metrics are retired? **A:** Retired: `GateRunPrompt`, `GateMaxTurns`, `GateModelPinned`, `GateNoTargetOverride`, `GateDeniedToolsNotUsed`, every cold/daemon gate; `denied_tool_attempts` and `_provisional` (`DenialShapePattern` was never validated against a real denial and the provisional flag was hardcoded `true`), `agent_id`, `transcript_source`, `server_vcs_modified`. **Why:** the CLI now enforces or reports each directly, or the field was structurally constant and carried no information.
