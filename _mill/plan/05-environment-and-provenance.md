@@ -36,6 +36,7 @@ this batch runs goes through the injectable runner seam the overview defines —
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
   - `bench/loomyard-eval/ladder/internal/ladder/match.go`
+  - `.scratch/ladder.env`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
@@ -48,8 +49,9 @@ this batch runs goes through the injectable runner seam the overview defines —
   layer on top of them.
   `ResolveLoomyardRepo(quarryRepoRoot string) (string, error)` reads the process environment
   variable `LADDER_LOOMYARD_REPO` first and, when it is unset or empty, parses simple
-  `KEY=VALUE` lines out of the gitignored file named `ladder.env` in the scratch directory
-  directly under the quarry repository root, ignoring blank lines and lines beginning with a hash. When neither yields a value, return an
+  `KEY=VALUE` lines out of `.scratch/ladder.env` beneath the quarry repository root — that exact
+  path, a file directly inside the scratch directory and not inside the harness's own
+  `.scratch/ladder/` subdirectory — ignoring blank lines and lines beginning with a hash. When neither yields a value, return an
   error naming both the variable and the file. Nothing else may read that variable: shell wrappers
   are banned and the documented entry point is a bare `go run`, which cannot source a file.
   `ResolveQuarryRepoRoot(start string) (string, error)` walks upward from the given directory to the

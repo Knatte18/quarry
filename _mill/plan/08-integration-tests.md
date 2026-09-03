@@ -159,9 +159,14 @@ its own `package main`.
   selected cells and the effective repetition count, since those are what the incomplete calculation
   needs. Deliberately omit the metrics file from both repetitions: the report path recomputes every
   metric from the transcript, and a fixture that cannot supply stored metrics proves it. Extend
-  `e2e_test.go` with a report case that copies the fixture root into a temporary directory, runs the
+  `e2e_test.go` with a report case that copies the fixture root into a temporary directory **under
+  the same base-name directory `root`**, runs the
   summarise-and-report path over the copy, and compares the produced summary and table byte-for-byte
-  against the two golden files, while the fake binary — placed on the path for the duration — asserts
+  against the two golden files with no field normalisation and no exclusions. That comparison is
+  exact only because the summary and the table each carry the root's base name and no wall-clock
+  time, per the overview's no-machine-paths-in-tracked-output decision, and because the CLI version
+  in the header comes from the fixture's own provenance record; preserving the base name across the
+  copy is therefore load-bearing, not incidental. Meanwhile the fake binary — placed on the path for the duration — asserts
   it was **never invoked**, which is the subcommand's entire justification. Assert in the same case
   that the recall and precision medians exclude the ceiling repetition while its cost metrics are
   included, and that the max-turns and unscored counters are populated. Write the two golden files

@@ -14,9 +14,11 @@ depends-on: [1, 2, 3]
 This batch delivers the two surviving gates and the scorer. Both are judgment layers over a
 finished rep, both consume the transcript records of batch 2 and the token matcher of batch 1, and
 both must agree on what the giveaway token is — which is why they land together rather than either
-one landing beside the run loop that calls them. The external interface batch 6 consumes is
-`CheckGrantedToolUsed`, `CheckBlinding`, `CheckRenderedControlPrompt`, `BuildScorerPrompt`,
-`RedactAnswer` and `ParseScorerReply`.
+one landing beside the run loop that calls them. Batch 6's run loop consumes `CheckBlinding`,
+`CheckRenderedControlPrompt`, `CheckWorktreeDirtied`, `BuildScorerPrompt`, `RedactAnswer` and
+`ParseScorerReply`; `CheckGrantedToolUsed` is consumed by **batch 7's summariser**, not by the run
+loop, because gate 1 is a judgment over a whole cell's repetitions and only the summariser has all
+of them.
 
 Batch-local decision: `gates.go` takes every fact it cannot compute from the transcript as an
 explicit argument — the pinned worktree's tracked-file token presence, the auto-loaded project
@@ -92,7 +94,7 @@ supplies those and the gates stay pure and directly table-testable.
 - **Requirements:** create `package ladder` file `score.go`. Port `ExplorationRule` and `ImpactRule`
   verbatim from `origin/v1-final:bench/loomyard-eval/ladder/internal/ladder/score.go`, keeping the
   schema-to-rule map, and port `StripFasitMeta`, which returns a shallow copy of a decoded fasit
-  with its top-level meta block removed and leaves every other field verbatim. Port
+  with its top-level `_meta` key -- that exact spelling, leading underscore included, as the committed fasit files carry it -- removed and leaves every other field verbatim. Port
   `scoreFieldsFromRule` and the key-matching regexp it uses, deriving the required field set from
   each rule's own fenced example so the rule text and its validator cannot drift, and build the
   per-schema required-field map from it. Port `ParseScorerReply`, decoding the **first** fenced
@@ -141,6 +143,7 @@ supplies those and the gates stay pure and directly table-testable.
   - `bench/loomyard-eval/ladder/internal/ladder/score.go`
   - `bench/loomyard-eval/ladder/internal/ladder/match.go`
   - `bench/loomyard-eval/ladder/internal/ladder/prompt.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/config.go`
   - `bench/loomyard-eval/tasks/01-reed-geometry-exploration.md`
   - `bench/loomyard-eval/tasks/01-reed-geometry-exploration.fasit.json`
 - **Edits:** none
@@ -164,7 +167,7 @@ supplies those and the gates stay pure and directly table-testable.
   granted cell where one rep reports a non-zero count (no finding), and a control cell with zero
   uses (no finding, because the allowed list is empty). Write `score_test.go` asserting: the derived
   required-field set for each rule equals exactly the field names that rule's own example declares;
-  meta stripping removes only the top-level meta key and leaves every other field byte-identical,
+  meta stripping removes only the top-level `_meta` key and leaves every other field byte-identical,
   run against the real task 01 fasit; the reply parser accepts a well-formed reply and rejects one
   missing a required field, naming it; the redactor removes the tool name bare, the tool name
   prefixed, the bare server name and both supplied paths, while leaving the word `protocol` intact;

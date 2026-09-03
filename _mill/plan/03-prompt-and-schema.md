@@ -139,6 +139,8 @@ silent invalidation of every affected run rather than a visible error.
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/prompt.go`
   - `bench/loomyard-eval/ladder/internal/ladder/fenced.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/match.go`
   - `bench/loomyard-eval/tasks/01-reed-geometry-exploration.md`
   - `bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.md`
 - **Edits:** none
