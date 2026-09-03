@@ -103,9 +103,12 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
   `end` (1-based, inclusive), `signature` (verbatim source), `doc` (complete, never truncated by
   extraction), and `file` (relative to the repository root, never absolute) wherever entries can span
   files. `resolve`, `members` and `map` all return this entry and nothing else for a symbol.
-- **One file entry everywhere:** `name`, `header`, the deviations only when true (`test`,
-  `generated`, `package` when it differs from the directory's), and `symbols` — filled for a file
-  query, absent for a directory query, filled for a directory only on explicit request.
+- **One file entry everywhere, carrying only what is the file's own:** `name`, `header`, the
+  deviations only when present (`test`, `generated`, `package` when it differs from the
+  directory's, as `logger_test` does), and `symbols` — filled for a file query, absent for a
+  directory query, filled for a directory only on explicit request. Everything the files share —
+  `dir`, `package`, `language` — lives on the directory answer that holds them, once. A file query
+  is a directory answer with one file entry; the file never repeats its parent's facts.
 - **Shared facts once, defaults never.** Package, directory and language are stated once at the top.
   `test: false`, `generated: false`, `ok: true` inside data, empty `dirs: []`, and a directory prefix
   repeated on every path are V1 clutter: 25 files carried 100 fields that said nothing.
