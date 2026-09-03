@@ -5,9 +5,9 @@ reference. `main` is cleaned out and the rewrite is built there under the same m
 `github.com/Knatte18/quarry`. There is no "V2" in any name: when this plan is done, what is on `main`
 is quarry.
 
-The benchmark harness (`bench/loomyard-eval/ladder/`), the research notes (`docs/research/`), the
-results roots and `HANDOFF.md` stay where they are. They are the measurement record that motivates
-this document and the instrument that will measure the result.
+The research notes (`docs/research/`), every results root with its `conclusion.md`, and
+`HANDOFF.md` stay where they are: they are the measurement record that motivates this document.
+The V1 harness code is replaced (§9a); the results it produced are kept.
 
 ## 1. Why a rewrite, in four measured lessons
 
@@ -44,7 +44,8 @@ Non-test lines at `2565ef5`:
 | `internal/cli`, `internal/mcpserver`, `internal/output`, `cmd/*`, `quarry/` facade | ~4 500 | **deleted and rebuilt** from the contract, much smaller: three verbs, not seven |
 | `go.mod`: tree-sitter Rust and TypeScript grammars, LSP/JSON-RPC deps, `gopls` requirement | | **removed** — three focus languages, no daemon |
 | `testdata/{impactfixture,clockfixture,buildtagfixture}` | | deleted with the layer that used them |
-| `bench/`, `docs/`, `HANDOFF.md`, results | 17 000 (harness) | untouched |
+| `bench/loomyard-eval/ladder/{cmd,internal,tools}`, `run*.sh`, `launch-session.sh`, `.claude/skills/ladder-run` | 9 000 (+8 300 test) | **deleted and rebuilt** around headless `claude -p` (§9a), ~1 000–1 500 lines |
+| `bench/loomyard-eval/ladder/results/**`, `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/`, `HANDOFF.md` | | kept — the record, the fasit, the task prompts |
 
 The first commit on `main` after this document is the deletion, so nothing half-V1 can survive into
 the new code. Until the new `cmd/quarry-mcp` exists the harness cannot run; that is expected and
@@ -412,8 +413,12 @@ direct control of everything the old one inferred.
 | the turn ceiling | `--max-turns N` (accepted, not in `--help`) | `terminal_reason: max_turns` |
 | the transcript | `--output-format stream-json --verbose` on stdout | every assistant and tool record, with usage |
 | usage, including `output_tokens` | per-message `usage` and a final `result` with `num_turns`, `duration_ms`, `total_cost_usd` (a list-price estimate, `costBasis: list`), `modelUsage` | yes — fixes `HANDOFF.md` §2 rule 5 |
+| model and effort | `--model claude-sonnet-5 --effort medium` | both accepted; effort is not echoed in the result, so the harness records the flags it passed |
 | no session residue | `--no-session-persistence` | yes |
 | stdin | must be `< /dev/null`, or a warning lands in the stream | yes |
+
+`modelUsage` in the final record also shows a little Haiku usage — Claude Code's own overhead, not
+the run — so metrics come from the assistant records, which carry the model, never from that total.
 
 The V1 README retired an earlier `claude -p` port for being "a headless subprocess the operator
 cannot see inside". That is `tee` to a log file and `tail -f`. No other reason is recorded.
@@ -445,6 +450,29 @@ retired with the architecture that needed them.
 - Languages beyond Go, Python, C#.
 - Renaming or editing source. Quarry reads.
 - Compact-by-default. Views are options; extraction is complete.
+
+## 12. Work breakdown — one mill task per row
+
+Each task gets its own wiki entry, worktree and agent. `after` is the hard dependency; tasks in the
+same wave have none between them and run in parallel. Every task ends with `go build ./... && go
+test ./...` green in its worktree and one merge to `main`.
+
+| wave | task | scope | after | done when |
+|---|---|---|---|---|
+| 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, Rust/TypeScript grammars and LSP deps from `go.mod`; keep `toc`, `treesitter`, the extension table, results, yaml, tasks, docs | — | tree builds and tests green with only the extractors; nothing under `internal/` references a daemon |
+| 1 | **T1 glyph package** | `glyph/`: pure Go, no deps; structural split at `#`; the Go alphabet (unit path, `_test` unit, `Type.Name`, `init`); `Parse`, `String`, canonical form; table tests from `docs/glyph.md` §1–§3 including rejects | T0 | every example and corner case in the spec is a test; `go list -deps` shows no cgo |
+| 1 | **T2 harness** | `bench/loomyard-eval/ladder/`: one Go program around `claude -p` per §9a; yaml loader for the kept shape; worktree pin; MCP config; stream-json capture and metrics; scorer; `summary.json`, `provenance.json`, table; resume; the two surviving gates. Integration test against a stub MCP server, not quarry | T0 | a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` completes end to end on this host, and the metrics match the transcript by hand |
+| 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`; `map` in the engine re-keyed by glyph | T1 | `map` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose |
+| 3 | **T4 resolve + members** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`); grouping by unit; `members` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
+| 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `map`, `resolve`, `members` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
+| 5 | **T6 MCP** | `cmd/quarry-mcp` as a mirror of the CLI: three tools, verb names, JSON in `content[].text`, text view on request | T5 | the harness probe of §9a runs against it: connect, `map` call, allowlist denial |
+| 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir` → `map`) with T2 against T6, reps 5; write `results/<date>-map/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `results/2026-09-02-toc`, or the conclusion says why not |
+| 7 | **T8 Python and C#** | their alphabets in `glyph/`; extractor gaps of §6 (nested classes, attributes, `@overload`, partial, fields, properties, arity, modifiers); `members` heads; package doc sources | T7 | the spec's Python and C# examples resolve on fixtures |
+| 7 | **T9 Loomyard adoption** (Loomyard repo) | `planparser` imports `glyph`; validator over the facade per §8.1; planner gets the validator as a tool; stencil rule; card done-checks of §8.1 | T5 | a plan with a misspelled glyph is rejected before dispatch, with the glyph and the reason |
+| 8 | **T10 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
+
+Waves 1 and 7 are the parallel ones. T2 is the long pole of wave 1 and overlaps waves 2–5; it
+needs no quarry code until T7. T9 is Loomyard work and can start as soon as T5 merges.
 
 ## 11. Open decisions
 
