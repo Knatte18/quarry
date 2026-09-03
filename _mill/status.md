@@ -6,6 +6,7 @@ slug: glyph-package
 branch: glyph-package
 plan: _mill/plan
 parent: main
+module_verify_baseline: pre-existing-failures
 task: The glyph package (T1)
 task_description: |
   The glyph package (T1)
@@ -40,7 +41,11 @@ implementing  '2026-09-03T17:08:36Z'
 ```yaml
 batches:
   - name: types-and-printer
-    state: pending
+    state: running
+    implementer_session: a97b913c-a38f-4dd6-9dd3-db3b60c85b27
+    start_sha: f7827b1552ab64ae8488787e406e63853ce727de
+    verify_baseline_failures: ["FAIL\t./glyph [setup failed]"]
   - name: parser-and-go-alphabet
     state: pending
+    verify_baseline_failures: ["FAIL\t./glyph [setup failed]"]
 ```
