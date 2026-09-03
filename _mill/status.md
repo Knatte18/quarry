@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: glyph-package
 branch: glyph-package
 plan: _mill/plan
@@ -32,4 +32,15 @@ plan-fix-r4  '2026-09-03T17:02:54Z'
 plan-review-r5  '2026-09-03T17:07:15Z'
 plan-fix-r5  '2026-09-03T17:08:00Z'
 planned  '2026-09-03T17:08:09Z'
+implementing  '2026-09-03T17:08:36Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: types-and-printer
+    state: pending
+  - name: parser-and-go-alphabet
+    state: pending
 ```
