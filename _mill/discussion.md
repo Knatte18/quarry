@@ -160,9 +160,26 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - Rationale: glyph.md §3's table says Go glyphs cover "package-level `func`, `type`, `const`, `var`;
   methods; interface methods". A `toc` that lists fewer than the glyph contract names leaves those
   declarations unaddressable, and the round-trip criterion would pass vacuously over them.
+- **Span and signature per shape**, stated as explicitly as the type case already is:
+
+  | shape | Start / End | Signature | SigEnd |
+  |---|---|---|---|
+  | ungrouped `const X = 1`, `var x int` | the **declaration's** span, doc via `CommentBlockAbove(decl)` — the same reason the ungrouped type uses `decl` and not `spec`: `decl` is the node with `source_file` siblings | `SignatureCut(decl, nil, src)`, i.e. the whole declaration text trimmed, carrying the `const`/`var` keyword | `0` |
+  | grouped `const ( … )` / `var ( … )`, one spec | the **spec's** span, doc via `CommentBlockAbove(spec)` | the keyword prepended to the spec's own text — `"const " + SignatureCut(spec, nil, src)`, mirroring the grouped type's `"type " + …` so grouped and ungrouped render identically | `0` |
+  | several names in one spec, `var x, y int` | one symbol per name, **all sharing that spec's span, doc and signature text** | as its row above | `0` |
+  | an `iota` spec that is a bare name, `B` with no type and no value | the spec's span | the keyword plus the spec text, so `"const B"` — verbatim, never synthesised from the preceding spec | `0` |
+  | interface method (`method_elem`) | the `method_elem`'s span, doc via `CommentBlockAbove(method_elem)` | the `method_elem`'s own text | `0` |
+
+  `SigEnd` is `0` for every one of them: none has a body-bearing child, which is exactly the type
+  alias case `nodes.go:SigEnd` already documents, and `omitempty` therefore omits the key.
+- Several names in one spec produce **distinct glyphs over identical spans**, which the round trip
+  handles without a special case: D6 asserts set-equality *per glyph*, and each of `x` and `y` maps
+  to that one span.
 - Note: a grouped `const`/`var` spec's docstring association reuses the grouped-type rule already in
   `nodes.go` (`CommentBlockAbove` walking a spec's prev-siblings inside the declaration), so this is
-  a new node kind on an existing rule, not a new rule.
+  a new node kind on an existing rule, not a new rule. The grouped-versus-ungrouped test is
+  `goDeclIsGrouped`'s literal-`(`-child check, for the same reason it is used on types: a
+  single-spec group is legal and a spec-count test would misroute it.
 - Rejected: keeping the current three kinds (contradicts glyph.md); one symbol per *spec* rather than
   per name (`var x, y int` would then have one glyph for two symbols, and neither `x` nor `y` would
   resolve).
@@ -201,6 +218,30 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - Rejected: treating any `_test`-suffixed package as external (misfires on real package names);
   treating `_test.go` *files* as the discriminator (wrong — §6 and glyph.md both key on the package
   clause, not the filename).
+
+**The repository root has no unit, so its own `.go` files carry no symbols.** A `.go` file directly
+in the root would take the unit `""` under the rule above, and `glyph.Parse` rejects it —
+`glyph/golang.go:checkGoUnit` returns `ReasonUnitEmpty` for `""` and `ReasonUnitDotSegment` for `"."`.
+So: files in the root directory are **listed** like any other file (`name`, `header`, `test`,
+`generated`) but their entry carries **no `symbols`**, and `SpansOf` never produces a root span. The
+root directory answer's `dir` is `"."`.
+
+- Rationale: T3 must not invent an alphabet element. glyph.md §6 makes the `glyph` package the one
+  implementation of the grammar and this discussion's Scope puts that package out of bounds, so the
+  only alternative to excluding root symbols would be minting a unit spelling `Parse` rejects —
+  which fails Testing 15's parse assertion and leaves `SpansOf` nothing to invert. Emitting nothing
+  is the honest answer to a name the contract cannot spell.
+- The cost is presently zero and measured: **neither quarry nor Loomyard has a single `.go` file in
+  its repository root**, so nothing the done-criterion checks is lost, and the round trip stays exact
+  because a file with no listed symbols has nothing to invert.
+- **Recorded as a glyph.md gap, not closed here.** glyph.md §2 spells a Go unit as "the path relative
+  to the repository root" and never says what the root itself spells. The two candidate answers — a
+  reserved literal (as C# reserves `global` for the global namespace) or the module's own path from
+  `go.mod` — both change the alphabet, so they belong in a glyph.md amendment against a repository
+  that actually needs one, not in T3.
+- Rejected: minting `"."` or `""` as the unit (rejected by `Parse` today, so every such glyph would
+  be unreadable); adding a `glyph` package change to this task (out of scope, and a single-file task
+  changing the shared identifier contract is exactly the coupling §7's ordering avoids).
 
 ### D8 — Package doc: the block above the clause that begins `Package <name>`
 
@@ -250,9 +291,14 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - Decision: a second extension table, `extensionHeaderRules`, maps an extension to a pure-text header
   extractor. `.md` → first ATX or setext heading plus the first paragraph after it; `.html`/`.htm` →
   a leading `<!-- … -->`; `.css` → a leading `/* … */`; `.js`/`.mjs`/`.ts` → a leading `//` block or
-  `/* … */`; `.yaml`/`.yml`/`.toml`/`.sh`/`.bash`/`.zsh`/`Makefile` → a leading `#` block, skipping a
+  `/* … */`; `.yaml`/`.yml`/`.toml`/`.sh`/`.bash`/`.zsh` → a leading `#` block, skipping a
   shebang line. Every other extension yields no header, so the entry is `name` alone. None of these
   files ever gets `symbols`, and the `symbols` knob does not change them.
+- **Two tables, not one.** `extensionHeaderRules` is keyed by extension; a second, small
+  `baseNameHeaderRules` is consulted **only when `filepath.Ext` returns `""`**, and holds
+  `Makefile` and `Dockerfile` → the same `#`-block rule. An extensionless file is a real case
+  (`Makefile` is the obvious one) and an extension-keyed map cannot express it, so it gets its own
+  lookup rather than a sentinel key that reads like an extension and is not one.
 - Rationale: §4 states the rule and the reason ("the question `toc` answers is whether a file is
   worth opening"). These are text rules, not grammars: adding a tree-sitter grammar per markup
   format would pull in cgo dependencies §2 just deleted.
@@ -399,6 +445,11 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   2. otherwise, if `U` ends in `_test` and the directory `strings.TrimSuffix(U, "_test")` exists,
      search that directory restricted to files whose clause is exactly `<dirPackage>_test`;
   3. otherwise, no directory — an empty slice (T4 turns this into `unit: not_found`).
+
+  In every branch the directory's `.go` files are filtered through **the same ignore set `TOC` uses**
+  (D9, collected fresh per call per D22) before being parsed. Without that filter a gitignored `.go`
+  file beside listed ones would contribute spans `toc` never listed — a round-trip *extra* under
+  Testing 14/15, and a `resolve` in T4 that points at a file `toc` says does not exist.
   When **both** directories exist, both interpretations are collected and the collision is recorded
   on the result for T4 to report as `ambiguous`; T3 itself returns the union of spans, so the round
   trip stays exact either way.
@@ -426,6 +477,13 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   from a tracked file, matching T2's convention. Tests that need it: **skip** when the variable is
   unset or names a nonexistent directory; **fail** when it is set but the checkout's `HEAD` is not
   `72c23d9` (the commit §4's examples were taken at).
+- **Mechanism for the pin check:** the test runs `exec.Command("git", "-C", <repo>, "rev-parse",
+  "HEAD")` and compares the prefix. It does **not** parse `.git/HEAD` — the Loomyard checkout is a
+  git *worktree*, whose `.git` is a file pointing into `worktrees/`, so the naive read gets the wrong
+  ref or none. A `git` binary that is missing or errors → `t.Skip` with the reason, treated as "no
+  usable checkout" rather than as a mismatch. D9's rejection of a git subprocess does not apply here:
+  that was about the engine's per-answer read path, measured in milliseconds; this is one process per
+  test run, in a test, and it is the only exact way to read a worktree's HEAD.
 - Rationale: no tracked file may carry a machine path (CLAUDE.md / task constraints). The
   skip-versus-fail split is the difference between "this machine has no Loomyard", which is normal,
   and "this machine has the wrong Loomyard", which would let the task's own done-criterion pass
@@ -477,10 +535,14 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   1. an absolute path, or one that leaves the root once cleaned (any leading `..`) →
      `ErrTargetOutsideRepo`;
   2. a path that does not exist under the root → `ErrTargetNotFound`;
-  3. otherwise it is answered, **even when it is gitignored** — the ignore rule filters *listings*,
+  3. a target that is **itself a symlink** is answered the way D19 lists one — a `name`-only file
+     entry inside its parent's directory answer, never followed, never opened — so the stat is
+     `os.Lstat`, never `os.Stat`. Naming the call matters: `os.Stat` follows the link and would
+     silently descend into the target, contradicting D19 for the one path D19 does not cover;
+  4. otherwise it is answered, **even when it is gitignored** — the ignore rule filters *listings*,
      never an explicit ask.
 
-  Both are package-level sentinels wrapped with `fmt.Errorf("...: %w", …)`, so `errors.Is` survives
+  Both sentinels are package-level wrapped with `fmt.Errorf("...: %w", …)`, so `errors.Is` survives
   wrapping. `""` and `"."` both mean the repository root and are valid.
 - Rationale: T5a's `ok`/`status` and exit codes map exactly this vocabulary, and the discussion's own
   position is that T3 pins the envelope's shape — pinning only its success half would hand the
@@ -646,8 +708,17 @@ gate.
     cycle (`a/ → b/ → a/`); assert each is a `name`-only file entry, that `--depth all` terminates,
     and that nothing behind a link is ever listed or parsed.
 11c. Target validation (D20): an absolute target, a `..`-escaping target, a nonexistent target
-    (each its own sentinel via `errors.Is`), a gitignored target (answered, not refused), and `""`
-    and `"."` both meaning the root.
+    (each its own sentinel via `errors.Is`), a gitignored target (answered, not refused), a target
+    that is itself a symlink (`name`-only entry, not followed), and `""` and `"."` both meaning the
+    root, whose answer carries `dir: "."`.
+11d. The root package (D7): a fixture with a `.go` file in the fixture root — assert it is listed
+    with its header and that its entry carries **no** `symbols`, and that `SpansOf` returns nothing
+    for any name in it.
+11e. `const`/`var` derivation (D5): the five shapes of D5's table — ungrouped, grouped, several
+    names in one spec (distinct ids, identical spans), a bare `iota` spec, and an interface method —
+    each asserted on `id`, span, `signature` and the absence of `sigend`.
+11f. Extensionless files (D10): a `Makefile` with a leading `#` block resolves through the
+    base-name table; a `Dockerfile`; an extensionless file in neither table gets `name` alone.
 
 **Golden tests against Loomyard** (env-gated per D17):
 
