@@ -36,15 +36,26 @@ type Strategy interface {
 	// the directory — the field reports only what the file itself declares.
 	Package(root *ts.Node, src []byte) string
 
+	// PackageDoc returns the file's package documentation, or "" when this file carries none. This
+	// is a different rule from Header: Header returns the first non-directive leading comment
+	// block, wherever it sits, while PackageDoc returns only a block that is both immediately above
+	// the package clause and recognisable as package documentation by the language's own
+	// convention. Both are needed because a file can carry one, the other, or both — a file header
+	// and a package doc comment are two separate leading blocks, and only PackageDoc's stricter
+	// rule tells them apart.
+	PackageDoc(root *ts.Node, src []byte) string
+
 	// Generated reports whether the file's leading comment matches this language's generated-file
-	// banner convention. known is false for a language with no reliable rule; the caller must then
-	// omit the "generated" key entirely rather than emit a false generated value.
-	Generated(root *ts.Node, src []byte) (generated bool, known bool)
+	// banner convention. With Go the only language and its own generated-file rule always known,
+	// there is no caller left for a "rule not known for this language" signal; a second language
+	// with no reliable rule reintroduces that signal and its return value together, rather than
+	// carrying an always-true known flag no one reads.
+	Generated(root *ts.Node, src []byte) bool
 
 	// TestFile reports whether base (a file's base name) names a test file by this language's
-	// toolchain or framework convention. known is false for a language with no reliable rule; the
-	// caller must then omit the "test" key entirely rather than emit a false isTest value.
-	TestFile(base string) (isTest bool, known bool)
+	// toolchain or framework convention. See Generated's doc comment for why this has one return
+	// value rather than the (isTest, known) pair a language with no reliable rule would need.
+	TestFile(base string) bool
 }
 
 // strategies is the unexported package-level registry: canonical language name to its registered
