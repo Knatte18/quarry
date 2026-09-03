@@ -16,12 +16,11 @@ import (
 // goExtraction is every Go Strategy method's output for one parsed fixture, gathered in a single
 // treesitter.WithTree call so each table row stays one fixture plus its expectation.
 type goExtraction struct {
-	Symbols        []Symbol
-	Header         string
-	Package        string
-	Partial        bool
-	Generated      bool
-	GeneratedKnown bool
+	Symbols   []Symbol
+	Header    string
+	Package   string
+	Partial   bool
+	Generated bool
 }
 
 // extractGo parses src as Go and runs every registered goStrategy method against the resulting
@@ -40,7 +39,7 @@ func extractGo(t *testing.T, src string) goExtraction {
 		got.Header = strategy.Header(root, b)
 		got.Package = strategy.Package(root, b)
 		got.Partial = partial
-		got.Generated, got.GeneratedKnown = strategy.Generated(root, b)
+		got.Generated = strategy.Generated(root, b)
 		return nil
 	})
 	if err != nil {
@@ -422,9 +421,6 @@ func TestGoStrategy_Header(t *testing.T) {
 			if got.Generated != tt.wantGenerated {
 				t.Errorf("Generated() generated = %v; want %v", got.Generated, tt.wantGenerated)
 			}
-			if !got.GeneratedKnown {
-				t.Error("Generated() known = false; want true for go")
-			}
 		})
 	}
 }
@@ -445,12 +441,9 @@ func TestGoStrategy_TestFile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotIsTest, gotKnown := strategy.TestFile(tt.base)
+			gotIsTest := strategy.TestFile(tt.base)
 			if gotIsTest != tt.wantIsTest {
 				t.Errorf("TestFile(%q) isTest = %v; want %v", tt.base, gotIsTest, tt.wantIsTest)
-			}
-			if !gotKnown {
-				t.Errorf("TestFile(%q) known = false; want true for go", tt.base)
 			}
 		})
 	}

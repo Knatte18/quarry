@@ -96,12 +96,13 @@ func TestGeneratedByBanner(t *testing.T) {
 // swapRegistry.
 type fakeStrategy struct{ lang string }
 
-func (f fakeStrategy) Language() string                                 { return f.lang }
-func (f fakeStrategy) Symbols(root *ts.Node, src []byte) []Symbol       { return nil }
-func (f fakeStrategy) Header(root *ts.Node, src []byte) string          { return "" }
-func (f fakeStrategy) Package(root *ts.Node, src []byte) string         { return "" }
-func (f fakeStrategy) Generated(root *ts.Node, src []byte) (bool, bool) { return false, false }
-func (f fakeStrategy) TestFile(base string) (bool, bool)                { return false, false }
+func (f fakeStrategy) Language() string                            { return f.lang }
+func (f fakeStrategy) Symbols(root *ts.Node, src []byte) []Symbol  { return nil }
+func (f fakeStrategy) Header(root *ts.Node, src []byte) string     { return "" }
+func (f fakeStrategy) Package(root *ts.Node, src []byte) string    { return "" }
+func (f fakeStrategy) PackageDoc(root *ts.Node, src []byte) string { return "" }
+func (f fakeStrategy) Generated(root *ts.Node, src []byte) bool    { return false }
+func (f fakeStrategy) TestFile(base string) bool                   { return false }
 
 func TestRegister_PanicsOnDuplicateLanguage(t *testing.T) {
 	// Isolate this subtest's registration from the rest of the package's test binary: copy the
