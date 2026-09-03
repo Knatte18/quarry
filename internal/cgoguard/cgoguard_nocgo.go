@@ -1,7 +1,7 @@
 // cgoguard_nocgo.go fails a CGO_ENABLED=0 build at compile time with a readable message, instead
 // of letting the build proceed until a tree-sitter-importing package hits the raw cgo linker
-// error. See cgoguard.go for why this pair of files lives in the engine root package rather than
-// in internal/quarryengine/treesitter.
+// error. See cgoguard.go for why this pair of files lives in its own package rather than inside
+// internal/engine or internal/engine/treesitter.
 //
 // The failure mode here is deliberately a compile error, not a _test.go assertion: a test only
 // runs under `go test`, so a CGO_ENABLED=0 `go build ./...`, `go vet ./...` (this task's own
@@ -12,7 +12,7 @@
 
 //go:build !cgo
 
-package quarryengine
+package cgoguard
 
 // var _ deliberately references an undeclared identifier so the compiler's "undefined:" error
 // names the fix directly: quarry requires CGO_ENABLED=1 and a C toolchain to build, because the
