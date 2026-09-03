@@ -167,8 +167,10 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Moves:** none
 - **Requirements:**
 
-  `glyph/string_test.go` declares `package glyph` and holds a table test over hand-built `Glyph`
-  values asserting the exact printed string. Imports are limited to `testing`. Cases, at minimum:
+  `glyph/string_test.go` opens with a file-level comment naming the tables it holds — matching
+  `internal/quarryengine/toc/toc_test.go`'s own opening comment — then declares `package glyph` and
+  holds a table test over hand-built `Glyph` values asserting the exact printed string. Imports are
+  limited to `testing`. Cases, at minimum:
 
   - a package-level Go name: `Glyph{Lang: Go, Unit: "internal/logger", Name: "stderrHandlerSnapshot"}`
     prints `internal/logger#stderrHandlerSnapshot`;
