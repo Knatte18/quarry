@@ -337,6 +337,22 @@ can host this code.
 - **Decision:** the package exports no `New(...)` and no `Glyph.Validate()`. `String()` is total: it
   never returns an error, never panics, and does not validate. A `Glyph` built by hand is the
   builder's responsibility, and this is documented on the type.
+- **The print form, stated once so later alphabets inherit it rather than re-deciding it:**
+
+  ```
+  Unit + "#" + strings.Join(append(Owner, Name), ".") + params
+  ```
+
+  where `params` is `""` when `Params` is nil and `"(" + strings.Join(Params, ",") + ")"` otherwise
+  (the nil-versus-empty rule above). The owner chain joins with `.`, outermost first, exactly as §3
+  defines the member — "the symbol's own name, preceded by the names of the types that enclose it,
+  outermost first, joined with `.`" — so a two-element `Owner` prints `Outer.Inner.Name`, which is
+  already the shape §3's Python (`Beta.Inner.handle`) and C# (`Outer.Inner.Name`) alphabets need. Go
+  never produces more than one element, but the rule is language-free and is not Go's to own; writing
+  it down now is what stops the Python task from inventing a second join. `String()` applies this
+  form to whatever the struct holds, which is what "pure printer" means: a three-element `Owner` under
+  `Lang: Go` prints a string `Parse` would reject, and that is the builder's error to have made, not
+  `String`'s to police.
 - **Rationale:** T3 builds `Glyph` values directly from the tree-sitter parse rather than from a
   string, and its own done criterion — the whole-repository round trip, where every declaration `toc`
   lists resolves back to its own span — is a stronger check than a constructor would be. Adding a
@@ -625,8 +641,12 @@ folds into the other.
   every accepted `s`, and parsing a printed `Glyph` yields an equal `Glyph`. Because Parse is strict
   (see Decisions), this property is total over the accept set with no exceptions to carve out — if a
   case needs an exception, the strictness decision has been violated somewhere.
-- `String()` never panics: exercise the zero `Glyph` and a `Glyph` with an over-deep `Owner`, asserting
-  only that it returns.
+- `String()` never panics, **and the over-deep case asserts the printed string, not merely that the
+  call returns**: a `Glyph{Lang: Go, Unit: "internal/logger", Owner: []string{"Outer", "Inner"},
+  Name: "handle"}` prints `internal/logger#Outer.Inner.handle` — the owner-join rule applied
+  literally, producing a string `Parse` would reject under the Go alphabet. That is the pure-printer
+  contract made visible, and it pins the join rule the later alphabets inherit. The zero `Glyph` is
+  exercised too, asserting only that it returns.
 
 **Not tests:** the no-cgo / stdlib-only guarantee is a verify command, `go list -deps ./glyph`, run in
 the plan's verification step, with the single pass condition stated under Technical context →
@@ -672,7 +692,7 @@ merged; the first blocks T3 from meeting its done criterion.
 - **Q:** One file or files per concern? **A:** [auto-pick] `doc.go`, `glyph.go`, `parse.go`, `golang.go`, `errors.go`. **Why:** matches `toc`'s layout and plan §12 T3's "one package, files per concern"; makes the language-free skeleton visible in the structure, and a second alphabet becomes one new file.
 - **Q:** How are the tests laid out and traced back to the spec? **A:** [auto-pick] Table tests per concern, hand-transcribed, every case naming the `docs/glyph.md` section it came from. **Why:** the done criterion is per-example, so traceability has to be visible in the table; generating cases by reading `docs/glyph.md` at test time is fragile and against the package's no-file-reading rule.
 - **Q:** The §1–§3 Python and C# examples must each be a test, but neither language may be defined. How? **A:** [auto-pick] Test the structural split alone on each of them (white-box), plus a test that any non-`Go` `Language` returns `unsupported_language`. **Why:** it is the half of those examples this task can honestly test, and it is exactly the claim the brief makes about the skeleton; skipping them fails the criterion and defining the constants is explicitly banned.
-- **Q:** What characters may a unit segment contain? **A:** [auto-pick] Any except `/`, `#`, `\`, ASCII control characters and whitespace; segments non-empty and never `.` or `..`. **Why:** a Go directory may legally be named with Unicode, `.`, `-` or `+`, so a portable-filename class would reject valid units; the whitespace ban is this task's own proposal rather than anything the spec derives (§6 tolerates glyphs that need quoting), and is logged as a non-blocking spec question the hub may accept or drop.
+- **Q:** What characters may a unit segment contain? **A:** [auto-pick] Any except `\`, ASCII control characters and whitespace; segments non-empty and never `.` or `..`. (`/` is the segment separator and cannot occur inside a segment by construction; `#` needed no ban either, since the split consumes the first one — see the Decision "The Go unit alphabet", which is authoritative here and forbids implementing an unreachable `#` check.) **Why:** a Go directory may legally be named with Unicode, `.`, `-` or `+`, so a portable-filename class would reject valid units; the whitespace ban is this task's own proposal rather than anything the spec derives (§6 tolerates glyphs that need quoting), and is logged as a non-blocking spec question the hub may accept or drop.
 - **Q:** What is a valid member component? **A:** [auto-pick] Go's own Unicode identifier rule — first rune `_` or `unicode.IsLetter`, later runes add `unicode.IsDigit` — with at most two `.`-separated components and no parentheses or brackets. **Why:** §3 fixes the shape; Go identifiers are Unicode and `toc` will emit them in T3, so ASCII-only would be wrong.
 - **Q:** Does `Parse` special-case the `_test` external-test unit? **A:** [auto-pick] No — it is an ordinary path to the parser; the meaning is T4's. **Why:** the fixed struct has no flag for it, and telling the directory `logger_test` from the external test package of `logger` needs source, which this package never reads. The spec's example is still a test: it parses and round-trips.
 - **Q:** Is "no cgo, stdlib only" a Go test or a verify command? **A:** [auto-pick] A verify command, `go list -deps ./glyph`. **Why:** the done criterion is already phrased as that command; shelling out to the toolchain from a unit test is slow and environment-dependent. Note the engine's `CGO_ENABLED=0` guard means the *repository* cannot build without cgo by design — only this package's dependency list is checked.
