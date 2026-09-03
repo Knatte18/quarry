@@ -46,7 +46,8 @@ can host this code.
 
 **Out:**
 
-- `Python` and `CSharp` `Language` constants. §1 reserves the names for later; the task says
+- `Python` and `CSharp` `Language` constants. §6 reserves those names for later ("`Python` and
+  `CSharp` are the names reserved for the alphabets below"); the task says
   explicitly: *do not define them, do not stub them.* Their alphabets are exercised only through the
   language-free structural split (see Decision "Python and C# examples as split-only tests").
 - Any engine code, file reading, tree-sitter, or filesystem access. `resolve` (T4) is where a glyph
@@ -107,8 +108,20 @@ can host this code.
   Keeping the "more than one `#`" case as a member reject rather than a pre-split reject is what makes
   the skeleton untouched when Python or C# is added: those alphabets decide for themselves what their
   member half may contain.
+- **Reject precedence is fixed: the language check runs first.** `Parse` validates `lang` before it
+  touches `s` at all, so an input that fails both checks reports `unsupported_language`, never
+  `no_separator` — `Parse(Language("python"), "no-hash")` is `unsupported_language`. This is not a
+  detail the tests may leave to chance: the `unsupported_language` cases would otherwise have to be
+  chosen to be well-formed glyphs to avoid depending on an unstated order, and a later reader would
+  not know whether that was deliberate. Stating it lets those cases use any input at all. The
+  ordering also follows from what the two checks mean: `lang` says which alphabet `s` is being read
+  in, so "which alphabet" must be answerable before "is `s` well-formed".
+- **After the language check, the order within one Go parse is:** structural split (`no_separator`),
+  then the unit half, then the member half. A string failing both halves reports the unit's reason,
+  because the unit is what the message should name first.
 - **Rejected:** rejecting any string containing more than one `#` before the split (bakes a Go rule
-  into the language-free layer); splitting at the last `#`.
+  into the language-free layer); splitting at the last `#`; validating `s` before `lang` (leaves the
+  reason for a doubly-invalid input undefined).
 
 ### The Go unit alphabet
 
@@ -119,9 +132,14 @@ can host this code.
   named any of them. There is no leading `./`, no leading `/`, and no trailing `/`.
 - **Rationale:** §2 — the Go unit is "its path relative to the repository root". The `.`/`..`/empty
   bans keep one directory from having two spellings. The backslash ban catches a Windows path pasted
-  in. The whitespace ban is the one rule §2 does not state; it is taken from §6's writing-down rules
-  (a glyph must be safe unquoted inside a YAML token and usable as a bare CLI positional argument),
-  and is recorded below as a non-blocking spec question.
+  in. The whitespace ban is the one rule the spec does not state, and it is **this task's proposal,
+  not a consequence of §6.** §6 is explicitly willing to live with glyphs that need quoting — it says
+  of C#'s `(`, `,` and `<` that a writer should "quote them where a format cares" — so nothing in the
+  spec derives a whitespace ban. The argument for it is weaker and separate: a unit containing a space
+  gives one directory two easily-confused spellings in a plan file, and no Go repository in evidence
+  needs one. T1 adopts it so the alphabet is closed rather than open-ended, and routes it to the hub
+  below as a non-blocking spec question the hub may accept or drop. Dropping it deletes one predicate
+  in `golang.go` and one reject-table row.
 - **`_test` needs no special handling.** §2's external-test-package unit, `internal/logger_test`, is
   an ordinary path as far as the parser is concerned — it satisfies the segment rules with no rule of
   its own. The fixed struct carries no flag for it, and distinguishing "the directory `logger_test`"
@@ -333,6 +351,11 @@ first, watch them fail, then implement.
   member validator (which then rejects it).
 - `unsupported_language`: `Parse` with `Language("python")`, `Language("csharp")`, `Language("")` and
   some arbitrary value each returns that reason and the zero `Glyph`.
+- **Reject precedence**, asserting the order the Decisions section fixes: `Parse(Language("python"),
+  "no-hash")` — an input that fails both the language check and the split — returns
+  `unsupported_language`, not `no_separator`. One case for a doubly-invalid input pins the order so a
+  later refactor cannot silently swap the two checks; because of it, the `unsupported_language` cases
+  above are free to use any input rather than being restricted to well-formed glyphs.
 
 **`golang_test.go` — the Go alphabet. The main table, and the bulk of the work.**
 
@@ -391,9 +414,13 @@ merged; the first blocks T3 from meeting its done criterion.
    root is spelled. T1 rejects both `.` and `""`. If Loomyard (or any repository the T3 round trip
    runs over) has a root package, §2 needs a sentence before T3 can claim "zero misses". Adopting
    either spelling later is a change in one place in `golang.go` plus one accept-table row.
-2. **Non-blocking — whitespace in a unit.** §2 does not forbid it, but §6's writing-down rules (safe
-   unquoted in a YAML token, a bare CLI positional) require it. T1 rejects whitespace in the unit. If
-   the hub disagrees, §2 should say so and the rule is dropped in one place.
+2. **Non-blocking — whitespace in a unit, offered as a proposal.** §2 does not forbid whitespace in a
+   unit segment, and nothing in the spec derives a ban: §6 accepts glyphs that need quoting ("quote
+   them where a format cares" about C#'s `(`, `,` and `<`), so "must be safe unquoted" is not a rule
+   the contract states. T1 rejects whitespace anyway, on the narrower ground that a unit with a space
+   gives one directory two easily-confused spellings in a plan file. **The hub is free to accept the
+   rule into §2 or to drop it**; this is not a gap in the spec so much as an offer to close one.
+   Dropping it deletes one predicate in `golang.go` and one reject-table row, and nothing else moves.
 
 ## Q&A log
 
@@ -408,7 +435,7 @@ merged; the first blocks T3 from meeting its done criterion.
 - **Q:** One file or files per concern? **A:** [auto-pick] `doc.go`, `glyph.go`, `parse.go`, `golang.go`, `errors.go`. **Why:** matches `toc`'s layout and plan §12 T3's "one package, files per concern"; makes the language-free skeleton visible in the structure, and a second alphabet becomes one new file.
 - **Q:** How are the tests laid out and traced back to the spec? **A:** [auto-pick] Table tests per concern, hand-transcribed, every case naming the `docs/glyph.md` section it came from. **Why:** the done criterion is per-example, so traceability has to be visible in the table; generating cases by reading `docs/glyph.md` at test time is fragile and against the package's no-file-reading rule.
 - **Q:** The §1–§3 Python and C# examples must each be a test, but neither language may be defined. How? **A:** [auto-pick] Test the structural split alone on each of them (white-box), plus a test that any non-`Go` `Language` returns `unsupported_language`. **Why:** it is the half of those examples this task can honestly test, and it is exactly the claim the brief makes about the skeleton; skipping them fails the criterion and defining the constants is explicitly banned.
-- **Q:** What characters may a unit segment contain? **A:** [auto-pick] Any except `/`, `#`, `\`, ASCII control characters and whitespace; segments non-empty and never `.` or `..`. **Why:** a Go directory may legally be named with Unicode, `.`, `-` or `+`, so a portable-filename class would reject valid units; the whitespace ban comes from §6's writing-down rules and is logged as a non-blocking spec question since §2 does not state it.
+- **Q:** What characters may a unit segment contain? **A:** [auto-pick] Any except `/`, `#`, `\`, ASCII control characters and whitespace; segments non-empty and never `.` or `..`. **Why:** a Go directory may legally be named with Unicode, `.`, `-` or `+`, so a portable-filename class would reject valid units; the whitespace ban is this task's own proposal rather than anything the spec derives (§6 tolerates glyphs that need quoting), and is logged as a non-blocking spec question the hub may accept or drop.
 - **Q:** What is a valid member component? **A:** [auto-pick] Go's own Unicode identifier rule — first rune `_` or `unicode.IsLetter`, later runes add `unicode.IsDigit` — with at most two `.`-separated components and no parentheses or brackets. **Why:** §3 fixes the shape; Go identifiers are Unicode and `toc` will emit them in T3, so ASCII-only would be wrong.
 - **Q:** Does `Parse` special-case the `_test` external-test unit? **A:** [auto-pick] No — it is an ordinary path to the parser; the meaning is T4's. **Why:** the fixed struct has no flag for it, and telling the directory `logger_test` from the external test package of `logger` needs source, which this package never reads. The spec's example is still a test: it parses and round-trips.
 - **Q:** Is "no cgo, stdlib only" a Go test or a verify command? **A:** [auto-pick] A verify command, `go list -deps ./glyph`. **Why:** the done criterion is already phrased as that command; shelling out to the toolchain from a unit test is slow and environment-dependent. Note the engine's `CGO_ENABLED=0` guard means the *repository* cannot build without cgo by design — only this package's dependency list is checked.
