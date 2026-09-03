@@ -1,5 +1,11 @@
 # HANDOFF — state as of 2026-09-02 evening, and what to do next
 
+> **2026-09-03: superseded by the rewrite.** V1 is frozen on the `v1-final` branch (worktree
+> `wts/v1-final`). `main` is being cleaned out and rebuilt per `docs/rewrite-plan.md`, which is the
+> plan a fresh session should act on. Everything below is the V1 record — its measurements and
+> rules still hold, and the rewrite plan cites them — but the §3–§6 "next step" items are replaced by
+> the build order in `docs/rewrite-plan.md` §9.
+
 Self-contained: a fresh session on any machine should be able to act on this file alone. The research
 report it descends from is `docs/research/quarry-improvement-research.md`; the benchmark suite is
 `bench/loomyard-eval/ladder/` (its README is the reference for design, metrics, scoring, and the
