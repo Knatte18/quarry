@@ -58,13 +58,13 @@ tasks:
     pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
     worktree: /tmp/loomyard-eval-01
     schema: exploration
-    fasit: bench/loomyard-eval/results/2026-08-28/01-reed-geometry-exploration/c.json
+    fasit: bench/loomyard-eval/tasks/01-reed-geometry-exploration.fasit.json
   04-shedadapters-shuttle-impact:
     task_file: bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.md
     pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
     worktree: /tmp/loomyard-eval-04
     schema: impact
-    fasit: bench/loomyard-eval/results/2026-08-28/04-shedadapters-shuttle-impact/c.json
+    fasit: bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.fasit.json
 
 # Resolved from the LADDER_LOOMYARD_REPO environment variable at the point a session actually needs a
 # real Loomyard checkout (LoadLadder requires this literal, ResolveSourceRepo reads the variable) -- never

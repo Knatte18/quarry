@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "quarry": {
-      "command": "go",
-      "args": ["run", "./cmd/quarry-mcp"]
-    }
-  }
-}
