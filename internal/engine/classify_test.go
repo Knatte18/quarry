@@ -1,7 +1,7 @@
 // classify_test.go covers IsDirectiveBlock, TestFileByName, GeneratedByBanner, and the
 // Register/StrategyFor registry machinery declared in strategy.go.
 
-package toc
+package engine
 
 import (
 	"testing"

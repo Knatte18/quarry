@@ -1,7 +1,7 @@
 // extension_test.go table-drives LanguageForExtension over the extension set plus its edge cases,
 // and pins ExtensionLanguages/ExtensionsForLanguage against the same map.
 
-package toc
+package engine
 
 import (
 	"reflect"

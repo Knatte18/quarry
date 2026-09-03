@@ -1,6 +1,6 @@
 // comments_test.go covers StripLineComment, StripComment, and FirstParagraph.
 
-package toc
+package engine
 
 import "testing"
 
