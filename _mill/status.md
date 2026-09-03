@@ -55,7 +55,9 @@ batches:
     commit_sha: 980ed238de273e4bf228910233b789f556e48b1d
     verify_baseline_failures: []
   - name: prompt-and-schema
-    state: pending
+    state: running
+    implementer_session: 66e4f644-c6df-4e09-b2a1-fdb896a51351
+    start_sha: f5a4c3ecb7a14df83d43a634da82b6a925f40e1c
     verify_baseline_failures: []
   - name: gates-and-scorer
     state: pending
