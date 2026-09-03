@@ -33,6 +33,7 @@ accounting fix cost a re-report rather than a re-run.
   - `bench/loomyard-eval/ladder/internal/ladder/metrics.go`
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/score.go`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
@@ -62,7 +63,12 @@ accounting fix cost a re-report rather than a re-run.
   therefore legitimately differ, and both are reported.
   The set of repetitions a root *should* contain is the provenance record's selected cells crossed
   with its effective repetition count; a cell short of that count, counting only repetitions that are
-  present **and** not void, is added to the incomplete slice. Any cell with a non-zero
+  present **and** not void, is added to the incomplete slice. A results root whose provenance record
+  is **absent** — the reader returns a nil record and no error for that case — is an error naming the
+  missing file, not an empty incomplete list: the run subcommand writes that record before its first
+  repetition, so a raw tree without one is a hand-assembled or truncated root, and reporting an empty
+  incomplete list for it would make an unknowably short root read as finished. That is exactly the
+  failure the merge-never-overwrite policy exists to prevent, and it must not reappear here. Any cell with a non-zero
   blinding-failed count is added to the invalid slice. Port V1's `Comparison` and `RangesDisjoint`
   from `origin/v1-final:bench/loomyard-eval/ladder/internal/ladder/summarize.go` unchanged in
   substance — a comparison holds between a rung cell and its own ladder letter's control, and
@@ -110,6 +116,7 @@ accounting fix cost a re-report rather than a re-run.
   - `bench/loomyard-eval/ladder/internal/ladder/report.go`
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/cmd/ladder/main.go`
@@ -139,6 +146,7 @@ accounting fix cost a re-report rather than a re-run.
   - `bench/loomyard-eval/ladder/internal/ladder/report.go`
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/score.go`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/summarize_test.go`
@@ -150,7 +158,9 @@ accounting fix cost a re-report rather than a re-run.
   count over an odd and an even number of values; the disjointness predicate for overlapping and
   non-overlapping ranges; the incomplete slice populated when a cell has fewer present, non-void
   repetitions than the provenance record's selected cells crossed with its effective repetition
-  count, and empty when it has exactly that many; and the three exclusion rules asserted
+  count, and empty when it has exactly that many; a raw tree with no provenance record at all
+  producing an error naming the missing file rather than an empty incomplete list; and the three
+  exclusion rules asserted
   independently — a blinding-failed repetition contributes to neither the cost nor the correctness
   medians, is not counted as present for the incomplete calculation, and puts its cell in the invalid
   slice; a max-turns repetition contributes cost but not recall or precision and increments its own

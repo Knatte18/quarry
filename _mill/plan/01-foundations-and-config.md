@@ -102,6 +102,14 @@ rejection table harder to read than the code it tests.
   `(*Ladder) ControlFor(letter string) (Config, bool)`, the latter finding the single config whose
   ladder letter matches and whose allowed list is empty — by field, never by parsing an id. Add
   `(Config) IsControl() bool` returning whether the allowed list is empty.
+  Declare here, in this same file, the package-level slice
+  `BuiltinTools = []string{"Read", "Grep", "Glob", "Bash"}` that the overview's
+  the-four-built-in-tools decision fixes. It lives in the earliest file of the DAG precisely so that
+  every consumer — the prompt renderer of batch 3, the gate tests of batch 4, the run loop of batch
+  6 and the live test of batch 8 — is strictly downstream of its declaration and none of them has to
+  re-spell the names. Give it a doc comment recording that the CLI's session-init record reports the
+  same set back in sorted order, `["Bash","Glob","Grep","Read"]`, so a test asserting the reported
+  list compares against the sorted form rather than this one.
 - **Commit:** `feat(ladder): add the ladder yaml shape and loader`
 
 ### Card 4: loader validations, kept and newly-refusing
@@ -163,7 +171,14 @@ rejection table harder to read than the code it tests.
   file-level tool has no successor in the server's shipped surface; keep the entries about the
   missing exploration fasit and the grep-toc control, updating the latter to say the harness renders
   one identical preamble for every cell and allows one control per ladder letter, so a per-config
-  prompt is a harness change rather than a configuration change. Drop every sentence about session
+  prompt is a harness change rather than a configuration change. Keep the fourth entry — annex
+  delivery and the compact output form — as forward work rather than dropping it with the deleted
+  files: both need engine features that do not exist yet, so they are out of this harness's scope
+  rather than out of the project's, and the entry stays as the record of why the two deleted ladder
+  files' subject matter has no successor here. Add one line stating that the server block's future
+  argument list may use the placeholder `{target_dir}`, for which the harness substitutes the pinned
+  worktree path — the contract card 22 defines, written down here so the MCP-server task spells it
+  identically. Drop every sentence about session
   scratch templates, cold cells, the daemon, the seven V1 tool names and the deleted shell entry
   point, and replace the closing run instruction with the documented entry
   point `go run ./bench/loomyard-eval/ladder/cmd/ladder run --config

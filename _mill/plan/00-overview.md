@@ -169,9 +169,14 @@ Batch-local decisions live in each batch file._
 - **Decision:** every cell, control and treatment alike, is granted exactly the built-in tool set
   `Read`, `Grep`, `Glob`, `Bash` — passed as the CLI's tools value in that spelling, and reported
   back by the session-init record as the sorted list `["Bash","Glob","Grep","Read"]`. Declare it
-  once as a package-level slice in `run.go` (card 26) and reference that identifier from every other
+  once as a package-level slice in `config.go` (batch 1, card 3) — the earliest file in the DAG, so
+  every consuming site is strictly downstream of it — and reference that identifier from every other
   site rather than re-spelling the names: the rendered prompt's tool list, gate check (d)'s passing
-  case, the fake binary's flag assertion and the live test's session-init assertion. `Bash` is
+  case in the tests, the run loop's tools value, and the live test's session-init assertion. The
+  fake binary of batch 8 is the one site that cannot reference it, since it is a separate `package
+  main` built into a temporary directory; the test passes it the expected value through an
+  environment variable built from the slice, so the fake still never spells the names itself.
+  `Bash` is
   granted bare, exactly as V1 did — narrowing it to read-only command patterns would make denied
   Bash calls a behavioural difference between arms, which is the confound one identical preamble
   exists to remove.
@@ -179,7 +184,7 @@ Batch-local decisions live in each batch file._
   eventually be spelled four ways. The sorted-versus-passed distinction matters too: the value
   passed and the value reported differ in order, and a test asserting the wrong one fails for the
   wrong reason.
-- **Applies to:** batches 3, 4, 6, 8
+- **Applies to:** batches 1, 3, 4, 6, 8
 
 ### Decision: the-six-per-repetition-filenames
 

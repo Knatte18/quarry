@@ -16,7 +16,11 @@ the assumptions about the real CLI that no offline test can. It builds two small
 from the package's own test data — a stub MCP server and a fake measured process — drives the run
 loop end to end against them including resume and the failure path, checks the report subcommand
 against a committed fixture root and golden output, and adds the environment-guarded smoke test.
-It depends on batch 7 because it exercises both subcommands.
+It depends on batch 7 because every one of those paths ends in the summariser and the table renderer
+that batch adds. The binary's own flag wiring is deliberately **not** exercised by any test: the
+tests drive the library entry points directly, since `main.go` is thirty lines of flag parsing over
+them and an in-process test of a `package main` would prove nothing the entry-point tests do not.
+The binary is instead verified by the hand-run done-criterion the discussion names.
 
 Batch-local decision: both helper binaries are built by the test with the Go toolchain into a
 temporary directory, never committed as binaries and never added to the module's own build. They
@@ -72,7 +76,10 @@ its own `package main`.
   Those failure messages are readable by the test because the runner seam carries a separate error
   writer, per the overview's injectable-external-commands decision.
   It asserts the allowlist flag is **absent** when an environment variable the test sets marks the
-  invocation as a control, and present with the expected prefixed names otherwise. It then writes a
+  invocation as a control, and present with the expected prefixed names otherwise. The fake never
+  spells the built-in tool names itself — it is a separate `package main` and cannot reference the
+  harness package's slice — so the test passes the expected tools value in through an environment
+  variable built from that slice, and the fake compares against what it was given. It then writes a
   canned stream to standard output, chosen by an environment variable the test sets, covering at
   least: a normal run whose final assistant record ends with a fenced JSON answer; a run whose
   result record carries a max-turns terminal reason and no fenced answer; a run that exits non-zero
