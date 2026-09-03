@@ -1,4 +1,8 @@
-// Package quarryengine is the root of the extraction engine. It holds the cgo build guard
-// (cgoguard.go, cgoguard_nocgo.go) and the error sentinel its subpackages share; the work is done
-// in toc (symbol extraction over a parse tree) and treesitter (the parse-and-release seam).
-package quarryengine
+// Package engine is the extraction engine: the one package that walks a parsed source tree into
+// typed symbol and table-of-contents results. treesitter (internal/engine/treesitter) is its
+// parse-and-release seam, and cgoguard (internal/cgoguard) is the build guard that fails a
+// CGO_ENABLED=0 build with a readable message before treesitter's cgo linker error would.
+//
+// This package returns typed results and typed errors only. It never emits JSON, never decides an
+// exit code, and never resolves a caller's cwd.
+package engine
