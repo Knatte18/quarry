@@ -9,8 +9,6 @@ import (
 	"testing"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
-
-	quarryengine "github.com/Knatte18/quarry/internal/quarryengine"
 )
 
 // TestWithTree_ParsesEachWiredLanguage is the canary for a grammar-module version bump that
@@ -121,9 +119,7 @@ func TestWithTree_ReleasesParserAndTreeOnEveryRoute(t *testing.T) {
 }
 
 // TestWithTree_UnknownLanguage asserts an unresolvable language name returns a non-nil error
-// naming the language, and that the error is deliberately not quarryengine.ErrNoLanguage — the
-// negative assertion is the point, since it pins the sentinel to its documented detection-only
-// meaning rather than letting it be reused for a grammar-wiring failure.
+// naming the language.
 func TestWithTree_UnknownLanguage(t *testing.T) {
 	err := WithTree("cobol", []byte("IDENTIFICATION DIVISION.\n"), func(root *ts.Node, partial bool) error {
 		return nil
@@ -133,8 +129,5 @@ func TestWithTree_UnknownLanguage(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "cobol") {
 		t.Errorf("WithTree(\"cobol\", ...) error = %q; want it to name the unresolved language", got)
-	}
-	if errors.Is(err, quarryengine.ErrNoLanguage) {
-		t.Error("errors.Is(err, quarryengine.ErrNoLanguage) = true; want false — an unwired grammar is not a directory-detection failure")
 	}
 }

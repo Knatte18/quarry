@@ -1,12 +1,9 @@
-// extension.go adds a file-extension language map to package registry, alongside — never
-// replacing — the marker-based DetectLanguage in detect.go. DetectLanguage matches marker files
-// against a *directory* with a fixed precedence order, which resolves a .ts file inside a Go
-// module to "go" — correct for the LSP verbs, wrong for a path-scoped lookup. The extension map
-// answers a different question: what language does *this one file's extension* name, with no
-// directory context at all. The toc verbs need that second question answered, so both live here
-// side by side.
+// extension.go is the file-extension → language map: what language does this one file's extension
+// name, with no directory context at all. It is the one definition of the extension set;
+// LanguageForExtension, ExtensionsForLanguage, and ExtensionLanguages are all views over the single
+// map below.
 
-package registry
+package toc
 
 import (
 	"sort"
@@ -14,8 +11,7 @@ import (
 )
 
 // extensionLanguages maps a lowercase, dot-prefixed file extension to the canonical language
-// name it resolves to. It is the one definition of the extension set; LanguageForExtension,
-// ExtensionsForLanguage, and ExtensionLanguages are all views over this single map.
+// name it resolves to.
 var extensionLanguages = map[string]string{
 	".go":  "go",
 	".py":  "python",
