@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-run-loop
+phase: approved-summarize-report-cli
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-prompt-and-schema  '2026-09-03T18:50:24Z'
 approved-gates-and-scorer  '2026-09-03T18:58:30Z'
 approved-environment-and-provenance  '2026-09-03T19:06:58Z'
 approved-run-loop  '2026-09-03T19:17:57Z'
+approved-summarize-report-cli  '2026-09-03T19:26:25Z'
 ```
 
 ## Batches
@@ -83,9 +84,10 @@ batches:
     commit_sha: 05d98605d8bd38541a02f5b458415367a7bdb2b0
     verify_baseline_failures: []
   - name: summarize-report-cli
-    state: running
+    state: approved
     implementer_session: 0e56586a-378c-46a2-8083-219dc01da32e
     start_sha: c01bd291ebe3d8884c9e191aaf657b9776926671
+    commit_sha: aac9bdf204b2381628bd096d880dede0e6a5a226
     verify_baseline_failures: []
   - name: integration-tests
     state: pending
