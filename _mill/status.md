@@ -57,7 +57,9 @@ batches:
     commit_sha: 8594cdef8bb8777330e108cc41db4c2e651a36ab
     verify_baseline_failures: []
   - name: glyph-symbols
-    state: pending
+    state: running
+    implementer_session: 2a901edd-2234-4336-ab6c-36792ebbb965
+    start_sha: c9fca14b25183214589f58253197038558fde9e9
     verify_baseline_failures: []
   - name: spans
     state: pending
