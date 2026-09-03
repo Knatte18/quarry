@@ -49,7 +49,9 @@ besides (see Constraints), under
   blinding check (per rep, fatal).
 - Migration of `ladder-toc.yaml` to the new shape; deletion of the five other `ladder*.yaml`.
 - Recovery of the exploration output schema into `01-reed-geometry-exploration.md`.
-- A `.gitignore` rule for `results/**/raw/`.
+- A **new `bench/loomyard-eval/ladder/.gitignore`** containing `results/*/raw/` — not a rule in the
+  repo-root `.gitignore`, where a slash-bearing pattern anchors to the repo root and would silently
+  fail to match, leaving transcripts tracked and machine paths committed.
 - One new root-module dependency, `gopkg.in/yaml.v3` (see module-and-yaml-dependency).
 - Tests: a stub MCP server the test provides, a fake `claude` binary, and an env-guarded live smoke
   test.
@@ -157,13 +159,23 @@ besides (see Constraints), under
   `…/projects/-home-knatte-Code-loomyard-wts-loomyard/memory/` — the **main Loomyard repo's**
   memory, not the worktree's. Claude Code keys the project on the repository, not the working
   directory, so every cell loads whatever the operator has written about Loomyard.
-  Therefore: the harness **reads the resolved auto-memory directory at startup and refuses to run a
-  matrix containing control cells if any file in it matches the token** (case-insensitive), naming
-  the offending file. Today that directory holds six files and zero matches, but it is
-  operator-mutable and will plausibly acquire quarry mentions once T7 work reaches Loomyard — at
-  which point every control would be silently unblinded rather than loudly refused. `memory_paths`
-  is also recorded in the session fingerprint (see provenance) so a root's contents are auditable
-  after the fact.
+  Therefore: **after the first rep of a root completes**, the harness reads the directories named
+  in that rep's own `system.init.memory_paths`, scans them for the token (case-insensitive), and
+  aborts the run before any further rep if a file matches, naming it. Today those directories hold
+  six files and zero matches, but they are operator-mutable and will plausibly acquire quarry
+  mentions once T7 work reaches Loomyard — at which point every control would be silently
+  unblinded rather than loudly refused. `memory_paths` is also recorded in the session fingerprint
+  (see provenance), so a root stays auditable after the fact.
+
+  **The path is read, never derived.** This deliberately costs one rep rather than resolving the
+  project directory ourselves: the only known way to compute
+  `…/projects/-home-knatte-Code-loomyard-wts-loomyard/` from a repo path is V1's empirically-derived
+  dot-to-hyphen mangling in `correlate.go`, which this task deletes wholesale and must not
+  resurrect — it was reverse-engineered, undocumented, and would fail silently (scanning a
+  directory that does not exist reports "clean"). The CLI states the resolved paths in every
+  transcript; taking them from there cannot drift. If `memory_paths` is absent or empty in the
+  first rep's `system.init`, the harness records that fact in the fingerprint and continues, since
+  an absent memory path is the outcome the check wants anyway.
 - **Correction to an earlier draft of this decision:** a previous revision argued that a worktree
   inside the quarry repo also let a blinded agent holding bare `Bash` read quarry's own source via
   `cat ../../../internal/…`. That is **false**, and it was probed rather than assumed after the
@@ -367,6 +379,14 @@ besides (see Constraints), under
     directories"`) and appeared in `permission_denials`. So the `worktree_dirtied` observation is a
     backstop against something the CLI already prevents, not the primary defence. Bash is also
     confined to the working directory for reads: `cat ../../CLAUDE.md` was blocked the same way.
+  - **The treatment shape is probed too, not only the control shape.** §9a's `--allowedTools` probe
+    ran with `--tools ""`, which leaves open whether an allowlist suppresses the built-ins — if it
+    did, `Bash`/`Read`/`Grep` would be denied in treatment cells and granted in controls, which is
+    precisely the arm asymmetry one-preamble-for-every-cell exists to eliminate, and `a0-none`
+    could never catch it. Probed directly: with `--tools Read,Grep,Glob,Bash` **and**
+    `--allowedTools "mcp__quarry__toc"` together, `system.init.tools` was still exactly
+    `["Bash","Glob","Grep","Read"]`, a `Grep` call executed and returned content, and
+    `permission_denials` was `[]`. The two flags compose; there is no asymmetry.
   - Because denials are reported, `permission_denials` (count and entries) is recorded per rep, so
     a cell whose agent burns turns on blocked commands is visible rather than silently slower.
   - `--strict-mcp-config` is **mandatory, not cosmetic**. Verified: without it, and even with
@@ -415,30 +435,45 @@ besides (see Constraints), under
     `allowed`, if `max(quarry_tool_uses)` across its reps is `0`, record it in `summary.json` and
     print `!! <id>: tool-granted config whose agent never called a granted tool in any repetition
     -- this cell measures the tool's prompt cost, not the tool`.
-  - **Gate 2 — control blinding.** Per *rep*, fatal, applied only when the cell's `allowed` is
-    empty. All three checks scan **the whole rep transcript, marshalled back to JSON** — every
-    record, every field, `system.init`'s `cwd` included — not a selected subset of fields. Three
-    checks, in order, short-circuiting: (a) it contains the MCP tool prefix (see mcp-tool-prefix)
-    → fatal; (b) it contains the quarry repo root path → fatal; (c) case-insensitive bare `quarry`,
-    classified by **provenance rather than by location**. The occurrence is `target_origin` — the
-    non-fatal observation `target_origin_quarry_mention` — when it has any of the three antecedents
-    below, and fatal only when it has none:
+  - **Gate 2 — control blinding.** Per *rep*, applied only when the cell's `allowed` is empty.
+    Checks (a)–(c) scan **the whole rep transcript, marshalled back to JSON** — every record, every
+    field, `system.init`'s `cwd` included — not a selected subset of fields; check (d) runs on the
+    rendered prompt before dispatch. In order, short-circuiting on a fatal:
+    (a) the transcript contains the MCP tool prefix (see mcp-tool-prefix) → fatal;
+    (b) it contains the quarry repo root path → fatal; (c) case-insensitive bare `quarry`,
+    recorded as the **always non-fatal** observation `target_origin_quarry_mention` (with a count
+    and the record types it appeared in). It is an observation and not a verdict because the token
+    has a legitimate source that the harness does not control — see below.
+
+    Its antecedents, kept as *reporting* detail so a reader can tell an expected mention from a
+    surprising one:
       1. the token appears in a `tool_result` payload earlier in the same transcript (V1's
          mechanism: re-marshal with every `tool_result` block's nested content replaced by
          `"REDACTED"`, as `redactToolResultContent` did — that split now *selects provenance*, it is
          no longer the verdict);
-      2. the token appears anywhere in the **pinned target worktree's tracked files**, which the
-         harness scans once per task and caches as a boolean;
+      2. the token appears anywhere in the **pinned target worktree's tracked files** (scanned once
+         per task, cached);
       3. the token appears in the project context the CLI auto-loads with no tool call — the
          worktree's `CLAUDE.md`, `CONSTRAINTS.md` and `.claude/**`.
 
-    Antecedent 2 is what makes the rule sound, and it is not a corner case: at the pinned Loomyard
-    commit `975578cd` the token occurs in **12 tracked files**, including an entire
-    `docs/research/quarry-holistic-fix-log.md`. A control agent that reads one of those and then
-    *paraphrases* it emits the token in its own assistant text with no `tool_result` carrying it
-    verbatim, so a transcript-only provenance test would call that a fatal leak. Antecedent 3
-    exists because that content reaches the agent without ever passing through a tool call; at
-    `975578cd` those files happen to be clean, but the rule must not depend on it.
+    **Why (c) is not fatal.** At the pinned Loomyard commit `975578cd` the token occurs in **12
+    tracked files**, including an entire `docs/research/quarry-holistic-fix-log.md`. A control
+    agent may read one and paraphrase it, emitting the token with no verbatim `tool_result` behind
+    it. Antecedent 2 is therefore `true` for both ladder-referenced tasks at the only pin the
+    harness will run, which would make a "fatal unless target-origin" rule's fatal branch
+    unreachable — a check that cannot fail is worse than no check, because it reads as protection.
+    Rather than pretend, (c) is stated as what it is: an observation about the target's vocabulary.
+
+  - **Check (d) — the prompt the harness itself renders.** Per rep, fatal, **before dispatch**: the
+    fully rendered prompt for a control cell must contain neither the token nor any name from the
+    file's `quarry_tools`, prefixed or bare. Fails the rep without spending an API call.
+
+  The fatal checks are therefore (a), (b) and (d) — every one of them a property the *harness*
+  controls and can be held to. (c) reports on the target's own contents, which the harness does not
+  control and must not fail a run over. Check (d) is new in place of (c)'s unreachable fatal branch
+  and covers the leak vector that actually exists in this architecture: a control cell can only
+  learn about quarry from a harness bug that renders the wrong preamble, since it has no tool, no
+  server and no quarry-rooted path.
     **A gate-2 failure is not retried:** the rep fails once, is recorded, and the cell moves on —
     it never enters the `.invalid-<k>` path in resume-and-failure.
   Scanning everything rather than selected fields is what makes the two startup assertions in
@@ -508,7 +543,7 @@ besides (see Constraints), under
   | `claude` exits non-zero, stream unparseable, or `result.is_error: true` | infrastructure failure → `.invalid-<k>`, retried |
   | run completed but no fenced answer / undecodable JSON | formatting miss → `.invalid-<k>`, retried |
   | `terminal_reason: max_turns` | **complete, not a failure.** A legitimate measurement of a cell that ran out of budget |
-  | fatal gate-2 finding | **complete as a failed rep, never retried** (see gates) |
+  | fatal gate-2 finding (check a, b or d) | **complete as a failed rep, never retried** (see gates) |
   | scorer fails (non-zero exit, no fence, missing derived required field) | **only the scorer is retried**, up to 3 times; the measured run is never re-executed |
 
   A `max_turns` rep records its full cost metrics, writes no `answer.json`, does not invoke the
@@ -517,6 +552,14 @@ besides (see Constraints), under
   In both cases `recall` and `precision` are **excluded from the cell's medians** — the metric's
   `n` counts only scored reps, so a cell's cost `n` and correctness `n` may legitimately differ —
   and the cell records `max_turns_count` and `unscored_count` in `summary.json`.
+
+  A **gate-2-failed rep contributes nothing at all**: neither cost nor correctness metrics enter
+  the cell's medians, and it is counted as `blinding_failed_count` in `summary.json` alongside the
+  other two. A rep that failed blinding is not a valid observation of the control condition, and
+  the control cell is the baseline every T7 contrast is measured against — silently folding a
+  leaked rep's turn count into that baseline would corrupt the comparison rather than merely lose a
+  sample. A cell with a non-zero `blinding_failed_count` is flagged in the table for the same
+  reason.
 
   A rep that fails one of the two retried categories has its directory renamed to
   `<dir>.invalid-<k>`; after **3** attempts the cell is recorded in `summary.json`'s
@@ -751,7 +794,30 @@ besides (see Constraints), under
     (this is what lets T2 run `a0-none` alone with no quarry code in the tree); `--reps` overrides
     the file's `reps`.
   - `ladder report --results <root>` — re-derives `summary.json` and rewrites `table.txt` from
-    `raw/` without re-running or re-scoring anything.
+    `raw/` without re-running or re-scoring anything. It takes **no `--config`**: a results root is
+    self-describing, because every rep's `run.json` carries the cell metadata the summariser needs
+    (below).
+
+  **`run.json` payload** — written last, and the reason `report` needs no ladder file:
+
+  ```json
+  {
+    "state": "complete",
+    "config_id": "a0-none", "ladder": "a", "task": "01-reed-geometry-exploration",
+    "allowed": [], "is_control": true, "control_for_ladder": "a0-none",
+    "rep": 1, "model": "claude-sonnet-5", "effort": "medium", "max_turns": 60,
+    "scored": true, "score_skip_reason": null,
+    "observations": [{"gate": "target_origin_quarry_mention", "message": "..."}],
+    "blinding_failed": false, "max_turns_hit": false
+  }
+  ```
+
+  `allowed` and `is_control` drive gate 1 and the control identification; `ladder` and
+  `control_for_ladder` drive the `RangesDisjoint` comparisons; `scored`/`max_turns_hit`/
+  `blinding_failed` drive the median exclusions and the three counters. The set of cells a root
+  *should* contain — needed for `incomplete[]` — comes from the directories present under `raw/`
+  plus `provenance.json`'s record of the run's selected cells (`ladder_file` is recorded for
+  provenance, and is not read back as configuration).
 
   No shell wrapper. The documented entry is
   `go run ./bench/loomyard-eval/ladder/cmd/ladder run --config bench/loomyard-eval/ladder/ladder-toc.yaml --results bench/loomyard-eval/ladder/results/<date>-toc`.
@@ -852,6 +918,14 @@ files, which is a silent invalidation of every affected run rather than an error
 section's `/tmp` paths are documentation of how the fasit was produced; the harness ignores them
 and derives its own worktree paths.
 
+**`## Scope` is dropped too, and that matches V1.** Inclusion-based extraction drops every section
+outside the two blocks, `## Scope` included — which does not lose the scoping instruction, because
+in both ladder-referenced files the operative sentence is *inside* the `<TASK TEXT>` block:
+task 01 line 39, "> Scope your answer to `internal/reedengine` and `internal/reedcli`", and task
+04's "identify every real call site **within `internal/shedadapters`**". The `## Scope` heading
+above them is orientation for whoever prepares the fasit. V1's `PreambleFor` likewise assembled the
+prompt from `taskText` alone, so continuity with `v1-final` is preserved rather than broken here.
+
 **`stream-json` record shapes, verified on this host (2026-09-03, Claude Code 2.1.236):**
 
 - `{"type":"system","subtype":"init", …}` — first record. Carries `tools`, `mcp_servers`, `model`,
@@ -871,7 +945,11 @@ and derives its own worktree paths.
 - `{"type":"rate_limit_event", …}` may appear anywhere; the parser must skip unknown `type` values
   rather than erroring.
 
-**Environment.** `LADDER_LOOMYARD_REPO` comes from a gitignored `.scratch/ladder.env`; on this host
+**Environment.** `LADDER_LOOMYARD_REPO` is resolved **by the harness itself**, in this order: the
+process environment first, and when the variable is unset, by parsing simple `KEY=VALUE` lines out
+of `<quarry-repo>/.scratch/ladder.env` (gitignored). Neither path is a shell wrapper, which the plan
+bans, and the documented entry point is a bare `go run` that cannot source a file. Unresolvable ⇒
+the harness fails at startup naming both the variable and the file. On this host
 it resolves to a Loomyard checkout whose pinned commit `975578cd` carries its own `CLAUDE.md`,
 `CONSTRAINTS.md` and `.claude/agents/`. Those are loaded into every cell equally and are part of
 the constant baseline the session fingerprint records.
@@ -923,9 +1001,13 @@ There is no `CONSTRAINTS.md` at the hub root. Constraints from the task brief, `
   (`grep foo` counts, `ripgrepping` does not, `cat x | grep y` counts), byte counting for `Read`
   vs other tools, a zero-tool-call transcript, an unknown record `type` being skipped, a
   `terminal_reason: max_turns` transcript.
-- `gates.go` — the blinding gate's three checks in order, including the case where `quarry` appears
-  only inside a `tool_result` (non-fatal observation) versus in assistant text (fatal), and gate 1
-  over a cell with reps where `quarry_tool_uses` is `0` in all versus `0` in some.
+- `gates.go` — the blinding gate's four checks in order: (a) and (b) fatal on a transcript carrying
+  the tool prefix or the quarry repo root; (c) recorded as a non-fatal observation with its
+  antecedent, and **asserted never to fail a rep** whatever its antecedent, so the round-5 mistake
+  cannot come back as code; (d) fatal on a rendered control prompt that names the token or a
+  `quarry_tools` entry, and passing on the real rendered control prompt. Plus gate 1 over a cell
+  with reps where `quarry_tool_uses` is `0` in all versus `0` in some, and a summariser case proving
+  a `blinding_failed` rep contributes to neither cost nor correctness medians.
 - `prompt.go` — `<TASK TEXT>` extraction, run against **both** ladder-referenced task files (`01-…`
   and `04-…`, whose answer-key headings differ) and asserting that no text from the `## Setup` or
   answer-key sections appears in the output. Since extraction is inclusion-based, the assertion is
@@ -1026,4 +1108,12 @@ contains. This is the acceptance step, not an automated test.
 - **Q:** [review round 4] Does the scorer redaction hide the bare server name? **A:** It did not; it now does. `server.name` bare joins the alternation alongside the prefixed and unprefixed tool names. **Why:** "the quarry toc tool told me…" in an answer's prose identifies the arm, and it is the same token gate 2 check (c) treats as leakage — the two must agree.
 - **Q:** [review round 4] What happens to a `max_turns` rep, and to a scorer that fails? **A:** A `max_turns` rep is **complete, not a failure**: full cost metrics, no answer, scorer skipped, `score.json` records `{"scored": false, "reason": "max_turns"}`, and recall/precision are excluded from the cell's medians. A scorer failure retries **only the scorer**, 3 times, never the measured run. Full five-outcome table added to resume-and-failure. **Why:** retrying `max_turns` would discard the cells that hit the ceiling and bias the root toward cheap runs; re-running the measured cell over a judgment flake pays full price for the wrong half.
 - **Q:** [review round 4] Where exactly does the lock file go? **A:** `${LADDER_WORKTREE_ROOT:-…/ladder-eval}/.ladder.lock` — one level above `worktrees/`, never inside a task worktree. **Why:** inside a worktree it would trip `worktree_dirtied` every rep and be deleted by the pinned restore.
+- **Q:** [review round 5] With antecedent 2 as a boolean and the token in 12 tracked files at the pin, can check (c) ever fire fatally? **A:** No — the fatal branch was unreachable. Check (c) is now an **always non-fatal observation**, and a new fatal **check (d)** takes its place: the harness asserts its own rendered control prompt contains neither the token nor any `quarry_tools` name, before dispatch. Fatal checks are (a), (b), (d). **Why:** a check that cannot fail reads as protection while providing none; (d) covers the leak vector that actually exists, since a control has no tool, no server and no quarry-rooted path.
+- **Q:** [review round 5] How is the auto-memory directory resolved, given `correlate.go`'s mangling is deleted? **A:** It is **read, not derived** — from the first completed rep's own `system.init.memory_paths`; the run aborts before further reps if a file there matches the token. **Why:** the mangling was reverse-engineered and undocumented and would fail silently by scanning a directory that does not exist; the CLI states the resolved paths in every transcript.
+- **Q:** [review round 5] Does `--allowedTools` suppress the built-ins, making treatment and control asymmetric? **A:** No, probed: with `--tools Read,Grep,Glob,Bash` **and** `--allowedTools "mcp__quarry__toc"` together, `system.init.tools` was still exactly `["Bash","Glob","Grep","Read"]`, a `Grep` executed, denials `[]`. **Why:** every prior probe covered the control shape only, and `a0-none` could never have caught this — T7 would have paid.
+- **Q:** [review round 5] Does a gate-2-failed rep contribute to the cell's medians? **A:** No — neither cost nor correctness — and it is counted as `blinding_failed_count`. **Why:** a leaked rep is not a valid observation of the control condition, and the control is the baseline every T7 contrast rests on.
+- **Q:** [review round 5] Where does `report` get per-cell metadata, having no `--config`? **A:** From each rep's `run.json`, whose payload is now specified (`config_id`, `ladder`, `allowed`, `is_control`, `control_for_ladder`, `scored`, `max_turns_hit`, `blinding_failed`, …), making a results root self-describing. **Why:** re-deriving `summary.json` needs gate-1, comparison and exclusion inputs that `raw/` did not carry.
+- **Q:** [review round 5] Who reads `LADDER_LOOMYARD_REPO`? **A:** The harness. The environment variable wins; when unset it parses `KEY=VALUE` lines from `<quarry-repo>/.scratch/ladder.env` itself. **Why:** shell wrappers are banned and the documented entry is a bare `go run`, so nothing else could have sourced that file.
+- **Q:** [review round 5] Which `.gitignore` carries the raw rule? **A:** A new `bench/loomyard-eval/ladder/.gitignore` containing `results/*/raw/`. **Why:** a slash-bearing pattern in the repo-root `.gitignore` anchors to the root and would silently fail to match — and the consequence is tracked transcripts carrying machine paths.
+- **Q:** [review round 5] What happens to each task file's `## Scope` section? **A:** Dropped, like everything outside the two extracted blocks — and this matches V1 exactly. The operative scoping instruction is *inside* the `<TASK TEXT>` block in both ladder-referenced files (task 01 line 39, "Scope your answer to `internal/reedengine` and `internal/reedcli`"; task 04, "every real call site **within `internal/shedadapters`**"). The `## Scope` heading is documentation for the fasit author. **Why:** continuity with `v1-final` matters, and V1's `PreambleFor` likewise took only the task text.
 - **Q:** Which V1 gates and metrics are retired? **A:** Retired: `GateRunPrompt`, `GateMaxTurns`, `GateModelPinned`, `GateNoTargetOverride`, `GateDeniedToolsNotUsed`, every cold/daemon gate; `denied_tool_attempts` and `_provisional` (`DenialShapePattern` was never validated against a real denial and the provisional flag was hardcoded `true`), `agent_id`, `transcript_source`, `server_vcs_modified`. **Why:** the CLI now enforces or reports each directly, or the field was structurally constant and carried no information.
