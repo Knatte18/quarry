@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: engine-core
 branch: engine-core
-plan: null
+plan: _mill/plan
 parent: main
 task: Engine core (T3)
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-09-03T17:41:55Z'
 discussion-fix-r4  '2026-09-03T18:15:39Z'
 discussed  '2026-09-03T18:29:51Z'
+planning  '2026-09-03T18:44:33Z'
 ```
