@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: glyph-package
 branch: glyph-package
 plan: _mill/plan
@@ -37,6 +37,7 @@ implementing  '2026-09-03T17:08:36Z'
 approved-types-and-printer  '2026-09-03T17:12:02Z'
 approved-parser-and-go-alphabet  '2026-09-03T17:17:12Z'
 holistic-reviewing  '2026-09-03T17:17:40Z'
+holistic-approved  '2026-09-03T17:21:13Z'
 ```
 
 ## Batches
