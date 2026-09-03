@@ -1,6 +1,6 @@
 // errors.go holds the one error sentinel the engine's subpackages share.
 
-package quarryengine
+package engine
 
 import "errors"
 
