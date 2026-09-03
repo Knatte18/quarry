@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -27,4 +27,23 @@ plan-fix-r3  '2026-09-03T19:13:12Z'
 plan-review-r4  '2026-09-03T19:20:17Z'
 plan-fix-r4  '2026-09-03T19:21:23Z'
 planned  '2026-09-03T19:21:35Z'
+implementing  '2026-09-03T19:22:09Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: layout
+    state: pending
+  - name: text-rules
+    state: pending
+  - name: answer-and-walk
+    state: pending
+  - name: glyph-symbols
+    state: pending
+  - name: spans
+    state: pending
+  - name: goldens-and-round-trip
+    state: pending
 ```
