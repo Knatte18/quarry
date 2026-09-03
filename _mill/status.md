@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gates-and-scorer
+phase: approved-environment-and-provenance
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -38,6 +38,7 @@ approved-foundations-and-config  '2026-09-03T18:38:07Z'
 approved-stream-and-metrics  '2026-09-03T18:44:55Z'
 approved-prompt-and-schema  '2026-09-03T18:50:24Z'
 approved-gates-and-scorer  '2026-09-03T18:58:30Z'
+approved-environment-and-provenance  '2026-09-03T19:06:58Z'
 ```
 
 ## Batches
@@ -69,9 +70,10 @@ batches:
     commit_sha: 29ab02b835cb8e8f83b91f2896fdb9c67bcdb8be
     verify_baseline_failures: []
   - name: environment-and-provenance
-    state: running
+    state: approved
     implementer_session: f86e220b-368a-4052-ba30-8c102fe54160
     start_sha: dfd90e3a6a6172a12f598426f08146f097e0884a
+    commit_sha: d6e33b9e857219aef8192281a97138e31df3fce5
     verify_baseline_failures: []
   - name: run-loop
     state: pending
