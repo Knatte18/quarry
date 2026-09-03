@@ -5,14 +5,14 @@ reference. `main` is cleaned out and the rewrite is built there under the same m
 `github.com/Knatte18/quarry`. There is no "V2" in any name: when this plan is done, what is on `main`
 is quarry.
 
-The research notes (`docs/research/`) and `HANDOFF.md` stay where they are: they are the
-measurement record that motivates this document. The V1 harness code is replaced (§9a), and the
-results roots it produced are archived with it on `v1-final`; `HANDOFF.md` summarises them, and a
-`conclusion.md` is read from that branch when a number is needed.
+`HANDOFF.md` is the state of the rewrite and the short list of measurements this document rests
+on; the research notes (`docs/research/`) are the long form. The V1 harness code is replaced (§9a),
+and the results roots it produced are archived with it on `v1-final`; a `conclusion.md` is read from
+that branch when a number is needed.
 
 ## 1. Why a rewrite, in four measured lessons
 
-Every claim here has a results root or a captured output behind it; see `HANDOFF.md` §1, §6, §8 and
+Every claim here has a results root or a captured output behind it; see `HANDOFF.md` §3 and
 `docs/research/mcp-surface.md`.
 
 1. **Only the tree-sitter half ever paid.** Across 45 + 30 + 6 measured runs, `toc_dir` is the one
@@ -446,7 +446,7 @@ places — it requires the seven V1 tool names in its yaml, warms the daemon thr
 rewrite unchanged. Its size is architectural, not incidental: it drives an *interactive* Claude Code
 session in tmux, which runs a skill, which dispatches a subagent, and then reconstructs what
 happened by locating the subagent's transcript under `~/.claude/projects`. Every gate and every
-rule in `HANDOFF.md` §2 exists because the harness does not control the run: the prompt gate, the
+rule it carried exists because the harness does not control the run: the prompt gate, the
 outcome marker, the one-tmux-session rule, the transcript hunt, the static per-cell agent
 definitions, the post-hoc turn ceiling, the unusable `output_tokens`.
 
@@ -460,7 +460,7 @@ direct control of everything the old one inferred.
 | the tool allowlist | `--allowedTools mcp__quarry__toc_dir --tools ""` | `toc_dir` ran; `toc_file` was denied and recorded in `permission_denials` |
 | the turn ceiling | `--max-turns N` (accepted, not in `--help`) | `terminal_reason: max_turns` |
 | the transcript | `--output-format stream-json --verbose` on stdout | every assistant and tool record, with usage |
-| usage, including `output_tokens` | per-message `usage` and a final `result` with `num_turns`, `duration_ms`, `total_cost_usd` (a list-price estimate, `costBasis: list`), `modelUsage` | yes — fixes `HANDOFF.md` §2 rule 5 |
+| usage, including `output_tokens` | per-message `usage` and a final `result` with `num_turns`, `duration_ms`, `total_cost_usd` (a list-price estimate, `costBasis: list`), `modelUsage` | yes — `output_tokens` was unusable in the old transcripts |
 | model and effort | `--model claude-sonnet-5 --effort medium` | both accepted; effort is not echoed in the result, so the harness records the flags it passed |
 | no session residue | `--no-session-persistence` | yes |
 | stdin | must be `< /dev/null`, or a warning lands in the stream | yes |
@@ -484,9 +484,10 @@ the cell used the tool it was granted (the `none` arm called nothing), and the c
 check. Everything else the CLI now guarantees.
 
 **Kept:** the yaml shape (cells, tasks, pins, fasit, reps, models) and the scorer prompt and
-schemas. The V1 results roots are on `v1-final`. `HANDOFF.md` §2 rules 1 (do not edit source mid-matrix; the
-binary hash per rep stays) and 6 (cost within a root only) still apply. Rules 2, 3, 4, 5 and 7 are
-retired with the architecture that needed them.
+schemas. The V1 results roots are on `v1-final`. Two of the old harness rules still apply
+(`HANDOFF.md` §3): do not edit source mid-matrix (the binary hash per rep stays), and cost numbers
+are comparable only within one root. The other rules are retired with the architecture that needed
+them.
 
 **Order:** the harness lands before §9 step 8, since step 8 is its first run.
 
@@ -505,8 +506,8 @@ retired with the architecture that needed them.
 - Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
 - C# long parameter lists: whether to cap a method glyph at N types plus a hash, decided only
   after measuring a real C# repository (`docs/glyph.md` §3).
-- Whether the new harness's `results/**/raw/` is committed or ignored (carried over from
-  `HANDOFF.md` §4); T2 decides when it writes its first root.
+- Whether the new harness's `results/**/raw/` is committed or ignored; T2 decides when it writes
+  its first root.
 
 ## 12. Work breakdown — one mill task per row
 
