@@ -261,7 +261,7 @@ from disk, no cache:
 
 | operation | time |
 |---|---|
-| walk repository, basename→directory map (83 packages) | 2 ms |
+| walk repository, list of package directories (83 packages) | 2 ms |
 | resolve one glyph, 5-file package (32 KB) | 5–8 ms |
 | resolve one glyph, 35-file package (317 KB), serial / name-prefiltered / parallel | 65 / 24 / 26 ms |
 | 20 glyphs across 5 packages, grouped, serial / packages in parallel | 109 / 76 ms |
@@ -275,7 +275,7 @@ keyed on (path, mtime, size) per file and parses only what changed.
 ## 6. Languages
 
 Go, Python, C#. Not five. Each language's extractor must deliver, per symbol: kind, name, owner
-chain, signature, doc, start/sigend/end, and the package basename. Known gaps in the kept
+chain, signature, doc, start/sigend/end, and the unit. Known gaps in the kept
 extractors, all phase 1:
 
 | language | gap today | needed for |
