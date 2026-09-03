@@ -123,13 +123,22 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
 
 ### Depth
 
-The answer is one recursive type. A **directory answer** holds `dir`, `package`, `language`, its
-`files` and its `dirs`, and each entry in `dirs` is itself a directory answer. Two independent
+The answer is one recursive type. A **directory answer** holds `dir`, `package`, `language`, `doc`,
+its `files` and its `dirs`, and each entry in `dirs` is itself a directory answer.
+
+`doc` is the **package documentation**: what this directory is for, in the language's own place for
+saying so — Go's `// Package render ...` comment above the package clause, Python's `__init__.py`
+module docstring, and for C# the first paragraph of a `README.md` in the directory, since the
+language has no convention. It is carried whole (one paragraph) and it is the one thing a
+subdirectory entry carries besides its identity, so `map` on a parent is a list of its
+subdirectories each saying what it holds. Loomyard today: 54 of 83 packages have one; the 29
+without are mostly `*cli` packages. A missing `doc` is absent, not empty, and is a repository
+invariant `map` can report (§8.2). Two independent
 knobs say how much of the tree is filled in:
 
 | knob | values | default |
 |---|---|---|
-| `depth` | how far down the directory tree `dirs` are filled: `0` lists subdirectories by `dir` and `package` only; `1` fills their files; `N`; `all` | `0` |
+| `depth` | how far down the directory tree `dirs` are filled: `0` lists subdirectories by `dir`, `package` and `doc` only; `1` fills their files; `N`; `all` | `0` |
 | `symbols` | whether file entries carry `symbols` | `true` for a file argument, `false` for a directory argument |
 
 They are separate because the two big shapes need them separately: a whole tree with headers only
@@ -143,6 +152,7 @@ an agent gets without asking.
 
 ```json
 { "dir": "internal/reedengine/render", "package": "render", "language": "go",
+  "doc": "Package render owns the closed display vocabulary and the deterministic Rules(strands, box, params) -> (layout, focus) function that turns a set of strands into a tmux window_layout string. It is a pure leaf: no I/O, no tmux, no engine import.",
   "files": [
     { "name": "checksum.go", "header": "checksum.go computes tmux's window_layout checksum: a 16-bit rotate-right-1 accumulator over the layout body ..." },
     { "name": "checksum_test.go", "test": true, "header": "checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, ..." },
@@ -152,13 +162,19 @@ an agent gets without asking.
 ```
 
 `map internal/reedengine` — a directory with a subdirectory. At `depth: 0` the subdirectory is an
-entry with its identity only:
+entry with its identity and its package doc, nothing else:
 
 ```json
 { "dir": "internal/reedengine", "package": "reedengine", "language": "go",
+  "doc": "Package reedengine is the domain kernel for lyx's tmux window manager: the tmux subprocess overlay, strand bookkeeping, persisted state, config, and (in the operations layer) the lifecycle verbs that compose them. ...",
   "files": [ ... 67 files ... ],
-  "dirs": [ { "dir": "internal/reedengine/render", "package": "render" } ] }
+  "dirs": [
+    { "dir": "internal/reedengine/render", "package": "render",
+      "doc": "Package render owns the closed display vocabulary and the deterministic Rules(strands, box, params) -> (layout, focus) function that turns a set of strands into a tmux window_layout string. It is a pure leaf: no I/O, no tmux, no engine import." } ] }
 ```
+
+`map internal` — the orientation map: no files of its own, every package under it with its doc.
+The 29 packages without one show as `dir` and `package` alone, which is the finding.
 
 `map internal/reedengine --depth 1` — the same, with the subdirectory filled the way the first
 example is; `--depth all` keeps going down.
@@ -167,7 +183,7 @@ example is; `--depth all` keeps going down.
 that entry carries `symbols` because the argument was a file:
 
 ```json
-{ "dir": "internal/reedengine/render", "package": "render", "language": "go",
+{ "dir": "internal/reedengine/render", "package": "render", "language": "go", "doc": "Package render owns ...",
   "files": [
     { "name": "layout.go",
       "header": "layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements\nwithin a Box into a tmux/psmux window_layout body and its checksum-prefixed full string.\nIt is region-relative — offsets are anchored to box.X/box.Y rather than the whole window — so the\nstack region can be rendered independently of the Box it is placed within.\nThis file makes no placement or height decisions;\nthose live in policy.go and height.go.\nIt only renders the string from the placements it is given.",
@@ -194,6 +210,7 @@ The same directory answer as lossless text, for the MCP block — no keys, no de
 
 ```
 internal/reedengine/render (package render, go), 12 files
+Package render owns the closed display vocabulary and the deterministic Rules(strands, box, params) -> (layout, focus) function that turns a set of strands into a tmux window_layout string. It is a pure leaf: no I/O, no tmux, no engine import.
 checksum.go: checksum.go computes tmux's window_layout checksum: a 16-bit rotate-right-1 accumulator ...
 checksum_test.go [test]: checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, ...
 focus.go: focus.go resolves which pane receives tmux input focus, and detects whether a strand ...
@@ -275,6 +292,7 @@ extractors, all phase 1:
 | C# | fields and properties not emitted as members | `members` |
 | C# | overloads share an id | ambiguity reporting now; a signature suffix later if a real plan needs to name one overload |
 | Go | none known; build-tag duplicates must report as ambiguous | |
+| all | package doc is not extracted (Go `// Package x` block, Python `__init__.py` docstring, C# `README.md` first paragraph) | `doc` on the directory answer |
 
 ## 7. Surfaces, in order of importance
 
@@ -316,8 +334,8 @@ in phase 2.
   changed only its declared targets.
 - **Documentation drift.** `map` over a package against the symbol names a doc or a codeguide page
   claims; missing or extra names are mechanical findings.
-- **Repository invariants.** Unique package basenames; every exported symbol has a doc (the
-  extractor already knows).
+- **Repository invariants.** Unique package basenames; every package has a package doc (29 of 83
+  do not, today); every exported symbol has a doc. The extractor already knows all three.
 - **Phase 2:** `impact` before/after sets on Edit and Rename, `assert-no-callers` on Delete, test
   targeting by caller package, and the
   31-false-positive class of incident (`docs/research/scout-agent-usage-findings.md`) prevented by
