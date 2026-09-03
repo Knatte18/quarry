@@ -1,9 +1,9 @@
-// comments.go holds the shared text rules every strategy and entry point uses to turn raw comment
+// text.go holds the shared text rules every strategy and entry point uses to turn raw comment
 // source into prose: comment-delimiter stripping (StripLineComment, StripComment) and
 // first-paragraph truncation (FirstParagraph). Every function here is a pure text-in/text-out
 // transform with no I/O and no tree-sitter node in its signature.
 
-package toc
+package engine
 
 import "strings"
 

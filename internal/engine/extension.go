@@ -3,7 +3,7 @@
 // LanguageForExtension, ExtensionsForLanguage, and ExtensionLanguages are all views over the single
 // map below.
 
-package toc
+package engine
 
 import (
 	"sort"

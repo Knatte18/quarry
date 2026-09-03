@@ -3,7 +3,7 @@
 // docstring rule and a header rule each need. Nothing here is specific to one language; the
 // per-language shape decisions live in each strategy's own file.
 
-package toc
+package engine
 
 import (
 	"strings"
