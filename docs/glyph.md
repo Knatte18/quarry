@@ -27,7 +27,7 @@ and `,` mean whatever the language's alphabet says.
 Structurally, any glyph splits at its first `#`. That split needs no language.
 Whether the two halves are well-formed is checked against one language's alphabet by `Parse` (§6), and the language is the caller's to say:
 the string alone cannot tell a Python module path from a C# namespace, and a symbol a plan is about to create has no source to look at yet.
-For an existing symbol the language is what `map` reported for its file; for a new one, the plan card carries it.
+For an existing symbol the language is what `toc` reported for its file; for a new one, the plan card carries it.
 
 The alphabet is chosen per file, not per repository.
 A repository that holds Python parsers inside a C# tree has Python glyphs and C# glyphs side by side;
@@ -160,7 +160,7 @@ Every element of every alphabet is chosen to be syntactic: a directory, a `packa
 `namespace` declaration, a receiver or enclosing type as declared, a parameter type as written.
 Nothing requires a type checker, which is what lets a tree-sitter parse produce every glyph in a
 repository. That is a tested claim, not a design hope: `docs/rewrite-plan.md` §12 requires a
-round trip over a whole repository per language — every declaration `map` lists resolves back to
+round trip over a whole repository per language — every declaration `toc` lists resolves back to
 exactly its own span.
 
 ## 5. Resolution
@@ -177,7 +177,7 @@ match. Results are ordered by file and then by start line, so the answer is dete
 | `not_found` | no declaration matches. A C# method glyph without parentheses is `not_found`, not "all overloads". The answer also says whether the unit exists: `unit: found` when the directory, module or namespace is there and only the member is missing, `unit: not_found` otherwise. A Create card needs the first; a misspelled unit gives the second |
 
 Resolution never guesses. There is no fuzzy matching, no case folding, no "did you mean". A glyph
-that does not resolve is `not_found`; a caller that wants to see what exists asks `map` or
+that does not resolve is `not_found`; a caller that wants to see what exists asks `toc` or
 `members`.
 
 In a repository with more than one language the glyph is tried against each alphabet present.
@@ -226,6 +226,6 @@ makes any later refinement of the alphabet — a C# parameter cap, say — a cha
   types, and no unit separator. A C# glyph is the readable form of the same key.
 - **File paths** are not glyphs. A repository-relative path has no `#`, and that is how `resolve`
   tells the two apart (§5); a plan card whose deliverable is a whole file names the path.
-- **LSP** addresses by file + position. From an LSP location to a glyph: `map` on that file, take
+- **LSP** addresses by file + position. From an LSP location to a glyph: `toc` on that file, take
   the enclosing declaration's glyph. From a glyph to a position: `resolve`. Both directions are
   mechanical, and the glyph never depended on the position.
