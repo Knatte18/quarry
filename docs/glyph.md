@@ -23,8 +23,14 @@ namespace and a symbol uniquely, and those ways differ. A glyph borrows the lang
 uniqueness instead of inventing one. `#` is the only separator with a fixed meaning; `.`, `/`, `(`
 and `,` mean whatever the language's alphabet says.
 
-Structurally, any glyph splits at its first `#`. That split needs no language. Whether the two
-halves are well-formed is checked against the language of the unit's source, at resolution.
+Structurally, any glyph splits at its first `#`. That split needs no language.
+Whether the two halves are well-formed is checked against one language's alphabet by `Parse` (§6), and the language is the caller's to say:
+the string alone cannot tell a Python module path from a C# namespace, and a symbol a plan is about to create has no source to look at yet.
+For an existing symbol the language is what `map` reported for its file; for a new one, the plan card carries it.
+
+The alphabet is chosen per file, not per repository.
+A repository that holds Python parsers inside a C# tree has Python glyphs and C# glyphs side by side;
+nothing in the form says which is which, and nothing needs to (§5 says what happens on the rare textual collision).
 
 Glyphs are case-sensitive and each symbol has exactly one glyph. No short form, no alias.
 
@@ -167,11 +173,20 @@ match. Results are ordered by file and then by start line, so the answer is dete
 | `found` | exactly one declaration |
 | `multipart` | one symbol the language lets be declared in several places: Go `init`, a C# `partial` type or partial method. Every part is returned. Python never produces this |
 | `ambiguous` | several *different* declarations match: Go build-tag duplicates, a Python name defined twice in one module. The candidates are returned, with their files; nothing is chosen |
-| `not_found` | no declaration matches. A C# method glyph without parentheses is `not_found`, not "all overloads" |
+| `not_found` | no declaration matches. A C# method glyph without parentheses is `not_found`, not "all overloads". The answer also says whether the unit exists: `unit: found` when the directory, module or namespace is there and only the member is missing, `unit: not_found` otherwise. A Create card needs the first; a misspelled unit gives the second |
 
 Resolution never guesses. There is no fuzzy matching, no case folding, no "did you mean". A glyph
 that does not resolve is `not_found`; a caller that wants to see what exists asks `map` or
 `members`.
+
+In a repository with more than one language the glyph is tried against each alphabet present.
+Go units contain `/` and collide with nothing.
+A Python module path and a C# namespace can spell the same string, and when a declaration matches in both the answer is `ambiguous` with the candidates marked by language.
+There is no language prefix in the glyph to prevent this: the case is rare, and a prefix would be a second spelling.
+
+`resolve` also accepts what is not a glyph: a repository-relative path, file or directory, told apart by having no `#`.
+It answers with the file entry or directory answer and `found` or `not_found`.
+That is how a whole file — an HTML viewer, a Markdown page — is a plan target with the same checks as a symbol.
 
 Measured cost (Loomyard, 4-core WSL2, in-process, source read fresh every time): 5–8 ms for a
 5-file unit, 24–65 ms for a 35-file unit, ~100 ms for twenty glyphs across five units.
@@ -186,9 +201,11 @@ Measured cost (Loomyard, 4-core WSL2, in-process, source read fresh every time):
   its `#`. In Markdown: safe anywhere but the first column of a line. C# glyphs contain `(`, `,`
   and `<`; quote them where a format cares.
 - In Go: package `github.com/Knatte18/quarry/glyph` — pure Go, no cgo, no dependencies, so that
-  any program can import it without the engine. `type Glyph struct { Unit string; Owner []string;
-  Name string; Params []string }`, `Parse(string) (Glyph, error)`, `Glyph.String()`. The string
-  form is canonical; the struct is a view of it.
+  any program can import it without the engine. `type Language` with `Go`, `Python`, `CSharp`;
+  `type Glyph struct { Lang Language; Unit string; Owner []string; Name string; Params []string }`;
+  `Parse(lang Language, s string) (Glyph, error)`; `Glyph.String()`. `Parse` is the syntactic
+  check: it reads no source and accepts exactly the alphabet of `lang`. The string form is
+  canonical; the struct is a view of it.
 
 **There is one implementation of the glyph grammar, and it is this package.** Loomyard's plan
 parser imports it; it does not re-implement parsing, printing or canonicalisation. That is what
@@ -205,6 +222,8 @@ makes any later refinement of the alphabet — a C# parameter cap, say — a cha
 - **C# XML documentation IDs** (`M:Loomyard.Engine.Layout.Renderer.Draw(System.Int32)`) solve the
   same problem for the same reason and differ only in spelling: a kind prefix, fully qualified
   types, and no unit separator. A C# glyph is the readable form of the same key.
+- **File paths** are not glyphs. A repository-relative path has no `#`, and that is how `resolve`
+  tells the two apart (§5); a plan card whose deliverable is a whole file names the path.
 - **LSP** addresses by file + position. From an LSP location to a glyph: `map` on that file, take
   the enclosing declaration's glyph. From a glyph to a position: `resolve`. Both directions are
   mechanical, and the glyph never depended on the position.
