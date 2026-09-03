@@ -189,6 +189,7 @@ exclusion.
   - `internal/engine/classify.go`
   - `internal/engine/answer.go`
   - `internal/engine/text.go`
+  - `internal/engine/golang.go`
   - `internal/engine/treesitter/treesitter.go`
 - **Edits:** none
 - **Creates:**
@@ -199,8 +200,11 @@ exclusion.
   drives, as unexported methods on `*Repo`:
 
   - `dirPackage(dirRel string, entries []os.DirEntry) (pkg string, clauses map[string]string)` —
-    read every `.go` file's package clause in the directory (via `treesitter.WithTree` and
-    `goStrategy.Package`), return the directory's package and the per-file clause map. The
+    read every `.go` file's package clause in the directory, resolving the strategy through
+    `StrategyFor(lang)` and calling its `Package` method under `treesitter.WithTree` — never naming
+    `goStrategy` directly, since the alphabet is chosen per file and Go is merely the only
+    registration today; say so in the comment. Return the directory's package and the per-file
+    clause map. The
     directory's package is the most common clause among files whose clause does not end in `_test`;
     when every file's clause ends in `_test`, it is the most common clause overall. On a tie the
     lexicographically smallest clause wins, and the comment must say why: without a tie-break the
@@ -208,7 +212,8 @@ exclusion.
     eliminate.
   - `dirDoc(dirRel string, clauses map[string]string, pkg string) string` — the directory's package
     documentation. Candidates are the directory's `.go` files whose clause equals `pkg`, in sorted
-    order with `doc.go` tried first; the first non-empty `goStrategy.PackageDoc` result wins. No
+    order with `doc.go` tried first; the first non-empty `PackageDoc` result — from the strategy
+    resolved through `StrategyFor(lang)`, for the same reason — wins. No
     match returns the empty string, which `omitempty` turns into an absent key rather than an empty
     one.
   - `fileEntry(dirRel, base string, dirPkg, dirLang string, clause string, wantSymbols bool) FileEntry`
@@ -222,7 +227,8 @@ exclusion.
     `Header`, `Lossy` and `Symbols` unset; the file is still listed, never skipped. A parse that
     reports an error sets `Lossy`. `Error` and `Lossy` are never both set.
   - `walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool, identityOnly bool) (DirAnswer, error)`
-    — the recursion. On entry it calls `ig.extend(dirRel)` and on exit `ig.trim` of the same count,
+    — the recursion. On entry it calls `ig.extend(dirRel)` and holds the count it returns, and on
+    exit calls `ig.trim` with that same count,
     so a directory's own patterns are in force for its subtree and are dropped again on the way out.
     `walkDir` owns the extend/trim for **its own** directory, at every level including the first:
     the caller hands it a set already carrying the chain from the root down to the target's

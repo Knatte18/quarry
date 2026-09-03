@@ -124,7 +124,9 @@ leaving no diff, which drops the two unused indirect grammar requirements.
 - **Requirements:** The headline criterion, over this repository, with no environment needed so it
   always runs. Resolve the module root from `runtime.Caller(0)`, `Open` it, and call `TOC` on the
   root with `DepthAll` and symbols on. Collect every listed symbol, **group the listed glyphs by
-  unit**, and for each unit call `symbolsOfUnit` **once**; then assert, per glyph, that the set of
+  unit**, and for each unit call `symbolsOfUnit` **once**, handing it a fresh `ignoreSet` built the
+  way `SpansOf` builds its own — `newIgnoreSet` on the repository root plus one `extend(".")`, with
+  `symbolsOfUnit` owning every step below that; then assert, per glyph, that the set of
   `(File, Start, SigEnd, End)` tuples the lookup returned equals the set the walk listed. Zero
   misses, zero extras.
 
