@@ -331,8 +331,9 @@ never modified — it is the one implementation of the grammar.
   - The interface head span: the type symbol's `HeadStart`/`HeadEnd` cover the whole declaration and
     every member symbol's span lies inside that range.
   - Unspellable units, two cases with different entry points. Assert only what this batch can
-    reach: the span lookup does not exist until batch 5, so the corresponding "returns nothing"
-    assertion lives in that batch's own test card, not here. The bad-rune case is queried from
+    reach: the span lookup does not exist until batch 5, and its own disposition for such a unit is
+    a rejection rather than an empty answer, so that assertion lives in that batch's test card and
+    is deliberately not mirrored here. The bad-rune case is queried from
     the quarry root as usual: the space-bearing directory's file is listed with its header and
     carries no `symbols`. The empty-unit case cannot be reached that way — from the quarry root
     that file's unit is a perfectly legal path — so the test `Open`s the `testdata/units` directory

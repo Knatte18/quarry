@@ -3,7 +3,7 @@
 ```yaml
 task: "Engine core (T3)"
 slug: "engine-core"
-approved: false
+approved: true
 started: "20260903-183356"
 parent: "main"
 root: ""
@@ -118,6 +118,10 @@ batches:
   tests too, not vet alone: this task's own done-criterion — the quarry round trip and the Loomyard
   goldens — is ordinary Go tests, and a gate that skipped them would never exercise the thing the
   task is for. No batch may leave a package uncompilable or a test deleted without its subject.
+  A batch may insert `CGO_ENABLED=1 go vet ./...` into its own `verify:` when vet-cleanliness is
+  that batch's own subject rather than a background property — batch 6 does, because one of its
+  cards exists to make `go vet` clean, and a batch cannot check the thing it is for by deferring to
+  a gate that runs after it.
 - **Rationale:** the build is part of the gate because the cgo guard has no test files at all — a
   build is the only thing that exercises it — and because Go compiles a package as a whole, so a
   half-applied type change is a build failure rather than a test failure. `./internal/...` rather

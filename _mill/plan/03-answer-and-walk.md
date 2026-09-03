@@ -22,7 +22,8 @@ at that seam is what keeps both batches Sonnet-sized: this one is structure, I/O
 that one is symbol identity and extraction.
 
 The external interface batches 4 and 5 consume: `Repo`, `Open`, `TOC`, `TOCOptions`, `DepthAll`,
-`DirAnswer`, `FileEntry`, and the two unexported walk seams `dirPackage` and `fileUnitPackage`.
+`DirAnswer`, `FileEntry`, and the four unexported walk seams `dirPackage`, `dirDoc`, `fileEntry`
+and `walkDir`. Unit derivation is not among them — it arrives in batch 4 as `unitFor`.
 
 Batch-local decision: committed fixture trees live under `internal/engine/testdata/` and contain no
 `.gitignore` of their own — ignore behaviour is exercised from `.scratch/` trees per batch 2's
@@ -294,7 +295,12 @@ exclusion.
     subdirectories N levels down, each level's leaf `dirs` again identity-plus-doc; `DepthAll`
     recurses to the bottom.
   - A file target: the enclosing directory's `dir`, `package`, `language` and `doc`, with `files`
-    holding exactly that one entry and no `dirs`. `opts.Depth` is ignored for a file target — there
+    holding exactly that one entry and no `dirs`. Those four facts are the **directory's**, so a
+    file target runs `dirPackage` and `dirDoc` over the whole enclosing directory exactly as a
+    directory target does, and therefore reads every `.go` file in it — not just the target. Say so
+    in the doc comment: parsing the target alone and emitting its own clause as the directory's
+    `package` would be wrong whenever the directory holds a package-clause deviation, which is the
+    very case the tie-break exists for. `opts.Depth` is ignored for a file target — there
     is nothing below a file to fill — and a non-zero depth with a file target is not an error. Say
     that in the doc comment.
   - A target that is itself a symlink: the name-only file entry inside its parent's directory
