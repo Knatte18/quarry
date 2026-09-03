@@ -151,7 +151,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Requirements:**
 
   `glyph/parse_test.go` declares `package glyph` — white-box, because `splitGlyph` is unexported.
-  Imports are limited to `testing` and `errors`. It holds:
+  Imports are limited to `errors`, `reflect` and `testing`. It holds:
 
   1. A table test over `splitGlyph` covering every row of the `docs/glyph.md` §1 examples table,
      asserting the unit and member halves each row divides into. That includes the four Go rows and
@@ -165,18 +165,27 @@ Batch-local decisions beyond the overview's Shared Decisions:
   2. A first-`#` test: a string carrying two `#` splits at the first, leaving the second in the
      member half; and `Parse(Go, "internal/logger#a#b")` then reports `ReasonMemberBadRune`, showing
      the second `#` reached the Go member validator rather than a pre-split check.
-  3. An `unsupported_language` test over `Language("python")`, `Language("csharp")`, `Language("")`
-     and one arbitrary value, each asserting `ReasonUnsupportedLanguage` and that the returned
-     `Glyph` is the zero value.
-  4. A reject-precedence test: `Parse(Language("python"), "no-hash")` — an input failing both the
-     language check and the split — returns `ReasonUnsupportedLanguage`, not `ReasonNoSeparator`.
-     This pins the order so a later refactor cannot silently swap the two checks.
-  5. An `invalid_utf8`-precedes-the-split test: an input that is both invalid UTF-8 and missing a `#`
-     reports `ReasonInvalidUTF8`, not `ReasonNoSeparator`.
+  3. A package-level `var parseReject = []struct{...}` carrying the same field shape as card 6's
+     `goReject` — the input, the `Language` to parse it under, and the expected `Reason` — holding
+     every reject case declared in this file. It must be package-level and named, because card 6's
+     completeness test ranges over it alongside `goReject`, from another file, and card 6 creates no
+     file it could otherwise reach these rows through. Its rows are the `unsupported_language` cases
+     of item 3 below, the reject-precedence case of item 4 and the `invalid_utf8` case of item 5. A
+     test in this file drives the slice, asserting each row's `Reason` and that the returned `Glyph`
+     is the zero value.
+  4. An `unsupported_language` group in `parseReject` covering `Language("python")`,
+     `Language("csharp")`, `Language("")` and one arbitrary value, each asserting
+     `ReasonUnsupportedLanguage` and that the returned `Glyph` is the zero value.
+  5. A reject-precedence row in `parseReject`: `Parse(Language("python"), "no-hash")` — an input
+     failing both the language check and the split — returns `ReasonUnsupportedLanguage`, not
+     `ReasonNoSeparator`. This pins the order so a later refactor cannot silently swap the two
+     checks.
+  6. An `invalid_utf8`-precedes-the-split row in `parseReject`: an input that is both invalid UTF-8
+     and missing a `#` reports `ReasonInvalidUTF8`, not `ReasonNoSeparator`.
 
   Every reject assertion extracts the reason with `errors.As` into a `*ParseError` and compares
   `Reason`; none asserts on message text. Every reject assertion also checks the returned `Glyph`
-  equals `Glyph{}`.
+  equals `Glyph{}` with `reflect.DeepEqual`.
 
 - **Commit:** `test(glyph): cover the language-free split, language check and reject precedence`
 
@@ -188,6 +197,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   - `glyph/glyph.go`
   - `glyph/golang.go`
   - `glyph/parse.go`
+  - `glyph/parse_test.go`
   - `internal/quarryengine/toc/toc_test.go`
 - **Edits:** none
 - **Creates:**
@@ -196,8 +206,8 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Moves:** none
 - **Requirements:**
 
-  `glyph/golang_test.go` declares `package glyph`. Imports are limited to `errors`, `reflect`,
-  `strings` and `testing`.
+  `glyph/golang_test.go` declares `package glyph`. Imports are limited to `errors`, `reflect` and
+  `testing`.
 
   **The accept table** is a package-level `var goAccept = []struct{...}` — package-level, not
   function-local, because card 7's round-trip test in another file is driven from it. Each entry
@@ -224,8 +234,9 @@ Batch-local decisions beyond the overview's Shared Decisions:
   - `_` as a member name, e.g. `internal/logger#_`;
   - a unit segment carrying `.`, `-`, `+` and `~`, e.g. `internal/go-lib.v2+x~1#Name`.
 
-  **The reject table** is a package-level `var goReject = []struct{...}` carrying the input and the
-  expected `Reason`. Every case asserts the `Reason` via `errors.As` **and** that the returned
+  **The reject table** is a package-level `var goReject = []struct{...}` carrying the input, the
+  `Language` to parse it under (always `Go` here) and the expected `Reason` — the same field shape as
+  card 5's `parseReject`, so the completeness test can range over both. Every case asserts the `Reason` via `errors.As` **and** that the returned
   `Glyph` equals `Glyph{}`, never the message text. The rows, at minimum, are exactly these:
 
   | input | expected `Reason` |
@@ -264,16 +275,18 @@ Batch-local decisions beyond the overview's Shared Decisions:
   | a `0xff` byte inside the unit half | `ReasonInvalidUTF8` |
   | a `0xff` byte inside the member half | `ReasonInvalidUTF8` |
 
-  The `ReasonUnsupportedLanguage` row lives in card 5's file rather than here; the completeness test
-  below therefore ranges over the reject rows in both files.
+  The `ReasonUnsupportedLanguage` row lives in card 5's `parseReject` slice rather than here; the
+  completeness test below therefore ranges over `goReject` and `parseReject` together. Both slices
+  are package-level in the same `package glyph`, so this file reads card 5's without importing
+  anything.
 
   Annotate the deliberately ambiguous rows in the table's own comments, since they are what the two
   precedence orders exist to settle: the doubly-invalid unit rows report the leftmost failing
   segment's reason; `(*dualHandler).Handle` carries both `*` and parentheses and reports
   `ReasonMemberPointer`; the §7 dotted spelling never reaches the member checks at all.
 
-  **The completeness test** ranges over `Reasons` and fails for any element that no reject case in
-  either test file produces. State in a comment what it does and does not guarantee: adding a
+  **The completeness test** ranges over `Reasons` and fails for any element that no row of
+  `goReject` or `parseReject` names. State in a comment what it does and does not guarantee: adding a
   seventeenth constant and listing it in `Reasons` fails until a reject case exists; adding one
   without listing it in `Reasons` is caught by review, not by any test.
 
@@ -322,6 +335,9 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
 - **Context:**
   - `docs/glyph.md`
+  - `glyph/golang_test.go`
+  - `glyph/parse_test.go`
+  - `glyph/string_test.go`
   - `go.mod`
 - **Edits:** none
 - **Creates:** none

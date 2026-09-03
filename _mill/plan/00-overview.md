@@ -49,7 +49,7 @@ _Cross-cutting decisions every batch inherits._
 
 - **Decision:** no file in the new package — implementation or `_test.go` — imports anything outside
   the Go standard library. The whole package needs only `fmt`, `strings`, `unicode` and
-  `unicode/utf8`; the tests add only `reflect`, `slices`, `strings` and `testing`. `go.mod` gains no
+  `unicode/utf8`; the tests add only `errors`, `reflect` and `testing`. `go.mod` gains no
   `require` line from this task.
 - **Rationale:** `docs/glyph.md` §6 promises any program can import this package without the engine.
   `go list -deps` cannot see test imports, so the test half of the rule is enforced by review of the
@@ -59,8 +59,8 @@ _Cross-cutting decisions every batch inherits._
 
 ### Decision: whole-`Glyph` comparison uses reflect.DeepEqual
 
-- **Decision:** tests compare whole `Glyph` values with `reflect.DeepEqual`, never `==`. A single
-  `[]string` field may use `slices.Equal` where the nil-versus-empty distinction is not the point.
+- **Decision:** tests compare whole `Glyph` values with `reflect.DeepEqual`, never `==`, including
+  when the expected value is the zero `Glyph`.
 - **Rationale:** `Glyph` holds two slice fields and is not comparable with `==`.
   `reflect.DeepEqual` distinguishes a nil slice from an empty one, which the `Owner`-is-nil,
   `Params`-is-nil and `Params`-printing assertions all depend on.
