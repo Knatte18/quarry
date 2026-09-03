@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/quarry/internal/quarryengine"
-	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 	"github.com/Knatte18/quarry/internal/quarryengine/treesitter"
 )
 
@@ -796,22 +795,22 @@ func TestImplemented_MatchesRegisteredStrategies(t *testing.T) {
 // get half-added — an extension resolving to a language name the backend cannot parse, surfacing as
 // a confusing runtime error rather than a build-time one.
 //
-// It also asserts every name Implemented() reports appears in registry.ExtensionLanguages(), so a
+// It also asserts every name Implemented() reports appears in ExtensionLanguages(), so a
 // strategy can never be registered under a name no extension resolves to.
 func TestExtensionLanguages_AllHaveGrammars(t *testing.T) {
-	for _, lang := range registry.ExtensionLanguages() {
+	for _, lang := range ExtensionLanguages() {
 		if !treesitter.Supported(lang) {
-			t.Errorf("registry.ExtensionLanguages() includes %q, but treesitter.Supported(%q) = false", lang, lang)
+			t.Errorf("ExtensionLanguages() includes %q, but treesitter.Supported(%q) = false", lang, lang)
 		}
 	}
 
 	extensionLangs := make(map[string]bool)
-	for _, lang := range registry.ExtensionLanguages() {
+	for _, lang := range ExtensionLanguages() {
 		extensionLangs[lang] = true
 	}
 	for _, lang := range Implemented() {
 		if !extensionLangs[lang] {
-			t.Errorf("Implemented() includes %q, which is not in registry.ExtensionLanguages()", lang)
+			t.Errorf("Implemented() includes %q, which is not in ExtensionLanguages()", lang)
 		}
 	}
 }

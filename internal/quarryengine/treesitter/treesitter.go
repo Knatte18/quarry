@@ -68,13 +68,7 @@ func Languages() []string {
 // fn must never retain root beyond its own return: root is invalidated the moment WithTree closes
 // the tree that owns it.
 //
-// An unknown lang returns a plain, unwrapped error naming lang and the wired set. This
-// deliberately does not use quarryengine.ErrNoLanguage: that sentinel's own doc comment defines it
-// narrowly as "no registry entry's markers matched under the target directory" — a
-// directory-detection outcome, not a grammar-wiring one — so reusing it here would make that
-// documented meaning false. It also does not use quarryengine.ErrLanguageUnsupported, which does
-// not exist at this batch and means "no toc strategy is registered", a different layer from "no
-// grammar is wired".
+// An unknown lang returns a plain, unwrapped error naming lang and the wired set.
 func WithTree(lang string, src []byte, fn func(root *ts.Node, partial bool) error) error {
 	newLanguage, ok := grammars[lang]
 	if !ok {
