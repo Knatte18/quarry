@@ -10,7 +10,8 @@ parent: main
 ## Problem
 
 Quarry is being rewritten around one identifier — the glyph — and three queries (`map`, `resolve`,
-`members`), with tree-sitter as the only extraction backend in phase 1. The specification is
+`members`), with tree-sitter as the only extraction backend in phase 1 and Go as the only supported
+language (see the `go-only-phase-1` decision). The specification is
 `docs/rewrite-plan.md`; the identifier contract is `docs/glyph.md`. The plan (§2, and the T0 row of
 §12) states that the first commit on `main` after the plan is written is the deletion, so no
 half-V1 code survives into the new work.
@@ -41,10 +42,17 @@ architecture they replace.
   `internal/quarryengine/toc`; `registry/` then disappears entirely.
 - Trim the root package `internal/quarryengine` to `cgoguard.go`, `cgoguard_nocgo.go`, a rewritten
   `doc.go`, and an `errors.go` holding only `ErrNoLanguage` and `ErrLanguageUnsupported`.
-- Drop Rust and TypeScript everywhere in kept code: the two grammars in
-  `treesitter.go`'s `grammars` map, the `.rs`/`.ts`/`.tsx` rows in the extension table, the
-  `typescript` branch in `toc/classify.go`'s `TestFile`, every rust/typescript test case, and the
-  doc comments naming five languages.
+- Reduce the supported set to **Go alone** (see the `go-only-phase-1` decision):
+  - Drop Rust and TypeScript from kept code: the two grammars in `treesitter.go`'s `grammars` map,
+    the `.rs`/`.ts`/`.tsx` rows in the extension table, the `typescript` branch in
+    `toc/classify.go`'s `TestFile`, and every rust/typescript test case.
+  - Delete the Python and C# extractors: `toc/python.go`, `toc/python_test.go`, `toc/csharp.go`,
+    `toc/csharp_test.go`, their two entries and imports in `treesitter.go`'s `grammars` map, their
+    cases in the `classify.go` / `comments.go` switches, and their test cases in
+    `classify_test.go`, `comments_test.go`, `compact_test.go`, `toc_test.go` and
+    `treesitter_test.go`.
+  - The extension table ends as one row, `".go": "go"`.
+  - Reword the doc comments in kept code that name any language other than Go.
 - Delete `testdata/` in full (`impactfixture`, `clockfixture`, `buildtagfixture`, including their
   three nested `go.mod` files).
 - Delete the V1 harness: `bench/loomyard-eval/ladder/{cmd,internal,tools}`,
@@ -65,8 +73,9 @@ architecture they replace.
 - `glyph/`, the new CLI, the new MCP server, and the new harness are T1, T5, T6 and T2. Nothing of
   them is created here.
 - `internal/quarryengine/toc` and `internal/quarryengine/treesitter` are not restructured beyond
-  the Rust/TypeScript removal and receiving the extension table. Their remaining tests stay green
-  unmodified except where they name a deleted language or package.
+  the language reduction and receiving the extension table. In particular the multi-language shared
+  helpers keep their current shape (see `go-only-phase-1`, "What is *not* reduced"). Their
+  remaining tests stay green unmodified except where they name a deleted language or package.
 - `docs/research/**`, `docs/toc-docstring-association.md`, `docs/glyph.md`,
   `docs/rewrite-plan.md`, `HANDOFF.md`, `bench/loomyard-eval/tasks/**`,
   `bench/loomyard-eval/results/**`, `bench/loomyard-eval/ladder/results/**`,
@@ -99,8 +108,8 @@ architecture they replace.
   # quarry
 
   Quarry is being rewritten around one identifier — the glyph — and three
-  queries: `map`, `resolve`, `members`. Extraction is tree-sitter only, for
-  Go, Python and C#.
+  queries: `map`, `resolve`, `members`. Extraction is tree-sitter only, and
+  Go only.
 
   The rewrite is specified in two documents:
 
@@ -120,7 +129,8 @@ architecture they replace.
 
 - Rationale: plan §2 asks for a stub naming the rewrite, the two documents, and `v1-final`. The
   cgo requirement is a real, current build-time fact a reader hits immediately, so it earns its
-  place. The stub names Go, Python and C# only, and describes nothing that does not exist yet.
+  place. The stub names Go only (per `go-only-phase-1`) and describes nothing that does not exist
+  yet.
 - Rejected: dropping the Building section (the cgo requirement is the one thing a fresh clone needs
   to know); a single paragraph with just the two links.
 
@@ -132,10 +142,26 @@ architecture they replace.
   (`ErrServerNotFound`, `ErrSymbolNotFound`, `ErrAmbiguousSymbol`, `ErrResolverUnsupported`,
   `ErrServerTimeout`, `ErrServerSpawnTimeout`, `ErrBuildTagsUnsupported`, with their sentinels) are
   deleted.
-- Rationale: `toc` imports the root package for exactly those two sentinels, and `cgoguard.go`'s
-  own comment explains why the cgo guard cannot live in `treesitter` — under `CGO_ENABLED=0` the
-  `treesitter` package cannot compile at all, so a guard placed there is unreachable exactly when
-  it is needed. Keeping the package trimmed is pure deletion; no code moves.
+- Rationale: `cgoguard.go`'s own comment explains why the cgo guard cannot live in `treesitter` —
+  under `CGO_ENABLED=0` the `treesitter` package cannot compile at all, so a guard placed there is
+  unreachable exactly when it is needed. Keeping the package trimmed is pure deletion; no code
+  moves.
+- The two sentinels are kept for **different** reasons, and they are not symmetric:
+  - `ErrLanguageUnsupported` has live producers in `toc` (`toc.go:32,40,45,201`) and live
+    assertions in `toc_test.go`. It is load-bearing.
+  - `ErrNoLanguage` has **no surviving producer at all**. Its only producer was
+    `registry.DetectLanguage`, deleted in commit 2. What keeps it is that two kept sites assert
+    against it *negatively*: `treesitter.go:71-77` documents that `WithTree` deliberately does not
+    use it, and `treesitter_test.go:123-126,137-138` asserts `errors.Is(err,
+    quarryengine.ErrNoLanguage) == false` for an unwired grammar. Deleting the sentinel would force
+    an edit to a `treesitter` test this task otherwise leaves alone, which is a worse trade than
+    keeping an eight-line unused `var`.
+  - Consequence for the comment pass: `errors.go:14-17` currently says `ErrNoLanguage` "is returned
+    by `DetectLanguage`". Do **not** rewrite it to name a producer in `toc` — there is none.
+    Restate it as a reserved sentinel with no current producer, kept because `treesitter` pins the
+    distinction between "no language detected for a directory" and "no grammar wired for a
+    language", and keep the existing "detection-only" meaning intact, since `treesitter.go:71-77`
+    and `treesitter_test.go:123-126` both depend on that exact wording being true.
 - Rejected: collapsing the package (moving the two sentinels into `toc` and the cgo guard into a
   new package) — that is re-architecting, which T0 is not; keeping the package verbatim as dead
   code for T3 to reuse.
@@ -146,8 +172,11 @@ architecture they replace.
   `internal/quarryengine/toc` (package `toc`). `registry/` is deleted whole. `toc.go` drops the
   `registry` import and calls `LanguageForExtension`, `ExtensionsForLanguage` and
   `ExtensionLanguages` unqualified.
-- Rationale: `toc` is the table's only remaining caller once the LSP layer is gone. Plan §2
-  explicitly permits moving it into `toc` or `treesitter` when `registry` otherwise disappears.
+- Rationale: `toc` is the table's only remaining caller once the LSP layer is gone (verified:
+  `toc.go:38,161,175` and `toc_test.go:802,809` are every call site), and `registry` has nothing
+  else left to hold. Plan §2's kept row names "the extension→language table in `registry`" as a
+  thing to keep, but says nothing about where it lives; the wiki task body is the text that permits
+  the move ("move it into `toc` or `treesitter` if `registry` otherwise disappears").
 - Rejected: `treesitter` (that package knows nothing about file extensions today, only about
   grammar names); keeping a one-file `registry` package holding only the table.
 
@@ -157,8 +186,9 @@ architecture they replace.
   `treesitter.go`'s `grammars` map and the two grammar imports; remove the `.rs`, `.ts` and `.tsx`
   rows from the extension table; remove the `typescript` branch from `toc/classify.go`'s
   `TestFile`; remove every rust/typescript test case; reword the doc comments in kept code that
-  name five languages to name Go, Python and C#.
-- Rationale: plan §2 removes the two grammars from `go.mod`; three focus languages. `toc_test.go`
+  name five languages to name Go alone (per `go-only-phase-1`, which removes Python and C# in the
+  same commit).
+- Rationale: plan §2 removes the two grammars from `go.mod`. `toc_test.go`
   cross-checks the extension table against `treesitter.Supported`, so the table and the grammar map
   must move together. Leaving dead names in comments and tests describes a capability that does not
   exist.
@@ -166,12 +196,42 @@ architecture they replace.
   `typescript` `TestFile` branch dormant (it is filename-only and would still pass, but it claims
   support that is gone); keeping the grammars.
 
+### go-only-phase-1
+
+- Decision: phase 1 supports **Go alone**. On top of the Rust/TypeScript removal, commit 3 also
+  deletes the Python and C# extractors and everything that serves only them:
+  `toc/python.go`, `toc/python_test.go`, `toc/csharp.go`, `toc/csharp_test.go`; the `python` and
+  `csharp` entries in `treesitter.go`'s `grammars` map plus their two grammar imports; the
+  `tree-sitter-python` and `tree-sitter-c-sharp` requirements in `go.mod`; and the Python and C#
+  cases in `classify_test.go`, `comments_test.go`, `compact_test.go`, `toc_test.go` and
+  `treesitter_test.go`. The extension table ends as exactly one row, `".go": "go"`, and
+  `Implemented()`, `treesitter.Languages()` and `ExtensionLanguages()` all become `{go}`.
+- Rationale: operator directive, received after the initial keep/delete table was settled. Go is
+  the only language T1 through T7 need — plan §12's T3, T4 and T5 done-criteria are all stated over
+  Loomyard, a Go repository — and T8 is the wave that brings Python and C# back. Carrying two
+  extractors that nothing in waves 1–7 exercises is carrying V1 code under a new name.
+- **Known tension with the plan document, deliberately left standing:** `docs/rewrite-plan.md` §2,
+  §6 and §12's T8 row all assume three focus languages, and T8 is phrased as closing "extractor
+  gaps" in extractors that this decision deletes. T0 does not rewrite the plan (see
+  `docs-deleted-not-superseded` — the plan is a kept document), so whoever picks up T8 writes the
+  Python and C# extractors fresh against the glyph contract rather than extending the V1 ones.
+  That is a larger T8 than §12 describes, and it is the accepted cost.
+- **What is *not* reduced:** the language-agnostic shared helpers keep their current shape.
+  `comments.go`'s `StripComment` dispatch, `classify.go`'s `IsDirectiveBlock` /
+  `GeneratedByBanner` / `TestFileByName` switches, `nodes.go`'s `SigEnd` flag, and `strategy.go`'s
+  registration machinery are all multi-language by construction and are what T8 registers against.
+  Delete the `python` and `csharp` *cases* from those switches, not the switches. Same reasoning as
+  `unreachable-no-strategy-branch-kept`: a kept package's structure is not re-architected here.
+- Rejected: keeping Python and C# because plan §2 names three languages (the operator directive is
+  newer, and §2's own §12 puts Python and C# in wave 7 regardless); deleting the strategies but
+  keeping their table rows (breaks `toc_test.go:803`'s cross-check); collapsing `Strategy` into a
+  Go-only concrete type (re-architecting, and T8 would rebuild it).
+
 ### unreachable-no-strategy-branch-kept
 
 - Decision: keep `buildDirEntry`'s no-strategy branch (`toc.go:199-202`, `entry.Error =
   quarryengine.ErrLanguageUnsupported.Error()`) and its `TOCFile` counterpart, even though neither
-  can be reached once the extension table is `{go, python, csharp}` and all three register a
-  `Strategy`. Do not add a comment marking them unreachable either.
+  can be reached once the extension table is `{go}` and Go registers a `Strategy`. Do not add a comment marking them unreachable either.
 - Rationale: these are three lines of defensive code guarding an invariant that holds only by
   coincidence at this commit. `toc/strategy.go`'s own `Implemented()` doc says the point of the
   registry is to let callers "distinguish 'designed but not implemented' from 'unknown extension'",
@@ -263,8 +323,11 @@ architecture they replace.
      `internal/quarryengine/{daemon,lsp,query,impact}` and `internal/quarryengine/registry`; move
      `extension.go` + `extension_test.go` into `toc`; trim the root package (`errors.go` down to
      the two sentinels, delete `log.go` and `position.go`, rewrite `doc.go`).
-  3. **Rust and TypeScript.** Remove them from the grammar map, the extension table,
-     `classify.go`'s `TestFile`, the tests, and the doc comments.
+  3. **Reduce to Go only.** Remove Rust, TypeScript, Python and C# from the grammar map and the
+     extension table; delete `toc/python.go`, `toc/python_test.go`, `toc/csharp.go`,
+     `toc/csharp_test.go`; remove their cases from `classify.go`'s and `comments.go`'s switches and
+     from every affected test; repoint `compact_test.go`'s error row; delete the three Rust-
+     dependent `toc` tests and `extension_test.go`'s `.ts` test; run the doc-comment pass.
   4. **Harness and fixtures.** Delete `bench/loomyard-eval/ladder/{cmd,internal,tools}`,
      `run*.sh`, `launch-session.sh`, both bench READMEs, `.claude/skills/ladder-run/SKILL.md`, and
      `testdata/`.
@@ -313,8 +376,15 @@ non-registry user of `gopkg.in/yaml.v3`. The only nested `go.mod` files in the t
 under `testdata/`, all deleted.
 
 **What survives, in full:** `internal/quarryengine` (root, trimmed),
-`internal/quarryengine/toc`, `internal/quarryengine/treesitter`. That is the entire Go tree after
-this task. `cmd/` is gone; `quarry/` is gone.
+`internal/quarryengine/toc` (minus `python.go`/`csharp.go` and their tests),
+`internal/quarryengine/treesitter` (Go grammar only). That is the entire Go tree after this task.
+`cmd/` is gone; `quarry/` is gone.
+
+**Strategy registration after the reduction.** Concrete strategies register themselves from their
+own file's `init` (`toc/strategy.go:56-63`), so deleting `python.go` and `csharp.go` removes their
+registrations with no separate edit — there is no hand-maintained list to update. `Implemented()`
+then reports `{go}` from what compiled in, which is exactly why `toc_test.go`'s cross-check needs
+no structural change.
 
 **Import facts verified during exploration:**
 
@@ -338,9 +408,10 @@ this task. `cmd/` is gone; `quarry/` is gone.
   commit leaves that commit red. This is why the guard tests go in commit 1.
 - `internal/quarryengine/toc/toc_test.go:802-815` cross-checks `registry.ExtensionLanguages()`
   against `treesitter.Supported()` in one direction and `Implemented()` against
-  `ExtensionLanguages()` in the other. Dropping the Rust/TypeScript grammars *without* dropping
-  `.rs`/`.ts`/`.tsx` from the table breaks the first check. Dropping both leaves all three sets
-  equal to `{csharp, go, python}` and both checks pass unmodified.
+  `ExtensionLanguages()` in the other. Dropping a grammar *without* dropping its extension from the
+  table breaks the first check; dropping a strategy without dropping its extension breaks the
+  second. Grammar map, extension table and strategy set must move together in commit 3 — do all
+  three and both checks pass unmodified with all three sets equal to `{go}`.
 - **Three `toc` tests depend on Rust, and only one of them says so in a greppable way.** The
   extension table is what makes a `.rs` file reach `toc` at all, so a test can depend on Rust
   purely through a filename. All three are listed under Testing with their disposition:
@@ -371,11 +442,15 @@ this task. `cmd/` is gone; `quarry/` is gone.
   build with a readable message. It is not broken; do not "fix" it.
 - **The comment sites below are illustrative, not exhaustive — the rule in
   `doc-comment-pass-is-narrow` governs.** Any comment in kept code that names a deleted package or
-  names Rust/TypeScript is in the pass, whether or not it appears here. Known sites:
-  - `toc/strategy.go:76` — the `Strategy` interface doc says it is "designed to accommodate all
+  names a language other than Go is in the pass, whether or not it appears here. Under
+  `go-only-phase-1` this list is substantially longer than it looks: `comments.go:19-52,101-102`,
+  `nodes.go:3,48-55`, `types.go:13-19` and `classify.go:22-31,89` all explain their rules by
+  contrasting Go with Python and C#. Rewrite them to state the rule the surviving code implements;
+  do not preserve the contrast by describing languages the tree no longer supports. Known sites:
+  - `toc/strategy.go:16,76` — the `Strategy` interface doc says it is "designed to accommodate all
     five languages the toc survey covers (Go, Python, C#, TypeScript, Rust)".
-  - `toc/classify.go:31,93-96,101-102,126` — the live `typescript` branch and its rust/typescript
-    comments.
+  - `toc/classify.go:22,31,64-66,89,101-102,108,126,136` — the live `typescript`, `python` and
+    `csharp` branches and the comments describing them.
   - `toc/doc.go:1-11` — names `registry` and `internal/cli`, and cites the root package doc's
     "The engine/CLI split" section that commit 2 rewrites away.
   - `toc/toc.go:128` — names `registry.ExtensionsForLanguage`, which becomes an unqualified
@@ -388,11 +463,13 @@ this task. `cmd/` is gone; `quarry/` is gone.
     marker-based `DetectLanguage` it sat beside, and "the LSP verbs"; its header is rewritten as
     part of the move.
 
-**`go.mod` after `go mod tidy`.** The surviving Go code uses only `github.com/tree-sitter/
-go-tree-sitter` plus the `go`, `python` and `c-sharp` grammars. `cobra`, `pflag`, `mousetrap`,
-`gofrs/flock`, `modelcontextprotocol/go-sdk`, `jsonschema-go`, `yaml.v3`, and the `tree-sitter-rust`
-/ `tree-sitter-typescript` grammars all lose their last user; `go-cmp` is not used by any kept test
-either. Let `go mod tidy` decide the final list rather than hand-editing `go.mod`.
+**`go.mod` after `go mod tidy`.** The surviving Go code uses only
+`github.com/tree-sitter/go-tree-sitter` and `github.com/tree-sitter/tree-sitter-go`. Everything else
+loses its last user: `cobra`, `pflag`, `mousetrap`, `gofrs/flock`,
+`modelcontextprotocol/go-sdk`, `jsonschema-go`, `yaml.v3`, and all four other grammars
+(`tree-sitter-rust`, `tree-sitter-typescript`, `tree-sitter-python`, `tree-sitter-c-sharp`);
+`go-cmp` is used by no kept test either. Let `go mod tidy` decide the final list rather than
+hand-editing `go.mod`.
 
 **Reference documents.** `docs/rewrite-plan.md` §2 is the authoritative keep/delete table and §12's
 T0 row restates it; §1 says why. `docs/glyph.md` is the contract T1 onwards builds on. Both are
@@ -413,6 +490,11 @@ kept and are not edited by this task.
   not hand-edit it.
 - `_mill/` is task state and is not part of the deletion.
 - Every one of the five commits must be green, not just the last one.
+- **Build precondition for the green gate:** `go build ./...` and `go test ./...` require
+  `CGO_ENABLED=1` and a C toolchain on the machine running them. This is not incidental — the
+  tree-sitter backend is a cgo binding, and `internal/quarryengine/cgoguard_nocgo.go` fails the
+  build *by design* with a readable message under `CGO_ENABLED=0`. A "red" result that turns out to
+  be that guard's message means the environment is wrong, not the deletion.
 
 ## Testing
 
@@ -438,8 +520,12 @@ except the import fix in commit 2:
     already covers, leaving a test whose name and comment describe a path that no longer exists.
 
   All three covered the same scenario — "extension is in the table, but no `Strategy` is
-  registered for its language" — which cannot occur once the table is exactly
-  `{go, python, csharp}` and all three register a strategy. Do not replace them with equivalents.
+  registered for its language" — which cannot occur once the table is exactly `{go}` and Go
+  registers a strategy. Do not replace them with equivalents.
+- `toc_test.go`, commit 3 (Go-only): the cross-check at lines 799-816 needs no structural edit —
+  with `ExtensionLanguages()`, `treesitter.Supported` and `Implemented()` all reduced to `{go}`,
+  both directions hold as written. Any other test in the file that writes a `.py` or `.cs` fixture
+  goes with the strategies.
 - `classify_test.go`: delete the TypeScript `TestFile` cases and the Rust `TestFile` /
   `Generated` "unknown" cases (commit 3).
 - `compact_test.go`: **repoint**, do not delete, the `bad.rs` fixture row at line 41 and its
@@ -449,18 +535,45 @@ except the import fix in commit 2:
   line 46 then stays correct, and `CompactDir`'s error-line rendering keeps its coverage (commit
   3). See the `compact-test-row-repointed` decision.
 - `extension_test.go`: arrives from `registry` in commit 2 with its package clause changed to
-  `toc`; in commit 3 its `.rs` / `.ts` / `.tsx` expectations go.
-- Everything else — `comments_test.go`, `sentences_test.go`, `golang_test.go`, `python_test.go`,
-  `csharp_test.go`, `toc_integration_test.go` — must pass untouched. If one of them needs an edit,
-  that is a signal the deletion went further than intended.
+  `toc`. In commit 3 it needs three distinct edits, not one:
+  - delete `TestLanguageForExtension_IgnoresDirectoryContext` (`extension_test.go:41-46`) whole —
+    its entire body asserts `.ts` → `"typescript"`, and its stated premise is the contrast with
+    `DetectLanguage`, which commit 2 deletes. It goes red, it is not a row removal.
+  - `TestExtensionLanguages` (`extension_test.go:49-55`): the `want` list becomes `[]string{"go"}`.
+  - `TestLanguageForExtension` and `TestExtensionsForLanguage`: drop every non-`.go` row.
+- `python_test.go` and `csharp_test.go`: deleted whole in commit 3, with their strategies (see the
+  `go-only-phase-1` decision).
+- `comments_test.go` and `classify_test.go`: drop the Python and C# cases in commit 3. `comments.go`
+  itself keeps `StripComment`'s dispatch — see `go-only-phase-1` for why the shared helpers are not
+  reduced to Go-only shapes.
+- `toc_integration_test.go`: **repoint in commit 1, do not leave untouched.** It resolves
+  `<moduleRoot>/internal/output/output.go` at runtime via `runtime.Caller`
+  (`toc_integration_test.go:20-29`) and `t.Fatalf`s when `TOCFile` errors, then asserts
+  `Package == "output"` and the symbols `Ok`, `Err`, `ErrFields`. Commit 1 deletes
+  `internal/output`, so the file must be repointed in that same commit or commit 1 is red. Repoint
+  it at `internal/quarryengine/treesitter/treesitter.go`: it survives all five commits, sits
+  outside the package under test (preserving the test's stated point — real repository source
+  nobody wrote to satisfy `toc`'s own tests), and has a file header plus three documented
+  functions, so the assertions change to `Package == "treesitter"` and
+  `{Supported, Languages, WithTree}`. Commit 3 edits that file's grammar map and comments, but not
+  those three symbol names, and the test's range/kind assertions are deliberately loose.
+- `sentences_test.go` and `golang_test.go` must pass untouched. If either needs an edit, that is a
+  signal the deletion went further than intended.
+- **How commit closure was derived, and its one blind spot.** The claim in `five-commits-each-green`
+  that each commit is closed under its importers was derived from the *import graph* only
+  (`grep` for `Knatte18/quarry/<pkg>` across `--include=*.go`). That method cannot see a kept test
+  that reaches a deleted path at **runtime** rather than through an import —
+  `toc_integration_test.go` is exactly that case, and it is the only one in the tree. Before
+  committing each step, also grep the kept tests for `runtime.Caller`, `moduleRoot`, `os.ReadFile`
+  and literal repository paths, and treat any hit resolving into a deleted directory as a member of
+  that commit's edit set.
 
-**`internal/quarryengine/treesitter`** — `treesitter_test.go` loses its TypeScript and Rust table
-rows at lines 29-30 (commit 3). It contains no call to `Languages()` or `Supported()`, so there is
+**`internal/quarryengine/treesitter`** — `treesitter_test.go` loses its TypeScript, Rust, Python and
+C# table rows (commit 3), leaving Go. It contains no call to `Languages()` or `Supported()`, so there is
 no set assertion in this package to update and none should be added. The only assertion anywhere
 that pins the supported set is `toc_test.go:803`'s cross-check of the extension table against
-`treesitter.Supported`, and it needs no edit: with Rust and TypeScript gone from both the grammar
-map and the table, all three sets are `{csharp, go, python}` and both directions of the check hold
-as written. The `WithTree` lifecycle tests (the `onRelease` seam) are unaffected and must pass
+`treesitter.Supported`, and it needs no edit: with every non-Go language gone from both the grammar
+map and the table, all three sets are `{go}` and both directions of the check hold as written. The `WithTree` lifecycle tests (the `onRelease` seam) are unaffected and must pass
 unchanged.
 
 **`internal/quarryengine` (root)** — after `layering_test.go` and `seam_enforcement_test.go` are
@@ -517,7 +630,18 @@ first.
 - **Q:** (review r1) Two more `toc` tests depend on Rust through a filename rather than the word
   "rust", and one of them — `TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty` — goes red in
   commit 3. What is their disposition? **A:** Delete both, along with the `TOCDir(dir, "rust")`
-  test; the scenario all three cover cannot occur once the table is `{go, python, csharp}`.
+  test; the scenario all three cover cannot occur once the table is `{go}`.
 - **Q:** (review r1) `buildDirEntry`'s no-strategy branch becomes unreachable. Delete it, keep it,
   or annotate it? **A:** Keep it unannotated — it is a live guard in a kept package, and T3/T8 put
   languages back.
+- **Q:** (review r2) `toc_integration_test.go` parses `internal/output/output.go` at runtime, which
+  commit 1 deletes — what is its disposition? **A:** Repoint it in commit 1 at
+  `treesitter/treesitter.go`. Commit closure was derived from import graphs, which cannot see a
+  runtime path reference; that blind spot is now written down.
+- **Q:** (review r2) `ErrNoLanguage` has no surviving producer once `DetectLanguage` goes. Keep or
+  delete? **A:** Keep it, with its doc restated as a reserved sentinel with no current producer —
+  deleting it would force an edit to `treesitter_test.go`'s negative assertion, which this task
+  otherwise leaves alone.
+- **Q:** (operator, mid-review) Is phase 1 three languages or one? **A:** **Go only.** Delete the
+  Python and C# extractors, their grammars in `go.mod`, and their tests; the extension table is
+  `{.go}`. See `go-only-phase-1`, including the tension this creates with the plan's T8 row.
