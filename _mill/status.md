@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-foundations-and-config
+phase: approved-stream-and-metrics
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -35,6 +35,7 @@ blocked  '2026-09-03T18:17:45Z'
 planned  '2026-09-03T18:30:07Z'
 implementing  '2026-09-03T18:30:31Z'
 approved-foundations-and-config  '2026-09-03T18:38:07Z'
+approved-stream-and-metrics  '2026-09-03T18:44:55Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     commit_sha: d611915ebfb8adae87fe0ec6b6d5f87af72ec0b6
     verify_baseline_failures: []
   - name: stream-and-metrics
-    state: running
+    state: approved
     implementer_session: 5425f920-16ea-4f41-a8a9-bd03a44f685f
     start_sha: 3db0e6e06c30920dd1d9520ba575bbc80597d558
+    commit_sha: 980ed238de273e4bf228910233b789f556e48b1d
     verify_baseline_failures: []
   - name: prompt-and-schema
     state: pending
