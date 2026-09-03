@@ -8,8 +8,9 @@ stone, which is where quarry's names come from.
 This document is the contract. `docs/rewrite-plan.md` says how quarry implements it; Loomyard's plan
 format adopts it for card targets. Anything not stated here is not part of the contract.
 
-Go is implemented first. The Python and C# alphabets are specified here so the form is known to
-hold for them, and are implemented later (`docs/rewrite-plan.md` §9).
+Go is implemented; nothing else is, until a language is wanted. The Python and C# alphabets are
+specified here so the form is known to hold for them, and are implemented one at a time, later
+(`docs/rewrite-plan.md` §9).
 
 ## 1. One form, three alphabets
 
@@ -201,7 +202,8 @@ Measured cost (Loomyard, 4-core WSL2, in-process, source read fresh every time):
   its `#`. In Markdown: safe anywhere but the first column of a line. C# glyphs contain `(`, `,`
   and `<`; quote them where a format cares.
 - In Go: package `github.com/Knatte18/quarry/glyph` — pure Go, no cgo, no dependencies, so that
-  any program can import it without the engine. `type Language` with `Go`, `Python`, `CSharp`;
+  any program can import it without the engine. `type Language`, with `Go` alone until a second
+  language is added (`Python` and `CSharp` are the names reserved for the alphabets below);
   `type Glyph struct { Lang Language; Unit string; Owner []string; Name string; Params []string }`;
   `Parse(lang Language, s string) (Glyph, error)`; `Glyph.String()`. `Parse` is the syntactic
   check: it reads no source and accepts exactly the alphabet of `lang`. The string form is

@@ -39,10 +39,10 @@ Non-test lines at `2565ef5`:
 
 | part | lines | disposition |
 |---|---|---|
-| `internal/quarryengine/toc`, `treesitter`, the extension→language table in `registry` | ~2 100 (+2 600 test) | **kept** — the extractors for Go, Python, C#, comment association, sentence splitter, tree-sitter wrapper |
+| `internal/quarryengine/toc`, `treesitter`, the extension→language table in `registry` | ~2 100 (+2 600 test) | **kept, Go only** — the Go extractor, comment association, sentence splitter, tree-sitter wrapper. The Python and C# extractors, their grammars and their tests are **deleted** with the rest: they stay on `v1-final`, and when those languages are added their extractors are written against the glyph contract, not extended from V1 |
 | `internal/quarryengine/{daemon,lsp,query,impact,registry (rest)}`, `internal/{lock,proc}` | ~3 400 | **deleted** — the LSP layer. `impact` returns in phase 2 behind the new contract, on whichever type checker phase 2 picks |
 | `internal/cli`, `internal/mcpserver`, `internal/output`, `cmd/*`, `quarry/` facade | ~4 500 | **deleted and rebuilt** from the contract, much smaller: three verbs, not seven |
-| `go.mod`: tree-sitter Rust and TypeScript grammars, LSP/JSON-RPC deps, `gopls` requirement | | **removed** — three focus languages, no daemon |
+| `go.mod`: every tree-sitter grammar but Go, LSP/JSON-RPC deps, `gopls` requirement | | **removed** — one language, no daemon |
 | `testdata/{impactfixture,clockfixture,buildtagfixture}` | | deleted with the layer that used them |
 | `bench/loomyard-eval/ladder/{cmd,internal,tools}`, `run*.sh`, `launch-session.sh`, `.claude/skills/ladder-run` | 9 000 (+8 300 test) | **deleted and rebuilt** around headless `claude -p` (§9a), ~1 000–1 500 lines |
 | `bench/loomyard-eval/ladder/results/**`, `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the record, the fasit, the task prompts; `docs/research/output-formats/` is the "before" side T5 adds `after/` to |
@@ -317,11 +317,12 @@ keyed on (path, mtime, size) per file and parses only what changed.
 
 ## 6. Languages
 
-Go, Python, C#. Not five. **Go is phase 1.** Python and C# are specified in `docs/glyph.md` so the
-form is known to hold, their extractors stay in the tree, and their glyph alphabets, `members`
-heads and the gaps below are implemented after the Go surface is measured (§9). Each language's
-extractor must deliver, per symbol: kind, name, owner chain, signature, doc, start/sigend/end, and
-the unit. Known gaps in the kept extractors:
+**Go. Only Go.** Other languages are added one at a time, when wanted, after the Go surface is
+measured (§9). Python and C# are specified in `docs/glyph.md` so the form is known to hold for
+them; their V1 extractors are deleted with the rest (§2) and are written fresh against the glyph
+contract when their turn comes. Each language's extractor must deliver, per symbol: kind, name,
+owner chain, signature, doc, start/sigend/end, and the unit. Known gaps, in the Go extractor that
+is kept and in the V1 Python and C# extractors on `v1-final`, for whoever picks them up:
 
 | language | gap today | needed for |
 |---|---|---|
@@ -423,17 +424,16 @@ before step 8.
 2. **The `glyph` package** — pure Go, no cgo, no dependencies: parser, printer, the Go alphabet,
    tests, per `docs/glyph.md`; the structural split at `#` already accepts the other two. Then `Symbol` gains its glyph, the owner chain, the head
    span, and the unit walk (directory → Go unit; source root → Python module; namespace → C#).
-3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on fixtures for
-   all three languages.
+3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on Go fixtures.
 4. **`map`** — the kept toc, re-keyed by glyph, headers and docs complete.
-5. **`members`** — head computation for Python and C#; the Go case falls out of `resolve`.
+5. **`members`** — the Go head falls out of `resolve`.
 6. **Go extractor gaps** (§6): external test packages, `init` as multipart, package doc.
 7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then a thin **MCP**: only
    the tools the ladder measures, `map` first.
 8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` (now `map`) must
    reproduce its separation from control. That is the regression gate for the rewrite.
-9. **Python and C#:** their glyph alphabets in `glyph`, the extractor gaps in §6, `members` heads.
-   Designed now, coded after 8.
+9. **The next language, when wanted:** its glyph alphabet in `glyph`, an extractor written against
+   the contract, its `members` head. Python and C# are designed now, coded after 8, one at a time.
 10. **Phase 2 decision:** the type checker. Then `impact` and the full `assert-no-callers`.
 
 ## 9a. The harness is rewritten too
@@ -493,7 +493,8 @@ retired with the architecture that needed them.
 - Positions as input. A `file:line:col` form does not exist on any surface.
 - Fuzzy matching of any kind. Unknown is `not_found`; several is `ambiguous`.
 - A daemon, an index, or a cache in phase 1.
-- Languages beyond Go, Python, C#.
+- Languages beyond Go, until a language is wanted. Python and C# are designed (`docs/glyph.md`) and
+  are the first two candidates; nothing else is designed.
 - Renaming or editing source. Quarry reads.
 - Compact-by-default. Views are options; extraction is complete.
 
@@ -512,7 +513,7 @@ test ./...` green in its worktree and one merge to `main`.
 
 | wave | task | scope | after | done when |
 |---|---|---|---|---|
-| 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, Rust/TypeScript grammars and LSP deps from `go.mod`, the V1 docs and `.mcp.json` of §2; README stub; keep `toc`, `treesitter`, the extension table, results, yaml, tasks, `docs/research`, the two rewrite documents | — | tree builds and tests green with only the extractors; nothing under `internal/` references a daemon |
+| 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, every grammar but Go and the LSP deps from `go.mod`, the Python and C# extractors and their tests, the V1 docs and `.mcp.json` of §2; README stub; keep `toc`, `treesitter` and the extension table reduced to Go, results, yaml, tasks, `docs/research`, the two rewrite documents | — | tree builds and tests green with only the Go extractor; nothing under `internal/` references a daemon or a language other than Go |
 | 1 | **T1 glyph package** | `glyph/`: pure Go, no deps; structural split at `#`; the Go alphabet (unit path, `_test` unit, `Type.Name`, `init`); `Parse(lang, s)`, `String`, canonical form; table tests from `docs/glyph.md` §1–§3 including rejects | T0 | every example and corner case in the spec is a test; `go list -deps` shows no cgo |
 | 1 | **T2 harness** | `bench/loomyard-eval/ladder/`: one Go program around `claude -p` per §9a; yaml loader for the kept shape; worktree pin; MCP config; stream-json capture and metrics; scorer; `summary.json`, `provenance.json`, table; resume; the two surviving gates. Integration test against a stub MCP server, not quarry | T0 | a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` completes end to end on this host, and the metrics match the transcript by hand |
 | 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers, `language` per file when it differs; `map` in the engine re-keyed by glyph | T1 | `map` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `map` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
@@ -526,7 +527,8 @@ Wave 1 is the parallel one. T2 is the long pole of wave 1 and overlaps waves 2�
 needs no quarry code until T7.
 
 **Not tasks yet.** Go only, until T7 has run.
-Python and C# (their alphabets in `glyph/`, the §6 extractor gaps, `members` heads, package doc sources) become tasks after T7;
-their done criterion is the T3 round trip over a real Python and a real C# repository at 100 %,
-with C# built-in aliases (`Int32` → `int`) canonicalised by a fixed table.
+A second language becomes a task when it is wanted, one language per task:
+its alphabet in `glyph/`, an extractor written against the contract (the V1 one on `v1-final` is reference, not a starting point), its `members` head, its package doc source.
+The done criterion is the T3 round trip over a real repository in that language at 100 %;
+for C#, built-in aliases (`Int32` → `int`) canonicalised by a fixed table.
 Loomyard's adoption of glyphs (§8) is work in Loomyard's repository after T5 merges, never a task in this one.
