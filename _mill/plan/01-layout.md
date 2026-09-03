@@ -78,8 +78,9 @@ discussion says its `FirstParagraph` cases move to `text_test.go`, but on disk t
 - **Requirements:** Keep `package treesitter`. Add the blank import
   `_ "github.com/Knatte18/quarry/internal/cgoguard"` to the import block of `treesitter.go`, with a
   comment saying it is what makes the guard a build-graph dependency of every package that links
-  tree-sitter. Update the file header comment's reference to the old package path
-  so it names the new one. `treesitter_test.go` needs no change beyond the move.
+  tree-sitter. Update the stale phrase in the file's own header comment: it opens "the parsing
+  backend for the toc verbs", and there is no `toc` package after this batch — name the engine
+  package instead. `treesitter_test.go` needs no change beyond the move.
 - **Commit:** `refactor(treesitter): move under internal/engine and depend on cgoguard`
 
 ### Card 3: The engine root files move and the two package comments merge

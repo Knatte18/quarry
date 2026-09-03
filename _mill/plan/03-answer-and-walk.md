@@ -199,8 +199,25 @@ exclusion.
 - **Requirements:** New file `walk.go`, `package engine`. It holds the per-directory work `TOC`
   drives, as unexported methods on `*Repo`:
 
+  **How many times a file is parsed, and why.** The directory is walked in exactly **two** parse
+  passes over its `.go` files, never three. Pass one is `dirPackage`, which reads package clauses
+  only. Pass two is `fileEntry`, whose single `treesitter.WithTree` callback yields that file's
+  package documentation, header, generated flag, lossy flag and symbols together — `dirDoc` does
+  **not** re-parse; it selects among the package-doc strings pass two already produced. Two passes
+  rather than one is forced and is not a defect: the glyph unit batch 4 threads into symbol
+  extraction is a directory-level fact, so no file can be extracted until every clause in the
+  directory has been read. State the split and its reason in the file's header comment, so a later
+  reader does not "optimise" pass one away.
+
+  The cost is priced, not assumed: one parse of every file in this repository is measured at 616 ms
+  for 469 files, so a whole-tree walk with symbols is roughly 1.2 s and the round trip's own lookup
+  pass brings it to under 2 s — two orders of magnitude inside `go test`'s default timeout, with no
+  cache and no concurrency.
+
   - `dirPackage(dirRel string, entries []os.DirEntry) (pkg string, clauses map[string]string)` —
-    read every `.go` file's package clause in the directory, resolving the strategy through
+    `entries` is the **already ignore-filtered** set `walkDir` built, so a gitignored `.go` file
+    never votes in the tie-break and never contributes a clause; the same holds for `dirDoc`'s
+    candidates. Read every `.go` file's package clause in the directory, resolving the strategy through
     `StrategyFor(lang)` and calling its `Package` method under `treesitter.WithTree` — never naming
     `goStrategy` directly, since the alphabet is chosen per file and Go is merely the only
     registration today; say so in the comment. Return the directory's package and the per-file
@@ -210,15 +227,17 @@ exclusion.
     lexicographically smallest clause wins, and the comment must say why: without a tie-break the
     answer would depend on `os.ReadDir`'s order, which is exactly what the ordering rule exists to
     eliminate.
-  - `dirDoc(dirRel string, clauses map[string]string, pkg string) string` — the directory's package
-    documentation. Candidates are the directory's `.go` files whose clause equals `pkg`, in sorted
-    order with `doc.go` tried first; the first non-empty `PackageDoc` result — from the strategy
-    resolved through `StrategyFor(lang)`, for the same reason — wins. No
-    match returns the empty string, which `omitempty` turns into an absent key rather than an empty
-    one.
-  - `fileEntry(dirRel, base string, dirPkg, dirLang string, clause string, wantSymbols bool) FileEntry`
-    — build one file entry. `Name` is the base name. A file with a language (per
-    `LanguageForExtension`) is read and parsed: `Header` is `FirstParagraph` of the strategy's
+  - `dirDoc(clauses map[string]string, docs map[string]string, pkg string) string` — the
+    directory's package documentation, selected from the `PackageDoc` strings pass two already
+    produced, keyed by base name. Candidates are the files whose clause equals `pkg`, in sorted
+    order with `doc.go` tried first; the first non-empty result wins. This function opens no file
+    and parses nothing. No match returns the empty string, which `omitempty` turns into an absent
+    key rather than an empty one.
+  - `fileEntry(dirRel, base string, dirPkg, dirLang string, clause string, wantSymbols bool) (FileEntry, string)`
+    — build one file entry, returning it together with this file's package-documentation string for
+    `dirDoc` to select from. `Name` is the base name. A file with a language (per
+    `LanguageForExtension`) is read and parsed exactly once, inside one `treesitter.WithTree`
+    callback that serves every consumer below: `Header` is `FirstParagraph` of the strategy's
     `Header`, `Test` and `Generated` come from the strategy, `Package` is emitted only when the
     file's clause differs from `dirPkg`, `Language` is emitted only when the file's language differs
     from `dirLang`, and `Symbols` is set to a non-nil pointer — to a possibly-empty slice — only when
@@ -259,6 +278,7 @@ exclusion.
   - `internal/engine/answer.go`
 - **Edits:**
   - `internal/engine/toc.go`
+  - `internal/engine/text.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -285,6 +305,13 @@ exclusion.
   describes two entry points and two post-processing rules but one entry point, the knobs, and the
   validation order. The `langOverride` parameter is gone for good — the alphabet is chosen per file,
   never per repository — and `ErrLanguageUnsupported` has no caller in this file any more.
+
+  One comment elsewhere is invalidated by this deletion and must be fixed in the same card:
+  `FirstParagraph`'s doc comment in `text.go` closes with "Both TOCFile and TOCDir call
+  FirstParagraph on the file header", naming two functions that no longer exist. Rewrite that
+  paragraph to name the walk's file-entry rule as the caller instead, keeping the point it was
+  making — that the truncation is applied at one place and skipping it somewhere would be a
+  regression, not a simplification.
 - **Commit:** `feat(engine): replace TOCFile and TOCDir with Repo.TOC`
 
 ### Card 19: The committed fixture trees
@@ -351,7 +378,11 @@ exclusion.
 - **Moves:** none
 - **Requirements:** In `toc_test.go`, delete every case whose subject is gone —
   `TestTOCFile_UnsupportedExtension`, `TestTOCFile_LangOverrideWinsOverExtensionMismatch` and
-  `TestTOCDir_LangOverrideRestrictsListing` test behaviour this batch removes on purpose. Rewrite
+  `TestTOCDir_LangOverrideRestrictsListing` test behaviour this batch removes on purpose, and
+  `TestTOCFile_NonexistentPath` is superseded by card 21's `ErrTargetNotFound` case in
+  `repo_test.go` — delete it here rather than port a second, weaker assertion of the same rule.
+  `TestTOCFile_GoFileWithSymbols` is ported like the rest, as the one case asserting a whole file
+  entry's shape. Rewrite
   every surviving case against `Open` plus `TOC`: the header-truncation, package, sig-end ordering,
   invalid-UTF-8, partial-parse, file-ordering, subdirectory, non-code-file, empty-directory,
   generated-banner and unreadable-file cases all have a direct equivalent on the new answer, with
