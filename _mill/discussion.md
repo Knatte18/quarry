@@ -50,6 +50,7 @@ besides (see Constraints), under
 - Migration of `ladder-toc.yaml` to the new shape; deletion of the five other `ladder*.yaml`.
 - Recovery of the exploration output schema into `01-reed-geometry-exploration.md`.
 - A `.gitignore` rule for `results/**/raw/`.
+- One new root-module dependency, `gopkg.in/yaml.v3` (see module-and-yaml-dependency).
 - Tests: a stub MCP server the test provides, a fake `claude` binary, and an env-guarded live smoke
   test.
 
@@ -134,6 +135,23 @@ besides (see Constraints), under
   guaranteed to appear in every transcript makes the check nearly unfalsifiable while adding a
   correctness-critical special case); keeping `worktree:` and validating it (a field whose only
   remaining job is to be rejected); silently ignoring unknown keys (hides drift).
+- **What actually reaches the transcript, probed.** The two assertions cover the worktree root, but
+  the harness also passes `--mcp-config <quarry-repo>/.scratch/ladder/…json` into every cell,
+  including controls — a path carrying both the repo root and a `quarry` token. Whether that
+  argument reaches the stream was measured, not assumed: a `claude -p` run from
+  `~/.cache/ladder-eval/worktrees/probe` with `--mcp-config` pointing at a file under the quarry
+  repo produced a transcript containing **zero** case-insensitive `quarry` occurrences. The
+  invocation's own argv is not echoed anywhere in `stream-json`. The only two fields that carried
+  the token when cwd was inside the quarry repo were `system.init`'s `cwd` and `memory_paths`, and
+  both are derived from cwd — so relocating the worktree clears both:
+  `memory_paths.auto` became `…/projects/-home-knatte--cache-ladder-eval-worktrees-probe/memory/`.
+  The harness's own scratch may therefore stay under `<quarry-repo>/.scratch/ladder/`.
+- **A second reason the relocation matters, beyond the gate.** `memory_paths.auto` is the
+  operator's per-project auto-memory directory, keyed on cwd. With cwd inside the quarry repo it
+  resolved to the *quarry project's* memory — notes written while working on this very benchmark.
+  A fresh worktree at the relocated path gets its own project key and therefore an empty memory
+  directory, so no operator notes about quarry can reach a blinded cell. This is blinding in
+  substance, not just gate arithmetic.
 - **Correction to an earlier draft of this decision:** a previous revision argued that a worktree
   inside the quarry repo also let a blinded agent holding bare `Bash` read quarry's own source via
   `cat ../../../internal/…`. That is **false**, and it was probed rather than assumed after the
@@ -161,8 +179,15 @@ besides (see Constraints), under
 - Decision: `ladder-toc.yaml` is migrated to the new shape. `ladder.yaml`, `ladder-compact.yaml`,
   `ladder-annex.yaml`, `ladder-task05.yaml` and `ladder-followup.yaml` are **deleted**.
 - Rationale: all five declare the seven V1 tool names, and variously `annexes:`, cold cells and a
-  daemon — none of which exist after T0. HANDOFF §2: nothing in the tree describes something it
-  does not support. All five are recoverable at `origin/v1-final`.
+  daemon — none of which exist after T0. Each is therefore unloadable under the yaml-shape decision
+  above: the loader errors on `cold:`, `annexes:`, `toc_format:` and `session_dir_template:`, and
+  rejects an `allowed` entry naming a tool the file's own `quarry_tools` cannot honestly declare.
+  Keeping a config file that cannot be loaded is worse than not keeping it. All five are recoverable
+  at `origin/v1-final`.
+  (HANDOFF §2's related principle is narrower than an earlier draft of this rationale claimed — as
+  written it is about *languages*: "Nothing in the tree describes a language it does not support: no
+  dormant branches, no tests asserting absence." It is cited here as the spirit these deletions
+  follow, not as a rule that covers config files.)
 - Rejected: migrating all six (four would describe tools and features that will not exist for
   several waves); moving them to a `v1-configs/` directory (dead config under a nicer name).
 
@@ -215,6 +240,21 @@ besides (see Constraints), under
   `PARALLEL_OPENING` + body (target dir + the available tool names, neutrally listed) + the
   `<TASK TEXT>` block extracted from the task file + `PARALLEL_BLOCK` + the closing
   schema-only-output sentence + the schema JSON.
+
+  **The three fixed constants are ported verbatim** from
+  `origin/v1-final:…/internal/ladder/preamble.go`: `PARALLEL_OPENING` (preamble.go:14-16),
+  `PARALLEL_BLOCK` (preamble.go:20-33) and `closingSentence` (preamble.go:44-45). All three are
+  themselves byte-for-byte copies of the committed preambles in the V1
+  `bench/loomyard-eval/README.md`, so they carry the measurement's continuity. The body is the one
+  part written fresh: V1's `B_PREAMBLE_BODY` (preamble.go:39-41) is the control's, and
+  `mcpPreambleBody` (preamble.go:95-103) generated the treatment's — the pair this decision
+  collapses into one neutral body naming whatever tools the cell has.
+
+  "PARALLEL" in both constant names refers to **parallel tool calls within one agent's turn**, not
+  to parallel A/B/C arms; nothing in their text mentions arms, agents or comparison, so they carry
+  no framing that a one-cell-at-a-time design contradicts. The A/B/C vocabulary lived in the V1
+  README's dispatch protocol and in the task files' own `## Setup` sections, neither of which
+  reaches the prompt.
 - Rationale: V1 gave the control and the treatment *different steering*. Its treatment preamble
   said "Use these tools as your PRIMARY tool … Do NOT reach for grep/ripgrep as a reflex", which
   the control never saw. That is why `summarize.go:46` had to exclude grep metrics from
@@ -245,7 +285,8 @@ besides (see Constraints), under
   `output_tokens` across the group's records.
 
   From `tool_use` content blocks: `tool_uses` (total), `tool_uses_breakdown` (`map[name]count`),
-  `quarry_tool_uses` (uses whose name starts with `mcp__quarry__`), `grep_tool_count` (native
+  `quarry_tool_uses` (uses whose name starts with the MCP tool prefix — see mcp-tool-prefix, never
+  a hardcoded literal), `grep_tool_count` (native
   `Grep` calls), `bash_grep_count` (`Bash` calls whose `command` matches V1's regex verbatim:
   `` `(^|[|&;\s])(grep|rg)\b` ``), `grep_fallback_total` (the sum of the last two, reporting only).
 
@@ -281,7 +322,7 @@ besides (see Constraints), under
     --model <run_model> --effort <run_effort>
     --max-turns <max_turns>
     --tools Read,Grep,Glob,Bash
-    --allowedTools "<granted mcp__quarry__* names>"
+    --allowedTools "<granted tool names, each <mcp-prefix><tool>; see mcp-tool-prefix>"
     --mcp-config <per-cell config file> --strict-mcp-config
     --output-format stream-json --verbose
     --no-session-persistence
@@ -365,13 +406,16 @@ besides (see Constraints), under
   - **Gate 2 — control blinding.** Per *rep*, fatal, applied only when the cell's `allowed` is
     empty. All three checks scan **the whole rep transcript, marshalled back to JSON** — every
     record, every field, `system.init`'s `cwd` included — not a selected subset of fields. Three
-    checks, in order, short-circuiting: (a) it contains the literal `mcp__quarry__` → fatal; (b) it
-    contains the quarry repo root path → fatal; (c)
-    case-insensitive bare `quarry` — if it occurs **only** inside a `tool_result` payload, record
-    the non-fatal observation `target_origin_quarry_mention`; anywhere else → fatal. The
-    tool_result/elsewhere split is done by re-marshalling the transcript with every `tool_result`
-    block's nested content replaced by the literal `"REDACTED"`, exactly as V1's
-    `redactToolResultContent` did.
+    checks, in order, short-circuiting: (a) it contains the MCP tool prefix (see mcp-tool-prefix)
+    → fatal; (b) it contains the quarry repo root path → fatal; (c) case-insensitive bare `quarry`,
+    classified by **provenance rather than by location**: the occurrence is `target_origin` — the
+    non-fatal observation `target_origin_quarry_mention` — when the token also appears in some
+    `tool_result` payload **earlier in the same transcript**; it is fatal only when it appears with
+    no such antecedent. V1's mechanism is still how the source set is identified (re-marshal with
+    every `tool_result` block's nested content replaced by `"REDACTED"`, as `redactToolResultContent`
+    did), but that split now selects provenance instead of being the verdict itself.
+    **A gate-2 failure is not retried:** the rep fails once, is recorded, and the cell moves on —
+    it never enters the `.invalid-<k>` path in resume-and-failure.
   Scanning everything rather than selected fields is what makes the two startup assertions in
   no-tmp-paths load-bearing: the worktree path appears in the transcript, so it must trip neither
   (b) nor (c) by construction.
@@ -381,8 +425,17 @@ besides (see Constraints), under
   must kill that run. The `tool_result` carve-out exists because the target codebase (Loomyard)
   mentions the word "quarry" in its own tracked prose, and a bare string match would halt the
   matrix over the target's own files.
+  Check (c)'s provenance rule replaces a location rule that had a live false-positive path: the
+  rationale for the carve-out is that Loomyard's own tracked prose says "quarry", and a control
+  agent that quotes or paraphrases such a file **in its own assistant text** would have failed
+  fatally under a location test — deterministically, so the retry path would have burned three reps
+  reproducing it before recording the cell incomplete. Asking "did this token come from the target
+  codebase?" is the question the carve-out was always trying to ask. Not retrying gate-2 failures
+  follows from the same observation: a blinding failure is a property of the run's configuration or
+  of the target's contents, not a flake, so repeating it cannot help.
 - Rejected: making both fatal; making both advisory (gate 2 exists precisely because a leaked
-  control is not a measurement).
+  control is not a measurement); keeping check (c) as a location test (the false-positive path
+  above); retrying gate-2 failures (three deterministic repeats of the same failure).
 - **Retired from V1:** `GateRunPrompt` (the prompt is a positional argument the harness controls),
   `GateMaxTurns` (`--max-turns` is enforced by the CLI and reported as `terminal_reason:
   max_turns`), `GateModelPinned` (`--model` is passed), `GateNoTargetOverride` and
@@ -429,6 +482,34 @@ besides (see Constraints), under
   resuming on the transcript file's existence (a killed run leaves a truncated transcript that
   would read as done).
 
+### answer-extraction
+
+- Decision: the cell's answer is the **last** ` ```json … ``` ` fenced block in the final assistant
+  record's concatenated text content. V1's `ExtractFencedJSON(text, "last")` is ported verbatim
+  from `origin/v1-final:…/internal/ladder/fenced.go:36-54`, including its regex
+  `` (?s)```json\s*(.*?)\s*``` `` (fenced.go:17) and its two-value return (the block **with** fences,
+  used when embedding the schema into the prompt; the **inner** text, decoded as the answer). V1's
+  deliberate divergence from the Python original is kept: an unrecognised selector is an error, not
+  a silent fallthrough.
+  - "Last", not "first", because the preamble embeds the schema as its own fenced block and the
+    agent may restate it mid-answer; the closing instruction is "end your final message with ONLY a
+    fenced json code block", so the final one is the answer by construction.
+  - The extracted inner text is decoded as JSON. **No schema-key validation** beyond decoding: the
+    scorer judges the content, and a structurally valid answer that omits a schema key is a low
+    recall score, not a harness failure.
+  - Failure semantics: no fenced block (`ErrNoFencedJSONBlock`) or JSON that will not decode ⇒ the
+    rep fails with `answer extraction: <reason>` and enters the `.invalid-<k>` retry path in
+    resume-and-failure. This is the "missing answer block" failure named there, and it *is* worth
+    retrying — it is a nondeterministic formatting miss by the model, unlike a gate-2 failure.
+- Rationale: this was undefined in an earlier draft while `answer.json` and "missing answer block"
+  were already named — the extraction rule is what makes both meaningful. Reusing V1's function
+  keeps one regex across all three call sites that need it (schema block out of the task file, the
+  cell's answer, the scorer's reply), which is the property its doc comment argues for.
+- Rejected: first-match (picks the schema echo); last top-level JSON object by brace matching (the
+  prompt asks for a fence, so parsing without one accepts malformed output the measured agent was
+  told not to produce); schema-key validation as a hard gate (turns a scoring signal into a run
+  failure).
+
 ### scorer
 
 - Decision: the scorer is a second `claude -p` call per rep:
@@ -460,7 +541,8 @@ besides (see Constraints), under
   score fields is derived at runtime by regexing `"(\w+)":` out of the rule's own fenced example,
   as V1 did, so the rule text and its validator cannot drift. The answer is redacted before
   embedding: the alternation is built from the ladder file's own `quarry_tools` (bare and
-  `mcp__quarry__`-prefixed), the quarry repo root and the task worktree path.
+  prefixed with the MCP tool prefix of mcp-tool-prefix), the quarry repo root and the task worktree
+  path.
 - Rationale: recall and precision here are judgment calls (does the answer's summary describe the
   same mechanism the fasit found, not merely overlapping filenames), which is why they are produced
   by the model and only validated for presence in Go. Redaction preserves V1's stated invariant —
@@ -499,6 +581,38 @@ besides (see Constraints), under
   links C grammars and the failure otherwise reads as unrelated (V1's `BuildServer` doc comment).
 - Rejected: hardcoding the V1 build target and flags (blocks T2 until T6); taking the server
   binary as a CLI flag (a machine path on the command line, and no build-hash provenance).
+
+### mcp-tool-prefix
+
+- Decision: the client-side MCP tool prefix is computed in **one** place as
+  `"mcp__" + server.name + "__"`, defaulting to `mcp__quarry__` when the ladder file declares no
+  `server:` block. Every consumer reads that one value: `quarry_tool_uses` in metrics, gate 2's
+  check (a), the scorer's redaction alternation, and the `--allowedTools` names built from a cell's
+  `allowed` list.
+- Rationale: `server:` makes the server name yaml data, so a hardcoded literal `mcp__quarry__` in
+  three separate consumers is a silent-failure trap: rename the server and gate 1 reads zero tool
+  uses for every cell (the "granted tool never called" warning fires spuriously), gate 2's check (a)
+  stops matching real leakage, and the redactor stops removing the tool names from the answer the
+  scorer sees. Each failure is silent and each corrupts a different part of the result.
+- Rejected: hardcoding the literal and documenting `name:` as decorative (the field then lies);
+  per-consumer derivation (three places to keep in step).
+
+### module-and-yaml-dependency
+
+- Decision: the harness lives in the **root module** `github.com/Knatte18/quarry`, not a nested
+  one, and adds exactly one external dependency: `gopkg.in/yaml.v3`.
+- Rationale: the task's done-criterion is `go build ./... && go test ./...` green *at the repo
+  root*, and a nested module is silently excluded from both — the harness would appear to pass by
+  not being built. One new dependency is the honest cost of keeping the ladder files in yaml, which
+  the plan lists under "Kept". `yaml.v3` is the de-facto standard, is pure Go, and adds no cgo, so
+  `go list -deps` stays clean for the engine packages that care (plan §12's T1 criterion).
+  HANDOFF §1's description of `go.mod` as tree-sitter-only is a statement of T0's result, not a
+  prohibition on later tasks; this is nevertheless a deliberate widening and is recorded as such.
+- Rejected: a nested module under `bench/loomyard-eval/ladder/` (keeps the root `go.mod` pure but
+  drops the harness out of the done-criterion's own command, and needs a `go.work` to be usable);
+  `sigs.k8s.io/yaml` (routes through JSON tags, loses yaml-native comments and error positions, and
+  pulls a larger tree); hand-rolling a parser for the kept shape (the shape includes nested maps and
+  lists of structs — a parser is more code than the harness's own logic and a fresh source of bugs).
 
 ### yaml-shape
 
@@ -616,6 +730,12 @@ Paths are relative to `bench/loomyard-eval/ladder/`.
   `perCallUsage` and its max-`output_tokens` rule.
 - `internal/ladder/gates.go` — `GateFinding`, `GateReport`, `GateBlinding`; `:229-248` —
   `redactToolResultContent`.
+- `internal/ladder/fenced.go:17` — the fenced-JSON regex; `:36-54` — `ExtractFencedJSON`, ported
+  verbatim (see answer-extraction). Only the dispatch-side callers of this file die with V1; the
+  extractor itself is kept.
+- `internal/ladder/preamble.go:14-16, :20-33, :44-45` — `PARALLEL_OPENING`, `PARALLEL_BLOCK`,
+  `closingSentence`, ported verbatim; `:39-41` and `:95-103` — `B_PREAMBLE_BODY` and
+  `mcpPreambleBody`, the two divergent bodies this task replaces with one.
 - `internal/ladder/settings.go:79-96` — the fixed `["Read","Grep","Glob","Bash"]` base set and the
   reasoning for why a blinded control declares nothing else.
 - `internal/ladder/runstate.go:22` — the `raw/<cell>/<rep>/` path; `:39-50` — `IsComplete`;
@@ -636,13 +756,15 @@ Paths are relative to `bench/loomyard-eval/ladder/`.
 **Deletes wholesale, do not port:** `correlate.go` (168 lines of `~/.claude/projects` transcript
 hunting, including an empirically-derived dot-to-hyphen directory mangling), `agentdef.go`,
 `session.go`, `daemon.go`, `warm.go`, `coldcell.go`, `annex.go`, `precondition.go`, `lock.go`,
-`plan.go`, `fenced.go`'s dispatch half.
+`plan.go`. Of `fenced.go` only the dispatch-side *callers* die; `ExtractFencedJSON` itself is
+ported (see answer-extraction).
 
 **Current tree.** `bench/loomyard-eval/` holds only `ladder/` (six yaml files, no Go) and `tasks/`
 (five task markdown files, three `*.fasit.json` — tasks 02 and 03 have no fasit and no ladder file
 references them). `go.mod` is module `github.com/Knatte18/quarry`, Go 1.26, requiring only
-`go-tree-sitter` and `tree-sitter-go`. A yaml dependency will need adding —
-`gopkg.in/yaml.v3` is the obvious choice and the repo has no existing yaml parser.
+`go-tree-sitter` and `tree-sitter-go`; there is no existing yaml parser. `gopkg.in/yaml.v3` is
+added to that module — see the module-and-yaml-dependency decision, which is where the choice and
+its alternatives are settled rather than here.
 
 **Task file structure.** A task markdown file carries a `## Setup` section with `/tmp` worktree
 commands, a `## Scope` section, a blockquoted `` ## `<TASK TEXT>` `` block, and an answer-key
@@ -745,6 +867,10 @@ There is no `CONSTRAINTS.md` at the hub root. Constraints from the task brief, `
   answer-key sections appears in the output. Since extraction is inclusion-based, the assertion is
   that the output equals exactly the task-text and schema blocks — heading spelling is not
   load-bearing and must not be tested as if it were.
+- `fenced.go` / answer extraction — the `"last"` selector picks the answer and not the schema echo
+  when both fences are present; a reply with no fence returns `ErrNoFencedJSONBlock`; an
+  unrecognised selector errors rather than falling through; a fence whose body spans many lines is
+  captured whole.
 - `score.go` — `scoreFieldsFromRule` derives exactly the fields each rule's example names; fasit
   `_meta` stripping; the redactor removes every `quarry_tools` name bare and prefixed, plus both
   paths.
@@ -791,7 +917,7 @@ contains. This is the acceptance step, not an automated test.
 - **Q:** Package layout inside `bench/loomyard-eval/ladder/`? **A:** [auto-pick] `cmd/ladder/main.go` (thin) + `internal/ladder/` (one package, files per concern). **Why:** the shape V1 proved, keeps the yaml at its tracked paths, matches the plan's "files per concern, never a package per verb" rule, and keeps internals unit-testable.
 - **Q:** Is `results/**/raw/` committed or ignored (plan §11)? **A:** [auto-pick] Ignored; the derived artifacts (`summary.json`, `provenance.json`, `table.txt`, `conclusion.md`) are committed. **Why:** transcripts carry absolute host paths and no tracked file may carry a machine path; committing them would resurrect V1's whole redaction gate.
 - **Q:** Worktree and scratch locations, given the yaml's `/tmp` paths? **A:** [auto-pick, revised in review rounds 1 and 2 — see the round-2 entry below for the final path] Task worktrees go **outside** the quarry repo and carry no `quarry` token; the harness's own scratch stays at `<repo>/.scratch/ladder/`. `worktree:`, `session_dir_template:`, `cold:`, `warm_counterpart:`, `cold_worktree_template:` are removed and the loader errors on them. **Why:** `/tmp` is banned, but the first answer — `<repo>/.scratch/ladder-worktrees/` — collided with the blinding gate: check (b) matches the quarry repo root, which would then be the cell's own `cwd` in every record. *(A round-1 revision of this entry also claimed a blinded agent with bare `Bash` could walk up into quarry's source. That was probed in round 2 and is false — Bash is confined to the session's working directory. The check-(b) reason stands alone.)*
-- **Q:** What happens to the other five `ladder*.yaml`? **A:** [auto-pick] Migrate `ladder-toc.yaml`; delete the other five. **Why:** they declare seven tools, annexes, cold cells and a daemon that no longer exist; HANDOFF §2 says nothing in the tree describes what it does not support, and all five are recoverable at `origin/v1-final`.
+- **Q:** What happens to the other five `ladder*.yaml`? **A:** [auto-pick] Migrate `ladder-toc.yaml`; delete the other five. **Why:** they declare seven tools, annexes, cold cells and a daemon that no longer exist, so the new loader cannot load any of them; all five are recoverable at `origin/v1-final`. *(A round-1/2 draft justified this by generalising HANDOFF §2, which as written is about languages specifically — corrected in round 3; the unloadability argument stands on its own.)*
 - **Q:** Cell concurrency? **A:** [auto-pick] Strictly sequential, cell-minor rep ordering. **Why:** duration and cost are measured metrics and parallel runs share rate limits and the prompt cache; resume is what makes a serial run restartable.
 - **Q:** Where does the exploration output schema live, now that T0 deleted `bench/loomyard-eval/README.md`? **A:** [auto-pick] Recover it from `origin/v1-final` and inline it into `01-reed-geometry-exploration.md`, mirroring the impact schema in `04-…md`. **Why:** it is the schema `a0-none` — this task's own done-criterion — needs, and one schema per task file collapses V1's two-source parsing into one path.
 - **Q:** The prompt each cell agent receives? **A:** [auto-pick] One preamble, identical for every cell; the only per-cell difference is which tool names are listed. **Why:** V1 gave the treatment arm "use these tools as your PRIMARY tool, do NOT reach for grep" steering the control never saw — a confound its own summariser had to work around by excluding grep metrics from comparison.
@@ -817,4 +943,11 @@ contains. This is the acceptance step, not an automated test.
 - **Q:** [review round 2] What replaces `lock.go` and `session_dir_template` now that worktrees are keyed on `<task-id>` alone? **A:** Concurrent runs are out of scope and enforced: an `O_EXCL` lock at `<worktree-root>/.ladder.lock`, cleared by the operator if stale. **Why:** two simultaneous runs sharing a task would restore the same worktree underneath each other mid-run, silently corrupting both roots.
 - **Q:** [review round 2] Where is the no-machine-paths rule actually stated? **A:** `HANDOFF.md` §1. `CLAUDE.md` is three lines and says only "Go repo, do not introduce Python". **Why:** same class of addressing error as round 1's phantom rule numbers.
 - **Q:** [review round 2] Is the answer-key heading spelling load-bearing for prompt extraction? **A:** No, and it must not be: extraction is inclusion-based (task-text block + schema block only). The five task files spell that heading five different ways. **Why:** an exclusion-based extractor keyed on one spelling would silently leak the answer key from the others.
+- **Q:** [review round 3] How does the harness find the cell's answer in the transcript? **A:** The **last** ` ```json … ``` ` fenced block in the final assistant record's text, via V1's `ExtractFencedJSON(text, "last")` ported verbatim (`fenced.go:36-54`). No fence or undecodable JSON fails the rep and *is* retried; no schema-key validation. **Why:** it was undefined while `answer.json` and "missing answer block" were already named outputs; "last" is required because the prompt embeds the schema as its own fenced block.
+- **Q:** [review round 3] Does the `--mcp-config` path — which lives under the quarry repo and contains the token — reach the transcript and kill controls? **A:** No, probed: a run from the relocated worktree with `--mcp-config` pointing under the quarry repo produced **zero** `quarry` occurrences in the whole transcript; argv is not echoed in `stream-json`. Harness scratch may stay at `<repo>/.scratch/ladder/`. **Why:** the earlier probe established `mcp_servers: []`, which is not the same claim.
+- **Q:** [review round 3] Anything else in the stream carrying the token? **A:** Yes — `system.init.memory_paths`, which is derived from cwd. Relocating the worktree clears it, and it also means a blinded cell no longer loads the operator's *quarry-project* auto-memory (notes written while working on this benchmark). A fresh worktree gets its own empty project memory. **Why:** found while probing the finding above; it is a substantive blinding fix, not only a gate-arithmetic one.
+- **Q:** [review round 3] A control agent quoting Loomyard prose that says "quarry" fails check (c) fatally and deterministically — then gets retried three times. Is that intended? **A:** No. Check (c) now classifies by **provenance**: `target_origin` (non-fatal) when the token also appears in an earlier `tool_result` payload, fatal only without such an antecedent. And gate-2 failures are never retried — the rep fails once. **Why:** a blinding failure is a property of the configuration or the target's contents, not a flake.
+- **Q:** [review round 3] Is `mcp__quarry__` hardcoded while `server.name` is yaml data? **A:** It was. The prefix is now computed once as `"mcp__" + server.name + "__"` (default `mcp__quarry__` with no `server:` block) and read by metrics, gate 2 check (a), the redactor and `--allowedTools`. **Why:** a renamed server would otherwise silently zero gate 1, blind gate 2 to real leakage, and stop the redactor hiding tool names from the scorer — three silent, different corruptions.
+- **Q:** [review round 3] Where do `PARALLEL_OPENING` and `PARALLEL_BLOCK` come from, and does their "parallel" framing survive one-cell-at-a-time execution? **A:** Ported verbatim from `preamble.go:14-16` and `:20-33` (plus `closingSentence` at `:44-45`), all byte-for-byte copies of the V1 README's committed preambles. "Parallel" means parallel *tool calls in one turn*, not parallel arms; the A/B/C vocabulary never enters the prompt. **Why:** they are the two largest parts of the prompt and had no cited source.
+- **Q:** [review round 3] Which module does the harness join, and which yaml library? **A:** The root module `github.com/Knatte18/quarry`, plus `gopkg.in/yaml.v3` — one new dependency, recorded as a deliberate widening of a `go.mod` T0 had reduced to tree-sitter only. **Why:** the done-criterion is `go build ./... && go test ./...` at the repo root, and a nested module is silently excluded from both.
 - **Q:** Which V1 gates and metrics are retired? **A:** Retired: `GateRunPrompt`, `GateMaxTurns`, `GateModelPinned`, `GateNoTargetOverride`, `GateDeniedToolsNotUsed`, every cold/daemon gate; `denied_tool_attempts` and `_provisional` (`DenialShapePattern` was never validated against a real denial and the provisional flag was hardcoded `true`), `agent_id`, `transcript_source`, `server_vcs_modified`. **Why:** the CLI now enforces or reports each directly, or the field was structurally constant and carried no information.
