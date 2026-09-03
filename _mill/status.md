@@ -48,6 +48,8 @@ batches:
     commit_sha: 297fe4518c46e51bd1ef317baccb4664cbeb63fc
     verify_baseline_failures: ["FAIL\t./glyph [setup failed]"]
   - name: parser-and-go-alphabet
-    state: pending
+    state: running
+    implementer_session: 8201b83d-5011-4967-bdf4-66ce7722006d
+    start_sha: b287f96c02b8f1be153f9b48537ac195f88f8048
     verify_baseline_failures: ["FAIL\t./glyph [setup failed]"]
 ```
