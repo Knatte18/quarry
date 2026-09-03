@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-layout
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r4  '2026-09-03T19:20:17Z'
 plan-fix-r4  '2026-09-03T19:21:23Z'
 planned  '2026-09-03T19:21:35Z'
 implementing  '2026-09-03T19:22:09Z'
+approved-layout  '2026-09-03T19:31:47Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-09-03T19:22:09Z'
 ```yaml
 batches:
   - name: layout
-    state: running
+    state: approved
     implementer_session: aaef91cb-802d-4573-a731-4b2e496bf5ef
     start_sha: 315f9304f70116e2ed90fe52aac7fb3330b5c633
+    commit_sha: a1a21ddb2a669308d26bfbecd8ea5b4ac70d2e6c
     verify_baseline_failures: []
   - name: text-rules
     state: pending
