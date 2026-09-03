@@ -1,5 +1,0 @@
-{
-  "a": {"tokens": 51164, "tool_uses": 14, "duration_ms": 79981, "grep_fallback_count": 1},
-  "b": {"tokens": 51587, "tool_uses": 12, "duration_ms": 77564},
-  "c": {"tokens": 80662, "tool_uses": 32, "duration_ms": 273820}
-}
