@@ -1,1 +1,0 @@
-- Unused `cfg` parameter threaded through two answer-redaction helpers: **Location:** `bench/loomyard-eval/ladder/internal/ladder/run.go:657,663`
