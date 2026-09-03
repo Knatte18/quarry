@@ -116,6 +116,20 @@ can host this code.
   not know whether that was deliberate. Stating it lets those cases use any input at all. The
   ordering also follows from what the two checks mean: `lang` says which alphabet `s` is being read
   in, so "which alphabet" must be answerable before "is `s` well-formed".
+- **Invalid UTF-8 is rejected up front, in the language-free layer.** After the language check and
+  before the split, `Parse` rejects an input that is not valid UTF-8 with reason `invalid_utf8`
+  (`utf8.ValidString`, one call, no allocation). Both alphabets are defined over **runes** —
+  `unicode.IsLetter`, `unicode.IsDigit`, `unicode.IsSpace`, "ASCII control character" — and ranging
+  over a string with a bad byte yields U+FFFD, which is not the byte that was there. Without this
+  check the behaviour is both undefined and inconsistent: a stray `0xFF` in the unit half is none of
+  `\`, control or whitespace, so it would be **accepted** and would round-trip through `String()`,
+  while the same byte in the member half would become `member_not_identifier` with a `Detail` naming
+  U+FFFD rather than the offending byte. Neither is defensible, and "the unit accepts arbitrary bytes"
+  is the worse of the two — a glyph is a name written down by a person, not a byte string.
+  The check belongs in the language-free layer for the same reason the split does: no alphabet can
+  want invalid UTF-8, so no alphabet should have to re-decide it. This is the sixteenth `Reason`, and
+  the only one not derived from a `docs/glyph.md` reject — the spec is silent because it writes glyphs
+  in prose, where the question does not arise. Recorded here rather than left to the implementer.
 - **After the language check, the order within one Go parse is:** structural split (`no_separator`),
   then the unit half, then the member half. A string failing both halves reports the unit's reason,
   because the unit is what the message should name first.
@@ -217,40 +231,48 @@ can host this code.
   `type Reason string` whose constants are a closed set (one per reject in the spec). Callers use
   `errors.As`; tests assert on `Reason`, never on message text.
 - **The vocabulary, in full.** "Closed" is worth nothing unless the set is written down, so it is
-  fixed here and the plan implements exactly these fifteen constants — no more, no fewer. `Detail`
+  fixed here and the plan implements exactly these sixteen constants — no more, no fewer. `Detail`
   carries the offending segment, component or rune; the `Reason` is what tests assert on.
-  `errors.go` also declares `var Reasons = []Reason{…}` listing all fifteen in table order,
+  `errors.go` also declares `var Reasons = []Reason{…}` listing all sixteen in table order,
   immediately below the constant block: Go cannot reflect over package-level constants, so this slice
   is the only way a test or an exhaustive caller can enumerate them. Adding a constant means adding
   it to `Reasons` in the same edit.
-- **What `Detail` holds, per reason.** For the eleven reasons that name a specific piece of the input,
-  `Detail` is that piece verbatim: the offending segment (`unit_empty_segment`, `unit_dot_segment`),
-  the offending component (`member_empty_component`, `member_keyword`, `member_not_identifier`), or
-  the offending rune as a quoted single-rune string (`unit_bad_rune`, `member_bad_rune`,
-  `member_type_params`, `member_parens`, `member_pointer`), and the whole unit half for `unit_empty`'s
-  sibling cases where no smaller piece is at fault. For the four reasons where nothing smaller than
-  the input is at fault — `no_separator`, `unsupported_language`, `member_empty`, `member_too_deep` —
-  **`Detail` is the empty string**, and `Error()` composes a complete message from `Reason`, `Lang`
-  and `Input` alone. Empty is a defined value here, not an oversight; a reader of `errors.go` should
-  not have to guess whether a blank `Detail` means "no detail" or "detail not filled in".
+- **On any error, `Parse` returns the zero `Glyph`** — every field, for every one of the sixteen
+  reasons, not just `unsupported_language`. Without this rule an implementer could reasonably return a
+  partially populated struct (`Lang` and `Unit` filled in when only the member half failed), and a
+  caller that ignored the error — or logged it and carried on — would hold a value that looks half
+  usable and names nothing. The zero value is unmistakably not a glyph. The reject table asserts this
+  alongside the `Reason`, so it is checked on every reject case rather than stated and forgotten.
+- **What `Detail` holds** is given per reason in the table below, in its own column, rather than by a
+  grouping rule. An earlier wording split the reasons into "eleven that name a piece" and "four that
+  are blank" and invited the reader to tell them apart by a blank `Detail`; that invariant is false —
+  `unit_empty`, `unit_empty_segment` and `member_empty_component` all name a piece that *is* the empty
+  string — so it is gone. **A blank `Detail` carries no meaning at all**; `Reason` is the only
+  discriminator, and `Error()` always composes a complete message from `Reason`, `Lang` and `Input`
+  without depending on `Detail` being non-empty.
 
-  | `Reason` | fires on | example input |
-  |---|---|---|
-  | `unsupported_language` | `lang` is not `Go`, including the zero value | `Parse("python", …)` |
-  | `no_separator` | the input contains no `#` at all | `internal/logger`, `""` |
-  | `unit_empty` | the unit half is empty | `#run` |
-  | `unit_empty_segment` | a segment between two `/` is empty, including a leading or trailing `/` | `a//b`, `/a`, `a/` |
-  | `unit_dot_segment` | a segment is `.` or `..` | `./a`, `a/../b`, `.` |
-  | `unit_bad_rune` | a unit rune is `\`, an ASCII control character, or whitespace | `a\b`, `a b` |
-  | `member_empty` | the member half is empty | `internal/logger#` |
-  | `member_empty_component` | a component between two `.` is empty, including a leading or trailing `.` | `a..b`, `.A`, `A.` |
-  | `member_too_deep` | three or more `.`-separated components | `A.B.c` |
-  | `member_not_identifier` | a component is not a Go identifier for a reason no sharper reason covers | `1abc`, `a-b` |
-  | `member_keyword` | a component is one of Go's 25 reserved keywords | `#func` |
-  | `member_type_params` | the member carries `[` or `]` | `Box[T]` |
-  | `member_parens` | the member carries `(` or `)` | `Renderer.Draw(int)`, `(*T).M` |
-  | `member_pointer` | the member carries `*` | `*dualHandler.Handle` |
-  | `member_bad_rune` | a member rune is `#`, `/`, an ASCII control character, or whitespace | `a#b#c`, `A .b` |
+  | `Reason` | fires on | example input | `Detail` |
+  |---|---|---|---|
+  | `unsupported_language` | `lang` is not `Go`, including the zero value | `Parse("python", …)` | the rejected `Language` value, as a string |
+  | `invalid_utf8` | the input is not valid UTF-8 | a stray `0xFF` byte | `""` |
+  | `no_separator` | the input contains no `#` at all | `internal/logger`, `""` | `""` |
+  | `unit_empty` | the unit half is empty | `#run` | `""` (the unit half, which is empty) |
+  | `unit_empty_segment` | a segment between two `/` is empty, including a leading or trailing `/` | `a//b`, `/a`, `a/` | `""` (the offending segment, which is empty) |
+  | `unit_dot_segment` | a segment is `.` or `..` | `./a`, `a/../b`, `.` | the offending segment: `"."` or `".."` |
+  | `unit_bad_rune` | a unit rune is `\`, an ASCII control character, or whitespace | `a\b`, `a b` | the offending rune, quoted, e.g. `"' '"` |
+  | `member_empty` | the member half is empty | `internal/logger#` | `""` |
+  | `member_empty_component` | a component between two `.` is empty, including a leading or trailing `.` | `a..b`, `.A`, `A.` | `""` (the offending component, which is empty) |
+  | `member_too_deep` | three or more `.`-separated components | `A.B.c` | the whole member half |
+  | `member_not_identifier` | a component is not a Go identifier for a reason no sharper reason covers | `1abc`, `a-b` | the offending component |
+  | `member_keyword` | a component is one of Go's 25 reserved keywords | `#func` | the offending component |
+  | `member_type_params` | the member carries `[` or `]` | `Box[T]` | the offending rune, quoted |
+  | `member_parens` | the member carries `(` or `)` | `Renderer.Draw(int)`, `(*T).M` | the offending rune, quoted |
+  | `member_pointer` | the member carries `*` | `*dualHandler.Handle` | the offending rune, quoted |
+  | `member_bad_rune` | a member rune is `#`, `/`, an ASCII control character, or whitespace | `a#b#c`, `A .b` | the offending rune, quoted |
+
+  Two `Detail` values changed from the earlier draft, both because a blank was uninformative where
+  something better exists: `unsupported_language` now carries the rejected `Language`, and
+  `member_too_deep` carries the whole member half, since no single component is at fault.
 
 - **Precedence among the member reasons**, so a case that trips several is not ambiguous. The order
   is exactly this, and `member_bad_rune` is **not** a trailing fallback — it must be checked
@@ -414,11 +436,12 @@ can host this code.
   is run in the ordinary cgo-enabled configuration. Do not attempt to make the whole tree build
   without cgo.
 - **Allowed imports.** Standard library only. The package's own import lines should need no more than
-  `fmt`, `strings` and `unicode`; anything beyond that is a design error, not a dependency decision.
+  `fmt`, `strings`, `unicode` and `unicode/utf8`; anything beyond that is a design error, not a
+  dependency decision.
   The **pass condition** is stated once, here, and is about the transitive list rather than those
   three names: *every package `go list -deps ./glyph` prints is standard library, and no non-stdlib
   module appears.* The transitive closure of `fmt` alone is far larger than three packages, so
-  "shows only `fmt`, `strings` and `unicode`" is not a check anything could pass. The constraint
+  "shows only the four packages the source imports" is not a check anything could pass. The constraint
   extends to test imports, which `go list -deps` does not see — see Testing.
 - **Existing conventions to follow.** Every file in `internal/quarryengine/toc` opens with a
   file-level comment naming what the file holds and why (see `types.go`, `cgoguard.go`); exported
@@ -481,7 +504,11 @@ rule — `glyph_test` — which is a pleasing coincidence but not the reason.
 - First-`#` semantics: a string with two `#` splits at the first, and the second `#` reaches the Go
   member validator (which then rejects it).
 - `unsupported_language`: `Parse` with `Language("python")`, `Language("csharp")`, `Language("")` and
-  some arbitrary value each returns that reason and the zero `Glyph`.
+  some arbitrary value each returns that reason and the zero `Glyph` — the same zero-`Glyph`
+  assertion every reject row makes, stated once in Decisions and checked everywhere.
+- `invalid_utf8` precedes the split: an input that is both invalid UTF-8 and missing a `#` reports
+  `invalid_utf8`, not `no_separator`. Two rows in the reject table place a bad byte on either side of
+  the `#` to pin that the check is on the whole input rather than on one half.
 - **Reject precedence**, asserting the order the Decisions section fixes: `Parse(Language("python"),
   "no-hash")` — an input that fails both the language check and the split — returns
   `unsupported_language`, not `no_separator`. One case for a doubly-invalid input pins the order so a
@@ -512,9 +539,10 @@ repository's existing precedent for exactly this comparison — `internal/quarry
 the `Owner`-is-nil and `Params`-is-nil assertions and the `Params` printing rule all depend on.
 `slices.Equal` is acceptable for a single field where that nil/empty distinction is not the point.
 
-*Rejects*, asserting the `Reason` and never the message text. Every row below names the constant it
-must produce, so the table and the vocabulary in Decisions are one thing and a reviewer can check
-coverage by reading down the column. Each of the fifteen constants appears at least once.
+*Rejects*, asserting the `Reason` **and that the returned `Glyph` is the zero value**, never the
+message text. Every row below names the constant it must produce, so the table and the vocabulary in
+Decisions are one thing and a reviewer can check coverage by reading down the column. Each of the
+sixteen constants appears at least once.
 
 | input | `Reason` |
 |---|---|
@@ -549,6 +577,8 @@ coverage by reading down the column. Each of the fifteen constants appears at le
 | `internal/logger#a#b` (a second `#`) | `member_bad_rune` |
 | `internal/logger#A .b` | `member_bad_rune` |
 | `"internal/logger#run "` (trailing space, untrimmed) | `member_bad_rune` |
+| `"internal/log\xffger#run"` (invalid UTF-8 in the unit half) | `invalid_utf8` |
+| `"internal/logger#ru\xffn"` (invalid UTF-8 in the member half) | `invalid_utf8` |
 | `Parse(Language("python"), "no-hash")` | `unsupported_language` |
 
 The rows that would otherwise be ambiguous are exactly the ones the two precedence rules in Decisions
@@ -565,7 +595,7 @@ constant block, and the closed-vocabulary decision above is what obliges anyone 
 add it there. The test ranges over `Reasons` and fails if any element has no reject case in the
 table.
 
-The honest statement of the guarantee: **adding a sixteenth constant and listing it in `Reasons`
+The honest statement of the guarantee: **adding a seventeenth constant and listing it in `Reasons`
 fails the build until a reject case exists; adding one without listing it in `Reasons` is not caught
 by any test.** That second gap is closed by review, not by the compiler — `errors.go` is one screen,
 the constant block and `Reasons` are adjacent in it, and a constant absent from `Reasons` is visible
@@ -576,7 +606,7 @@ enumerable at run time for any caller that wants to switch exhaustively over it.
 **`Error()` itself is tested, not assumed.** Scope requires "an error whose message names what was
 wrong", and nothing above would catch an `Error()` that returned `""` or the same string for every
 reason. Two assertions, both ranging over `Reasons` so they stay complete as the vocabulary changes:
-every `Reason` produces a non-empty `Error()`, and the fifteen messages are pairwise distinct. These
+every `Reason` produces a non-empty `Error()`, and the sixteen messages are pairwise distinct. These
 are smoke assertions on purpose — they pin the property Scope asks for without freezing wording, so
 messages can still be improved without touching a test. The reject table's own cases continue to
 assert `Reason` only.
