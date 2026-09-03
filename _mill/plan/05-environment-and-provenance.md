@@ -62,8 +62,13 @@ this batch runs goes through the injectable runner seam the overview defines —
   home directory joined with `.cache` and `ladder-eval`. Nothing is ever placed under a system
   temporary directory. It then asserts two invariants on the resolved absolute path and returns an
   error naming `LADDER_WORKTREE_ROOT` as the override when either fails: the path is not the
-  supplied quarry repository root and is not under it, and the path does not contain the case-insensitive substring
-  `quarry`. Both assertions exist because the cell's own working directory reaches the transcript
+  supplied quarry repository root and is not under it, and the path does not contain the
+  case-insensitive substring
+  `quarry` — a lowercased `strings.Contains` written inline here, deliberately **not** routed
+  through the shared matcher: that matcher's two classes govern content the harness searches, and
+  this is a filesystem path the harness is about to use, tested case-insensitively where the
+  matcher's composed-string form is case-sensitive. Card 2's doc comment records the same boundary
+  from the other side. Both assertions exist because the cell's own working directory reaches the transcript
   and gate 2's checks (b) and (c) scan it — a worktree under the repository, or one merely named
   after it, would fail every control rep by construction. A task worktree is
   `<worktree-root>/worktrees/<task-id>`.
@@ -155,31 +160,68 @@ this batch runs goes through the injectable runner seam the overview defines —
   tags for `written_at`, `ladder_file`, `quarry_commit`, `quarry_dirty`, `quarry_dirty_files`,
   `loomyard_commit`, `loomyard_repo_sha256`, `hostname`, `go_version`, `claude_version`,
   `server_hashes` as a map keyed by the cell-and-rep pair, `selected_cells`, `reps_effective`,
-  `memory_paths`, `server_name`, `session_fingerprints` keyed the same way, and `invocations` as a
-  slice. The repository field is the hex sha256 of the resolved target-repository path — the hash,
-  never the path, because this file is committed and no tracked file may carry a machine path.
+  `memory_path_hashes`, `server_name`, `session_fingerprints` keyed the same way, and `invocations`
+  as a slice. Declare `ProvenanceFile = "provenance.json"` as a package-level constant here, the
+  single spelling of that name; card 28 does the same for the summary file and card 29 for the
+  table file, each in the file that writes it.
+  **Three fields exist in hashed or relative form precisely because this file is committed and no
+  tracked file may carry a machine path.** The target-repository field is the hex sha256 of the
+  resolved path, never the path. `ladder_file` is stored relative to the quarry repository root when
+  the operator's value resolves under it, and as its base name otherwise — an operator who passes an
+  absolute path must not thereby write their home directory into a tracked file. And the resolved
+  auto-memory directories are **not** stored here as paths: they are real absolute host paths, so
+  this record carries only `memory_path_hashes`, the hex sha256 of each, while the paths themselves
+  are written to `raw/memory-paths.json` inside the results root's raw tree, which the
+  results-tree-gitignore-scope decision keeps untracked. The resumed-run scan reads them from there.
+  That placement is a deliberate refinement of the discussion's own wording, which said the paths go
+  in the provenance record: the discussion also fixes that record as committed and forbids machine
+  paths in tracked files, and those two statements cannot both hold. The raw tree is where the
+  discussion already puts host-specific evidence, resume only ever happens on the host that produced
+  the root, and the hashes keep "were these the same directories" answerable from the committed file
+  alone.
   `SessionFingerprint` lifts, from one rep's session-init record, the CLI version, the model, the
   permission mode, the tool list, the server list, whether the memory-path map was non-empty, and
-  the counts of skills and slash commands. `Invocation` carries `written_at`, `selected_cells`,
-  `reps_effective`, `quarry_commit`, `quarry_dirty`, `claude_version`, `go_version`, `hostname`,
-  `memory_paths` and that invocation's `server_hashes`.
+  the counts of skills and slash commands. `Invocation` carries `written_at`, `ladder_file`,
+  `selected_cells`,
+  `reps_effective`, `quarry_commit`, `quarry_dirty`, `quarry_dirty_files`, `loomyard_commit`,
+  `loomyard_repo_sha256`, `claude_version`, `go_version`, `hostname`, `server_name`,
+  `memory_path_hashes` and that invocation's `server_hashes` — every top-level field the merge
+  derives has a carrier here, so no top-level field is left without a producer.
   Implement `ReadProvenance(resultsRoot string) (*Provenance, error)`, returning a nil record and no
   error when the file is absent — a fresh root, not a fault — and an error naming the file when it
   is present but unparseable. Implement `WriteProvenance(resultsRoot string, p *Provenance) error`.
   Implement `CollectInvocation(ctx context.Context, r Runner, in CollectInput) (Invocation, error)`,
-  the single producer of an invocation's own facts, taking the quarry repository root, the resolved
-  target repository path, the selected cell ids, the effective repetition count and the claude
-  binary path, and gathering: the quarry commit, dirty flag and dirty-file list from the repository's
+  the single producer of an invocation's own facts, taking the quarry repository root, the operator's
+  ladder-file path, the resolved
+  target repository path, the ladder file's server name, the selected cell ids, the effective
+  repetition count and the claude
+  binary path, and filling every `Invocation` field except the two the run loop learns later:
+  the quarry commit, dirty flag and dirty-file list from the repository's
   own status and revision output through the runner seam; the target repository's commit the same
-  way; the hex sha256 of the resolved target-repository path string; the host name; the Go version
+  way; the hex sha256 of the resolved target-repository path string; the ladder-file path reduced to
+  its repository-relative or base-name form per the rule above; the server name copied from the
+  loaded file; the host name; the Go version
   from the runtime rather than a subprocess; and the CLI version from a version invocation of the
   claude binary through the same seam, because the probe host and the plan's reference host reported
-  different versions and the value must be recorded rather than assumed. The server-hash map and the
-  memory-path list are filled in by the run loop as it learns them, not here.
+  different versions and the value must be recorded rather than assumed. Exactly two fields are
+  **not** filled here because they are unknown at startup: the server-hash map, which the run loop
+  writes as it builds and assigns the binary, and the memory-path hashes, which the run loop writes
+  once the first completed repetition reveals the paths. The run loop also writes each repetition's
+  `SessionFingerprint` straight into the record's fingerprint map as that repetition completes, by
+  the same route and for the same reason — a fingerprint is a per-repetition fact, so it cannot come
+  from a once-per-invocation collector.
   Implement `MergeProvenance(existing *Provenance, next Invocation) (*Provenance, error)`: append
   the invocation, then derive the top-level fields from the invocation list — `selected_cells` is
   the **union** across invocations, because the set of reps a root was ever asked to produce is what
-  the incomplete list needs; `memory_paths` is the union; `server_hashes` merges by key.
+  the incomplete list needs; `memory_path_hashes` is the union; `server_hashes` merges by key;
+  `written_at`, `quarry_commit`, `quarry_dirty`, `quarry_dirty_files`, `loomyard_commit`,
+  `claude_version`, `go_version` and `hostname` take the **latest** invocation's value, since each
+  answers "what was true the last time this root was written to" while every invocation's own value
+  stays readable in the array — which is what makes "was the source edited mid-matrix" answerable
+  across a resume; `ladder_file`, `loomyard_repo_sha256` and `server_name` must be **identical**
+  across invocations, and a differing value is an error naming both, on the same footing as the rule
+  below: a root assembled from two different ladder files, two different checkouts or two different
+  server names is not one root.
   `reps_effective` must be identical across invocations, and a differing value is an error naming
   both, refusing the run at startup — a per-cell sample size that varies within one root breaks the
   only property that makes a root's numbers comparable. Never overwrite an existing record: a
@@ -187,7 +229,15 @@ this batch runs goes through the injectable runner seam the overview defines —
   root read as finished.
   Implement `ScanMemoryPaths(paths []string) (*Finding, error)`, walking each named directory and
   returning a fatal finding naming the first file whose content matches the bare token `quarry`
-  under the shared matcher. The paths are read from the transcript's session-init record, never
+  under the shared matcher. The two return channels divide as follows, and the division is
+  load-bearing. A **named path that does not exist on disk** is a fatal `*Finding`, not an `error`
+  and not silence: the harness cannot tell "this directory is clean" from "this directory was never
+  scanned", and reporting the second as the first is precisely the silent failure V1's derived path
+  produced. An **empty path list** — the CLI named no memory directory at all — is neither a finding
+  nor an error: the run continues and the fact is recorded in the fingerprint, since an absent memory
+  directory is the outcome the check wants. The `error` channel is reserved for an I/O failure while
+  reading a directory or file that does exist. The paths are read from the transcript's session-init
+  record, never
   derived: resolving the project directory from a repository path requires V1's reverse-engineered
   name mangling, which this task deletes and must not resurrect, and which would fail silently by
   scanning a directory that does not exist. Add `WarnOnServerHashDrift(p *Provenance) *Finding`
@@ -231,14 +281,20 @@ this batch runs goes through the injectable runner seam the overview defines —
   supplied quarry repository root, so a repository-relative build target resolves. Write `provenance_test.go` asserting: a read of a root
   with no record returns a nil record and no error while a malformed record errors naming the file;
   a written record round-trips; the collector fills the commit, dirty, host, Go-version and
-  CLI-version fields from the recording fake runner's canned output and puts the target repository's
-  **hash** where the path would be; and the
-  merge policy: two invocations union their selected cells and memory paths, server hashes merge by
-  key, a differing effective rep count is refused naming both values, and a record round-trips
-  through JSON with no absolute path in the output. Add memory-scan cases over a temporary
+  CLI-version fields from the recording fake runner's canned output, puts the target repository's
+  **hash** where the path would be, and reduces an absolute ladder-file path under the supplied
+  repository root to its repository-relative form and one outside it to its base name; and the
+  merge policy: two invocations union their selected cells and memory-path hashes, server hashes
+  merge by key, the latest invocation's commit and version fields win at the top level while both
+  invocations stay readable in the array, a differing effective rep count is refused naming both
+  values, a differing ladder file, target-repository hash or server name is likewise refused, and a
+  record built from an invocation whose inputs were all absolute paths round-trips through JSON with
+  **no absolute path anywhere in the output** — assert that by scanning the marshalled bytes for the
+  temporary directory's own prefix, so the assertion fails if any future field reintroduces one.
+  Add memory-scan cases over a temporary
   directory: a clean directory yields no finding, a file containing the token yields a fatal
-  finding naming the file, and a directory that does not exist is reported rather than silently
-  treated as clean. Add a server-hash-drift case and a fingerprint-drift case.
+  finding naming the file, a named directory that does not exist yields a **fatal finding** naming
+  it rather than silence or an error, and an empty path list yields neither a finding nor an error. Add a server-hash-drift case and a fingerprint-drift case.
 - **Commit:** `test(ladder): cover environment resolution, the lock, mcp config and provenance`
 
 ## Batch Tests

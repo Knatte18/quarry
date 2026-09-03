@@ -22,7 +22,7 @@ of them.
 
 Batch-local decision: `gates.go` takes every fact it cannot compute from the transcript as an
 explicit argument — the pinned worktree's tracked-file token presence, the auto-loaded project
-context's token presence, the quarry repository root path and the MCP prefix. Nothing in this
+context's token presence, the quarry repository root path, the MCP prefix and the server name. Nothing in this
 batch touches a worktree, resolves an environment variable or runs a process; the run loop
 supplies those and the gates stay pure and directly table-testable.
 
@@ -50,8 +50,12 @@ supplies those and the gates stay pure and directly table-testable.
   cell measures the tool's prompt cost, not the tool`, with the config's id substituted. Otherwise
   return nil.
   Gate 2, `CheckBlinding(t *Transcript, in BlindingInput) []Finding`: applies per **rep** and only
-  when the cell's allowed list is empty. `BlindingInput` carries `MCPPrefix string`, `QuarryRepoRoot
-  string`, `TokenInTargetTrackedFiles bool` and `TokenInAutoLoadedContext bool`. Run checks in
+  when the cell's allowed list is empty. `BlindingInput` carries `MCPPrefix string`,
+  `ServerName string`, `QuarryRepoRoot
+  string`, `TokenInTargetTrackedFiles bool` and `TokenInAutoLoadedContext bool`. The server name is
+  its own field rather than something check (d) re-derives by trimming the prefix, matching how
+  card 17's redaction input carries the two separately — the two consumers must agree on the
+  giveaway token, and re-deriving it in one of them is how they stop agreeing. Run checks in
   order over the whole transcript re-marshalled to JSON via the transcript's marshal-all method —
   every record and every field, the session-init record's working directory included, never a
   selected subset — short-circuiting on the first fatal. Check (a): the marshalled transcript
@@ -160,7 +164,10 @@ supplies those and the gates stay pure and directly table-testable.
   inside or outside a tool result — the assertion is that no input makes it fatal, so a
   location-based fatal branch cannot come back as code; check (d) fatal on a rendered prompt
   containing the word quarry, fatal on one containing the tool token `toc`, fatal on one containing
-  the MCP prefix, and **passing** on the real prompt rendered from task 01 for a control cell whose
+  the MCP prefix, fatal on one containing the bare server name alone — run with a server name that
+  is not the word quarry, so the case fails if the implementation re-derives the name from the
+  prefix or leans on the hardcoded default instead of reading the supplied field — and **passing**
+  on the real prompt rendered from task 01 for a control cell whose
   tool list is the four built-in tools named in the overview's the-four-built-in-tools decision; check (d) passing on a prompt containing the word `protocol`,
   which is the three-character-token false positive the shared matcher exists to prevent. Add gate 1
   cases for a granted cell whose reps all report zero prefixed tool uses (finding, non-fatal), a

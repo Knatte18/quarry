@@ -71,10 +71,17 @@ rejection table harder to read than the code it tests.
   single case-insensitive word-bounded alternation over the quoted tokens, skipping empty entries
   and returning `nil` for an empty or all-empty slice; the scorer's redactor and gate check (d)
   both consume it, and it is the only place an alternation over tool names is ever built. Add a
-  package doc comment on this file stating that bare identifier tokens (the literal `quarry`, the
-  server name, each entry of a ladder file's tool list) use the word-bounded form while composed
-  strings (an MCP prefix, a repository root path, a worktree path) use the substring form, and why:
-  a three-character tool name under substring matching would match ordinary prose.
+  package doc comment on this file scoping the rule and stating both halves. Scope: these two
+  classes govern **content** matching — searching a transcript, a rendered prompt or an answer for a
+  giveaway token — and they are shared so the gates and the redactor cannot drift on what the
+  giveaway token is. Halves: bare identifier tokens (the literal `quarry`, the
+  server name, each entry of a ladder file's tool list) use the word-bounded form, while composed
+  strings (an MCP prefix, a repository root path, a worktree path) appearing **in that content** use
+  the substring form, and why: a three-character tool name under substring matching would match
+  ordinary prose. State explicitly that the startup assertion on the resolved worktree root path is
+  **not** one of these two classes and does not route through this file: it tests a filesystem path
+  the harness is about to use rather than content it is searching, it is deliberately
+  case-insensitive where the composed-string form is case-sensitive, and it has exactly one caller.
 - **Commit:** `feat(ladder): add the shared bare-token and composed-string matcher`
 
 ### Card 3: the ladder configuration types and loader

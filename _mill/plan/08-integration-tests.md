@@ -136,6 +136,7 @@ its own `package main`.
   - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
   - `bench/loomyard-eval/ladder/internal/ladder/report.go`
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
