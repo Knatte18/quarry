@@ -1,12 +1,12 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: glyph-package
 branch: glyph-package
 plan: _mill/plan
 parent: main
-module_verify_baseline: pre-existing-failures
+module_verify_baseline: clean
 task: The glyph package (T1)
 task_description: |
   The glyph package (T1)
@@ -39,6 +39,7 @@ approved-parser-and-go-alphabet  '2026-09-03T17:17:12Z'
 holistic-reviewing  '2026-09-03T17:17:40Z'
 holistic-approved  '2026-09-03T17:21:13Z'
 done  '2026-09-03T17:21:44Z'
+pr-pending  '2026-09-03T17:23:00Z'
 ```
 
 ## Batches
