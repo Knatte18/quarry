@@ -121,41 +121,93 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
   JSON for an agent is a ladder cell, not an assumption: `results/2026-09-02-compact2` cut the
   envelope and the prose at the same time, so the envelope's own cost was never measured.
 
-`map` on a directory:
+### Depth
+
+The answer is one recursive type. A **directory answer** holds `dir`, `package`, `language`, its
+`files` and its `dirs`, and each entry in `dirs` is itself a directory answer. Two independent
+knobs say how much of the tree is filled in:
+
+| knob | values | default |
+|---|---|---|
+| `depth` | how far down the directory tree `dirs` are filled: `0` lists subdirectories by `dir` and `package` only; `1` fills their files; `N`; `all` | `0` |
+| `symbols` | whether file entries carry `symbols` | `true` for a file argument, `false` for a directory argument |
+
+They are separate because the two big shapes need them separately: a whole tree with headers only
+(orientation) and one package with every symbol (mechanical consumers). Loomyard's `internal/` is
+72 directories and 394 KB at headers only, so even the header map of a whole tree is not something
+an agent gets without asking.
+
+### Examples, real data (Loomyard 72c23d9)
+
+`map internal/reedengine/render` — a directory: its files with headers, nothing below:
 
 ```json
-{ "package": "shedadapters", "dir": "internal/shedadapters",
+{ "dir": "internal/reedengine/render", "package": "render", "language": "go",
   "files": [
-    { "name": "archive.go", "header": "archive.go implements archiveStaleOutputs, the archive-never-refuse helper ..." },
-    { "name": "archive_test.go", "test": true },
-    { "name": "bouncer.go", "header": "bouncer.go implements Bouncer, the generic review-gate producer: ..." } ] }
+    { "name": "checksum.go", "header": "checksum.go computes tmux's window_layout checksum: a 16-bit rotate-right-1 accumulator over the layout body ..." },
+    { "name": "checksum_test.go", "test": true, "header": "checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, ..." },
+    { "name": "focus.go", "header": "focus.go resolves which pane receives tmux input focus, and detects whether a strand has a descendant present ..." },
+    { "name": "layout.go", "header": "layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements within a Box into a tmux/psmux window_layout body and its checksum-prefixed full string. It is region-relative — ..." },
+    ... 12 files ] }
 ```
 
-`map` on a file is the same file entry with `symbols` filled — a directory answer with one file:
+`map internal/reedengine` — a directory with a subdirectory. At `depth: 0` the subdirectory is an
+entry with its identity only:
 
 ```json
-{ "package": "shedadapters", "dir": "internal/shedadapters",
+{ "dir": "internal/reedengine", "package": "reedengine", "language": "go",
+  "files": [ ... 67 files ... ],
+  "dirs": [ { "dir": "internal/reedengine/render", "package": "render" } ] }
+```
+
+`map internal/reedengine --depth 1` — the same, with the subdirectory filled the way the first
+example is; `--depth all` keeps going down.
+
+`map internal/reedengine/render/layout.go` — a file: a directory answer with one file entry, and
+that entry carries `symbols` because the argument was a file:
+
+```json
+{ "dir": "internal/reedengine/render", "package": "render", "language": "go",
   "files": [
-    { "name": "bouncer.go", "header": "bouncer.go implements Bouncer, ...",
+    { "name": "layout.go",
+      "header": "layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements\nwithin a Box into a tmux/psmux window_layout body and its checksum-prefixed full string.\nIt is region-relative — offsets are anchored to box.X/box.Y rather than the whole window — so the\nstack region can be rendered independently of the Box it is placed within.\nThis file makes no placement or height decisions;\nthose live in policy.go and height.go.\nIt only renders the string from the placements it is given.",
       "symbols": [
-        { "id": "shedadapters#Bouncer", "kind": "type", "start": 69, "sigend": 73, "end": 75,
-          "signature": "type Bouncer struct", "doc": "Bouncer is the shedadapters adapter implementing ..." },
-        { "id": "shedadapters#NewBouncer", "kind": "function", "start": 77, "sigend": 95, "end": 150,
-          "signature": "func NewBouncer(cfg BouncerConfig) (*Bouncer, error)", "doc": "NewBouncer returns ..." } ] } ] }
+        { "id": "render#placement", "kind": "type", "start": 16, "sigend": 20, "end": 29,
+          "signature": "type placement struct",
+          "doc": "placement is one resolved pane: its tmux pane id and the row height it\nhas been assigned." },
+        { "id": "render#buildStackBody", "kind": "function", "start": 31, "sigend": 34, "end": 50,
+          "signature": "func buildStackBody(box Box, panes []placement) string",
+          "doc": "buildStackBody renders panes into a tmux window_layout body positioned\nwithin box: \"<box.W>x<box.H>,<box.X>,<box.Y>[<w>x<h>,<x>,<y>,<paneNum>,...]}\"." },
+        { "id": "render#wrapLayout", "kind": "function", "start": 52, "sigend": 54, "end": 56,
+          "signature": "func wrapLayout(body string) string",
+          "doc": "wrapLayout prefixes body with its tmux layout checksum, producing the full\nwindow_layout string tmux's select-layout accepts." },
+        { "id": "render#bandHeader", "kind": "function", "start": 58, "sigend": 63, "end": 76,
+          "signature": "func bandHeader(fullBox Box, headerPaneID string, headerHeight int, ...) ...",
+          "doc": "..." } ] } ] }
 ```
 
-`map --symbols` on a directory fills `symbols` for every file. That is 250 KB for `reedengine` and
-is the shape a mechanical consumer wants (diff-to-symbols, documentation drift: one call, not 35);
-an agent gets it only by asking. The Go facade has one `FileEntry` type with `Symbols []Symbol`, nil
-unless requested.
+`map internal/reedengine/render --symbols` — every one of the 12 files shaped like `layout.go`
+above. `map internal --depth all --symbols` is the whole repository, every symbol: the shape a
+diff-to-symbols or documentation-drift check wants in one call.
 
-The same data as lossless text, for the MCP block:
+The same directory answer as lossless text, for the MCP block — no keys, no defaults, prose intact:
 
 ```
-shedadapters (internal/shedadapters), 25 files
-archive.go: archive.go implements archiveStaleOutputs, the archive-never-refuse helper ...
-archive_test.go [test]
-bouncer.go: bouncer.go implements Bouncer, the generic review-gate producer: ...
+internal/reedengine/render (package render, go), 12 files
+checksum.go: checksum.go computes tmux's window_layout checksum: a 16-bit rotate-right-1 accumulator ...
+checksum_test.go [test]: checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, ...
+focus.go: focus.go resolves which pane receives tmux input focus, and detects whether a strand ...
+...
+```
+
+and a file with symbols:
+
+```
+internal/reedengine/render/layout.go (package render, go): layout.go is the layout mechanics layer: ...
+16-29 (sig 16-20) render#placement: type placement struct
+    placement is one resolved pane: its tmux pane id and the row height it has been assigned.
+31-50 (sig 31-34) render#buildStackBody: func buildStackBody(box Box, panes []placement) string
+    buildStackBody renders panes into a tmux window_layout body positioned within box: ...
 ```
 
 ## 5. The queries
@@ -175,9 +227,10 @@ One line per member; the caller chooses what to read. This is how a large class 
 names members, `members` gives the map, the implementer reads head + the named member + siblings it
 picks. The whole class is `start`–`end` of the type symbol and is available, never the default.
 
-**`map <dir|file>...`** — what is here. V1's `toc dir` and `toc file` as one verb, one entry type at
-two depths (§4): a directory answers with file entries, a file with its entry and symbols, a
-directory with symbols only on `--symbols`. The measured win. Headers and docs complete (lesson 4).
+**`map <dir|file>... [--depth N|all] [--symbols]`** — what is here. V1's `toc dir` and `toc file` as
+one verb over one recursive answer (§4 Depth): a directory answers with its files and its
+subdirectories' identities, a file with its entry and symbols, and the two knobs fill in more of the
+tree or more of each file. The measured win. Headers and docs complete (lesson 4).
 
 **No reference query in phase 1.** A textual search for a name was considered and dropped: on a
 name shared by several methods (`Apply`, `Run`, `Handle`) it never returns zero and its hits mean
