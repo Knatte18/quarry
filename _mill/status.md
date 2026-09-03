@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: ladder-harness
 branch: ladder-harness
-plan: null
+plan: _mill/plan
 parent: main
 task: Ladder harness around headless claude -p (T2)
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-09-03T15:55:23Z'
 blocked  '2026-09-03T17:00:49Z'
 discussed  '2026-09-03T17:09:13Z'
+planning  '2026-09-03T17:23:57Z'
 ```
