@@ -6,6 +6,7 @@ slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Ladder harness around headless claude -p (T2)
 task_description: |
   Ladder harness around headless claude -p (T2)
@@ -40,19 +41,29 @@ implementing  '2026-09-03T18:30:31Z'
 ```yaml
 batches:
   - name: foundations-and-config
-    state: pending
+    state: running
+    implementer_session: a6ceedc2-7fca-4777-a777-5f38fdcd9817
+    start_sha: e68f376a337e387cb770622753b1ea6813ce6743
+    verify_baseline_failures: []
   - name: stream-and-metrics
     state: pending
+    verify_baseline_failures: []
   - name: prompt-and-schema
     state: pending
+    verify_baseline_failures: []
   - name: gates-and-scorer
     state: pending
+    verify_baseline_failures: []
   - name: environment-and-provenance
     state: pending
+    verify_baseline_failures: []
   - name: run-loop
     state: pending
+    verify_baseline_failures: []
   - name: summarize-report-cli
     state: pending
+    verify_baseline_failures: []
   - name: integration-tests
     state: pending
+    verify_baseline_failures: []
 ```
