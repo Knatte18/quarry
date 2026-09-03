@@ -167,6 +167,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   - `glyph/glyph.go`
   - `glyph/golang.go`
   - `glyph/parse.go`
+  - `internal/quarryengine/toc/toc_test.go`
 - **Edits:** none
 - **Creates:**
   - `glyph/parse_test.go`
