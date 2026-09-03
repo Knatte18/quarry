@@ -35,7 +35,10 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - The three tables use two named package-level struct types, not anonymous-struct literals: card 5
   declares `rejectCase` and card 6 declares `acceptCase`, each with a `section` field naming the
   `docs/glyph.md` section the case came from, so traceability is visible in the table rather than in
-  a comment. Naming `rejectCase` once is what lets card 6's completeness test range over card 5's
+  a comment. Every table-driven test composes its `t.Run` subtest name from the row's `name` and
+  `section` fields, so `section` is genuinely read — a write-only unexported struct field would be a
+  plausible `unused` report under the lint command the overview's module-wide `verify:` runs.
+  Naming `rejectCase` once is what lets card 6's completeness test range over card 5's
   `parseReject` and card 6's `goReject` in one loop: Go's type identity for anonymous structs is
   exact, so two independently written literals would not admit a shared loop variable.
 - Every `*ParseError` the package constructs sets all four fields. `Lang` and `Input` are never left
