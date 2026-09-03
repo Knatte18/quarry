@@ -203,6 +203,43 @@ can host this code.
   `Error() string` composing a message that names what was wrong, and an exported
   `type Reason string` whose constants are a closed set (one per reject in the spec). Callers use
   `errors.As`; tests assert on `Reason`, never on message text.
+- **The vocabulary, in full.** "Closed" is worth nothing unless the set is written down, so it is
+  fixed here and the plan implements exactly these fifteen constants — no more, no fewer. `Detail`
+  carries the offending segment, component or rune; the `Reason` is what tests assert on.
+
+  | `Reason` | fires on | example input |
+  |---|---|---|
+  | `unsupported_language` | `lang` is not `Go`, including the zero value | `Parse("python", …)` |
+  | `no_separator` | the input contains no `#` at all | `internal/logger`, `""` |
+  | `unit_empty` | the unit half is empty | `#run` |
+  | `unit_empty_segment` | a segment between two `/` is empty, including a leading or trailing `/` | `a//b`, `/a`, `a/` |
+  | `unit_dot_segment` | a segment is `.` or `..` | `./a`, `a/../b`, `.` |
+  | `unit_bad_rune` | a unit rune is `\`, an ASCII control character, or whitespace | `a\b`, `a b` |
+  | `member_empty` | the member half is empty | `internal/logger#` |
+  | `member_empty_component` | a component between two `.` is empty, including a leading or trailing `.` | `a..b`, `.A`, `A.` |
+  | `member_too_deep` | three or more `.`-separated components | `A.B.c` |
+  | `member_not_identifier` | a component is not a Go identifier for a reason no sharper reason covers | `1abc`, `a-b` |
+  | `member_keyword` | a component is one of Go's 25 reserved keywords | `#func` |
+  | `member_type_params` | the member carries `[` or `]` | `Box[T]` |
+  | `member_parens` | the member carries `(` or `)` | `Renderer.Draw(int)`, `(*T).M` |
+  | `member_pointer` | the member carries `*` | `*dualHandler.Handle` |
+  | `member_bad_rune` | a member rune is `#`, `/`, an ASCII control character, or whitespace | `a#b#c`, `A .b` |
+
+- **Precedence among the member reasons**, so a case that trips several is not ambiguous: `*`, then
+  `(`/`)`, then `[`/`]`, then the structural component checks (`member_empty`,
+  `member_empty_component`, `member_too_deep`), then per-component `member_keyword`, then
+  `member_not_identifier`, with `member_bad_rune` last as the fallback. `(*dualHandler).Handle`
+  therefore reports `member_pointer`, and `Renderer.Draw(int)` reports `member_parens`.
+  `internal/reedengine/render.Renderer.Draw` — the §7 `go doc` spelling — reports `no_separator`,
+  because it has no `#` at all and never reaches the member checks; that is the right message, since
+  the missing `#` is exactly what is wrong with it.
+- **Why `member_type_params`, `member_parens` and `member_pointer` are separate** rather than folded
+  into `member_bad_rune`: §3 says in as many words that type parameters are not part of a glyph and
+  that pointer-ness is not part of a method's identity, and §7 warns that C# shapes and `go doc`
+  names will be offered where a glyph is expected. These are the three mistakes a reader of the spec
+  is most likely to make, and "unexpected rune `*`" is a much worse answer than "a receiver's
+  pointer-ness is not part of a glyph". This is the concrete meaning of the member-alphabet
+  decision's promise that those inputs get "their own messages rather than a generic 'bad rune'".
 - **Rationale:** the task requires "every reject in the spec is an error with a message that names
   what was wrong". A closed `Reason` vocabulary makes "every reject in the spec" enumerable and
   checkable — the test table can assert one case per constant and a reviewer can see nothing is
@@ -244,20 +281,38 @@ can host this code.
 
 ### Python and C# examples as split-only tests
 
-- **Decision:** every Python and C# example in §1 and §3 is a test of the **structural split** alone,
-  written as a white-box (same-package) test asserting the example divides into the unit and member
-  halves the spec documents. In addition, a test asserts that `Parse` with any `Language` other than
-  `Go` — including `Language("python")`, `Language("csharp")` and the zero value — returns
-  `Reason` `unsupported_language`. No `Python` or `CSharp` constant is defined anywhere.
+- **Decision:** the non-Go material in §1–§3 divides in two, and only the first half is testable here.
+  - **§1's table rows are whole glyphs and become split tests.** Exactly three qualify —
+    `loomyard.engine.layout#Beta.Inner.handle`, `Loomyard.Engine.Layout#Renderer.Draw(int)` and
+    `Loomyard.Engine.Layout#Renderer.Title` — each a white-box (same-package) test asserting the
+    example divides into the unit and member halves the spec documents.
+  - **§2's non-Go unit examples and every §3 non-Go example are fragments, not glyphs, and are out of
+    T1's reach.** `loomyard.engine`, `Loomyard.Engine.Layout` and `global` are unit halves;
+    `Beta.Inner.handle`, `Renderer.Draw(int,string)`, `Draw(ref int)`, `List<>`,
+    `Renderer.this[int]`, `Box.operator +(Box,Box)`, `Renderer.~Renderer()` and
+    `Renderer.ILayout.Draw(int)` are member halves. None contains a `#`, so there is nothing to split
+    and no whole-glyph string to assert on; and validating a half requires the alphabet that half
+    belongs to, which this task must not define.
+  - In addition, a test asserts that `Parse` with any `Language` other than `Go` — including
+    `Language("python")`, `Language("csharp")` and the zero value — returns `Reason`
+    `unsupported_language`. No `Python` or `CSharp` constant is defined anywhere.
 - **Rationale:** the done criterion is "every example and corner case in `docs/glyph.md` §1–§3 is a
-  test", and the Python and C# examples are examples in those sections. They cannot be `Parse` tests,
-  because the task forbids defining or stubbing those `Language` values. What they *can* test is the
-  claim the task brief makes in its own words — "the structural split at `#` accepts the other
-  alphabets' shapes, so adding a language later does not touch the parser's skeleton" — and that is
-  the useful half. This is the honest reading of the criterion, and it is recorded here rather than
-  silently skipped.
-- **Rejected:** skipping those rows (fails the done criterion); defining `Python`/`CSharp` as
-  unsupported constants (explicitly banned by the task).
+  test". Read literally over the whole of §1–§3 it is unsatisfiable by T1, because §2 and §3 specify
+  two alphabets this task is explicitly forbidden to implement, and their examples are not glyphs at
+  all. Read as it was meant — every example of *the alphabet this task implements*, plus whatever the
+  language-free layer can honestly be held to — it is fully satisfiable, and that is what the tables
+  above deliver. The §1 rows are worth testing because they exercise the claim the task brief makes
+  in its own words: "the structural split at `#` accepts the other alphabets' shapes, so adding a
+  language later does not touch the parser's skeleton." The §2/§3 fragments are worth nothing until
+  their alphabet exists, and become tests in the task that adds it — `docs/rewrite-plan.md` §12's
+  "Not tasks yet" already assigns "its alphabet in `glyph/`" to that future per-language task, which
+  is where those examples belong.
+- **This narrowing is recorded, not silent.** A reader checking T1 against the done criterion will
+  find §2/§3's non-Go examples untested; the reason is here, and the criterion is met for every Go
+  example and for every non-Go example that is a glyph.
+- **Rejected:** claiming the §3 fragments as split tests (impossible — no `#` to split, as the r2
+  review established); skipping §1's three rows too (they are testable and the criterion does reach
+  them); defining `Python`/`CSharp` as unsupported constants (explicitly banned by the task).
 
 ### The root-package unit is rejected, and it is a spec question
 
@@ -301,14 +356,21 @@ can host this code.
   proved for this package alone with `go list -deps ./glyph`, and `go build ./... && go test ./...`
   is run in the ordinary cgo-enabled configuration. Do not attempt to make the whole tree build
   without cgo.
-- **Allowed imports.** Standard library only, and in practice only `fmt`, `strings` and `unicode`.
-  `go list -deps ./glyph` must show nothing else and no cgo. Anything more is a design error, not a
-  dependency decision.
+- **Allowed imports.** Standard library only. The package's own import lines should need no more than
+  `fmt`, `strings` and `unicode`; anything beyond that is a design error, not a dependency decision.
+  The **pass condition** is stated once, here, and is about the transitive list rather than those
+  three names: *every package `go list -deps ./glyph` prints is standard library, and no non-stdlib
+  module appears.* The transitive closure of `fmt` alone is far larger than three packages, so
+  "shows only `fmt`, `strings` and `unicode`" is not a check anything could pass. The constraint
+  extends to test imports, which `go list -deps` does not see — see Testing.
 - **Existing conventions to follow.** Every file in `internal/quarryengine/toc` opens with a
   file-level comment naming what the file holds and why (see `types.go`, `cgoguard.go`); exported
   identifiers carry godoc; closed vocabularies are `string`-based named types with grouped constants
-  and a doc comment on each (`toc.Kind`). Match this. See `.claude` skills `golang-comments`,
-  `golang-testing`, `golang-build` for the repository's Go rules.
+  and a doc comment on each (`toc.Kind`). Match this. The repository's Go rules also live in the
+  `golang` plugin skills — `golang-comments`, `golang-testing`, `golang-build` — invoked by name via
+  the Skill tool. There is no `.claude/` directory in this worktree or at the hub root; the skills
+  ship with the plugin, not with the repository. Note that `golang-testing` recommends `cmp.Diff`,
+  which this task cannot use — see Testing for why and what replaces it.
 - **The spec sections that matter,** for a planner reading only this file: `docs/glyph.md` §1 (the
   form, the language-free split, the examples table), §2 (the unit per language, the Go `_test` unit,
   the rejected shorter schemes), §3 (the member per language, the Go rules on `.`, parentheses, type
@@ -324,8 +386,10 @@ can host this code.
 - No `CONSTRAINTS.md` exists at the hub root; these come from `CLAUDE.md`, the task brief and the
   two rewrite documents.
 - **Go repository; no Python is introduced.** (`CLAUDE.md`.)
-- **Pure Go, no cgo, no dependencies outside the standard library.** `go list -deps ./glyph` proves
-  it. (`docs/glyph.md` §6; `rewrite-plan.md` §12 T1.)
+- **Pure Go, no cgo, no dependencies outside the standard library — in the tests as well as in the
+  package.** `go list -deps ./glyph` proves it for the package; it does not see test imports, so no
+  `_test.go` file may import a non-stdlib module either, and `go.mod` gains no `require` line from
+  this task. (`docs/glyph.md` §6; `rewrite-plan.md` §12 T1.)
 - **No engine code, no file reading, no tree-sitter, no filesystem or network access** in this
   package. `Parse` reads no source. (Task brief.)
 - **`docs/glyph.md` is not edited by this task.** Unclear points are asked; the hub fixes the spec.
@@ -343,10 +407,13 @@ first, watch them fail, then implement.
 
 **`parse_test.go` — the language-free layer.**
 
-- The structural split over every example in §1's table, including the Python and C# rows
+- The structural split over every example in §1's table, including the three Python and C# rows
   (`loomyard.engine.layout#Beta.Inner.handle`, `Loomyard.Engine.Layout#Renderer.Draw(int)`,
   `Loomyard.Engine.Layout#Renderer.Title`): each divides into the unit and member halves the spec
-  documents. White-box, same-package, since the split is unexported.
+  documents. White-box, same-package, since the split is unexported. These three are the **only**
+  non-Go examples that become tests in T1 — §2's non-Go unit examples and every §3 non-Go example are
+  bare halves with no `#`, so there is nothing to split; see the Decision "Python and C# examples as
+  split-only tests" for why they are out of reach and where they land instead.
 - First-`#` semantics: a string with two `#` splits at the first, and the second `#` reaches the Go
   member validator (which then rejects it).
 - `unsupported_language`: `Parse` with `Language("python")`, `Language("csharp")`, `Language("")` and
@@ -368,16 +435,61 @@ a deep unit, a Unicode identifier, and `_` as a member name. Each case asserts t
 `Glyph` — `Lang`, `Unit`, `Owner`, `Name` and `Params`, including that `Owner` is nil for a
 package-level name and that `Params` is nil always.
 
-*Rejects*, one case per `Reason` constant, asserting the reason and not the message text — and the
-table must cover at least: no `#`; empty input; empty unit; empty member; leading `./`; leading `/`;
-trailing `/`; `//`; a `.` segment; a `..` segment; a backslash; whitespace inside the unit; leading
-and trailing whitespace on the whole input; a control character; a three-component member
-(`a.b.c`); a member component that is not an identifier (leading digit); a keyword member (`func`,
-and at least one more); `Box[T]`; `*dualHandler.Handle`; `(*dualHandler).Handle`;
-`Renderer.Draw(int)` (a C# shape rejected under the Go alphabet); `internal/reedengine/render.Renderer.Draw`
-(the `go doc` spelling §7 forbids); a member containing a second `#`. A test that iterates the
-`Reason` constants and fails if any has no reject case keeps the table honest as the vocabulary
-grows.
+**Compare whole `Glyph` values with `reflect.DeepEqual`.** `Glyph` holds two `[]string` fields, so it
+is not comparable with `==`. Do **not** reach for `cmp.Diff`/`github.com/google/go-cmp`: it is not in
+`go.mod`, and the stdlib-only constraint covers **test** imports as well as package imports — a
+test-only dependency would satisfy `go list -deps ./glyph` (which does not see test imports) while
+still breaking §6's promise that anything can import this package. `reflect.DeepEqual` is the
+repository's existing precedent for exactly this comparison — `internal/quarryengine/toc/toc_test.go:700`,
+`toc_test.go:467`, `extension_test.go:36` — and it distinguishes a nil slice from an empty one, which
+the `Owner`-is-nil and `Params`-is-nil assertions and the `Params` printing rule all depend on.
+`slices.Equal` is acceptable for a single field where that nil/empty distinction is not the point.
+
+*Rejects*, asserting the `Reason` and never the message text. Every row below names the constant it
+must produce, so the table and the vocabulary in Decisions are one thing and a reviewer can check
+coverage by reading down the column. Each of the fifteen constants appears at least once.
+
+| input | `Reason` |
+|---|---|
+| `internal/logger` (no `#`) | `no_separator` |
+| `""` | `no_separator` |
+| `internal/reedengine/render.Renderer.Draw` (the §7 `go doc` spelling) | `no_separator` |
+| `#run` | `unit_empty` |
+| `/internal/logger#run` | `unit_empty_segment` |
+| `internal/logger/#run` | `unit_empty_segment` |
+| `internal//logger#run` | `unit_empty_segment` |
+| `./internal/logger#run` | `unit_dot_segment` |
+| `internal/../logger#run` | `unit_dot_segment` |
+| `internal\logger#run` | `unit_bad_rune` |
+| `internal/my logger#run` | `unit_bad_rune` |
+| `" internal/logger#run"` (leading space, untrimmed) | `unit_bad_rune` |
+| `"internal/log\tger#run"` (control character) | `unit_bad_rune` |
+| `internal/logger#` | `member_empty` |
+| `internal/logger#.Handle` | `member_empty_component` |
+| `internal/logger#Handle.` | `member_empty_component` |
+| `internal/logger#A..b` | `member_empty_component` |
+| `internal/logger#A.B.c` | `member_too_deep` |
+| `internal/logger#1abc` | `member_not_identifier` |
+| `internal/logger#a-b` | `member_not_identifier` |
+| `internal/logger#func` | `member_keyword` |
+| `internal/logger#range` | `member_keyword` |
+| `internal/logger#Box[T]` | `member_type_params` |
+| `internal/logger#Renderer.Draw(int)` (a C# shape under the Go alphabet) | `member_parens` |
+| `internal/logger#(*dualHandler).Handle` | `member_pointer` |
+| `internal/logger#*dualHandler.Handle` | `member_pointer` |
+| `internal/logger#a#b` (a second `#`) | `member_bad_rune` |
+| `internal/logger#A .b` | `member_bad_rune` |
+| `"internal/logger#run "` (trailing space, untrimmed) | `member_bad_rune` |
+| `Parse(Language("python"), "no-hash")` | `unsupported_language` |
+
+The three rows that would otherwise be ambiguous are exactly the ones the precedence rule in
+Decisions settles: `(*dualHandler).Handle` carries both `*` and parentheses and reports
+`member_pointer`; `Renderer.Draw(int)` carries parentheses and reports `member_parens`; the §7
+dotted spelling never reaches the member checks at all and reports `no_separator`.
+
+A completeness test iterates the `Reason` constants and fails if any constant has no reject case in
+the table. Because the vocabulary is closed and written down in Decisions, that test is a real
+check rather than a tautology: adding a sixteenth constant without a case fails the build.
 
 *Case sensitivity*: `internal/Logger#Foo` and `internal/logger#foo` are different glyphs and neither
 folds into the other.
@@ -397,9 +509,12 @@ folds into the other.
   only that it returns.
 
 **Not tests:** the no-cgo / stdlib-only guarantee is a verify command, `go list -deps ./glyph`, run in
-the plan's verification step and expected to list only standard-library packages. It is not a Go test;
-shelling out to the toolchain from a unit test is slow, environment-dependent, and duplicates a check
-the plan already runs.
+the plan's verification step, with the single pass condition stated under Technical context →
+"Allowed imports" — every listed package is standard library and no non-stdlib module appears. It is
+not a Go test; shelling out to the toolchain from a unit test is slow, environment-dependent, and
+duplicates a check the plan already runs. `go list -deps` does not cover **test** imports, which is
+why the stdlib-only rule for tests is enforced by review of the test files' import lines instead —
+see the `reflect.DeepEqual` note above.
 
 **Whole-task verification:** `go build ./... && go test ./...` green (cgo-enabled, as the engine
 requires), plus `go vet ./...` and `go list -deps ./glyph`.
