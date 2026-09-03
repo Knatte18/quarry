@@ -93,22 +93,67 @@ is this id with `.` instead of `#`. Loomyard can keep `.` and map the first sepa
 `#`. Recommendation: adopt `#`, because `pkg.Type.Method` and `pkg.Name` are then distinguished by
 the separator alone and no parser needs the package list to split them. This is Loomyard's decision.
 
-## 4. One envelope
+## 4. One envelope, one entry type at every depth
 
 Every command, every surface, the same shape. Deviations are what made V1 three generations.
 
 - **`ok` agrees with the exit code.** V1's `definition` returned `ok: true` and exited 2.
 - **`status` per entry:** `found`, `not_found`, `ambiguous` (with `candidates`), `multipart`.
-- **One location shape everywhere:** `file` (relative to the repository root, never absolute),
-  `start`, `sigend`, `end` (1-based, inclusive), `kind` (a word, never an LSP integer), `id`,
-  `signature` (verbatim source), `doc` (complete, never truncated by extraction).
+- **One symbol entry everywhere:** `id`, `kind` (a word, never an LSP integer), `start`, `sigend`,
+  `end` (1-based, inclusive), `signature` (verbatim source), `doc` (complete, never truncated by
+  extraction), and `file` (relative to the repository root, never absolute) wherever entries can span
+  files. `resolve`, `members` and `map` all return this entry and nothing else for a symbol.
+- **One file entry everywhere:** `name`, `header`, the deviations only when true (`test`,
+  `generated`, `package` when it differs from the directory's), and `symbols` — filled for a file
+  query, absent for a directory query, filled for a directory only on explicit request.
+- **Shared facts once, defaults never.** Package, directory and language are stated once at the top.
+  `test: false`, `generated: false`, `ok: true` inside data, empty `dirs: []`, and a directory prefix
+  repeated on every path are V1 clutter: 25 files carried 100 fields that said nothing.
 - **Ids as keys in every output.** What `map` lists is what `resolve` takes.
 - **`verified` per entry** on anything that claims a reference (phase 2 `impact`: `true` when the
   type checker confirmed it, `false` when it could not). A consumer that wants only verified entries
   filters; a gate that reads unverified entries as proof is a defect.
-- **JSON is the contract** for the CLI and the facade. The MCP `content[].text` block carries the
-  same JSON. A compact text view may exist as an explicit option; it is never the default and never
-  the only form.
+- **JSON is the contract** for the CLI and the facade. The MCP `content[].text` block carries a
+  lossless text view of the same data — no keys, no defaults, prose intact. Whether that view beats
+  JSON for an agent is a ladder cell, not an assumption: `results/2026-09-02-compact2` cut the
+  envelope and the prose at the same time, so the envelope's own cost was never measured.
+
+`map` on a directory:
+
+```json
+{ "package": "shedadapters", "dir": "internal/shedadapters",
+  "files": [
+    { "name": "archive.go", "header": "archive.go implements archiveStaleOutputs, the archive-never-refuse helper ..." },
+    { "name": "archive_test.go", "test": true },
+    { "name": "bouncer.go", "header": "bouncer.go implements Bouncer, the generic review-gate producer: ..." } ] }
+```
+
+`map` on a file is the same file entry with `symbols` filled — a directory answer with one file:
+
+```json
+{ "package": "shedadapters", "dir": "internal/shedadapters",
+  "files": [
+    { "name": "bouncer.go", "header": "bouncer.go implements Bouncer, ...",
+      "symbols": [
+        { "id": "shedadapters#Bouncer", "kind": "type", "start": 69, "sigend": 73, "end": 75,
+          "signature": "type Bouncer struct", "doc": "Bouncer is the shedadapters adapter implementing ..." },
+        { "id": "shedadapters#NewBouncer", "kind": "function", "start": 77, "sigend": 95, "end": 150,
+          "signature": "func NewBouncer(cfg BouncerConfig) (*Bouncer, error)", "doc": "NewBouncer returns ..." } ] } ] }
+```
+
+`map --symbols` on a directory fills `symbols` for every file. That is 250 KB for `reedengine` and
+is the shape a mechanical consumer wants (diff-to-symbols, documentation drift: one call, not 35);
+an agent gets it only by asking. The Go facade has one `FileEntry` type with `Symbols []Symbol`, nil
+unless requested.
+
+The same data as lossless text, for the MCP block:
+
+```
+shedadapters (internal/shedadapters), 25 files
+archive.go: archive.go implements archiveStaleOutputs, the archive-never-refuse helper ...
+archive_test.go [test]
+bouncer.go: bouncer.go implements Bouncer, the generic review-gate producer: ...
+```
 
 ## 5. The queries
 
@@ -119,15 +164,17 @@ needs a type checker, a daemon, or an index. Phase 1 says nothing about callers.
 implementer immediately before every read and every edit, because lines have moved since the last
 time. Many ids in one call are grouped by package and each package is parsed once.
 
-**`members <type-id>`** — what does this type consist of, across files. The type's *head* (its own
+**`members <id>`** — what does this type consist of, across files. The id must name a type;
+on any other kind the answer is `ok: false` naming the kind. The type's *head* (its own
 lines: declaration, doc, fields, class-level attributes — in Go the `type` block; in Python and C#
 the class span minus its member spans) and every member with its location, sorted by file and line.
 One line per member; the caller chooses what to read. This is how a large class is handled: the plan
 names members, `members` gives the map, the implementer reads head + the named member + siblings it
 picks. The whole class is `start`–`end` of the type symbol and is available, never the default.
 
-**`map <package|file>...`** — what is here. V1's `toc dir`/`toc file`, the measured win, with ids as
-keys. The first call on unfamiliar code. Headers and docs complete (lesson 4).
+**`map <dir|file>...`** — what is here. V1's `toc dir` and `toc file` as one verb, one entry type at
+two depths (§4): a directory answers with file entries, a file with its entry and symbols, a
+directory with symbols only on `--symbols`. The measured win. Headers and docs complete (lesson 4).
 
 **No reference query in phase 1.** A textual search for a name was considered and dropped: on a
 name shared by several methods (`Apply`, `Run`, `Handle`) it never returns zero and its hits mean
