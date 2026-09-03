@@ -40,7 +40,7 @@ batches:
   - number: 5
     name: environment-and-provenance
     file: 05-environment-and-provenance.md
-    depends-on: [1, 2]
+    depends-on: [1, 2, 4]
     verify: go test ./bench/loomyard-eval/ladder/...
   - number: 6
     name: run-loop
@@ -127,9 +127,13 @@ Batch-local decisions live in each batch file._
 
 - **Decision:** every external process the harness runs — `claude`, `git`, `go build` — is invoked
   through an injectable seam, not `exec.Command` at the call site. Define one `Runner` interface in
-  `worktree.go` with a `Run(ctx, dir string, name string, args []string, stdin io.Reader, stdout
-  io.Writer) error` shape and an `ExecRunner` production implementation; the `claude` binary path
-  additionally comes from a `--claude-bin` flag defaulting to `claude`.
+  `worktree.go` with the shape `Run(ctx context.Context, c Cmd) error`, where `Cmd` is a struct
+  carrying `Dir string`, `Name string`, `Args []string`, `Env map[string]string` (entries merged
+  over the inherited environment), `Stdin io.Reader`, `Stdout io.Writer` and `Stderr io.Writer`,
+  plus an `ExecRunner` production implementation. The environment map and the error writer are
+  both load-bearing: the server build forces a cgo variable through the first, and the fake binary
+  the offline tests drive reports its flag-assertion failures on the second. The `claude` binary
+  path additionally comes from a `--claude-bin` flag defaulting to `claude`.
 - **Rationale:** the whole offline test layer (fake `claude`, stub MCP server, resume and failure
   tests) depends on this seam; V1 already took a builder seam for the same reason.
 - **Applies to:** batches 5, 6, 7, 8
@@ -143,6 +147,54 @@ Batch-local decisions live in each batch file._
 - **Rationale:** `HANDOFF.md` section 1 states the rule; it is the reason the raw transcript tree is
   gitignored rather than committed.
 - **Applies to:** all batches
+
+### Decision: where-the-done-criterion's-test-half-is-enforced
+
+- **Decision:** the task's done-criterion is a repository-wide `go build ./... && go test ./...`.
+  The build half is the overview's module-wide `verify:`, run at every batch boundary. The test half
+  is **not** run at every batch boundary: an unscoped repository-wide test command as a per-boundary
+  gate is what the plan validator's `verify-full-suite` check exists to refuse, and each batch's own
+  `verify:` already runs every test this task writes. The repository-wide test half is instead
+  enforced once, at the end, by the hub's configured done-gate — mill-go runs
+  `go test ./...` from the repository root before marking the task done, which is the gate that
+  catches a regression in a package outside this task's batch scopes.
+- **Rationale:** the two halves guard different things. The build half is cheap and catches the one
+  cross-package change this task makes, the new module dependency; the test half is a whole-repo
+  regression suite whose right frequency is once, not once per batch. Naming where it runs is what
+  keeps the done-criterion accounted for rather than assumed.
+- **Applies to:** all batches
+
+### Decision: the-four-built-in-tools
+
+- **Decision:** every cell, control and treatment alike, is granted exactly the built-in tool set
+  `Read`, `Grep`, `Glob`, `Bash` — passed as the CLI's tools value in that spelling, and reported
+  back by the session-init record as the sorted list `["Bash","Glob","Grep","Read"]`. Declare it
+  once as a package-level slice in `run.go` (card 26) and reference that identifier from every other
+  site rather than re-spelling the names: the rendered prompt's tool list, gate check (d)'s passing
+  case, the fake binary's flag assertion and the live test's session-init assertion. `Bash` is
+  granted bare, exactly as V1 did — narrowing it to read-only command patterns would make denied
+  Bash calls a behavioural difference between arms, which is the confound one identical preamble
+  exists to remove.
+- **Rationale:** five cards depend on this one set, and a set spelled five times is a set that will
+  eventually be spelled four ways. The sorted-versus-passed distinction matters too: the value
+  passed and the value reported differ in order, and a test asserting the wrong one fails for the
+  wrong reason.
+- **Applies to:** batches 3, 4, 6, 8
+
+### Decision: the-six-per-repetition-filenames
+
+- **Decision:** one repetition directory holds exactly six files, with these exact names, written by
+  the run subcommand in this order and with the state file last: `transcript.jsonl` (the tee'd
+  stream), `answer.json` (the decoded fenced answer), `answer.redacted.json` (that answer after the
+  scorer's redaction — kept because it is what the scorer actually saw, which is otherwise
+  unreconstructable when a score looks wrong), `usage.json` (the computed metrics), `score.json`
+  (the scorer's parsed reply or its unscored stand-in) and `run.json` (the repetition state). The
+  metrics file is **diagnostic only**: the report path recomputes every metric from the transcript,
+  so an accounting bug is fixed by re-reporting, never by trusting the stored figures. A repetition
+  that hit the turn ceiling writes no answer file and no redacted-answer file.
+- **Rationale:** four of the six names appear in the fixture tree and two were previously referred to
+  only by description; a name that exists only as prose is a name two cards will spell differently.
+- **Applies to:** batches 6, 7, 8
 
 ### Decision: go-test-stays-offline-and-free
 

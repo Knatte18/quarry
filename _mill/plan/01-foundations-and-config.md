@@ -152,10 +152,20 @@ rejection table harder to read than the code it tests.
   `build: ./cmd/quarry-mcp`, with no `args` key at all — T2 cannot write an argument list the MCP
   server task has not chosen yet, and an absent args key means no arguments. Keep `run_model`,
   `run_effort`, `max_turns`, `reps`, the scorer block, the tasks map's remaining fields and
-  `source_repo` unchanged. Rewrite the file's long header comment so it describes the new harness:
-  keep the design rationale for the a-versus-b contrast and the "deliberately not here" list, drop
-  every sentence about session scratch templates, cold cells, the seven V1 tool names and the
-  deleted shell entry point, and replace the closing run instruction with the documented entry
+  `source_repo` unchanged. Rewrite the file's long header comment so it describes the new harness and
+  the file's surviving contents, with no line describing something the file no longer has. Keep the
+  design rationale for the a-versus-b contrast and the August result that motivates the matrix.
+  Rewrite the design block so it lists exactly the four surviving cell ids and their roles: the two
+  controls and the two directory-level toc cells; remove the two file-level toc lines, since those
+  configs no longer exist. Rewrite the "deliberately not here" list the same way: the entry about
+  granting the directory-level and file-level tools together no longer describes an option this
+  file could express, since the file declares one tool, so replace it with a line stating that the
+  file-level tool has no successor in the server's shipped surface; keep the entries about the
+  missing exploration fasit and the grep-toc control, updating the latter to say the harness renders
+  one identical preamble for every cell and allows one control per ladder letter, so a per-config
+  prompt is a harness change rather than a configuration change. Drop every sentence about session
+  scratch templates, cold cells, the daemon, the seven V1 tool names and the deleted shell entry
+  point, and replace the closing run instruction with the documented entry
   point `go run ./bench/loomyard-eval/ladder/cmd/ladder run --config
   bench/loomyard-eval/ladder/ladder-toc.yaml --results
   bench/loomyard-eval/ladder/results/<date>-toc`. State in the header that T2 proves the harness

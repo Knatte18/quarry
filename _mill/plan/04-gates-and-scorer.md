@@ -158,7 +158,7 @@ supplies those and the gates stay pure and directly table-testable.
   location-based fatal branch cannot come back as code; check (d) fatal on a rendered prompt
   containing the word quarry, fatal on one containing the tool token `toc`, fatal on one containing
   the MCP prefix, and **passing** on the real prompt rendered from task 01 for a control cell whose
-  tool list is the four built-ins; check (d) passing on a prompt containing the word `protocol`,
+  tool list is the four built-in tools named in the overview's the-four-built-in-tools decision; check (d) passing on a prompt containing the word `protocol`,
   which is the three-character-token false positive the shared matcher exists to prevent. Add gate 1
   cases for a granted cell whose reps all report zero prefixed tool uses (finding, non-fatal), a
   granted cell where one rep reports a non-zero count (no finding), and a control cell with zero

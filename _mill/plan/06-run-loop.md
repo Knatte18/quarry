@@ -36,6 +36,12 @@ is the part `report` depends on and the part a killed run must survive.
 - **Moves:** none
 - **Requirements:** create `package ladder` file `runstate.go`. `RepDir(resultsRoot, cellID string,
   rep int) string` returns the raw repetition directory, `<results-root>/raw/<cell>/<rep>`.
+  Declare the six per-repetition filenames as package-level string constants here, the single place
+  they are spelled — `TranscriptFile = "transcript.jsonl"`, `AnswerFile = "answer.json"`,
+  `RedactedAnswerFile = "answer.redacted.json"`, `UsageFile = "usage.json"`,
+  `ScoreFile = "score.json"` and `RunStateFile = "run.json"` — matching the overview's
+  the-six-per-repetition-filenames decision; every writer and reader in batches 6, 7 and 8
+  references these constants rather than a literal.
   Declare `RunState` with `json` tags for exactly the payload the discussion fixes: `state`,
   `config_id`, `ladder`, `task`, `allowed`, `is_control`, `control_for_ladder`, `server_name`,
   `mcp_prefix`, `rep`, `model`, `effort`, `max_turns`, `scored`, `score_skip_reason`,
@@ -72,32 +78,41 @@ is the part `report` depends on and the part a killed run must survive.
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** create `package ladder` file `run.go` with `RunOptions` carrying the ladder file
+- **Requirements:** create `package ladder` file `run.go`. Declare in it the package-level slice
+  `BuiltinTools = []string{"Read", "Grep", "Glob", "Bash"}`, the single spelling of the tool set the
+  overview's the-four-built-in-tools decision fixes; every other site that needs those names —
+  the rendered prompt's tool list, gate check (d)'s passing case in the tests, the fake binary's
+  flag assertion and the live test's session-init assertion — references this identifier rather than
+  re-spelling them. Then declare `RunOptions` carrying the ladder file
   path, the results root, the selected cell ids, an optional repetition override, the claude binary
   path, the quarry repository root and a `Runner`, and `Run(ctx context.Context, opts RunOptions)
   (exitNonZero bool, err error)`.
   Startup, in order: load the ladder file; resolve the selected cells, defaulting to every config in
   the file, and error on an id the file does not contain; resolve the effective repetition count as
-  the override when given, else the file's own; resolve the target repository and the worktree root
-  with their assertions; acquire the advisory lock and defer its release; read any existing
-  provenance record and refuse immediately when its effective repetition count differs from this
-  invocation's; when the existing record already carries memory paths, scan them **before the first
+  the override when given, else the file's own; resolve the quarry repository root, the target
+  repository and the worktree root
+  with their assertions; acquire the advisory lock and defer its release; call the provenance reader
+  and refuse immediately when an existing record's effective repetition count differs from this
+  invocation's; call the invocation collector once, merge its result into the record and write the
+  record, so a run that dies mid-matrix still leaves its own invocation on disk; when the existing
+  record already carries memory paths, scan them **before the first
   new repetition** and abort on a fatal finding, because a resumed run skips the very repetition
   that would otherwise reveal them; build the server once when and only when a selected cell has a
-  non-empty allowed list.
+  non-empty allowed list, recording its hash into the record for every cell-and-repetition pair it
+  serves.
   The loop is strictly sequential and **cell-minor**: repetition 1 of every selected cell, then
   repetition 2 of every cell, and so on. Nothing runs concurrently — duration and cost are measured
   metrics, and parallel runs share both the rate limit and the prompt cache. Skip any repetition
   whose directory already satisfies the completeness predicate.
   Per repetition: prepare or restore the pinned worktree; render the prompt from the task file's
-  extracted content, the worktree path and the cell's tool names, which are the four built-ins plus
-  each granted tool prefixed with the MCP prefix; for a control cell run gate check (d) on that
+  extracted content, the worktree path and the cell's tool names, which are the built-in tool slice
+  declared above plus each granted tool prefixed with the MCP prefix; for a control cell run gate check (d) on that
   rendered prompt **before dispatch** and, on a finding, write the repetition as complete with the
   blinding-failed flag set and move on without spending an API call; write the per-cell MCP
   configuration; invoke the measured process through the runner seam with the working directory set
   to the pinned worktree, standard input from the null device, and exactly the flag set the
-  discussion's claude-invocation decision fixes — model, effort, max turns, the four built-in tools,
-  the granted tool names as an allowlist **omitted entirely for a control cell**, the per-cell MCP
+  discussion's claude-invocation decision fixes — model, effort, max turns, the built-in tool slice
+  declared above as the tools value, the granted tool names as an allowlist **omitted entirely for a control cell**, the per-cell MCP
   configuration with strict configuration mode, stream-json output with verbose on, session
   persistence off, and empty setting sources. No permission-mode flag is passed. Tee standard output
   to the repetition's transcript file as it arrives.
@@ -108,9 +123,23 @@ is the part `report` depends on and the part a killed run must survive.
   of the run, and scan them, discarding the repetition exactly like a blinding failure when tainted
   and aborting the run; run gate 2 for a control cell over the whole marshalled transcript; extract
   the answer as the **last** fenced JSON block of the final assistant record's concatenated text and
-  decode it, with no schema-key validation; write the answer, the redacted answer the scorer will
-  see, the metrics and the score record; record the dirtied observation from the worktree's
-  porcelain status and restore the worktree; write the state file.
+  decode it, with no schema-key validation; redact it and dispatch the scorer; write the six files
+  the overview's the-six-per-repetition-filenames decision names, in that order — `transcript.jsonl`
+  already tee'd, then `answer.json`, `answer.redacted.json`, `usage.json`, `score.json` and
+  `run.json` last; record the dirtied observation from the worktree's
+  porcelain status and restore the worktree.
+  The scorer is a **second measured-binary invocation**, through the same runner seam and the same
+  claude binary path, and it is the only other process this loop runs. Add
+  `RunScorer(ctx context.Context, r Runner, claudeBin string, l *Ladder, task Task, prompt string)
+  (ScoreRecord, error)` to `run.go`, invoking the binary with the scorer model and effort taken from
+  the ladder file's own scorer block — never the cell's run model or effort — an empty tools value,
+  a turn ceiling of one, an empty MCP configuration document with strict configuration mode,
+  stream-json output with verbose on, session persistence off, empty setting sources, and standard
+  input from the null device. It runs with the working directory set to the harness's own scratch
+  directory, **not** the pinned worktree: the scorer needs no codebase and must not be given one.
+  Its prompt is the assembled four-part scorer prompt built from the rule the task's schema selects,
+  the extracted task text, the meta-stripped fasit and the redacted answer; its reply is parsed with
+  the scorer-reply parser.
   Dispositions, exactly five and no others: a non-zero exit, an unparseable stream or an error flag
   in the result record is an infrastructure failure, and a missing or undecodable fenced answer is a
   formatting miss — both rename the repetition directory and retry up to the attempt ceiling, after

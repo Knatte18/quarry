@@ -6,7 +6,7 @@ batch: "environment-and-provenance"
 number: 5
 cards: 5
 verify: go test ./bench/loomyard-eval/ladder/...
-depends-on: [1, 2]
+depends-on: [1, 2, 4]
 ```
 
 ## Batch Scope
@@ -17,8 +17,12 @@ gate, the single-run advisory lock, the per-cell MCP configuration document and 
 build, and the committed provenance record with its merge-on-resume policy. It is one batch because
 all of it is startup-and-teardown around the run loop, and the worktree path decision, the lock
 path decision and the provenance record are three consequences of the same constraint. The external
-interface batch 6 consumes is `ResolveEnvironment`, `AcquireRunLock`, `PrepareWorktree`,
-`RestoreWorktree`, `WriteMCPConfig`, `BuildServer` and the provenance reader, merger and writer.
+interface batch 6 consumes is `ResolveQuarryRepoRoot`, `ResolveLoomyardRepo`, `ResolveWorktreeRoot`,
+`AcquireRunLock`, `PrepareWorktree`, `RestoreWorktree`, `WorktreeStatus`, `MCPConfigDocument`,
+`WriteMCPConfig`, `BuildServer`, and the provenance reader, collector, merger and writer.
+It depends on batch 4 because every observation this batch produces — the memory-path scan, the
+server-hash drift warning and the fingerprint comparison — is returned as the `Finding` type that
+batch declares.
 
 Batch-local decisions: the advisory lock lives in `worktree.go` rather than a file of its own,
 because it is created at the worktree-root path that file already resolves. Every external process
@@ -37,21 +41,26 @@ this batch runs goes through the injectable runner seam the overview defines —
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** create `package ladder` file `worktree.go` declaring the `Runner` interface and
-  its `ExecRunner` production implementation described in the overview's
-  injectable-external-commands decision, then the environment layer on top of it.
+- **Requirements:** create `package ladder` file `worktree.go` declaring the `Cmd` struct, the
+  `Runner` interface and the `ExecRunner` production implementation exactly as the overview's
+  injectable-external-commands decision fixes them — including the `Env` map, which `ExecRunner`
+  merges over the inherited environment, and the separate `Stderr` writer — then the environment
+  layer on top of them.
   `ResolveLoomyardRepo(quarryRepoRoot string) (string, error)` reads the process environment
   variable `LADDER_LOOMYARD_REPO` first and, when it is unset or empty, parses simple
   `KEY=VALUE` lines out of the gitignored file named `ladder.env` in the scratch directory
   directly under the quarry repository root, ignoring blank lines and lines beginning with a hash. When neither yields a value, return an
   error naming both the variable and the file. Nothing else may read that variable: shell wrappers
   are banned and the documented entry point is a bare `go run`, which cannot source a file.
-  `ResolveWorktreeRoot() (string, error)` resolves the base directory as the environment variable
+  `ResolveQuarryRepoRoot(start string) (string, error)` walks upward from the given directory to the
+  enclosing git repository's top level and returns it; it is the single producer of that path, which
+  cards 22, 23 and 26 and the run subcommand all take as an input.
+  `ResolveWorktreeRoot(quarryRepoRoot string) (string, error)` resolves the base directory as the environment variable
   `LADDER_WORKTREE_ROOT` when set, else `XDG_CACHE_HOME` joined with `ladder-eval`, else the user's
   home directory joined with `.cache` and `ladder-eval`. Nothing is ever placed under a system
   temporary directory. It then asserts two invariants on the resolved absolute path and returns an
-  error naming `LADDER_WORKTREE_ROOT` as the override when either fails: the path is not the quarry
-  repository root and is not under it, and the path does not contain the case-insensitive substring
+  error naming `LADDER_WORKTREE_ROOT` as the override when either fails: the path is not the
+  supplied quarry repository root and is not under it, and the path does not contain the case-insensitive substring
   `quarry`. Both assertions exist because the cell's own working directory reaches the transcript
   and gate 2's checks (b) and (c) scan it — a worktree under the repository, or one merely named
   after it, would fail every control rep by construction. A task worktree is
@@ -100,16 +109,17 @@ this batch runs goes through the injectable runner seam the overview defines —
   for a control — a config whose allowed list is empty — exactly an object whose servers map is
   empty, and nothing else; for a granted cell, an object declaring exactly one server under the
   ladder file's server name, with the built binary as its command, the server block's argument list
-  with every occurrence of the target-directory placeholder substituted, and the server block's
-  environment map. A granted cell whose ladder file declares no server block is an error naming the
+  with every occurrence of the literal placeholder token `{target_dir}` — that exact spelling,
+  braces included, which is the ladder-file contract and the same token the pre-migration file
+  already used — replaced by the pinned worktree path, and the server block's environment map. A granted cell whose ladder file declares no server block is an error naming the
   cell id and stating that the file declares no server block — raised here, at run time, never at
   load time. `WriteMCPConfig(dir string, doc []byte) (string, error)` writes the document under the
   harness's own scratch directory at `.scratch/ladder/` beneath the quarry repository root and
   returns its path; that location is deliberate and was measured — the invocation's own argument
   list is not echoed anywhere in the stream, so a configuration path under the repository never
   reaches a transcript. `BuildServer(ctx, r Runner, buildTarget, outPath string) (sha256 string,
-  err error)` runs the Go build through the runner seam with `CGO_ENABLED=1` forced into the
-  environment, because the target server links C grammars and the failure otherwise reads as
+  err error)` runs the Go build through the runner seam, setting `CGO_ENABLED` to `1` in the
+  command's environment map rather than mutating the harness's own process environment, because the target server links C grammars and the failure otherwise reads as
   unrelated, then returns the hex sha256 of the produced binary. The build happens at most once per
   invocation and only when a selected cell has a non-empty allowed list; when every selected cell
   is a control, nothing is built and the build target is never referenced.
@@ -122,6 +132,7 @@ this batch runs goes through the injectable runner seam the overview defines —
   - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
   - `bench/loomyard-eval/ladder/internal/ladder/match.go`
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
@@ -139,6 +150,19 @@ this batch runs goes through the injectable runner seam the overview defines —
   the counts of skills and slash commands. `Invocation` carries `written_at`, `selected_cells`,
   `reps_effective`, `quarry_commit`, `quarry_dirty`, `claude_version`, `go_version`, `hostname`,
   `memory_paths` and that invocation's `server_hashes`.
+  Implement `ReadProvenance(resultsRoot string) (*Provenance, error)`, returning a nil record and no
+  error when the file is absent — a fresh root, not a fault — and an error naming the file when it
+  is present but unparseable. Implement `WriteProvenance(resultsRoot string, p *Provenance) error`.
+  Implement `CollectInvocation(ctx context.Context, r Runner, in CollectInput) (Invocation, error)`,
+  the single producer of an invocation's own facts, taking the quarry repository root, the resolved
+  target repository path, the selected cell ids, the effective repetition count and the claude
+  binary path, and gathering: the quarry commit, dirty flag and dirty-file list from the repository's
+  own status and revision output through the runner seam; the target repository's commit the same
+  way; the hex sha256 of the resolved target-repository path string; the host name; the Go version
+  from the runtime rather than a subprocess; and the CLI version from a version invocation of the
+  claude binary through the same seam, because the probe host and the plan's reference host reported
+  different versions and the value must be recorded rather than assumed. The server-hash map and the
+  memory-path list are filled in by the run loop as it learns them, not here.
   Implement `MergeProvenance(existing *Provenance, next Invocation) (*Provenance, error)`: append
   the invocation, then derive the top-level fields from the invocation list — `selected_cells` is
   the **union** across invocations, because the set of reps a root was ever asked to produce is what
@@ -167,6 +191,7 @@ this batch runs goes through the injectable runner seam the overview defines —
   - `bench/loomyard-eval/ladder/internal/ladder/mcp.go`
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/worktree_test.go`
@@ -187,7 +212,13 @@ this batch runs goes through the injectable runner seam the overview defines —
   Write `mcp_test.go` asserting a control cell's document has an empty servers map and no other
   key, a granted cell's document names exactly one server with the placeholder substituted, a
   granted cell against a ladder file with no server block errors naming the cell id, and the build
-  helper passes the cgo variable through the runner seam. Write `provenance_test.go` asserting the
+  helper sets the cgo variable in the command's environment map rather than in the harness process's
+  own environment — asserted by inspecting the recorded command, and by asserting the harness's own
+  environment is unchanged after the call. Write `provenance_test.go` asserting: a read of a root
+  with no record returns a nil record and no error while a malformed record errors naming the file;
+  a written record round-trips; the collector fills the commit, dirty, host, Go-version and
+  CLI-version fields from the recording fake runner's canned output and puts the target repository's
+  **hash** where the path would be; and the
   merge policy: two invocations union their selected cells and memory paths, server hashes merge by
   key, a differing effective rep count is refused naming both values, and a record round-trips
   through JSON with no absolute path in the output. Add memory-scan cases over a temporary
