@@ -1,191 +1,182 @@
-// toc.go implements the two entry points the engine package exports: TOCFile and TOCDir. Both
-// resolve a language, drive treesitter.WithTree, dispatch to the resolved language's registered
-// Strategy, and apply the one post-processing rule that belongs to the entry point rather than to
-// any strategy — first-paragraph header truncation (FirstParagraph). Putting that rule here rather
-// than in the strategies gives it exactly one call site shared by both entry points.
+// toc.go implements the engine package's one entry point, Repo.TOC. It validates the target
+// through resolveTarget, builds a fresh ignoreSet extended along the chain from the repository
+// root down to the target's parent, and dispatches to walkDir for a directory target or to the
+// enclosing directory's own listing for a file target.
 
 package engine
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
-	"unicode/utf8"
-
-	ts "github.com/tree-sitter/go-tree-sitter"
-
-	"github.com/Knatte18/quarry/internal/engine/treesitter"
+	"strings"
 )
 
-// resolveLanguage resolves the canonical language name for path, honoring langOverride when it is
-// non-empty. A non-empty langOverride wins outright regardless of path's extension — a mismatch is
-// not an error here.
+// TOC answers a table-of-contents query for target, a repository-relative path (or "" / "." for
+// the repository root), per opts.
 //
-// An extension that maps to no language, or an override naming a language with no registered
-// Strategy, both return a wrapped ErrLanguageUnsupported.
-func resolveLanguage(path, langOverride string) (string, error) {
-	lang := langOverride
-	if lang == "" {
-		resolved, ok := LanguageForExtension(filepath.Ext(path))
-		if !ok {
-			return "", fmt.Errorf("toc: %s: no language for extension %q: %w", path, filepath.Ext(path), ErrLanguageUnsupported)
+// target is validated through resolveTarget: an absolute or root-escaping target returns
+// ErrTargetOutsideRepo, and a missing target returns ErrTargetNotFound. TOC then builds a fresh
+// ignoreSet for the repository root and extends it along the chain from the root down to the
+// target's parent — never the target's own directory, which walkDir (for a directory target) or
+// this function's own file-target path extends itself on entry.
+//
+// A directory target is answered by walkDir. opts.Depth of 0 fills the target's own files and
+// lists its direct subdirectories as identity-plus-doc answers; N fills the files of
+// subdirectories N levels down, each level's leaf dirs again identity-plus-doc; DepthAll recurses
+// to the bottom.
+//
+// A file target — including a target that is itself a symlink — is answered as the enclosing
+// directory's dir, package, language and doc, with files holding exactly that one entry and no
+// dirs. Those four facts are the directory's, so a file target reads every file in the enclosing
+// directory exactly as a directory target does: parsing the target alone and emitting its own
+// clause as the directory's package would be wrong whenever the directory holds a package-clause
+// deviation, which is the very case the tie-break exists for. opts.Depth is ignored for a file
+// target — there is nothing below a file to fill — and a non-zero depth with a file target is not
+// an error.
+//
+// opts.Symbols nil means true for a file target and false for a directory target; a non-nil value
+// wins for every file entry at every depth.
+func (r *Repo) TOC(target string, opts TOCOptions) (DirAnswer, error) {
+	rel, info, err := r.resolveTarget(target)
+	if err != nil {
+		return DirAnswer{}, err
+	}
+
+	walkTarget := rel
+	if !info.IsDir() {
+		walkTarget, _ = splitDirBase(rel)
+	}
+
+	ig := newIgnoreSet(r.root)
+	for _, ancestor := range ancestorChain(walkTarget) {
+		if _, err := ig.extend(ancestor); err != nil {
+			return DirAnswer{}, fmt.Errorf("engine: read .gitignore for %q: %w", ancestor, err)
 		}
-		lang = resolved
 	}
-	if _, ok := StrategyFor(lang); !ok {
-		return "", fmt.Errorf("toc: %s: language %q has no toc strategy: %w", path, lang, ErrLanguageUnsupported)
+
+	if info.IsDir() {
+		wantSymbols := opts.Symbols != nil && *opts.Symbols
+		return r.walkDir(rel, ig, opts.Depth, wantSymbols, false)
 	}
-	return lang, nil
+
+	_, base := splitDirBase(rel)
+	wantSymbols := opts.Symbols == nil || *opts.Symbols
+	return r.fileTargetAnswer(walkTarget, base, ig, wantSymbols)
 }
 
-// TOCFile extracts a FileTOC from the file at path.
-//
-// Language resolution: when langOverride is non-empty it wins outright and path's extension is
-// ignored — a mismatch is not an error. Otherwise the language is resolved from path's extension.
-// See resolveLanguage's doc comment for the full rule and the ErrLanguageUnsupported cases.
-//
-// path is read with os.ReadFile; a read failure returns that error wrapped, with no sentinel of its
-// own. Content that is not valid UTF-8 is rejected with a plain error naming path — this is the
-// "never parsed at all" case, distinct from a lossy (Partial) parse.
-//
-// Header is FirstParagraph(strategy.Header(root, src)): the same truncation TOCDir applies, so a
-// package-documentation file with zero symbols does not return its whole contents.
-//
-// A symbol's Docstring is always the complete, untrimmed docstring — TOCFile applies no
-// sentence-count policy of its own.
-func TOCFile(path string, langOverride string) (FileTOC, error) {
-	lang, err := resolveLanguage(path, langOverride)
-	if err != nil {
-		return FileTOC{}, err
+// splitDirBase splits a repository-relative, forward-slash path rel into its enclosing directory
+// (or "." when rel names a file directly under the repository root) and its base name.
+func splitDirBase(rel string) (dir, base string) {
+	idx := strings.LastIndexByte(rel, '/')
+	if idx < 0 {
+		return ".", rel
 	}
+	return rel[:idx], rel[idx+1:]
+}
 
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return FileTOC{}, fmt.Errorf("toc: read %s: %w", path, err)
-	}
-	if !utf8.Valid(src) {
-		return FileTOC{}, fmt.Errorf("toc: %s: not valid UTF-8", path)
-	}
-
-	strategy, _ := StrategyFor(lang)
-
-	var result FileTOC
-	err = treesitter.WithTree(lang, src, func(root *ts.Node, partial bool) error {
-		result = FileTOC{
-			Language: lang,
-			Package:  strategy.Package(root, src),
-			Header:   FirstParagraph(strategy.Header(root, src)),
-			Symbols:  strategy.Symbols(root, src),
-			Partial:  partial,
-		}
+// ancestorChain returns every proper ancestor directory of dir, from the repository root down to
+// dir's own parent, exclusive of dir itself: dir extends its own patterns on entry to walkDir or
+// fileTargetAnswer, so appending it here as well would apply it twice.
+func ancestorChain(dir string) []string {
+	if dir == "." {
 		return nil
-	})
-	if err != nil {
-		return FileTOC{}, err
 	}
-	return result, nil
+	segments := strings.Split(dir, "/")
+	chain := []string{"."}
+	cur := "."
+	for i := 0; i < len(segments)-1; i++ {
+		if cur == "." {
+			cur = segments[i]
+		} else {
+			cur = cur + "/" + segments[i]
+		}
+		chain = append(chain, cur)
+	}
+	return chain
 }
 
-// TOCDir extracts a DirTOC from exactly one directory level of dir. It never recurses and never
-// descends into a subdirectory — a subdirectory entry contributes its bare name to Dirs and nothing
-// else; TOCDir never reads, stats, or lists what that subdirectory itself contains.
+// fileTargetAnswer builds the DirAnswer for a file target: dirRel's own package, language and doc
+// — computed by reading every file in dirRel, exactly as a directory target would — with Files
+// holding exactly the one entry named targetBase and no Dirs.
 //
-// For each remaining (non-directory) entry, the language is resolved from its extension; an
-// extension mapping to no language skips the file entirely, so a Markdown or YAML file never
-// appears. When langOverride is non-empty, the file listing is restricted to that language's
-// extensions via ExtensionsForLanguage, rather than reinterpreting every other file under
-// the override. langOverride has no effect on Dirs: a subdirectory name carries no language, so
-// there is nothing for the override to restrict.
-//
-// The surviving file entries are sorted lexicographically by base filename with an explicit
-// sort.Slice, never left in os.ReadDir's own order; Dirs is sorted the same way, independently, so
-// the two lists never influence each other's order.
-//
-// Error and Partial are mutually exclusive by construction: Partial is only ever set on the route
-// that actually parsed the file through treesitter.WithTree. An unreadable file and invalid UTF-8
-// both set Error instead and leave Header and Partial unset — the file is still listed, never
-// skipped.
-//
-// A directory containing no file with a supported extension returns a DirTOC whose Files is an
-// empty, non-nil slice and a nil error — a true answer to "what code is in here", not a failure.
-// Dirs follows the identical empty-non-nil convention when the directory holds no subdirectory.
-//
-// TOCDir imposes no file-size cap: parse cost is linear and the runtime enforces its own work
-// budgets, so a pathological file surfaces as a slow parse or as Partial, never as a special-cased
-// refusal.
-func TOCDir(dir string, langOverride string) (DirTOC, error) {
-	entries, err := os.ReadDir(dir)
+// targetBase is included in the answer even when the directory's own .gitignore would otherwise
+// exclude it: resolveTarget's validation deliberately does not consult the ignore set, since the
+// filter exists so a listing is not noise, not to make an explicitly named file unaddressable. A
+// gitignored file still does not vote in the package tie-break, matching walkDir's rule for every
+// other file in the directory.
+func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSymbols bool) (DirAnswer, error) {
+	n, err := ig.extend(dirRel)
 	if err != nil {
-		return DirTOC{}, fmt.Errorf("toc: read dir %s: %w", dir, err)
+		return DirAnswer{}, fmt.Errorf("engine: read .gitignore for %q: %w", dirRel, err)
+	}
+	defer ig.trim(n)
+
+	osEntries, err := os.ReadDir(r.absDir(dirRel))
+	if err != nil {
+		return DirAnswer{}, fmt.Errorf("engine: read dir %q: %w", dirRel, err)
 	}
 
-	var allowedExts map[string]bool
-	if langOverride != "" {
-		exts := ExtensionsForLanguage(langOverride)
-		allowedExts = make(map[string]bool, len(exts))
-		for _, ext := range exts {
-			allowedExts[ext] = true
-		}
-	}
-
-	result := DirTOC{Files: []DirEntry{}, Dirs: []string{}}
-	for _, entry := range entries {
+	var fileEntries []os.DirEntry
+	var targetEntry os.DirEntry
+	for _, entry := range osEntries {
 		if entry.IsDir() {
-			result.Dirs = append(result.Dirs, entry.Name())
 			continue
 		}
+		isTarget := entry.Name() == targetBase
+		if isTarget {
+			targetEntry = entry
+		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			// A symlink never votes in the tie-break and is never parsed; if it is the target
+			// itself it is handled below as a name-only entry.
+			continue
+		}
+		childRel := joinRel(dirRel, entry.Name())
+		if !isTarget && ig.match(childRel, false) {
+			continue
+		}
+		fileEntries = append(fileEntries, entry)
+	}
+	if targetEntry == nil {
+		return DirAnswer{}, fmt.Errorf("engine: target %q no longer exists in directory %q", targetBase, dirRel)
+	}
+
+	dirPkg, clauses := r.dirPackage(dirRel, fileEntries)
+	dirLang := ""
+	for base, clause := range clauses {
+		if clause == dirPkg {
+			if lang, ok := LanguageForExtension(filepath.Ext(base)); ok {
+				dirLang = lang
+				break
+			}
+		}
+	}
+
+	answer := DirAnswer{Dir: dirRel}
+	if dirPkg != "" {
+		answer.Package = dirPkg
+		answer.Language = dirLang
+	}
+
+	docs := make(map[string]string)
+	var targetFileEntry FileEntry
+	for _, entry := range fileEntries {
 		base := entry.Name()
-		lang, ok := LanguageForExtension(filepath.Ext(base))
-		if !ok {
-			continue
+		fe, doc := r.fileEntry(dirRel, base, dirPkg, dirLang, clauses[base], base == targetBase && wantSymbols)
+		if doc != "" {
+			docs[base] = doc
 		}
-		if allowedExts != nil && !allowedExts[filepath.Ext(base)] {
-			continue
+		if base == targetBase {
+			targetFileEntry = fe
 		}
-		result.Files = append(result.Files, buildDirEntry(dir, base, lang))
+	}
+	if targetEntry.Type()&fs.ModeSymlink != 0 {
+		targetFileEntry = FileEntry{Name: targetBase}
 	}
 
-	sort.Slice(result.Files, func(i, j int) bool {
-		return result.Files[i].Name < result.Files[j].Name
-	})
-	sort.Strings(result.Dirs)
-
-	return result, nil
-}
-
-// buildDirEntry builds one DirEntry for base (a file's base name inside dir), already resolved to
-// lang, a language from the extension table and therefore one with a registered Strategy. See
-// TOCDir's doc comment for the Error/Partial mutual-exclusion invariant this function upholds.
-func buildDirEntry(dir, base, lang string) DirEntry {
-	entry := DirEntry{Name: base, Language: lang}
-	strategy, _ := StrategyFor(lang)
-
-	path := filepath.Join(dir, base)
-	src, err := os.ReadFile(path)
-	if err != nil {
-		entry.Error = err.Error()
-		return entry
-	}
-	if !utf8.Valid(src) {
-		entry.Error = fmt.Sprintf("toc: %s: not valid UTF-8", path)
-		return entry
-	}
-
-	err = treesitter.WithTree(lang, src, func(root *ts.Node, partial bool) error {
-		entry.Partial = partial
-		entry.Package = strategy.Package(root, src)
-		entry.Header = FirstParagraph(strategy.Header(root, src))
-		if isTest, known := strategy.TestFile(base); known {
-			entry.Test = &isTest
-		}
-		if generated, known := strategy.Generated(root, src); known {
-			entry.Generated = &generated
-		}
-		return nil
-	})
-	if err != nil {
-		entry.Error = err.Error()
-	}
-	return entry
+	answer.Doc = r.dirDoc(clauses, docs, dirPkg)
+	answer.Files = []FileEntry{targetFileEntry}
+	return answer, nil
 }
