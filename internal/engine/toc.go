@@ -1,10 +1,8 @@
 // toc.go implements the two entry points the engine package exports: TOCFile and TOCDir. Both
 // resolve a language, drive treesitter.WithTree, dispatch to the resolved language's registered
-// Strategy, and apply the two post-processing rules that belong to the entry point rather than to
-// any strategy — first-paragraph header truncation (FirstParagraph) and, for TOCFile alone, sentence
-// trimming of every symbol's docstring (FirstSentences). Putting both rules here rather than in the
-// strategies gives each rule exactly one call site and keeps --doc-sentences from being threaded
-// through every strategy.
+// Strategy, and apply the one post-processing rule that belongs to the entry point rather than to
+// any strategy — first-paragraph header truncation (FirstParagraph). Putting that rule here rather
+// than in the strategies gives it exactly one call site shared by both entry points.
 
 package engine
 
@@ -54,13 +52,9 @@ func resolveLanguage(path, langOverride string) (string, error) {
 // Header is FirstParagraph(strategy.Header(root, src)): the same truncation TOCDir applies, so a
 // package-documentation file with zero symbols does not return its whole contents.
 //
-// opts.DocSentences governs every symbol's emitted Docstring: 0 clears it so the "docstring" JSON
-// key is omitted, AllSentences leaves it whole, and any other N replaces it with
-// FirstSentences(sym.Docstring, N). Start, SigEnd, and End are never touched by this policy — they
-// always cover the whole docstring, so a truncated docstring field and a read of start–sigend or
-// start–end stay consistent. That is what makes DocSentences: 0 a discovery mode rather than a
-// lossy one.
-func TOCFile(path string, langOverride string, opts Options) (FileTOC, error) {
+// A symbol's Docstring is always the complete, untrimmed docstring — TOCFile applies no
+// sentence-count policy of its own.
+func TOCFile(path string, langOverride string) (FileTOC, error) {
 	lang, err := resolveLanguage(path, langOverride)
 	if err != nil {
 		return FileTOC{}, err
@@ -78,13 +72,11 @@ func TOCFile(path string, langOverride string, opts Options) (FileTOC, error) {
 
 	var result FileTOC
 	err = treesitter.WithTree(lang, src, func(root *ts.Node, partial bool) error {
-		symbols := strategy.Symbols(root, src)
-		applyDocSentences(symbols, opts.DocSentences)
 		result = FileTOC{
 			Language: lang,
 			Package:  strategy.Package(root, src),
 			Header:   FirstParagraph(strategy.Header(root, src)),
-			Symbols:  symbols,
+			Symbols:  strategy.Symbols(root, src),
 			Partial:  partial,
 		}
 		return nil
@@ -93,23 +85,6 @@ func TOCFile(path string, langOverride string, opts Options) (FileTOC, error) {
 		return FileTOC{}, err
 	}
 	return result, nil
-}
-
-// applyDocSentences rewrites every symbol's Docstring in place per docSentences: 0 clears the field
-// so its JSON key is omitted, AllSentences leaves it unchanged, and any other value replaces it with
-// FirstSentences(sym.Docstring, docSentences). A cleared field is the only mechanism used to omit
-// the key — an empty-but-present docstring is never written.
-func applyDocSentences(symbols []Symbol, docSentences int) {
-	for i := range symbols {
-		switch docSentences {
-		case 0:
-			symbols[i].Docstring = ""
-		case AllSentences:
-			// leave Docstring unchanged
-		default:
-			symbols[i].Docstring = FirstSentences(symbols[i].Docstring, docSentences)
-		}
-	}
 }
 
 // TOCDir extracts a DirTOC from exactly one directory level of dir. It never recurses and never
@@ -139,9 +114,6 @@ func applyDocSentences(symbols []Symbol, docSentences int) {
 // TOCDir imposes no file-size cap: parse cost is linear and the runtime enforces its own work
 // budgets, so a pathological file surfaces as a slow parse or as Partial, never as a special-cased
 // refusal.
-//
-// TOCDir takes no Options: it emits headers, never docstrings, so the doc-sentences policy has
-// nothing to affect here — that asymmetry with TOCFile is deliberate, not an oversight.
 func TOCDir(dir string, langOverride string) (DirTOC, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
