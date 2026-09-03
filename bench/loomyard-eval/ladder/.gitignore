@@ -1,0 +1,4 @@
+# This pattern contains a slash, so git anchors it to this directory rather than matching
+# "results/*/raw/" anywhere in the tree -- it is deliberately scoped here rather than in the
+# repository-root ignore file.
+results/*/raw/

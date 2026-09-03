@@ -1,0 +1,106 @@
+{
+  "cells": [
+    {
+      "id": "a0-none",
+      "ladder": "a",
+      "task": "01-reed-geometry-exploration",
+      "allowed": null,
+      "control": true,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 15,
+          "min": 10,
+          "max": 20,
+          "n": 2
+        },
+        "cache_read_input_tokens": {
+          "median": 75,
+          "min": 50,
+          "max": 100,
+          "n": 2
+        },
+        "cost_usd": {
+          "median": 0.035,
+          "min": 0.02,
+          "max": 0.05,
+          "n": 2
+        },
+        "duration_ms": {
+          "median": 7000,
+          "min": 5000,
+          "max": 9000,
+          "n": 2
+        },
+        "grep_fallback_total": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 2
+        },
+        "input_tokens_total": {
+          "median": 1840,
+          "min": 1620,
+          "max": 2060,
+          "n": 2
+        },
+        "output_tokens": {
+          "median": 275,
+          "min": 250,
+          "max": 300,
+          "n": 2
+        },
+        "precision": {
+          "median": 0.6,
+          "min": 0.6,
+          "max": 0.6,
+          "n": 1
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 2
+        },
+        "read_bytes": {
+          "median": 5.5,
+          "min": 0,
+          "max": 11,
+          "n": 2
+        },
+        "recall": {
+          "median": 0.8,
+          "min": 0.8,
+          "max": 0.8,
+          "n": 1
+        },
+        "tool_result_bytes": {
+          "median": 5.5,
+          "min": 0,
+          "max": 11,
+          "n": 2
+        },
+        "tool_uses": {
+          "median": 0.5,
+          "min": 0,
+          "max": 1,
+          "n": 2
+        },
+        "turns": {
+          "median": 31,
+          "min": 2,
+          "max": 60,
+          "n": 2
+        }
+      },
+      "max_turns_count": 1,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    }
+  ],
+  "comparisons": null,
+  "incomplete": null,
+  "invalid": null,
+  "meta": {
+    "results_root": "root"
+  }
+}

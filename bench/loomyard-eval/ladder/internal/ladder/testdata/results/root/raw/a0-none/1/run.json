@@ -1,0 +1,20 @@
+{
+  "state": "complete",
+  "config_id": "a0-none",
+  "ladder": "a",
+  "task": "01-reed-geometry-exploration",
+  "allowed": [],
+  "is_control": true,
+  "control_for_ladder": "a",
+  "server_name": "quarry",
+  "mcp_prefix": "mcp__quarry__",
+  "rep": 1,
+  "model": "claude-sonnet-5",
+  "effort": "medium",
+  "max_turns": 60,
+  "scored": true,
+  "score_skip_reason": "",
+  "observations": [],
+  "blinding_failed": false,
+  "max_turns_hit": false
+}
