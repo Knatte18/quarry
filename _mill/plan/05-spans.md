@@ -188,10 +188,13 @@ The external interface batch 6 consumes: `SpansOf`, `symbolsOfUnit` and `unitDir
     parse error surfacing via `errors.As` rather than a silent root-directory answer.
   - The ignore filter: over a `.scratch/` tree whose `.gitignore` excludes one `.go` file beside two
     listed ones, no span from the excluded file is returned.
-  - Unspellable units return nothing: the two fixture cases batch 4 lists — the space-bearing
-    directory queried from the quarry root, and `internal/engine/testdata/units` opened as its own
-    root — yield an empty slice for any name, which is what makes the walk's "no symbols there"
-    and the lookup's "no spans there" one statement rather than two.
+  - Unspellable units **error**, they do not come back empty: a glyph naming the space-bearing
+    fixture directory trips the bad-rune rejection and one naming the empty unit trips the
+    empty-unit rejection, so both surface the wrapped `*glyph.ParseError` through `errors.As`,
+    exactly like the hand-built invalid glyphs two bullets above. That is the same rule, not an
+    extra one — the argument round-trip rejects them before any directory is read. The walk's
+    "listed but no symbols" and the lookup's "rejected outright" are therefore two different
+    dispositions of one fact, and the tests assert them separately.
 - **Commit:** `test(engine): cover SpansOf, the unit lookup and its validation`
 
 ## Batch Tests
