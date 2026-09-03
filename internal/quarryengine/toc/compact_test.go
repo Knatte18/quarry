@@ -38,7 +38,7 @@ func TestCompactDir(t *testing.T) {
 			{Name: "archive_test.go", Language: "go", Package: "shed", Test: boolPtr(true), Generated: boolPtr(false)},
 			{Name: "ext_test.go", Language: "go", Package: "shed_test", Header: "External tests.", Test: boolPtr(true)},
 			{Name: "gen.go", Language: "go", Package: "shed", Generated: boolPtr(true), Header: "Code generated. DO NOT EDIT."},
-			{Name: "bad.rs", Language: "rust", Error: "language not yet supported"},
+			{Name: "unreadable.go", Language: "go", Error: "open unreadable.go: permission denied"},
 		},
 		Dirs: []string{"render", "sub"},
 	}
@@ -49,7 +49,7 @@ func TestCompactDir(t *testing.T) {
 		"internal/shed/archive_test.go [test]",
 		"internal/shed/ext_test.go [test] (package shed_test): External tests.",
 		"internal/shed/gen.go [generated]: Code generated.",
-		"internal/shed/bad.rs: error: language not yet supported",
+		"internal/shed/unreadable.go: error: open unreadable.go: permission denied",
 		"dirs: render, sub",
 	}, "\n")
 	if got != want {

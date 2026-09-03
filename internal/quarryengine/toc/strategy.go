@@ -12,9 +12,7 @@ import (
 	ts "github.com/tree-sitter/go-tree-sitter"
 )
 
-// Strategy is the per-language extraction contract every toc-supported language implements. It is
-// designed to accommodate all five languages the toc survey covers (Go, Python, C#, TypeScript,
-// Rust), even though only three register a concrete Strategy in this task.
+// Strategy is the per-language extraction contract a supported language implements.
 type Strategy interface {
 	// Language returns the canonical language name this Strategy registers under.
 	Language() string
@@ -71,9 +69,7 @@ func StrategyFor(lang string) (Strategy, bool) {
 	return s, ok
 }
 
-// Implemented returns the sorted set of canonical language names with a registered Strategy, so
-// callers can distinguish "designed but not implemented" from "unknown extension" without keeping a
-// second, hand-maintained list in sync with the registry.
+// Implemented returns the sorted set of canonical language names with a registered Strategy.
 func Implemented() []string {
 	names := make([]string, 0, len(strategies))
 	for name := range strategies {
@@ -87,8 +83,8 @@ func Implemented() []string {
 // It exists solely as a _test.go seam: the registry has no unregister path, so a test that exercises
 // Register's duplicate-registration panic must register a fake language to trigger it, and that fake
 // would otherwise leak into every later test in this package's binary — including
-// TestImplemented_MatchesRegisteredStrategies (added in a later batch), which asserts Implemented()
-// is exactly csharp, go, python and runs after classify_test.go in file order. A test using this seam
+// TestImplemented_MatchesRegisteredStrategies, which asserts Implemented()
+// is exactly go and runs after classify_test.go in file order. A test using this seam
 // must take a copy of the current map, install it via swapRegistry, register its fake language into
 // the copy, and restore the original with t.Cleanup — otherwise the fake registration survives past
 // that test and fails TestImplemented_MatchesRegisteredStrategies instead, the hardest kind of

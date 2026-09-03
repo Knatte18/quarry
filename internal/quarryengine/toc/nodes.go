@@ -1,6 +1,6 @@
 // nodes.go holds the language-independent tree-sitter node helpers every strategy shares: verbatim
 // text extraction, 1-based line conversion, signature cutting, and the two comment-block walks a
-// docstring rule and a header rule each need. Nothing here is Go-, Python-, or C#-specific; the
+// docstring rule and a header rule each need. Nothing here is specific to one language; the
 // per-language shape decisions live in each strategy's own file.
 
 package toc
@@ -37,45 +37,24 @@ func SignatureCut(decl *ts.Node, body *ts.Node, src []byte) string {
 	return strings.TrimSpace(NodeText(decl, src))
 }
 
-// SigEnd returns the last line of decl's signature: the single implementation of the per-language
-// sigend derivation every strategy calls rather than reimplementing.
+// SigEnd returns the last line of decl's signature: the single implementation of the sigend
+// derivation every strategy calls rather than reimplementing.
 //
-// body == nil means decl has no body-bearing child at all — a Go type alias, for instance — so there
+// body == nil means decl has no body-bearing child at all — a type alias, for instance — so there
 // is no separate "signature end" to report, and SigEnd returns 0, the absent marker Symbol.SigEnd
 // relies on to omit the emitted key.
 //
-// bodyOnSignatureLine is true for a language whose body-opening token sits on the signature's own
-// last line — Go always, and a block-bodied C# member — in which case SigEnd is body's own start
-// line. It is false for a language whose body starts on the line after the signature — Python's
-// block, and an expression-bodied C# member's arrow_expression_clause — in which case SigEnd is
-// body's start line minus one.
-//
-// Using "where the body begins" directly does not generalize: in Go the "{" sits on the signature's
-// last line, while in Python the block starts a line later, so one uniform rule would leak a line of
-// implementation into every Python signature range. That is why this helper takes the flag instead
-// of deriving it from body alone.
-//
-// The minus-one branch is clamped so it never falls below decl's own start line. The clamp is
-// load-bearing, not defensive: a single-line "def f(): return 1" or "void F() => 1;" puts the body
-// on decl's own line, and an unclamped subtraction would emit a sigend above start.
+// Otherwise SigEnd is body's own start line, since Go's body-opening "{" sits on the signature's
+// last line.
 //
 // Known imprecision, not a defect: a single-line Go function shares one line between its signature
 // and its body, so start-sigend includes the body there. No line-based range can separate them; the
 // fix is help text, not columns.
-func SigEnd(decl *ts.Node, body *ts.Node, bodyOnSignatureLine bool) int {
+func SigEnd(decl *ts.Node, body *ts.Node) int {
 	if body == nil {
 		return 0
 	}
-	bodyStart := int(body.StartPosition().Row) + 1
-	if bodyOnSignatureLine {
-		return bodyStart
-	}
-	declStart := int(decl.StartPosition().Row) + 1
-	sigEnd := bodyStart - 1
-	if sigEnd < declStart {
-		sigEnd = declStart
-	}
-	return sigEnd
+	return int(body.StartPosition().Row) + 1
 }
 
 // CommentBlockAbove walks n's PrevSibling chain backwards over contiguous "comment" nodes, stopping

@@ -10,14 +10,11 @@ type Kind string
 
 // The three Kind values toc file ever emits. No other value is valid.
 const (
-	// KindFunction marks a free function: a Go func with no receiver, a Python module-level def, or
-	// a C# method is never this kind (see KindMethod).
+	// KindFunction marks a free function: a func with no receiver.
 	KindFunction Kind = "function"
-	// KindMethod marks a function bound to a receiver or an enclosing type: a Go method, a Python
-	// method defined inside a class body, or a C# instance/static method.
+	// KindMethod marks a function bound to a receiver (see Symbol.Owner).
 	KindMethod Kind = "method"
-	// KindType marks a type-level declaration: a Go type, a Python class, or a C# class/struct/
-	// interface/enum declaration.
+	// KindType marks a type-level declaration.
 	KindType Kind = "type"
 )
 
