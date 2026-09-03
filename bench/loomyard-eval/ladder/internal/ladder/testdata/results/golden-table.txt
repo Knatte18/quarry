@@ -1,0 +1,12 @@
+results root: root
+reps: 2
+claude_code_version: 2.1.236-fixture
+cache caveat: the first repetition of a root pays cache creation while later repetitions read it -- cache-read and cache-creation figures are reported separately, never summed, and per-repetition numbers are not interchangeable; the median over repetitions is the honest statistic.
+
+cell     ladder  n  turns  duration_ms  cost_usd  cache_read  cache_creation  output_tokens  input_tokens_total  tool_uses  prefixed_tool_uses  grep_fallback  tool_result_bytes  read_bytes  recall  recall_n  precision  precision_n  flags
+a0-none  a       2  31     7000         0.035     75          15              275            1840                0.5        0                   0              5.5                5.5         0.8     1         0.6        1            MAX_TURNS
+
+
+
+incomplete: none
+invalid: none

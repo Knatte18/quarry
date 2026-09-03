@@ -571,4 +571,112 @@ func TestE2E(t *testing.T) {
 			t.Errorf("Run() error = %q; want it to carry the first holder's results root", err)
 		}
 	})
+
+	t.Run("Report", func(t *testing.T) {
+		// Copy the committed fixture root into a fresh temporary directory under the same base-name
+		// directory "root": the golden summary and table each carry that base name and no wall-clock
+		// time, so preserving it across the copy is load-bearing, not incidental.
+		dst := filepath.Join(t.TempDir(), "root")
+		copyDir(t, "testdata/results/root", dst)
+
+		// Place a fake "claude" on PATH for the duration of the report path: report.go and
+		// summarize.go re-derive everything from the raw tree and never take a Runner, so nothing in
+		// this call graph should ever exec it. The marker file is the assertion -- it must never be
+		// created.
+		binDir := t.TempDir()
+		markerPath := filepath.Join(t.TempDir(), "invoked-marker")
+		writeNeverInvokedClaudeStub(t, binDir, markerPath)
+		t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+		summary, rendered, written := summarizeAndWriteReport(t, dst)
+
+		if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+			t.Errorf("the fake claude binary on PATH was invoked during the report path (marker exists: err=%v)", err)
+		}
+
+		if rendered != written {
+			t.Error("the printed (rendered) table does not equal the table written to disk")
+		}
+
+		wantSummary, err := os.ReadFile("testdata/results/golden-summary.json")
+		if err != nil {
+			t.Fatalf("read golden-summary.json: %v", err)
+		}
+		gotSummary, err := os.ReadFile(filepath.Join(dst, SummaryFile))
+		if err != nil {
+			t.Fatalf("read produced summary.json: %v", err)
+		}
+		if string(gotSummary) != string(wantSummary) {
+			t.Errorf("produced summary.json does not match testdata/results/golden-summary.json byte for byte:\ngot:\n%s\nwant:\n%s", gotSummary, wantSummary)
+		}
+
+		wantTable, err := os.ReadFile("testdata/results/golden-table.txt")
+		if err != nil {
+			t.Fatalf("read golden-table.txt: %v", err)
+		}
+		if written != string(wantTable) {
+			t.Errorf("produced table.txt does not match testdata/results/golden-table.txt byte for byte:\ngot:\n%s\nwant:\n%s", written, wantTable)
+		}
+
+		if len(summary.Cells) != 1 {
+			t.Fatalf("summary.Cells has %d entries; want 1", len(summary.Cells))
+		}
+		cell := summary.Cells[0]
+		recallStats, ok := cell.Metrics["recall"]
+		if !ok || recallStats.N != 1 {
+			t.Errorf("recall stats = %+v, ok=%v; want N=1, excluding the ceiling repetition", recallStats, ok)
+		}
+		precisionStats, ok := cell.Metrics["precision"]
+		if !ok || precisionStats.N != 1 {
+			t.Errorf("precision stats = %+v, ok=%v; want N=1, excluding the ceiling repetition", precisionStats, ok)
+		}
+		turnsStats, ok := cell.Metrics["turns"]
+		if !ok || turnsStats.N != 2 {
+			t.Errorf("turns (cost) stats = %+v, ok=%v; want N=2, including the ceiling repetition", turnsStats, ok)
+		}
+		if cell.MaxTurnsCount != 1 {
+			t.Errorf("cell.MaxTurnsCount = %d; want 1", cell.MaxTurnsCount)
+		}
+		if cell.UnscoredCount != 0 {
+			t.Errorf("cell.UnscoredCount = %d; want 0", cell.UnscoredCount)
+		}
+	})
+}
+
+// copyDir recursively copies every file and directory under src into dst, creating dst.
+func copyDir(t *testing.T, src, dst string) {
+	t.Helper()
+	err := filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
+	if err != nil {
+		t.Fatalf("copy fixture tree %s -> %s: %v", src, dst, err)
+	}
+}
+
+// writeNeverInvokedClaudeStub writes an executable shell script named "claude" into binDir that
+// records its own invocation by creating markerPath and exits non-zero, so a test that places binDir
+// on PATH can assert markerPath was never created.
+func writeNeverInvokedClaudeStub(t *testing.T, binDir, markerPath string) {
+	t.Helper()
+	script := "#!/bin/sh\ntouch " + markerPath + "\nexit 1\n"
+	path := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write never-invoked claude stub: %v", err)
+	}
 }
