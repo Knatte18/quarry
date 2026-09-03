@@ -39,7 +39,11 @@ Batch-local decisions beyond the overview's Shared Decisions:
   `parseReject` and card 6's `goReject` in one loop: Go's type identity for anonymous structs is
   exact, so two independently written literals would not admit a shared loop variable.
 - Every `*ParseError` the package constructs sets all four fields. `Lang` and `Input` are never left
-  at their zero values on any reject path.
+  at their zero values on any reject path, and `Detail` is the exact value card 4's rules name — both
+  reject tables carry a `detail` column and assert it on every row.
+- Card 8 is a **zero-diff card**: it produces no commit and carries the literal `Commit: none`. That
+  is a supported card shape, reserved here for the two done criteria no verify command can express —
+  a dependency-list inspection and a read of the test files' import lines.
 
 ## Cards
 
@@ -170,7 +174,9 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Moves:** none
 - **Requirements:**
 
-  `glyph/parse_test.go` declares `package glyph` — white-box, because `splitGlyph` is unexported.
+  `glyph/parse_test.go` opens with a file-level comment naming what it covers — the language-free
+  layer — matching `internal/quarryengine/toc/toc_test.go`'s own opening comment, then declares
+  `package glyph`: white-box, because `splitGlyph` is unexported.
   Imports are limited to `errors`, `reflect` and `testing`. It holds:
 
   1. A table test over `splitGlyph` covering every row of the `docs/glyph.md` §1 examples table,
@@ -194,6 +200,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
      	lang    Language
      	input   string
      	reason  Reason
+     	detail  string
      	section string
      }
      ```
@@ -203,9 +210,12 @@ Batch-local decisions beyond the overview's Shared Decisions:
      `parseReject` alongside its own `goReject` in one loop, from another file: Go's type identity
      for anonymous structs is exact, so a shared loop needs a shared named type. `section` names the
      `docs/glyph.md` section the case came from, or is empty for a case the spec does not write down.
+     `detail` is the exact `ParseError.Detail` the row must produce, per card 4's rules — for these
+     rows that is `string(lang)` for every `unsupported_language` case and the empty string for the
+     `invalid_utf8` case.
      The rows are the `unsupported_language` cases of item 4 below, the reject-precedence case of
      item 5 and the `invalid_utf8` case of item 6. A test in this file drives the slice, asserting
-     each row's `Reason` and that the returned `Glyph` is the zero value.
+     each row's `Reason` **and** `Detail`, and that the returned `Glyph` is the zero value.
   4. An `unsupported_language` group in `parseReject` covering `Language("python")`,
      `Language("csharp")`, `Language("")` and one arbitrary value, each asserting
      `ReasonUnsupportedLanguage` and that the returned `Glyph` is the zero value.
@@ -239,8 +249,9 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Moves:** none
 - **Requirements:**
 
-  `glyph/golang_test.go` declares `package glyph`. Imports are limited to `errors`, `reflect` and
-  `testing`.
+  `glyph/golang_test.go` opens with a file-level comment naming the tables it holds — matching
+  `internal/quarryengine/toc/toc_test.go`'s own opening comment — then declares `package glyph`.
+  Imports are limited to `errors`, `reflect` and `testing`.
 
   **The accept table** is a package-level `var goAccept = []acceptCase{...}`, where `acceptCase` is a
   named package-level struct type declared in this file with fields `name string`, `input string`,
@@ -271,44 +282,48 @@ Batch-local decisions beyond the overview's Shared Decisions:
   **The reject table** is a package-level `var goReject = []rejectCase{...}`, reusing the
   `rejectCase` type card 5 declares rather than restating a shape, so the completeness test can range
   over `goReject` and `parseReject` in one loop. Every row's `lang` field is `Go`. Every case asserts
-  the `Reason` via `errors.As` **and** that the returned `Glyph` equals `Glyph{}`, never the message
-  text. The rows, at minimum, are exactly these:
+  the `Reason` **and** the `Detail` via `errors.As`, **and** that the returned `Glyph` equals
+  `Glyph{}` — never the message text. The `detail` column below is the exact `ParseError.Detail`
+  card 4's rules produce for that row, and the reject test asserts it string-for-string: the whole
+  `Detail` contract is prescribed to the rune, so leaving it unasserted would let every one of those
+  rules drift unnoticed. Note that a quoted rune is `fmt.Sprintf("%q", r)`'s output — a space renders
+  as `' '`, a tab as `'\t'`. The rows, at minimum, are exactly these:
 
-  | input | expected `Reason` |
-  |---|---|
-  | `internal/logger` | `ReasonNoSeparator` |
-  | the empty string | `ReasonNoSeparator` |
-  | `internal/reedengine/render.Renderer.Draw` | `ReasonNoSeparator` |
-  | `#run` | `ReasonUnitEmpty` |
-  | `/internal/logger#run` | `ReasonUnitEmptySegment` |
-  | `internal/logger/#run` | `ReasonUnitEmptySegment` |
-  | `internal//logger#run` | `ReasonUnitEmptySegment` |
-  | `./internal/logger#run` | `ReasonUnitDotSegment` |
-  | `internal/../logger#run` | `ReasonUnitDotSegment` |
-  | `internal/../lo gger#run` | `ReasonUnitDotSegment` |
-  | `internal//lo gger#run` | `ReasonUnitEmptySegment` |
-  | `internal\logger#run` | `ReasonUnitBadRune` |
-  | `internal/my logger#run` | `ReasonUnitBadRune` |
-  | a leading space before `internal/logger#run` | `ReasonUnitBadRune` |
-  | a horizontal tab inside the second unit segment | `ReasonUnitBadRune` |
-  | `internal/logger#` | `ReasonMemberEmpty` |
-  | `internal/logger#.Handle` | `ReasonMemberEmptyComponent` |
-  | `internal/logger#Handle.` | `ReasonMemberEmptyComponent` |
-  | `internal/logger#A..b` | `ReasonMemberEmptyComponent` |
-  | `internal/logger#A.B.c` | `ReasonMemberTooDeep` |
-  | `internal/logger#1abc` | `ReasonMemberNotIdentifier` |
-  | `internal/logger#a-b` | `ReasonMemberNotIdentifier` |
-  | `internal/logger#func` | `ReasonMemberKeyword` |
-  | `internal/logger#range` | `ReasonMemberKeyword` |
-  | `internal/logger#Box[T]` | `ReasonMemberTypeParams` |
-  | `internal/logger#Renderer.Draw(int)` | `ReasonMemberParens` |
-  | `internal/logger#(*dualHandler).Handle` | `ReasonMemberPointer` |
-  | `internal/logger#*dualHandler.Handle` | `ReasonMemberPointer` |
-  | `internal/logger#a#b` | `ReasonMemberBadRune` |
-  | `internal/logger#A .b` | `ReasonMemberBadRune` |
-  | a trailing space after `internal/logger#run` | `ReasonMemberBadRune` |
-  | a `0xff` byte inside the unit half | `ReasonInvalidUTF8` |
-  | a `0xff` byte inside the member half | `ReasonInvalidUTF8` |
+  | input | expected `Reason` | expected `Detail` |
+  |---|---|---|
+  | `internal/logger` | `ReasonNoSeparator` | `""` |
+  | the empty string | `ReasonNoSeparator` | `""` |
+  | `internal/reedengine/render.Renderer.Draw` | `ReasonNoSeparator` | `""` |
+  | `#run` | `ReasonUnitEmpty` | `""` |
+  | `/internal/logger#run` | `ReasonUnitEmptySegment` | `""` |
+  | `internal/logger/#run` | `ReasonUnitEmptySegment` | `""` |
+  | `internal//logger#run` | `ReasonUnitEmptySegment` | `""` |
+  | `./internal/logger#run` | `ReasonUnitDotSegment` | `"."` |
+  | `internal/../logger#run` | `ReasonUnitDotSegment` | `".."` |
+  | `internal/../lo gger#run` | `ReasonUnitDotSegment` | `".."` |
+  | `internal//lo gger#run` | `ReasonUnitEmptySegment` | `""` |
+  | `internal\logger#run` | `ReasonUnitBadRune` | `` `'\\'` `` |
+  | `internal/my logger#run` | `ReasonUnitBadRune` | `` `' '` `` |
+  | a leading space before `internal/logger#run` | `ReasonUnitBadRune` | `` `' '` `` |
+  | a horizontal tab inside the second unit segment | `ReasonUnitBadRune` | `` `'\t'` `` |
+  | `internal/logger#` | `ReasonMemberEmpty` | `""` |
+  | `internal/logger#.Handle` | `ReasonMemberEmptyComponent` | `""` |
+  | `internal/logger#Handle.` | `ReasonMemberEmptyComponent` | `""` |
+  | `internal/logger#A..b` | `ReasonMemberEmptyComponent` | `""` |
+  | `internal/logger#A.B.c` | `ReasonMemberTooDeep` | `"A.B.c"` |
+  | `internal/logger#1abc` | `ReasonMemberNotIdentifier` | `"1abc"` |
+  | `internal/logger#a-b` | `ReasonMemberNotIdentifier` | `"a-b"` |
+  | `internal/logger#func` | `ReasonMemberKeyword` | `"func"` |
+  | `internal/logger#range` | `ReasonMemberKeyword` | `"range"` |
+  | `internal/logger#Box[T]` | `ReasonMemberTypeParams` | `` `'['` `` |
+  | `internal/logger#Renderer.Draw(int)` | `ReasonMemberParens` | `` `'('` `` |
+  | `internal/logger#(*dualHandler).Handle` | `ReasonMemberPointer` | `` `'*'` `` |
+  | `internal/logger#*dualHandler.Handle` | `ReasonMemberPointer` | `` `'*'` `` |
+  | `internal/logger#a#b` | `ReasonMemberBadRune` | `` `'#'` `` |
+  | `internal/logger#A .b` | `ReasonMemberBadRune` | `` `' '` `` |
+  | a trailing space after `internal/logger#run` | `ReasonMemberBadRune` | `` `' '` `` |
+  | a `0xff` byte inside the unit half | `ReasonInvalidUTF8` | `""` |
+  | a `0xff` byte inside the member half | `ReasonInvalidUTF8` | `""` |
 
   The `ReasonUnsupportedLanguage` row lives in card 5's `parseReject` slice rather than here; the
   completeness test below therefore ranges over `goReject` and `parseReject` together. Both slices
@@ -325,12 +340,13 @@ Batch-local decisions beyond the overview's Shared Decisions:
   seventeenth constant and listing it in `Reasons` fails until a reject case exists; adding one
   without listing it in `Reasons` is caught by review, not by any test.
 
-  **A `ParseError` field test**, since the reject rows assert `Reason` alone and would not catch an
-  unset field: for one unit reject and one member reject — for example `internal/../logger#run` and
+  **A `ParseError` field test** covering the two fields the reject rows do not carry a column for:
+  for one unit reject and one member reject — for example `internal/../logger#run` and
   `internal/logger#func` — assert that the `*ParseError` recovered with `errors.As` has `Lang` equal
   to `Go` and `Input` equal to the whole input string that was passed to `Parse`, not a half of it.
   Assert the same two fields for one `unsupported_language` case, where `Lang` is the rejected
-  `Language` value rather than `Go`.
+  `Language` value rather than `Go`. `Detail` needs no separate test: the reject tables' own `detail`
+  column asserts it on every row, in both files.
 
   **The `Error()` tests**, both ranging over `Reasons` so they stay complete as the vocabulary
   changes: every `Reason` produces a non-empty `Error()`, and the sixteen messages are pairwise
@@ -394,14 +410,15 @@ Batch-local decisions beyond the overview's Shared Decisions:
   1. `go list -deps ./glyph` — every package printed is standard library, and no non-stdlib module
      appears anywhere in the output. This is the no-cgo, no-dependency proof, and it is about the
      transitive list rather than the four packages the source imports.
-  2. `go build ./... && go test ./... && go vet ./...` — all green, in the ordinary cgo-enabled
-     configuration. A `CGO_ENABLED=0` build of the repository is expected to fail by design and is
-     not attempted.
-  3. `golangci-lint run` — exits 0, as it does at the parent tip.
-  4. Read the import lines of the three `_test.go` files in the new package and confirm none imports
+  2. Read the import lines of the three `_test.go` files in the new package and confirm none imports
      anything outside the standard library — `go list -deps` cannot see test imports, so this half of
      the rule is a read, not a command. In particular `github.com/google/go-cmp` must be absent.
-  5. Confirm `go.mod` is unchanged by this task: no new `require` line, no new module.
+  3. Confirm `go.mod` is unchanged by this task: no new `require` line, no new module.
+
+  These three are exactly the checks the plan's verify commands do not already cover. `go test` is
+  the batch's own `verify:`, `go vet ./...` and `golangci-lint run` are the overview's module-wide
+  `verify:` at the same batch boundary, and `go test ./...` is the hub's done gate; none of them is
+  repeated here.
 
   Produce no diff. This card exists so the done criteria are executed and recorded rather than
   assumed.
