@@ -110,9 +110,11 @@ namespace. It is written the way C#'s own `typeof` writes an open generic type �
 parameter names: `List<>`, `Dictionary<,>`, and `Draw<>(T)` for a generic method, whose parameter
 types are written as declared. The other members C# can declare are spelled as C# spells them:
 an indexer `Renderer.this[int]`, an operator `Box.operator +(Box,Box)`, a finalizer
-`Renderer.~Renderer()`. *Known:* an explicit interface implementation, `void ILayout.Draw(int)`
-inside `Renderer`, yields `Renderer.ILayout.Draw(int)`, which reads like a nested type; only
-resolution tells the two apart.
+`Renderer.~Renderer()`. Built-in type aliases are canonicalised to the keyword by a fixed table
+(`Int32` → `int`, `String` → `string`), so the two files of a partial method cannot spell one
+signature two ways. *Known:* an explicit interface implementation, `void ILayout.Draw(int)` inside
+`Renderer`, yields `Renderer.ILayout.Draw(int)`, which reads like a nested type; the grammar has a
+distinct node for it, so quarry produces it unambiguously, but a reader of the string cannot tell.
 
 The parentheses are always present, not only when an overload exists, because a name-only glyph
 would stop being unique the day someone else adds an overload — and then nothing says which of the
@@ -146,6 +148,13 @@ pair of glyphs, old and new. Moving a symbol to another unit is likewise a new g
 
 A glyph may name a symbol that does not exist yet. `resolve` answers `not_found` until it is
 written, then `found`; a `Create` card's done-check is exactly that transition.
+
+Every element of every alphabet is chosen to be syntactic: a directory, a `package` or
+`namespace` declaration, a receiver or enclosing type as declared, a parameter type as written.
+Nothing requires a type checker, which is what lets a tree-sitter parse produce every glyph in a
+repository. That is a tested claim, not a design hope: `docs/rewrite-plan.md` §12 requires a
+round trip over a whole repository per language — every declaration `map` lists resolves back to
+exactly its own span.
 
 ## 5. Resolution
 
