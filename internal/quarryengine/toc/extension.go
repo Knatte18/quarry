@@ -13,12 +13,7 @@ import (
 // extensionLanguages maps a lowercase, dot-prefixed file extension to the canonical language
 // name it resolves to.
 var extensionLanguages = map[string]string{
-	".go":  "go",
-	".py":  "python",
-	".cs":  "csharp",
-	".ts":  "typescript",
-	".tsx": "typescript",
-	".rs":  "rust",
+	".go": "go",
 }
 
 // LanguageForExtension maps a file extension to its canonical language name. ext is lowercased

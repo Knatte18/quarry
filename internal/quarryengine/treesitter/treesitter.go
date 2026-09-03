@@ -16,22 +16,14 @@ import (
 	"sort"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
-	tscsharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	tsgo "github.com/tree-sitter/tree-sitter-go/bindings/go"
-	tspython "github.com/tree-sitter/tree-sitter-python/bindings/go"
-	tsrust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
-	tstypescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 )
 
 // grammars maps each canonical language name this package wires to the unsafe.Pointer its grammar
 // module exports. NewLanguage is called lazily, once per WithTree call, rather than once at
-// package init, so a language nobody parses never pays the *ts.Language construction cost.
+// package init.
 var grammars = map[string]func() *ts.Language{
-	"csharp":     func() *ts.Language { return ts.NewLanguage(tscsharp.Language()) },
-	"go":         func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
-	"python":     func() *ts.Language { return ts.NewLanguage(tspython.Language()) },
-	"rust":       func() *ts.Language { return ts.NewLanguage(tsrust.Language()) },
-	"typescript": func() *ts.Language { return ts.NewLanguage(tstypescript.LanguageTypescript()) },
+	"go": func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
 }
 
 // onRelease is an unexported test seam: nil in production, and invoked from WithTree after both

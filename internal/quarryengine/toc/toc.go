@@ -129,11 +129,9 @@ func applyDocSentences(symbols []Symbol, docSentences int) {
 // the two lists never influence each other's order.
 //
 // Error and Partial are mutually exclusive by construction: Partial is only ever set on the route
-// that actually parsed the file through treesitter.WithTree. A language with no registered
-// Strategy, an unreadable file, and invalid UTF-8 all set Error instead and leave Header and Partial
-// unset — the file is still listed, never skipped, and still counts as a code file for the
-// empty-directory question: a directory holding only unimplemented-language files returns a
-// non-empty Files, not an empty one.
+// that actually parsed the file through treesitter.WithTree. An unreadable file and invalid UTF-8
+// both set Error instead and leave Header and Partial unset — the file is still listed, never
+// skipped.
 //
 // A directory containing no file with a supported extension returns a DirTOC whose Files is an
 // empty, non-nil slice and a nil error — a true answer to "what code is in here", not a failure.
@@ -186,16 +184,11 @@ func TOCDir(dir string, langOverride string) (DirTOC, error) {
 }
 
 // buildDirEntry builds one DirEntry for base (a file's base name inside dir), already resolved to
-// lang. See TOCDir's doc comment for the Error/Partial mutual-exclusion invariant this function
-// upholds.
+// lang, a language from the extension table and therefore one with a registered Strategy. See
+// TOCDir's doc comment for the Error/Partial mutual-exclusion invariant this function upholds.
 func buildDirEntry(dir, base, lang string) DirEntry {
 	entry := DirEntry{Name: base, Language: lang}
-
-	strategy, ok := StrategyFor(lang)
-	if !ok {
-		entry.Error = quarryengine.ErrLanguageUnsupported.Error()
-		return entry
-	}
+	strategy, _ := StrategyFor(lang)
 
 	path := filepath.Join(dir, base)
 	src, err := os.ReadFile(path)

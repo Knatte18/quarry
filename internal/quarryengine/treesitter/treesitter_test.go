@@ -1,5 +1,5 @@
-// treesitter_test.go covers grammar loading across all five wired languages and the
-// parser/tree release behaviour WithTree guarantees on every route out of the function.
+// treesitter_test.go covers grammar loading for every wired language and the parser/tree release
+// behaviour WithTree guarantees on every route out of the function.
 
 package treesitter
 
@@ -22,10 +22,6 @@ func TestWithTree_ParsesEachWiredLanguage(t *testing.T) {
 		wantKind string
 	}{
 		{"Go", "go", "package main\n", "source_file"},
-		{"Python", "python", "x = 1\n", "module"},
-		{"CSharp", "csharp", "class C {}\n", "compilation_unit"},
-		{"TypeScript", "typescript", "const x = 1;\n", "program"},
-		{"Rust", "rust", "fn main() {}\n", "source_file"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
