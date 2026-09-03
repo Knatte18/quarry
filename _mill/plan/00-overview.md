@@ -3,7 +3,7 @@
 ```yaml
 task: "Ladder harness around headless claude -p (T2)"
 slug: "ladder-harness"
-approved: false
+approved: true
 started: "20260903-171341"
 parent: "main"
 root: ""

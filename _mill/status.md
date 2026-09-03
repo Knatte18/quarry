@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: max-rounds exhausted after 6 rounds, 2 BLOCKINGs remain
+phase: planned
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -32,4 +31,5 @@ plan-fix-r5  '2026-09-03T18:09:32Z'
 plan-review-r6  '2026-09-03T18:15:50Z'
 plan-fix-r6  '2026-09-03T18:17:35Z'
 blocked  '2026-09-03T18:17:45Z'
+planned  '2026-09-03T18:30:07Z'
 ```
