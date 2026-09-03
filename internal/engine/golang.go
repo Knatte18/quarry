@@ -5,6 +5,8 @@
 package engine
 
 import (
+	"strings"
+
 	ts "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -243,6 +245,56 @@ func (goStrategy) Package(root *ts.Node, src []byte) string {
 	return ""
 }
 
+// goPackageClauseNode returns root's package_clause child, or nil when root has none — the shape a
+// file broken badly enough to lose its package clause under a partial parse takes.
+func goPackageClauseNode(root *ts.Node) *ts.Node {
+	for i := uint(0); i < root.ChildCount(); i++ {
+		child := root.Child(i)
+		if child.Kind() == "package_clause" {
+			return child
+		}
+	}
+	return nil
+}
+
+// PackageDoc implements Strategy by taking the comment block immediately above the package_clause
+// — via CommentBlockAbove, the same prev-sibling walk with the blank-line boundary Header's own
+// directive-skipping loop does not use — and returning FirstParagraph of it only when the
+// stripped block's first line begins with "Package " followed by the package name this file
+// declares. Otherwise it returns "".
+//
+// The prefix test is what this method exists for: a file can carry both a file header and a
+// separate package doc comment as two distinct leading blocks, and only the "Package <name>"
+// prefix distinguishes the latter from the former. Without it, an adjacent file header sitting
+// immediately above the package clause — with no package doc comment of its own — would be
+// misread as the package documentation.
+func (goStrategy) PackageDoc(root *ts.Node, src []byte) string {
+	clause := goPackageClauseNode(root)
+	if clause == nil {
+		return ""
+	}
+	_, raw := CommentBlockAbove(clause, src)
+	if raw == "" {
+		return ""
+	}
+	stripped := StripComment(raw, "//")
+
+	pkgName := goStrategy{}.Package(root, src)
+	firstLine := stripped
+	if idx := strings.IndexByte(stripped, '\n'); idx >= 0 {
+		firstLine = stripped[:idx]
+	}
+	prefix := "Package " + pkgName
+	rest := strings.TrimPrefix(firstLine, prefix)
+	if rest == firstLine || (rest != "" && !strings.HasPrefix(rest, " ")) {
+		// Either the prefix was absent, or it was present but immediately followed by more of the
+		// same identifier (e.g. package "p" against a header reading "Package pkg ...") rather than
+		// a word boundary — neither is the "Package <name>" convention this rule tests for.
+		return ""
+	}
+	return FirstParagraph(stripped)
+}
+
 // Header implements Strategy by walking LeadingBlocks in order, stripping each block with
 // StripComment(b.Raw, "//"), and returning the first block for which IsDirectiveBlock("go", ...) is
 // false. It returns "" when every leading block is a directive block, or the file has no leading
@@ -268,17 +320,23 @@ func (goStrategy) Header(root *ts.Node, src []byte) string {
 // Generated implements Strategy by reading the first leading block — directive or not, since a
 // generated-file banner is a directive block for Header's purposes and a marker here; the two
 // readings are independent — and delegating to GeneratedByBanner("go", ...) on that block's
-// delimiter-stripped text, which is the form GeneratedByBanner's own contract requires.
-func (goStrategy) Generated(root *ts.Node, src []byte) (generated, known bool) {
+// delimiter-stripped text, which is the form GeneratedByBanner's own contract requires. Go's own
+// rule is always known, so the known return GeneratedByBanner reports is discarded here — see the
+// Strategy interface's doc comment for why Generated itself carries no known return any more.
+func (goStrategy) Generated(root *ts.Node, src []byte) bool {
 	blocks := LeadingBlocks(root, src)
 	if len(blocks) == 0 {
-		return GeneratedByBanner("go", "")
+		generated, _ := GeneratedByBanner("go", "")
+		return generated
 	}
 	stripped := StripComment(blocks[0].Raw, "//")
-	return GeneratedByBanner("go", stripped)
+	generated, _ := GeneratedByBanner("go", stripped)
+	return generated
 }
 
-// TestFile implements Strategy by delegating to TestFileByName("go", base).
-func (goStrategy) TestFile(base string) (isTest, known bool) {
-	return TestFileByName("go", base)
+// TestFile implements Strategy by delegating to TestFileByName("go", base) and discarding its
+// known return, for the same reason Generated discards GeneratedByBanner's.
+func (goStrategy) TestFile(base string) bool {
+	isTest, _ := TestFileByName("go", base)
+	return isTest
 }
