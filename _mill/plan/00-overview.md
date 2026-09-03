@@ -87,7 +87,11 @@ _Cross-cutting decisions every batch inherits._
 ### Decision: file-level comments and godoc match the toc package
 
 - **Decision:** every new non-test file opens with a file-level comment naming what the file holds
-  and why, above the `package glyph` clause; every exported identifier carries a godoc comment; the
+  and why, above the `package glyph` clause and **separated from it by a blank line** — as
+  `internal/quarryengine/toc/types.go` separates its own file-level comment from `package toc`.
+  Without that blank line the comment becomes a second package doc comment competing with the one in
+  `glyph/doc.go`, which is the only file that owns it. Every exported identifier carries a godoc
+  comment; the
   closed `Reason` vocabulary is a `string`-based named type with a grouped `const` block and a doc
   comment on each constant.
 - **Rationale:** this is the existing convention in `internal/quarryengine/toc` and in
