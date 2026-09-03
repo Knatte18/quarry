@@ -46,10 +46,10 @@ Non-test lines at `2565ef5`:
 | `go.mod`: every tree-sitter grammar but Go, LSP/JSON-RPC deps, `gopls` requirement | | **removed** — one language, no daemon |
 | `testdata/{impactfixture,clockfixture,buildtagfixture}` | | deleted with the layer that used them |
 | `bench/loomyard-eval/ladder/{cmd,internal,tools}`, `run*.sh`, `launch-session.sh`, `.claude/skills/ladder-run` | 9 000 (+8 300 test) | **deleted and rebuilt** around headless `claude -p` (§9a), ~1 000–1 500 lines |
-| `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the fasit, the task prompts, the research record; `docs/research/output-formats/` is the "before" side T5 adds `after/` to |
+| `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the fasit, the task prompts, the research record; `docs/research/output-formats/` is the "before" side T5a/T5b add `after/` to |
 | `bench/loomyard-eval/results/**`, `bench/loomyard-eval/ladder/results/**`, `bench/loomyard-eval/scripts/gen_compact_toc.py` | | **deleted** — the V1 results roots are archived on `v1-final` with the harness that produced them; `HANDOFF.md` is their summary. The Python script goes with them: no Python in this repository, no exceptions |
-| `docs/mcp-setup.md`, `docs/when-to-use-quarry.md`, `docs/servers.yaml.example`, `.mcp.json` | | **deleted** — they describe the seven verbs, `cmd/quarry-mcp` and the daemon, all of which are on `v1-final`. Nothing is marked "superseded" on `main`: what is archived is deleted. T5 and T6 write the new documents and the new `.mcp.json` when the surface they describe exists |
-| `README.md` | | replaced by a short stub: what the rewrite is, `docs/rewrite-plan.md`, `docs/glyph.md`, and that V1 is on `v1-final`. T5/T6 write the real one |
+| `docs/mcp-setup.md`, `docs/when-to-use-quarry.md`, `docs/servers.yaml.example`, `.mcp.json` | | **deleted** — they describe the seven verbs, `cmd/quarry-mcp` and the daemon, all of which are on `v1-final`. Nothing is marked "superseded" on `main`: what is archived is deleted. T5b and T6 write the new documents and the new `.mcp.json` when the surface they describe exists |
+| `README.md` | | replaced by a short stub: what the rewrite is, `docs/rewrite-plan.md`, `docs/glyph.md`, and that V1 is on `v1-final`. T5b/T6 write the real one |
 
 The first commit on `main` after this document is the deletion, so nothing half-V1 can survive into
 the new code. Until the new `cmd/quarry-mcp` exists the harness cannot run; that is expected and
@@ -92,7 +92,7 @@ As a glyph that is `internal/shedrecipe#Lookup`: the principle stays, the spelli
 The unit becomes the repository-relative directory instead of the bare package name, which is the price of uniqueness in a large repository,
 and the separator becomes `#`, so the parser splits unit from member without a package list.
 Card types, `Uses` and the derived dependency graph do not change.
-That is Loomyard work, done in Loomyard's repository once T5 (§12) has merged, and not a task here:
+That is Loomyard work, done in Loomyard's repository once T5b (§12) has merged, and not a task here:
 `planparser` imports `glyph` and drops its own name handling, the validator calls `resolve`, the planner prompt and the format document get the new spelling.
 
 ## 4. One envelope, one entry type at every depth
@@ -441,8 +441,9 @@ before step 8.
 4. **`toc`** — the kept extractor, re-keyed by glyph, headers and docs complete.
 5. **`expand`** — the Go head falls out of `resolve`.
 6. **Go extractor gaps** (§6): external test packages, `init` as multipart, package doc.
-7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then a thin **MCP**: only
-   the tools the ladder measures, `toc` first.
+7. **Facade** and **CLI** for `toc` (one envelope, exit codes), then a thin **MCP**: only the
+   tools the ladder measures. `resolve` and `expand` join the facade and CLI as their own
+   commit, before or after the MCP — the MCP exposes neither, so their order against it is free.
 8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` must
    reproduce its separation from control. That is the regression gate for the rewrite.
 9. **The next language, when wanted:** its glyph alphabet in `glyph`, an extractor written against
@@ -533,17 +534,22 @@ test ./...` green in its worktree and one merge to `main`.
 | 1 | **T2 harness** | `bench/loomyard-eval/ladder/`: one Go program around `claude -p` per §9a; yaml loader for the kept shape; worktree pin; MCP config; stream-json capture and metrics; scorer; `summary.json`, `provenance.json`, table; resume; the two surviving gates. Integration test against a stub MCP server, not quarry | T0 | a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` completes end to end on this host, and the metrics match the transcript by hand |
 | 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers; `toc` in the engine re-keyed by glyph; T3 also settles the engine package layout, since `resolve` and `expand` join `toc` next: one package, files per concern, never a package per verb | T1 | `toc` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `toc` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
 | 3 | **T4 resolve + expand** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`), `unit: found|not_found` on a miss, paths without `#` as targets; grouping by unit; `expand` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
-| 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `toc`, `resolve`, `expand` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
-| 5 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `toc` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `expand` until a ladder cell measures them | T5 | the harness probe of §9a runs against it: connect, `toc` call, allowlist denial |
-| 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir`) with T2 against T6, reps 5; write `results/<date>-toc/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md`, or the conclusion says why not |
-| 7 | **T8 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
+| 3 | **T5a facade + CLI, toc** | `quarry/` facade with typed results; the one envelope of §4; CLI verb `toc`; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the `toc` commands from `docs/research/output-formats/` | T3 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for its `toc` commands |
+| 4 | **T5b facade + CLI, resolve + expand** | `resolve` and `expand` join the facade and the CLI: same envelope, same view rules, nothing new invented here | T4, T5a | `after/` covers the same command set as the "before" side — nothing missing |
+| 4 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `toc` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `expand` until a ladder cell measures them | T5a | the harness probe of §9a runs against it: connect, `toc` call, allowlist denial |
+| 5 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir`) with T2 against T6, reps 5; write `results/<date>-toc/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md`, or the conclusion says why not |
+| 6 | **T8 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
 
-Wave 1 is the parallel one. T2 is the long pole of wave 1 and overlaps waves 2–5; it
-needs no quarry code until T7.
+Waves 1, 3 and 4 are the parallel ones. The measurement (T7) needs only `toc` over MCP — T6
+deliberately exposes nothing else — so `resolve` and `expand` (T4, T5b) sit off the critical
+path entirely: it runs T0 → T1 → T3 → T5a → T6 → T7, and everything after T3 on it is
+mechanical. The envelope T5a builds on is fixed by §4, not by T4 — T3's done-when pins it byte
+for byte. T2 is the long pole of wave 1 and overlaps waves 2–4; it needs no quarry code until
+T7.
 
 **Not tasks yet.** Go only, until T7 has run.
 A second language becomes a task when it is wanted, one language per task:
 its alphabet in `glyph/`, an extractor written against the contract (the V1 one on `v1-final` is reference, not a starting point), its `expand` head, its package doc source.
 The done criterion is the T3 round trip over a real repository in that language at 100 %;
 for C#, built-in aliases (`Int32` → `int`) canonicalised by a fixed table.
-Loomyard's adoption of glyphs (§8) is work in Loomyard's repository after T5 merges, never a task in this one.
+Loomyard's adoption of glyphs (§8) is work in Loomyard's repository after T5b merges, never a task in this one.
