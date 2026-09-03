@@ -128,9 +128,11 @@ this batch runs goes through the injectable runner seam the overview defines —
   cell id and stating that the file declares no server block — raised here, at run time, never at
   load time. Also give `MCPConfigDocument` a doc comment stating that `{target_dir}` is the only
   placeholder the argument list supports.
-  `WriteMCPConfig(dir string, doc []byte) (string, error)` writes the document under the
-  harness's own scratch directory at `.scratch/ladder/` beneath the quarry repository root and
-  returns its path; that location is deliberate and was measured — the invocation's own argument
+  `WriteMCPConfig(quarryRepoRoot, name string, doc []byte) (string, error)` takes the quarry
+  repository root — the caller passes exactly that, nothing pre-joined — joins `.scratch/ladder/`
+  onto it itself, creates that directory when absent, writes the document there under the given
+  file name, and returns the written path. Putting the join inside the function is what keeps the
+  scratch location a single fact rather than one every caller re-spells; that location is deliberate and was measured — the invocation's own argument
   list is not echoed anywhere in the stream, so a configuration path under the repository never
   reaches a transcript. `BuildServer(ctx, r Runner, quarryRepoRoot, buildTarget, outPath string) (sha256 string,
   err error)` runs the Go build through the runner seam with the command's working directory set to

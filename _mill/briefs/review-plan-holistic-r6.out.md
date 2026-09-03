@@ -1,0 +1,43 @@
+MILL_REVIEW_BEGIN
+# Review: Ladder harness around headless claude -p (T2) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: claude-opus-5 (Opus-class Anthropic model; best-effort self-assessment)
+reviewed_file: plan/
+date: 2026-09-03
+```
+
+## Findings
+
+### [BLOCKING:consistency] Resume test contradicts the reps-identical merge rule
+**Location:** batch 8 card 34 vs batch 5 card 23 / batch 6 card 26
+**Issue:** Card 34's resume test runs a root once at one repetition and again at two, but card 23 makes a differing `reps_effective` across invocations an error and card 26 refuses such a run at startup, so the specified test cannot pass.
+**Fix:** Restate the resume case at a constant effective rep count (e.g. select one cell first, then two, or kill/re-run the same reps value) or state the exception the reps rule grants.
+
+### [BLOCKING:design] Fake claude's flag contract rejects the scorer invocation
+**Location:** batch 8 card 33 (with card 34, card 26)
+**Issue:** The fake asserts a single fixed flag set — run model, run effort, the built-in tool set, the MCP config path — but card 26's scorer is a second invocation through the same binary with the scorer model/effort, an empty tools value, `max turns` of one and an empty MCP document; the card never says how the fake distinguishes the two, and per-invocation environment is not available to the test.
+**Fix:** Name the discriminator (e.g. the fake branches on the empty tools value / turn ceiling of one) and give the scorer invocation its own asserted flag set.
+
+### [BLOCKING:scope] Claude CLI flag spellings have no Context source
+**Location:** batch 6 card 26, batch 8 card 33
+**Issue:** Both cards depend on exact `claude -p` spellings (`--mcp-config`, `--strict-mcp-config`, `--allowedTools`, `--tools`, `--max-turns`, `--output-format stream-json --verbose`, `--model`, `--effort`, `--no-session-persistence`, the setting-sources flag) yet describe them only semantically as "the flag set the discussion's claude-invocation decision fixes"; `docs/rewrite-plan.md` §9a records them and is in no card's `Context:`, and §9a itself notes `--max-turns` is *not* in `--help`, so an implementer cannot recover it cold.
+**Fix:** Add `docs/rewrite-plan.md` to card 26's (and card 33's) `Context:`, or spell the flags literally in card 26's `Requirements:`.
+
+### [NIT:consistency] "Exactly two gate entry points" then a third exported check
+**Location:** batch 4 card 16
+**Issue:** The card says `gates.go` has "exactly two gate entry points plus the pre-dispatch check" and then also mandates `CheckWorktreeDirtied`, a fourth exported function.
+**Fix:** Reword the opening count to include the dirtied observation.
+
+### [NIT:design] `WriteMCPConfig`'s `dir` parameter is undefined
+**Location:** batch 5 card 22
+**Issue:** The signature is `WriteMCPConfig(dir string, doc []byte)` while the prose fixes the location as `.scratch/ladder/` beneath the quarry repository root, leaving it unstated whether `dir` is the repo root, the scratch directory, or ignored.
+**Fix:** State which value the caller passes and whether the function joins `.scratch/ladder/` itself.
+
+## Verdict
+
+REQUEST_CHANGES
+Resume test contradicts the reps rule; fake-binary and CLI-flag contracts are underspecified.
+MILL_REVIEW_END

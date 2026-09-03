@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r6
+phase: plan-fix-r6
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -29,4 +29,5 @@ plan-fix-r4  '2026-09-03T18:01:44Z'
 plan-review-r5  '2026-09-03T18:07:47Z'
 plan-fix-r5  '2026-09-03T18:09:32Z'
 plan-review-r6  '2026-09-03T18:15:50Z'
+plan-fix-r6  '2026-09-03T18:17:35Z'
 ```

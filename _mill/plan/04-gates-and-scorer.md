@@ -41,8 +41,9 @@ supplies those and the gates stay pure and directly table-testable.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** create `package ladder` file `gates.go` with a `Finding` struct carrying
-  `Gate string`, `Fatal bool`, `Message string` and an optional `Count int`, and exactly two gate
-  entry points plus the pre-dispatch check.
+  `Gate string`, `Fatal bool`, `Message string` and an optional `Count int`, and exactly four
+  exported entry points and no others: the two gates, the pre-dispatch prompt check, and the
+  worktree-dirtied observation.
   Gate 1, `CheckGrantedToolUsed(cfg Config, perRepQuarryToolUses []int) *Finding`: applies per
   **cell** and is never fatal. When the config's allowed list is non-empty and the maximum
   prefixed-tool-use count across its reps is zero, return a finding whose message is exactly
