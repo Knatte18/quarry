@@ -514,10 +514,10 @@ func runCellRepetition(
 		skipReason = "max_turns"
 		scoreRecord = UnscoredRecord(skipReason)
 	} else {
-		if err := writeAnswerFiles(dir, l, cfg, quarryRepoRoot, dest, answerText); err != nil {
+		if err := writeAnswerFiles(dir, l, quarryRepoRoot, dest, answerText); err != nil {
 			return repOutcome{}, err
 		}
-		redacted := redactedAnswerText(l, cfg, quarryRepoRoot, dest, answerText)
+		redacted := redactedAnswerText(l, quarryRepoRoot, dest, answerText)
 
 		scoreRecord, err = dispatchScorer(ctx, opts, l, task, content.TaskText, quarryRepoRoot, redacted)
 		if err != nil {
@@ -658,19 +658,19 @@ func redactionInputFor(l *Ladder, quarryRepoRoot, taskWorktreePath string) Redac
 	}
 }
 
-// redactedAnswerText returns answerText after RedactAnswer, using cfg's ladder file, quarry
+// redactedAnswerText returns answerText after RedactAnswer, using the ladder file, quarry
 // repository root and pinned worktree path as the redaction input.
-func redactedAnswerText(l *Ladder, cfg Config, quarryRepoRoot, taskWorktreePath, answerText string) string {
+func redactedAnswerText(l *Ladder, quarryRepoRoot, taskWorktreePath, answerText string) string {
 	return RedactAnswer(answerText, redactionInputFor(l, quarryRepoRoot, taskWorktreePath))
 }
 
 // writeAnswerFiles writes dir/answer.json and dir/answer.redacted.json from answerText, which is
 // already-decoded-and-reencodable fenced JSON inner text.
-func writeAnswerFiles(dir string, l *Ladder, cfg Config, quarryRepoRoot, taskWorktreePath, answerText string) error {
+func writeAnswerFiles(dir string, l *Ladder, quarryRepoRoot, taskWorktreePath, answerText string) error {
 	if err := os.WriteFile(filepath.Join(dir, AnswerFile), []byte(answerText), 0o644); err != nil {
 		return fmt.Errorf("write answer file: %w", err)
 	}
-	redacted := redactedAnswerText(l, cfg, quarryRepoRoot, taskWorktreePath, answerText)
+	redacted := redactedAnswerText(l, quarryRepoRoot, taskWorktreePath, answerText)
 	if err := os.WriteFile(filepath.Join(dir, RedactedAnswerFile), []byte(redacted), 0o644); err != nil {
 		return fmt.Errorf("write redacted answer file: %w", err)
 	}
