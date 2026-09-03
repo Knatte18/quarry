@@ -1,8 +1,8 @@
-// toc_integration_test.go runs TOCFile against a real file in this repository —
+// toc_integration_test.go runs Repo.TOC against a real file in this repository —
 // internal/engine/treesitter/treesitter.go — rather than a synthetic fixture, so the
 // extraction pipeline is proven against source nobody wrote to satisfy this package's own tests. It
-// is hermetic (reads one file, writes nothing, spawns nothing) and belongs in the default test tier
-// alongside the rest of the package.
+// is hermetic (reads files under the module root, writes nothing, spawns nothing) and belongs in
+// the default test tier alongside the rest of the package.
 
 package engine
 
@@ -12,12 +12,12 @@ import (
 	"testing"
 )
 
-// TestTOCFile_RepositoryFile_TreesitterPackage runs TOCFile against
+// TestRepoTOC_RepositoryFile_TreesitterPackage opens the module root and runs TOC against
 // internal/engine/treesitter/treesitter.go, chosen because it is small, stable, and carries a
 // file header plus three well-documented functions. It asserts the symbol names, kinds, and range
 // ordering loosely enough to survive an ordinary edit to that file — a test that has to be updated
 // every time an unrelated comment is reflowed is a test that gets deleted.
-func TestTOCFile_RepositoryFile_TreesitterPackage(t *testing.T) {
+func TestRepoTOC_RepositoryFile_TreesitterPackage(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("could not determine this test file's own source location")
@@ -25,12 +25,20 @@ func TestTOCFile_RepositoryFile_TreesitterPackage(t *testing.T) {
 	// This file sits at internal/engine/toc_integration_test.go, so the module root is three
 	// levels up.
 	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-	targetPath := filepath.Join(moduleRoot, "internal", "engine", "treesitter", "treesitter.go")
+	targetRel := filepath.ToSlash(filepath.Join("internal", "engine", "treesitter", "treesitter.go"))
 
-	got, err := TOCFile(targetPath, "")
+	r, err := Open(moduleRoot)
 	if err != nil {
-		t.Fatalf("TOCFile(%q, \"\", ...) returned error: %v", targetPath, err)
+		t.Fatalf("Open(%q) failed: %v", moduleRoot, err)
 	}
+	got, err := r.TOC(targetRel, TOCOptions{})
+	if err != nil {
+		t.Fatalf("TOC(%q, ...) returned error: %v", targetRel, err)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
+	}
+	entry := got.Files[0]
 
 	if got.Language != "go" {
 		t.Errorf("Language = %q; want %q", got.Language, "go")
@@ -38,16 +46,20 @@ func TestTOCFile_RepositoryFile_TreesitterPackage(t *testing.T) {
 	if got.Package != "treesitter" {
 		t.Errorf("Package = %q; want %q", got.Package, "treesitter")
 	}
-	if got.Partial {
-		t.Error("Partial = true; want false for a real, well-formed repository file")
+	if entry.Lossy {
+		t.Error("Lossy = true; want false for a real, well-formed repository file")
 	}
-	if got.Header == "" {
+	if entry.Header == "" {
 		t.Error("Header is empty; want the file's first header paragraph")
 	}
+	if entry.Symbols == nil {
+		t.Fatal("Symbols == nil; want a non-nil pointer for a file target's default")
+	}
+	symbols := *entry.Symbols
 
 	wantNames := map[string]bool{"Supported": true, "Languages": true, "WithTree": true}
 	found := make(map[string]bool, len(wantNames))
-	for _, sym := range got.Symbols {
+	for _, sym := range symbols {
 		if !wantNames[sym.Name] {
 			continue
 		}
@@ -72,10 +84,10 @@ func TestTOCFile_RepositoryFile_TreesitterPackage(t *testing.T) {
 	}
 
 	// Start values are ascending across every symbol in the file, not just the three named ones.
-	for i := 1; i < len(got.Symbols); i++ {
-		if got.Symbols[i-1].Start >= got.Symbols[i].Start {
+	for i := 1; i < len(symbols); i++ {
+		if symbols[i-1].Start >= symbols[i].Start {
 			t.Errorf("Symbols[%d].Start = %d >= Symbols[%d].Start = %d; want ascending order",
-				i-1, got.Symbols[i-1].Start, i, got.Symbols[i].Start)
+				i-1, symbols[i-1].Start, i, symbols[i].Start)
 		}
 	}
 }
