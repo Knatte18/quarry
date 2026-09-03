@@ -53,36 +53,39 @@ short.
 ## 3. The glyph
 
 The identifier is specified in `docs/glyph.md`, which is the contract Loomyard's plan format adopts.
-In one line:
+In one line: one form, `unit#member`, with the unit and the member spelled in each language's own
+compiler-guaranteed alphabet.
 
 ```
-<unit>#<Owner.>Name        e.g.  logger#dualHandler.stderr   render#Renderer.Draw   lyx#run
+internal/logger#dualHandler.stderr          Go: directory path, Type.Name
+loomyard.engine.layout#Beta.Inner.handle    Python: dotted module path, Class.Inner.name
+Loomyard.Engine.Layout#Renderer.Draw(int)   C#: namespace, Type.Name(param types), always
 ```
 
-- `unit` is the **basename of the package directory** (Go), module or package (Python), directory
-  (C#). Not the package clause (`main` is eight directories in Loomyard), not the import path
-  (`internal/` would be written thousands of times in plan files). Unit names are unique across the
-  repository — an invariant quarry checks on every resolution and refuses to work around. Loomyard
-  today: 83 packages, 0 duplicates.
-- The member is the name, preceded by the enclosing types outermost first. One spelling, no aliases.
+- Unique by construction in every language, in any repository; quarry enforces nothing and no
+  naming discipline is assumed. The basename-plus-invariant, shortest-suffix, numbered and
+  config-root schemes were all rejected for drifting (§2 of the spec says why).
 - A glyph carries no file and no line: those are what quarry returns for it, and they move while it
   does not. Rename or move-between-units is a new glyph, deliberately — the glyph is the name.
+- C# method glyphs always carry parameter types, so adding an overload never changes an existing
+  glyph. Go and Python have no overloads and never pay for this.
+- One implementation: package `glyph`, pure Go, no cgo, imported by Loomyard's plan parser.
 
 **Two outcomes that must never be confused:**
 
 | outcome | meaning | result |
 |---|---|---|
-| ambiguous | the glyph matches several *different* symbols (Go build-tag duplicates, C# overloads, a Python name defined twice in one module) | error, candidates listed, never a silent pick |
+| ambiguous | the glyph matches several *different* symbols (Go build-tag duplicates, a Python name defined twice in one module) | error, candidates listed, never a silent pick |
 | multipart | the glyph names *one* symbol the language allows in several places (C# `partial class`, C# partial methods) | success, every part returned |
 
 Go never produces multipart: a type is declared once and each method once, however many files they
 span. That is a `members` question (§5), not a resolution question.
 
 **Alignment with Loomyard's plan format.** `manifest/designs/plan-card-format.md` already says
-"package-qualified short names (`shedrecipe.Lookup`), never file:line, never full import paths". That
-is a glyph with `.` where the `#` goes. Recommendation: adopt `#` (`shedrecipe#Lookup`), because the
-separator alone then splits unit from member and no parser needs the package list. This is
-Loomyard's decision.
+"package-qualified short names (`shedrecipe.Lookup`), never file:line, never full import paths". As
+a glyph that is `internal/shedrecipe#Lookup`. The `#` splits unit from member so no parser needs the
+package list; the directory path is what makes it unique in any repository. Adopting it is
+Loomyard's decision; the parser change is an import of `glyph`, not a re-implementation.
 
 ## 4. One envelope, one entry type at every depth
 
@@ -179,16 +182,16 @@ that entry carries `symbols` because the argument was a file:
     { "name": "layout.go",
       "header": "layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements\nwithin a Box into a tmux/psmux window_layout body and its checksum-prefixed full string.\nIt is region-relative — offsets are anchored to box.X/box.Y rather than the whole window — so the\nstack region can be rendered independently of the Box it is placed within.\nThis file makes no placement or height decisions;\nthose live in policy.go and height.go.\nIt only renders the string from the placements it is given.",
       "symbols": [
-        { "id": "render#placement", "kind": "type", "start": 16, "sigend": 20, "end": 29,
+        { "id": "internal/reedengine/render#placement", "kind": "type", "start": 16, "sigend": 20, "end": 29,
           "signature": "type placement struct",
           "doc": "placement is one resolved pane: its tmux pane id and the row height it\nhas been assigned." },
-        { "id": "render#buildStackBody", "kind": "function", "start": 31, "sigend": 34, "end": 50,
+        { "id": "internal/reedengine/render#buildStackBody", "kind": "function", "start": 31, "sigend": 34, "end": 50,
           "signature": "func buildStackBody(box Box, panes []placement) string",
           "doc": "buildStackBody renders panes into a tmux window_layout body positioned\nwithin box: \"<box.W>x<box.H>,<box.X>,<box.Y>[<w>x<h>,<x>,<y>,<paneNum>,...]}\"." },
-        { "id": "render#wrapLayout", "kind": "function", "start": 52, "sigend": 54, "end": 56,
+        { "id": "internal/reedengine/render#wrapLayout", "kind": "function", "start": 52, "sigend": 54, "end": 56,
           "signature": "func wrapLayout(body string) string",
           "doc": "wrapLayout prefixes body with its tmux layout checksum, producing the full\nwindow_layout string tmux's select-layout accepts." },
-        { "id": "render#bandHeader", "kind": "function", "start": 58, "sigend": 63, "end": 76,
+        { "id": "internal/reedengine/render#bandHeader", "kind": "function", "start": 58, "sigend": 63, "end": 76,
           "signature": "func bandHeader(fullBox Box, headerPaneID string, headerHeight int, ...) ...",
           "doc": "..." } ] } ] }
 ```
@@ -212,9 +215,9 @@ and a file with symbols:
 
 ```
 internal/reedengine/render/layout.go (package render, go): layout.go is the layout mechanics layer: ...
-16-29 (sig 16-20) render#placement: type placement struct
+16-29 (sig 16-20) internal/reedengine/render#placement: type placement struct
     placement is one resolved pane: its tmux pane id and the row height it has been assigned.
-31-50 (sig 31-34) render#buildStackBody: func buildStackBody(box Box, panes []placement) string
+31-50 (sig 31-34) internal/reedengine/render#buildStackBody: func buildStackBody(box Box, panes []placement) string
     buildStackBody renders panes into a tmux window_layout body positioned within box: ...
 ```
 
@@ -287,10 +290,12 @@ extractors, all phase 1:
 
 ## 7. Surfaces, in order of importance
 
-1. **The Go facade** (`quarry/` package). The primary consumer is Loomyard's own Go code, never the
+1. **The `glyph` package.** The one implementation of the name. Importable by anything, Loomyard's
+   plan parser first, without the engine.
+2. **The Go facade** (`quarry/` package). The primary consumer is Loomyard's own Go code, never the
    LLM. Typed results, no JSON round-trip, grammars loaded once per process.
-2. **The CLI.** Same queries, JSON out, exit codes for gates. The scripting contract.
-3. **MCP.** A mirror of the CLI for an LLM that has the tools granted. At most four tools (`map`,
+3. **The CLI.** Same queries, JSON out, exit codes for gates. The scripting contract.
+4. **MCP.** A mirror of the CLI for an LLM that has the tools granted. At most four tools (`map`,
    `resolve`, `members`, and `impact` when it exists). Tool names are verbs, never protocol methods.
 
 ## 8. How Loomyard uses it
@@ -325,8 +330,8 @@ in phase 2.
   changed only its declared targets.
 - **Documentation drift.** `map` over a package against the symbol names a doc or a codeguide page
   claims; missing or extra names are mechanical findings.
-- **Repository invariants.** Unique package basenames; every package has a package doc (29 of 83
-  do not, today); every exported symbol has a doc. The extractor already knows all three.
+- **Repository invariants.** Every package has a package doc (29 of 83 do not, today); every
+  exported symbol has a doc. The extractor already knows both.
 - **Phase 2:** `impact` before/after sets on Edit and Rename, `assert-no-callers` on Delete, test
   targeting by caller package, and the
   31-false-positive class of incident (`docs/research/scout-agent-usage-findings.md`) prevented by
@@ -344,8 +349,9 @@ Each step is one commit that builds and tests green on its own. The harness rewr
 section, to come) lands before step 8.
 
 1. **Delete** (§2). `go build ./... && go test ./...` green on what remains.
-2. **Types and the glyph.** `Glyph` with parser, printer and tests per `docs/glyph.md`; `Symbol`
-   gains its glyph, the owner chain, the head span; the unit-name walk with the uniqueness check.
+2. **The `glyph` package** — pure Go, no cgo, no dependencies: parser, printer, per-language
+   alphabets, tests, per `docs/glyph.md`. Then `Symbol` gains its glyph, the owner chain, the head
+   span, and the unit walk (directory → Go unit; source root → Python module; namespace → C#).
 3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on fixtures for
    all three languages.
 4. **`map`** — the kept toc, re-keyed by glyph, headers and docs complete.
@@ -368,6 +374,7 @@ section, to come) lands before step 8.
 ## 11. Open decisions
 
 - Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
-- C# overload naming (a signature suffix on the glyph, or ambiguity only).
-- Whether Loomyard adopts `#` or keeps `.` with the mapping (§3).
+- C# long parameter lists: whether to cap a method glyph at N types plus a hash, decided only
+  after measuring a real C# repository (`docs/glyph.md` §3).
+- When Loomyard's plan parser adopts glyphs by importing `glyph` (§3).
 - Whether `results/**/raw/` is un-ignored (carried over from `HANDOFF.md` §4).

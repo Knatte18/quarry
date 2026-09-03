@@ -6,84 +6,112 @@ supplies the location. The word is from Greek *glyphein*, to carve: a glyph is a
 stone, which is where quarry's names come from.
 
 This document is the contract. `docs/rewrite-plan.md` says how quarry implements it; Loomyard's plan
-format will adopt it for card targets. Anything not stated here is not part of the contract.
+format adopts it for card targets. Anything not stated here is not part of the contract.
 
-## 1. Form
+## 1. One form, three alphabets
 
 ```
-glyph  = unit "#" member
-member = name *( "." name )
+glyph = unit "#" member
 ```
 
-- **unit** — the name of the namespace unit the symbol is declared in (§2). It contains no `#`,
-  no `/` or `\`, and no whitespace. Everything else, including `.` and `-`, is allowed, since `#`
-  is the only separator that matters.
-- **member** — the symbol's own name, preceded by the names of the types that enclose it,
-  outermost first, joined with `.`. Each `name` is an identifier as the language spells it.
-- Glyphs are case-sensitive, and a glyph has exactly one spelling. There is no short form, no long
-  form, no alias.
+The form is the same for every language. What may appear in `unit` and in `member` is defined per
+language (§2, §3), because each language already has its own compiler-guaranteed way of naming a
+namespace and a symbol uniquely, and those ways differ. A glyph borrows the language's own
+uniqueness instead of inventing one. `#` is the only separator with a fixed meaning; `.`, `/`, `(`
+and `,` mean whatever the language's alphabet says.
 
-Examples, from Loomyard:
+Structurally, any glyph splits at its first `#`. That split needs no language. Whether the two
+halves are well-formed is checked against the language of the unit's source, at resolution.
 
-| glyph | what it names |
-|---|---|
-| `logger#stderrHandlerSnapshot` | package-level function `stderrHandlerSnapshot` in `internal/logger` |
-| `logger#dualHandler` | type `dualHandler` |
-| `logger#dualHandler.stderr` | method `stderr` on `dualHandler` |
-| `render#Renderer.Draw` | method `Draw` on `Renderer` in `internal/reedengine/render` |
-| `lyx#run` | function `run` in `cmd/lyx` (a `package main`; the unit is still the directory name) |
-| `models#Beta.Inner.handle` | Python method `handle` on class `Inner` nested in class `Beta`, in module `models` |
+Glyphs are case-sensitive and each symbol has exactly one glyph. No short form, no alias.
 
-## 2. The unit
-
-The unit is the language's own namespace boundary, named by its basename:
-
-| language | unit | unit name |
+| glyph | language | names |
 |---|---|---|
-| Go | the package directory | the directory's basename — never the package clause (`main` is many directories), never the import path |
-| Python | the module file, or the package for symbols declared in `__init__.py` | the file's basename without `.py`, or the package directory's basename |
-| C# | the directory (folder = namespace, the usual convention) | the directory's basename |
+| `internal/logger#stderrHandlerSnapshot` | Go | package-level function in `internal/logger` |
+| `internal/logger#dualHandler.stderr` | Go | method `stderr` on `dualHandler` |
+| `internal/reedengine/render#Renderer.Draw` | Go | method `Draw` on `Renderer` |
+| `cmd/lyx#run` | Go | function `run` in a `package main` |
+| `loomyard.engine.layout#Beta.Inner.handle` | Python | method on class `Inner` nested in `Beta`, module `loomyard/engine/layout.py` |
+| `Loomyard.Engine.Layout#Renderer.Draw(int)` | C# | the `Draw` overload taking one `int` |
+| `Loomyard.Engine.Layout#Renderer.Title` | C# | property `Title` |
 
-**Unit names are unique across the repository.** This is the invariant that lets a glyph be short.
-quarry checks it on every resolution and refuses to resolve any glyph in a unit whose name occurs
-twice, naming both paths, until one is renamed. It is a convention the repository keeps and quarry
-enforces, not something quarry assumes. Loomyard, 2026-09-03: 83 Go packages, 0 duplicate basenames.
+## 2. The unit, per language
 
-Why the basename and not the path: the path would put `internal/` in front of nearly every glyph in
-every plan file, and a glyph is a name, not a place. Why not the package clause: it is not unique
-(`main`), and it is a local alias a Go file can even override at import.
+| language | unit | spelled as |
+|---|---|---|
+| Go | the package directory | its path relative to the repository root: `internal/logger`, `cmd/lyx`. For a single-module repository this is the import path without the module prefix, which is what `go doc` accepts |
+| Python | the module | its dotted path from the source root, which is what `__module__` holds: `loomyard.engine.layout`; a package's own `__init__.py` symbols use the package: `loomyard.engine` |
+| C# | the namespace | as declared: `Loomyard.Engine.Layout` |
 
-*Open for Python:* a repository that cannot keep module basenames unique (several `models.py`) would
-need the dotted module path from the source root as its unit name instead. Decided when a Python
-repository first adopts glyphs, not before.
+Unique by construction in each language: two Go directories cannot share a path, two Python
+modules cannot share a dotted path, and C# types are unique within a namespace by the compiler's
+rules. Nothing is enforced by quarry and nothing depends on a repository's naming discipline.
 
-## 3. The member
+The price is that a Go glyph carries `internal/` where Go's own name does. Shorter schemes were
+considered and rejected, each for the same reason — the glyph would change without the symbol
+changing:
 
-- A package-level symbol is its name: `logger#newDualHandler`.
-- A method or member is `Owner.Name`. The owner is the declaring type's bare name. For Go the
-  receiver is half the key — `logger#dualHandler.Handle` and `logger#durableHandler.Handle` are two
-  glyphs — and whether the receiver is a pointer is not part of it.
-- Nested types chain: `models#Beta.Inner`, `models#Beta.Inner.handle`.
-- Type parameters are not part of a glyph: `Box[T]` is `Box`; `List<T>` is `List`.
-- An interface's methods are members of the interface: `shedengine#ShedProducer.Call`.
+- *directory basename with a uniqueness invariant* — fails on any repository with `internal/logger`
+  and `loomyard/logger`, which large repositories have;
+- *shortest unique suffix of the path* — a glyph's spelling changes when an unrelated package is
+  added elsewhere;
+- *numbered or tagged collisions, `logger[1]`, `logger[loomyard]`* — the same drift, plus an
+  ordering nothing defines;
+- *source roots declared in a repository config file* — makes a glyph's meaning depend on a file
+  beside the code, and a config edit silently renames every glyph.
 
-Which declarations get a glyph, by language:
+## 3. The member, per language
+
+The member is the symbol's own name, preceded by the names of the types that enclose it, outermost
+first, joined with `.`.
+
+**Go.** `Name` for a package-level `func`, `type`, `const` or `var`; `Type.Name` for a method or an
+interface method. The receiver type is half the key — `dualHandler.Handle` and
+`durableHandler.Handle` are two glyphs — and whether it is a pointer receiver is not part of it.
+Go has no nesting and no overloading, so a member never has more than one `.` and never has
+parentheses. Type parameters are not part of a glyph: `Box[T]` is `Box`.
+
+**Python.** `name` for a module-level `def` or `class`; `Class.name` for a method; nested classes
+chain, `Beta.Inner.handle`. No overloading, so no parentheses.
+
+**C#.** `Type.Name` for members, nested types chain, `Outer.Inner.Name`. Type parameters are not
+part of a glyph: `List<T>` is `List`. **A method or constructor always carries its parameter
+types**, in parentheses, comma-separated, no spaces, as written in the declaration:
+`Renderer.Draw(int)`, `Renderer.Draw(int,string)`, `Renderer.Draw()`, `Renderer.Renderer(Box)` for
+a constructor. Parameter *names* are never included; type names are never qualified beyond how
+the source writes them (`int`, not `System.Int32`; `List<Pane>`, not
+`System.Collections.Generic.List<Pane>`). Properties, fields, events and types have no
+parentheses, since they cannot be overloaded.
+
+The parentheses are always present, not only when an overload exists, because a name-only glyph
+would stop being unique the day someone else adds an overload — and then nothing says which of the
+two the old glyph meant. With the parameter types always present, `Draw(int)` is the same glyph
+before and after `Draw(double)` appears.
+
+*Open, C# only:* a method with many parameters yields a long glyph. Measured against a real C#
+repository's parameter-count distribution before anything is done about it. If a cap is ever
+adopted it is the first N parameter types plus a short hash of the complete canonical list,
+with N fixed by this document — never abbreviations of type names, which are unreadable and not
+unique. Since the full list is what any hash would be computed from, adopting a cap later changes
+nothing already written.
+
+Which declarations get a glyph:
 
 | language | glyphed | not glyphed (today) |
 |---|---|---|
 | Go | package-level `func`, `type`, `const`, `var`; methods; interface methods | struct fields, local declarations |
 | Python | module-level `def` and `class`; methods; nested classes | attributes, local functions |
-| C# | types (incl. nested), methods, properties, fields | locals, lambdas |
+| C# | types (incl. nested), methods, constructors, properties, fields, events | locals, lambdas |
 
 ## 4. What a glyph does not carry
 
-File, line, column, signature, kind, build tags, overload parameters, visibility. All of those are
-answers, not addresses: quarry returns them for a glyph, and they change while the glyph does not.
+File, line, column, kind, return type, visibility, build tags, doc. All of those are answers, not
+addresses: quarry returns them for a glyph, and they change while the glyph does not.
 
-A glyph survives every edit that does not rename the symbol or move it out of its unit. In Go that
-includes moving a method to another file in the same package. A rename is a new glyph, by design:
-the glyph is the name, and a plan's `Rename` card is a pair of glyphs, old and new. Moving a
-symbol to another unit is likewise a new glyph.
+A glyph survives every edit that does not rename the symbol, move it out of its unit, or (C#)
+change its parameter types. In Go that includes moving a method to another file in the same
+package. A rename is a new glyph, by design: the glyph is the name, and a plan's `Rename` card is a
+pair of glyphs, old and new. Moving a symbol to another unit is likewise a new glyph.
 
 A glyph may name a symbol that does not exist yet. `resolve` answers `not_found` until it is
 written, then `found`; a `Create` card's done-check is exactly that transition.
@@ -91,41 +119,52 @@ written, then `found`; a `Create` card's done-check is exactly that transition.
 ## 5. Resolution
 
 Given a glyph, quarry parses the unit's source as it is at that moment — no index, no cache, no
-daemon — and returns every declaration whose unit, owner chain and name match. Results are ordered
-by file and then by start line, so the answer is deterministic.
+daemon — and returns every declaration whose unit, owner chain, name and (C#) parameter types
+match. Results are ordered by file and then by start line, so the answer is deterministic.
 
 | status | meaning |
 |---|---|
 | `found` | exactly one declaration |
 | `multipart` | one symbol the language lets be declared in several places: a C# `partial` type or partial method. Every part is returned. Go and Python never produce this |
-| `ambiguous` | several *different* declarations match: Go build-tag duplicates, C# overloads, a Python name defined twice in one module, a unit name that occurs in two directories. The candidates are returned, with their files; nothing is chosen |
-| `not_found` | no declaration matches |
+| `ambiguous` | several *different* declarations match: Go build-tag duplicates, a Python name defined twice in one module. The candidates are returned, with their files; nothing is chosen |
+| `not_found` | no declaration matches. A C# method glyph without parentheses is `not_found`, not "all overloads" |
 
 Resolution never guesses. There is no fuzzy matching, no case folding, no "did you mean". A glyph
-that does not resolve is `not_found`, and a caller that wants suggestions asks `map`.
+that does not resolve is `not_found`; a caller that wants to see what exists asks `map` or
+`members`.
 
 Measured cost (Loomyard, 4-core WSL2, in-process, source read fresh every time): 5–8 ms for a
 5-file unit, 24–65 ms for a 35-file unit, ~100 ms for twenty glyphs across five units.
 
-## 6. Writing glyphs down
+## 6. Writing glyphs down, and the one implementation
 
-- In prose: the glyph `render#Renderer.Draw`.
+- In prose: the glyph `internal/reedengine/render#Renderer.Draw`.
 - In JSON: the key is `id`; the value is the glyph. Short on purpose, since it repeats per symbol.
 - In quarry's text view: the glyph stands alone, no key.
-- On a command line: positional arguments. `quarry resolve logger#dualHandler.stderr render#Renderer`.
-- In YAML: safe unquoted inside a token (`- render#Renderer.Draw`); a YAML comment needs whitespace
-  before its `#`. In Markdown: safe anywhere but the first column of a line.
-- In Go: `type Glyph struct { Unit string; Owner []string; Name string }`, `ParseGlyph(string)
-  (Glyph, error)`, `Glyph.String()`. The string form is canonical; the struct is a view of it.
+- On a command line: positional arguments.
+- In YAML: safe unquoted inside a token (`- cmd/lyx#run`); a YAML comment needs whitespace before
+  its `#`. In Markdown: safe anywhere but the first column of a line. C# glyphs contain `(`, `,`
+  and `<`; quote them where a format cares.
+- In Go: package `github.com/Knatte18/quarry/glyph` — pure Go, no cgo, no dependencies, so that
+  any program can import it without the engine. `type Glyph struct { Unit string; Owner []string;
+  Name string; Params []string }`, `Parse(string) (Glyph, error)`, `Glyph.String()`. The string
+  form is canonical; the struct is a view of it.
+
+**There is one implementation of the glyph grammar, and it is this package.** Loomyard's plan
+parser imports it; it does not re-implement parsing, printing or canonicalisation. That is what
+makes any later refinement of the alphabet — a C# parameter cap, say — a change in one place.
 
 ## 7. Relationship to other names
 
-- **Loomyard plan cards** today write `shedrecipe.Lookup` — a glyph with `.` where the `#` goes.
-  Adopting glyphs means writing `shedrecipe#Lookup`; the separator alone then splits unit from
-  member, and `pkg.Type.Method` needs no package list to parse.
-- **Go's own names** (`render.Renderer` in source, `internal/reedengine/render.Renderer` in `go doc`)
-  are not glyphs and are not accepted where a glyph is expected.
-- **LSP** addresses by file + position. A translator from an LSP location to a glyph is: find the
-  enclosing declaration by `map` on that file, take its glyph. From a glyph to a position: `resolve`.
-  Both directions are mechanical; neither is lossy in the direction that matters, since the glyph
-  never depended on the position.
+- **Loomyard plan cards** today write `shedrecipe.Lookup` — package clause, dot, name. As a glyph
+  that is `internal/shedrecipe#Lookup`: the unit is the directory path, and `#` splits unit from
+  member so no parser needs a package list to tell `pkg.Type.Method` from `pkg.Name`.
+- **Go's own names** (`render.Renderer` in source, `internal/reedengine/render.Renderer` in
+  `go doc`) are not glyphs and are not accepted where a glyph is expected: the `.` there is
+  ambiguous between path, package, type and member, and quarry does not try alternatives.
+- **C# XML documentation IDs** (`M:Loomyard.Engine.Layout.Renderer.Draw(System.Int32)`) solve the
+  same problem for the same reason and differ only in spelling: a kind prefix, fully qualified
+  types, and no unit separator. A C# glyph is the readable form of the same key.
+- **LSP** addresses by file + position. From an LSP location to a glyph: `map` on that file, take
+  the enclosing declaration's glyph. From a glyph to a position: `resolve`. Both directions are
+  mechanical, and the glyph never depended on the position.
