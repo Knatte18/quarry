@@ -125,6 +125,13 @@ func Run(ctx context.Context, opts RunOptions) (exitNonZero bool, err error) {
 		return false, err
 	}
 
+	// Writing here, immediately once the invocation is merged, is what keeps a run that dies
+	// mid-matrix -- even during the memory-path scan or server build below -- leaving its own
+	// invocation on disk.
+	if err := WriteProvenance(opts.ResultsRoot, prov); err != nil {
+		return false, err
+	}
+
 	// A resumed root whose provenance already carries memory-path hashes has its memory paths
 	// scanned before the first new repetition -- a resumed run otherwise skips the very repetition
 	// that would reveal them. A record carrying hashes whose paths file is missing is treated as
@@ -177,12 +184,11 @@ func Run(ctx context.Context, opts RunOptions) (exitNonZero bool, err error) {
 				prov.ServerHashes[repKey(c.ID, rep)] = hash
 			}
 		}
-	}
-
-	// Writing here, before the first repetition, is what keeps a run that dies mid-matrix leaving
-	// its own invocation on disk.
-	if err := WriteProvenance(opts.ResultsRoot, prov); err != nil {
-		return false, err
+		// The server hash was not yet known at the first write above; persist it now so a
+		// crash during the run below still leaves a provenance record naming the built server.
+		if err := WriteProvenance(opts.ResultsRoot, prov); err != nil {
+			return false, err
+		}
 	}
 
 	exitNonZero = false
