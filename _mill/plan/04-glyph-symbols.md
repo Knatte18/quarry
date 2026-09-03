@@ -68,8 +68,12 @@ never modified — it is the one implementation of the grammar.
   emitted key set stays a plain struct with plain tags; say so. `File` is empty — and therefore
   omitted — inside a `toc` answer, where the symbol already sits in its file entry, and is filled by
   the span lookup batch 5 adds and by the later resolve and expand verbs, whose entries do span
-  files. `HeadStart`/`HeadEnd` are JSON-hidden, populated only for `KindType`, and for Go equal the
-  type declaration's own span — for **every** Go type, interfaces included; the doc comment must say
+  files. `HeadStart`/`HeadEnd` are JSON-hidden and populated only for `KindType`. For Go they equal that
+  symbol's **own `Start` and `End`** — the same pair the type symbol already carries, doc block
+  included when one is attached, not the bare declaration node's line range. Cards 26 and 28 set
+  them from exactly that pair, and the later expand verb renders the head from the same range by
+  omitting the lines its member symbols cover, so head and symbol agree on where a type begins.
+  This holds for **every** Go type, interfaces included; the doc comment must say
   that the subtraction of member spans from the head is the consumer's job, not the extractor's,
   which is why one span pair suffices and no discontiguous span type is needed.
 
@@ -247,7 +251,8 @@ never modified — it is the one implementation of the grammar.
   State the bound and its reason in the comment: without it the walk emits owner-less or
   wrongly-owned glyphs, and the round trip — two readings of one walk — cannot catch that.
 
-  The interface type symbol's own `HeadStart`/`HeadEnd` are the type declaration's span, exactly as
+  The interface type symbol's own `HeadStart`/`HeadEnd` are that symbol's own `Start` and `End` —
+  the same pair card 23 fixes and card 26 sets for every other type, doc block included — exactly as
   for a struct: an interface is the one Go type whose declaration contains its own members, so the
   member spans lie inside the head range and the later expand verb renders the head by omitting the
   lines its member symbols cover. Say so where `HeadStart` is set.
@@ -325,13 +330,15 @@ never modified — it is the one implementation of the grammar.
     of the anonymous or embedded cases contributing a symbol.
   - The interface head span: the type symbol's `HeadStart`/`HeadEnd` cover the whole declaration and
     every member symbol's span lies inside that range.
-  - Unspellable units, two cases with different entry points. The bad-rune case is queried from
+  - Unspellable units, two cases with different entry points. Assert only what this batch can
+    reach: the span lookup does not exist until batch 5, so the corresponding "returns nothing"
+    assertion lives in that batch's own test card, not here. The bad-rune case is queried from
     the quarry root as usual: the space-bearing directory's file is listed with its header and
     carries no `symbols`. The empty-unit case cannot be reached that way — from the quarry root
     that file's unit is a perfectly legal path — so the test `Open`s the `testdata/units` directory
     as its **own** repository root and queries `"."`, where the unit genuinely is the empty string:
     the file is listed with its header and carries no `symbols`. Assert in both cases that the
-    entry is otherwise unchanged, and that `SpansOf` returns nothing for any name in either.
+    entry is otherwise unchanged.
 - **Commit:** `test(engine): cover glyph assignment, the widened walk and unspellable units`
 
 ## Batch Tests

@@ -165,7 +165,9 @@ the batch 6 round trip over quarry itself.
   `extensionLanguages`: an entry here gives a file a header, never a language, and never `symbols`.
   Explain in that same comment why the base-name table exists rather than a sentinel key inside the
   extension table — an extensionless file is a real case and a key that reads like an extension and
-  is not one would be a lie.
+  is not one would be a lie. Update the file's own header comment while you are there: it currently
+  claims `LanguageForExtension`, `ExtensionsForLanguage` and `ExtensionLanguages` are "all views
+  over the single map below", which stops being true the moment this card adds two more maps.
 
   Then add the one entry point the walk calls to `headers.go`:
   `HeaderForFile(base string, src []byte) string`. It looks `filepath.Ext(base)` up in

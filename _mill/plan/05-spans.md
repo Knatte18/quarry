@@ -98,8 +98,9 @@ The external interface batch 6 consumes: `SpansOf`, `symbolsOfUnit` and `unitDir
     **Who extends the ignore set, exactly.** The caller hands `symbolsOfUnit` a set carrying the
     repository root's own patterns and nothing below them — `newIgnoreSet(root)` followed by one
     `extend(".")`. For **each** directory `unitDirs` returns, `symbolsOfUnit` then extends that set
-    down the chain from the root to that directory **inclusive**, one `extend` per intervening
-    directory, holding each returned count, and trims them all back in reverse before moving to the
+    down the chain from the **first directory below the root** to that directory **inclusive** —
+    the root itself is already in the set and is never extended a second time — one `extend` per
+    intervening directory, holding each returned count, and trims them all back in reverse before moving to the
     next directory. The target directory's own `.gitignore` is included here — unlike the walk,
     which descends into the target and so lets `walkDir` own that last step; nothing descends here,
     so the last step is `symbolsOfUnit`'s. Doing it per directory rather than once is what makes the
@@ -187,6 +188,10 @@ The external interface batch 6 consumes: `SpansOf`, `symbolsOfUnit` and `unitDir
     parse error surfacing via `errors.As` rather than a silent root-directory answer.
   - The ignore filter: over a `.scratch/` tree whose `.gitignore` excludes one `.go` file beside two
     listed ones, no span from the excluded file is returned.
+  - Unspellable units return nothing: the two fixture cases batch 4 lists — the space-bearing
+    directory queried from the quarry root, and `internal/engine/testdata/units` opened as its own
+    root — yield an empty slice for any name, which is what makes the walk's "no symbols there"
+    and the lookup's "no spans there" one statement rather than two.
 - **Commit:** `test(engine): cover SpansOf, the unit lookup and its validation`
 
 ## Batch Tests
