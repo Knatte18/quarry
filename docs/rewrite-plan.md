@@ -90,7 +90,8 @@ As a glyph that is `internal/shedrecipe#Lookup`: the principle stays, the spelli
 The unit becomes the repository-relative directory instead of the bare package name, which is the price of uniqueness in a large repository,
 and the separator becomes `#`, so the parser splits unit from member without a package list.
 Card types, `Uses` and the derived dependency graph do not change.
-That is task T9 (§12): `planparser` imports `glyph` and drops its own name handling, the validator calls `resolve`, the planner prompt and the format document get the new spelling.
+That is Loomyard work, done in Loomyard's repository once T5 (§12) has merged, and not a task here:
+`planparser` imports `glyph` and drops its own name handling, the validator calls `resolve`, the planner prompt and the format document get the new spelling.
 
 ## 4. One envelope, one entry type at every depth
 
@@ -340,8 +341,8 @@ the unit. Known gaps in the kept extractors:
 2. **The Go facade** (`quarry/` package). The primary consumer is Loomyard's own Go code, never the
    LLM. Typed results, no JSON round-trip, grammars loaded once per process.
 3. **The CLI.** Same queries, JSON out, exit codes for gates. The scripting contract.
-4. **MCP.** A mirror of the CLI for an LLM that has the tools granted. At most four tools (`map`,
-   `resolve`, `members`, and `impact` when it exists). Tool names are verbs, never protocol methods.
+4. **MCP.** A mirror of the CLI for an LLM that has the tools granted, and kept thin:
+   only the tools a ladder cell measures, `map` first. Tool names are verbs, never protocol methods.
 
 ## 8. How Loomyard uses it
 
@@ -427,7 +428,8 @@ before step 8.
 4. **`map`** — the kept toc, re-keyed by glyph, headers and docs complete.
 5. **`members`** — head computation for Python and C#; the Go case falls out of `resolve`.
 6. **Go extractor gaps** (§6): external test packages, `init` as multipart, package doc.
-7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then **MCP** as its mirror.
+7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then a thin **MCP**: only
+   the tools the ladder measures, `map` first.
 8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` (now `map`) must
    reproduce its separation from control. That is the regression gate for the rewrite.
 9. **Python and C#:** their glyph alphabets in `glyph`, the extractor gaps in §6, `members` heads.
@@ -495,6 +497,13 @@ retired with the architecture that needed them.
 - Renaming or editing source. Quarry reads.
 - Compact-by-default. Views are options; extraction is complete.
 
+## 11. Open decisions
+
+- Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
+- C# long parameter lists: whether to cap a method glyph at N types plus a hash, decided only
+  after measuring a real C# repository (`docs/glyph.md` §3).
+- Whether `results/**/raw/` is un-ignored (carried over from `HANDOFF.md` §4).
+
 ## 12. Work breakdown — one mill task per row
 
 Each task gets its own wiki entry, worktree and agent. `after` is the hard dependency; tasks in the
@@ -509,18 +518,15 @@ test ./...` green in its worktree and one merge to `main`.
 | 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers, `language` per file when it differs; `map` in the engine re-keyed by glyph | T1 | `map` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `map` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
 | 3 | **T4 resolve + members** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`), `unit: found|not_found` on a miss, paths without `#` as targets; grouping by unit; `members` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
 | 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `map`, `resolve`, `members` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
-| 5 | **T6 MCP** | `cmd/quarry-mcp` as a mirror of the CLI: three tools, verb names, JSON in `content[].text`, text view on request | T5 | the harness probe of §9a runs against it: connect, `map` call, allowlist denial |
+| 5 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `map` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `members` until a ladder cell measures them | T5 | the harness probe of §9a runs against it: connect, `map` call, allowlist denial |
 | 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir` → `map`) with T2 against T6, reps 5; write `results/<date>-map/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `results/2026-09-02-toc`, or the conclusion says why not |
-| 7 | **T8 Python and C#** | their alphabets in `glyph/`; extractor gaps of §6 (nested classes, attributes, `@overload`, partial, fields, properties, arity, modifiers); `members` heads; package doc sources | T7 | the spec's Python and C# examples resolve on fixtures; the same round trip as T3 over a real Python and a real C# repository, 100 %; C# built-in aliases (`Int32` → `int`) canonicalised by a fixed table |
-| 7 | **T9 Loomyard adoption** (Loomyard repo) | `planparser` imports `glyph`; validator over the facade per §8.1; planner gets the validator as a tool; stencil rule; card done-checks of §8.1 | T5 | a plan with a misspelled glyph is rejected before dispatch, with the glyph and the reason |
-| 8 | **T10 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
+| 7 | **T8 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
 
-Waves 1 and 7 are the parallel ones. T2 is the long pole of wave 1 and overlaps waves 2–5; it
-needs no quarry code until T7. T9 is Loomyard work and can start as soon as T5 merges.
+Wave 1 is the parallel one. T2 is the long pole of wave 1 and overlaps waves 2–5; it
+needs no quarry code until T7.
 
-## 11. Open decisions
-
-- Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
-- C# long parameter lists: whether to cap a method glyph at N types plus a hash, decided only
-  after measuring a real C# repository (`docs/glyph.md` §3).
-- Whether `results/**/raw/` is un-ignored (carried over from `HANDOFF.md` §4).
+**Not tasks yet.** Go only, until T7 has run.
+Python and C# (their alphabets in `glyph/`, the §6 extractor gaps, `members` heads, package doc sources) become tasks after T7;
+their done criterion is the T3 round trip over a real Python and a real C# repository at 100 %,
+with C# built-in aliases (`Int32` → `int`) canonicalised by a fixed table.
+Loomyard's adoption of glyphs (§8) is work in Loomyard's repository after T5 merges, never a task in this one.
