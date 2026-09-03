@@ -76,7 +76,9 @@ batches:
     commit_sha: d6e33b9e857219aef8192281a97138e31df3fce5
     verify_baseline_failures: []
   - name: run-loop
-    state: pending
+    state: running
+    implementer_session: 30a1c6e8-9aba-4f36-ae6e-1e2613063a09
+    start_sha: 80085a215db3c6b362d3f9618804bee5efbfb19f
     verify_baseline_failures: []
   - name: summarize-report-cli
     state: pending
