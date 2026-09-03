@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-environment-and-provenance
+phase: approved-run-loop
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-stream-and-metrics  '2026-09-03T18:44:55Z'
 approved-prompt-and-schema  '2026-09-03T18:50:24Z'
 approved-gates-and-scorer  '2026-09-03T18:58:30Z'
 approved-environment-and-provenance  '2026-09-03T19:06:58Z'
+approved-run-loop  '2026-09-03T19:17:57Z'
 ```
 
 ## Batches
@@ -76,9 +77,10 @@ batches:
     commit_sha: d6e33b9e857219aef8192281a97138e31df3fce5
     verify_baseline_failures: []
   - name: run-loop
-    state: running
+    state: approved
     implementer_session: 30a1c6e8-9aba-4f36-ae6e-1e2613063a09
     start_sha: 80085a215db3c6b362d3f9618804bee5efbfb19f
+    commit_sha: 05d98605d8bd38541a02f5b458415367a7bdb2b0
     verify_baseline_failures: []
   - name: summarize-report-cli
     state: pending
