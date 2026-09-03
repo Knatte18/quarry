@@ -120,3 +120,59 @@ func extractSchemaBlock(text string) (string, error) {
 	}
 	return block, nil
 }
+
+// PARALLEL_OPENING is copied byte-for-byte from the committed preambles the V1 measurement used. The
+// word "parallel" here refers to parallel tool calls within a single turn, not to parallel benchmark
+// arms -- nothing in this text contradicts the harness running one cell at a time.
+const PARALLEL_OPENING = `USE PARALLEL TOOL CALLS. Whenever you have more than one independent thing to
+read or check, issue ALL of those tool calls together in the SAME turn --
+never one at a time across separate turns. This is not optional.`
+
+// PARALLEL_BLOCK is copied byte-for-byte from the committed preambles the V1 measurement used. As
+// with PARALLEL_OPENING, "parallel" here means parallel tool calls within one turn, not parallel
+// arms.
+const PARALLEL_BLOCK = `<use_parallel_tool_calls>
+For maximum efficiency, whenever you need to perform multiple independent
+operations, invoke all relevant tools simultaneously rather than
+sequentially. Prioritize calling tools in parallel whenever possible. For
+example, once you know several independent locations to read or check (e.g.
+a list of caller locations from a single lookup), issue all of those Read or
+Bash calls together in one turn rather than one at a time across separate
+turns -- each turn costs a full round of model latency regardless of how
+fast the underlying tool executes, so batching directly cuts wall-clock and
+token cost. Err on the side of maximizing parallel tool calls rather than
+running too many tools sequentially. Only batch tool calls that are
+independent of each other -- two Read calls at two locations you already
+know about are never dependent on each other.
+</use_parallel_tool_calls>`
+
+// closingSentence is copied byte-for-byte from the committed preambles the V1 measurement used.
+const closingSentence = `When you are completely done, end your final message with ONLY a fenced json
+code block matching the schema below -- no other trailing prose after it.`
+
+// renderBody builds the one preamble body every cell receives identically, naming targetDir and
+// listing toolNames. It carries no preference language, no anti-grep language, and no mention of the
+// arm, the rung, the server, or the word quarry, since a divergent body between arms is exactly the
+// confound this preamble removes.
+func renderBody(targetDir string, toolNames []string) string {
+	return fmt.Sprintf(`You are working on a code task in the codebase at %s. You have access to
+the following tools: %s. Explore as needed to answer thoroughly and
+correctly.`, targetDir, strings.Join(toolNames, ", "))
+}
+
+// RenderPrompt assembles the full prompt string for one cell, in order: PARALLEL_OPENING, the
+// identical body naming targetDir and toolNames, target.TaskText, PARALLEL_BLOCK, closingSentence,
+// and target.SchemaBlock. toolNames is exactly what the caller grants this cell -- the four built-in
+// tools plus any granted MCP tool names -- and RenderPrompt lists what it is given rather than
+// deriving the set itself.
+func RenderPrompt(target TaskContent, targetDir string, toolNames []string) string {
+	sections := []string{
+		PARALLEL_OPENING,
+		renderBody(targetDir, toolNames),
+		target.TaskText,
+		PARALLEL_BLOCK,
+		closingSentence,
+		target.SchemaBlock,
+	}
+	return strings.Join(sections, "\n\n")
+}
