@@ -367,8 +367,9 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   Every `target` argument and every emitted path is repository-relative with forward slashes. The
   `langOverride` parameter on both current entry points is **removed**.
 - Rationale: §4's paths are "relative to the repository root, never absolute", so the root has to be
-  a first-class value the engine holds, and holding it is also where the gitignore pattern set (D9)
-  is cached for the process. The engine does no git discovery and no cwd resolution — that is the
+  a first-class value the engine holds. `Repo` holds the root and nothing else — the gitignore
+  pattern set is read fresh per call, never cached on it (D22). The engine does no git discovery and
+  no cwd resolution — that is the
   CLI's job in T5a, which keeps the engine testable against a fixture directory. `langOverride`
   contradicts §4's "the alphabet is chosen per file, never per repository".
 - Rejected: package-level functions taking a root on every call (the ignore set would be re-read per
@@ -434,6 +435,90 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - Rejected: skipping on a pin mismatch (silently unverifiable done-criterion); committing a fixture
   copy of Loomyard (large, and the round trip is meant to be over a real repository).
 
+### D18 — Ordering is the engine's, and it is lexicographic
+
+- Decision: `DirAnswer.Files` is sorted lexicographically by `Name`; `DirAnswer.Dirs` is sorted
+  lexicographically by `Dir`; `FileEntry.Symbols` is in source order, ascending by `Start`. The
+  engine sorts; the caller never does.
+- Rationale: the current `types.go` says outright that "Ordering is the caller's (internal/cli's)
+  responsibility, not this package's" — and that caller is T5a, out of scope here. §4's examples are
+  alphabetical and the golden tests (Testing 12–13) compare marshalled JSON, so an unpinned order
+  makes the byte-for-byte criterion untestable and a `-update` run would silently freeze whatever
+  order `os.ReadDir` happened to produce on the machine that ran it. Sorting in the engine is also
+  what makes the round trip (Testing 14–15) reproducible.
+- Sorting is by the raw string, `sort.Strings` semantics, with no case folding and no locale — the
+  same rule `TOCDir` already applies to its own two lists.
+- Rejected: leaving it to T5a (the answer would not be reproducible, and T3 is the task whose
+  done-criterion pins the bytes); insertion order from `os.ReadDir` (documented as unspecified).
+
+### D19 — Symlinks are never followed
+
+- Decision: the walk never follows a symlink. A directory entry whose `DirEntry.Type()` has
+  `fs.ModeSymlink` set is emitted as a **file entry carrying `name` alone** — never descended into,
+  never opened, no `header`, no `symbols` — whatever its target is. Detection is on `Type()`, never
+  on `IsDir()`.
+- Rationale: T3 introduces directory recursion for the first time (V1's `TOCDir` never descends), so
+  `--depth all` over a real tree could otherwise loop forever or list one package under two paths,
+  which would break glyph uniqueness — a package reached through a link and through its real path
+  would spell two units for one set of declarations. `os.ReadDir`'s `IsDir()` is false for a
+  symlink-to-directory, so keying on it would silently emit a directory as a *file* entry and read a
+  "header" through the link; keying on `Type()` is what avoids that. Not following also means no
+  visited-set is needed: the walk is finite by construction rather than by bookkeeping.
+- This is live in quarry's own worktree today — `.active`, `.portals` and `.wiki` are directory
+  symlinks — though all three are gitignored (D9) and so never reach this rule. Testing 14's
+  self-round-trip is what would have found it the hard way.
+- Rejected: following with a visited set (admits the same package under two units, and the answer
+  then depends on which path was walked first); omitting symlinks entirely (§4's question is whether
+  a file is worth opening, and hiding a tree member answers it wrongly).
+
+### D20 — `target` validation and the error vocabulary
+
+- Decision: `TOC`'s `target` is a repository-relative, slash-separated path. Validation, in order:
+  1. an absolute path, or one that leaves the root once cleaned (any leading `..`) →
+     `ErrTargetOutsideRepo`;
+  2. a path that does not exist under the root → `ErrTargetNotFound`;
+  3. otherwise it is answered, **even when it is gitignored** — the ignore rule filters *listings*,
+     never an explicit ask.
+
+  Both are package-level sentinels wrapped with `fmt.Errorf("...: %w", …)`, so `errors.Is` survives
+  wrapping. `""` and `"."` both mean the repository root and are valid.
+- Rationale: T5a's `ok`/`status` and exit codes map exactly this vocabulary, and the discussion's own
+  position is that T3 pins the envelope's shape — pinning only its success half would hand the
+  failure half to a later task with nothing to build on. Answering a gitignored explicit target is
+  the honest reading of §4: the filter exists so a listing is not noise, not to make a file
+  unaddressable.
+- Rejected: a single opaque error (T5a cannot map it to a status without string matching); refusing a
+  gitignored target (`resolve`/`toc` on a real file would then fail for a reason the caller cannot
+  see from the path).
+
+### D21 — `ErrLanguageUnsupported` survives, with exactly one caller
+
+- Decision: keep the sentinel, and make `SpansOf` its only caller — `SpansOf(g)` with
+  `g.Lang != glyph.Go` returns it. Both of its current triggers are gone: D10 lists every file
+  regardless of language, so an unmapped extension is no longer an error, and D15 deletes
+  `langOverride`, so a language can no longer be requested. Its doc comment is rewritten to say so.
+- Rationale: the sentinel would otherwise be dead code or, worse, silently repurposed. `SpansOf` is a
+  real remaining trigger: a `glyph.Glyph` is a struct a caller can build by hand with any `Lang`, so
+  the engine needs a defined answer for a language it has no extractor for, and T4's `resolve`
+  inherits it.
+- Rejected: deleting it (T4 would reintroduce it under a different name); keeping it for the
+  extension case (that case is no longer an error).
+
+### D22 — Nothing is cached, including the ignore set
+
+- Decision: `Repo` holds the root and nothing else. The `.gitignore` pattern set is collected fresh
+  on each `TOC` and `SpansOf` call — once per call, walking root-to-target, not once per directory
+  visited — and discarded when the call returns.
+- Rationale: this closes a contradiction with the Constraints ("No cache, index, daemon or
+  concurrency in the engine … Every answer reads source as it is at that moment"). It is not
+  pedantry: T6's MCP server is a long-lived process, so a process-lifetime pattern set would go stale
+  the moment a `.gitignore` is edited under it, and the resulting wrong file list would be
+  indistinguishable from a bug in the walk. §5's measurements say nothing on quarry's side is worth
+  optimising yet, and reading a handful of small files per call is far below the tree-sitter cost
+  that dominates.
+- Rejected: caching for the process lifetime (stale under T6); caching with an mtime check (that is
+  the phase-1 cache §10 forbids, arriving early under another name).
+
 ## Technical context
 
 **What exists on `main` and what it becomes.**
@@ -443,7 +528,8 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 | `internal/quarryengine/{doc,errors,cgoguard,cgoguard_nocgo}.go` | `internal/engine/{doc,errors}.go`; the guard pair → `internal/cgoguard/` (D2) |
 | `internal/quarryengine/toc/types.go` | `internal/engine/answer.go`, rewritten per D3 / D12 |
 | `internal/quarryengine/toc/toc.go` | `internal/engine/toc.go` + `walk.go` + `repo.go`, rewritten per D13 / D15 |
-| `internal/quarryengine/toc/strategy.go` | `internal/engine/strategy.go`; `Strategy` gains `PackageDoc(root, src) string` and its `Symbols` gains the unit so it can build glyphs |
+| `internal/quarryengine/toc/strategy.go` | `internal/engine/strategy.go`; `Strategy` gains `PackageDoc(root, src) string`, its `Symbols` gains the unit so it can build glyphs, and `Generated`/`TestFile` lose their `known` return (see below) |
+| `internal/quarryengine/toc/doc.go` | folded into `internal/engine/doc.go` — the package comment merges with the root one, minus the sentence-boundary rule D14 deletes |
 | `internal/quarryengine/toc/golang.go` | `internal/engine/golang.go`, widened per D5, gaining `PackageDoc` per D8 |
 | `internal/quarryengine/toc/nodes.go` | `internal/engine/nodes.go`, mostly unchanged — reuse it |
 | `internal/quarryengine/toc/comments.go` | folded into `internal/engine/text.go` with `FirstParagraph` |
@@ -451,6 +537,15 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 | `internal/quarryengine/toc/extension.go` | `internal/engine/extension.go` + the header-rule table (D10) |
 | `internal/quarryengine/toc/{compact,sentences}.go` | deleted, except `FirstParagraph` (D14) |
 | `internal/quarryengine/treesitter/` | `internal/engine/treesitter/`, gaining the cgoguard blank import (D2) |
+
+**The `known` returns are dropped from `Strategy`.** `Generated(root, src) (generated, known bool)`
+and `TestFile(base) (isTest, known bool)` become `Generated(root, src) bool` and
+`TestFile(base) bool`. The `known` half existed only to feed D12's `*bool` fields, which D12 removes:
+its whole job was to distinguish "this language has no rule" from "no", and with Go the only language
+and both Go rules always known, it has no consumer left. `classify.go`'s `TestFileByName` and
+`GeneratedByBanner` keep their two-value signatures — they are the shared per-language table and a
+future language with no rule still needs to say so there — and the Go strategy simply discards the
+second value. A second language reintroduces the field and the return together, against a real case.
 
 **Helpers to reuse rather than rewrite.** `nodes.go` is the load-bearing file and its rules are
 already correct against the byte-for-byte target:
@@ -500,7 +595,9 @@ gate.
 - The engine never re-implements the glyph grammar: parsing, printing and canonicalisation are
   `glyph`'s alone.
 - No cache, index, daemon or concurrency in the engine (§5, §10). Every answer reads source as it is
-  at that moment.
+  at that moment — and the gitignore pattern set is source for this purpose, so it too is read fresh
+  per call (D22). `Repo` holds the root and nothing else.
+- The walk never follows a symlink (D19), so it is finite by construction.
 - The emitted key set is §4's and is closed. The two additions (`lossy`, `error`) are failure keys,
   absent on the happy path, so §4's examples still reproduce byte for byte.
 - `go build ./... && go test ./...` green, and one merge to `main`.
@@ -539,8 +636,18 @@ gate.
    answer. Assert the *marshalled JSON*, so `omitempty` on `dirs`, `test` and `generated` is pinned.
 10. Failure entries: an unreadable file, an invalid-UTF-8 file, a file the grammar reports an error
     on → `error` / `lossy` set and mutually exclusive, and the file still listed, never skipped.
-11. `SpansOf` (D16): a hit, a miss (empty slice, no error), an external-test unit, and a glyph whose
-    unit directory does not exist.
+11. `SpansOf` (D16): a hit, a miss (empty slice, no error), an external-test unit, a glyph whose unit
+    directory does not exist, a fixture with a directory literally named `foo_test/` (literal-first
+    wins), the both-exist collision (union returned, collision recorded), and a non-Go `Lang`
+    (`ErrLanguageUnsupported`, D21).
+11a. Ordering (D18): a fixture directory whose `os.ReadDir` order is not lexicographic — assert
+    `files` and `dirs` come back sorted and symbols come back in source order.
+11b. Symlinks (D19): a fixture with a symlink to a directory, a symlink to a file, and a symlink
+    cycle (`a/ → b/ → a/`); assert each is a `name`-only file entry, that `--depth all` terminates,
+    and that nothing behind a link is ever listed or parsed.
+11c. Target validation (D20): an absolute target, a `..`-escaping target, a nonexistent target
+    (each its own sentinel via `errors.Is`), a gitignored target (answered, not refused), and `""`
+    and `"."` both meaning the root.
 
 **Golden tests against Loomyard** (env-gated per D17):
 
@@ -567,6 +674,15 @@ gate.
 types rather than rewriting them. `compact_test.go` and `sentences_test.go`'s `FirstSentences` cases
 are deleted with their subjects (D14); `sentences_test.go`'s `FirstParagraph` cases move to
 `text_test.go`. `treesitter_test.go` is unchanged apart from its import path.
+
+`toc_integration_test.go` is **ported, not deleted**: its value is that it runs the pipeline against
+real repository source nobody wrote to satisfy this package's tests, and that value survives intact.
+Every one of its couplings breaks, so all three are updated together — `TOCFile(path, "",
+Options{DocSentences: 1})` becomes `Repo.TOC` on a file target (D13/D15), the hard-coded
+`internal/quarryengine/treesitter/treesitter.go` becomes `internal/engine/treesitter/treesitter.go`
+(D1), and the four-`filepath.Dir` climb from `runtime.Caller(0)` becomes three, since the test file
+moves up one directory level. Its loose assertions on symbol names, kinds and range ordering stay
+loose, for the reason its own comment gives.
 
 **Gate.** `CGO_ENABLED=1 go build ./... && go test ./...`, plus `go vet ./...` and `go mod tidy`
 leaving no diff.
