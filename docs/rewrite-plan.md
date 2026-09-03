@@ -274,12 +274,15 @@ keyed on (path, mtime, size) per file and parses only what changed.
 
 ## 6. Languages
 
-Go, Python, C#. Not five. Each language's extractor must deliver, per symbol: kind, name, owner
-chain, signature, doc, start/sigend/end, and the unit. Known gaps in the kept
-extractors, all phase 1:
+Go, Python, C#. Not five. **Go is phase 1.** Python and C# are specified in `docs/glyph.md` so the
+form is known to hold, their extractors stay in the tree, and their glyph alphabets, `members`
+heads and the gaps below are implemented after the Go surface is measured (§9). Each language's
+extractor must deliver, per symbol: kind, name, owner chain, signature, doc, start/sigend/end, and
+the unit. Known gaps in the kept extractors:
 
 | language | gap today | needed for |
 |---|---|---|
+| Go | external test package (`logger_test`) not distinguished from the package; several `init` must resolve `multipart` | unit identity, `resolve` |
 | Python | nested classes dropped (`Beta.Inner` and its methods absent; `Owner` is one level) | glyph uniqueness, `members` |
 | Python | class-level attributes are not symbols | the type head in `members` |
 | C# | `partial` not recognised (the word `partial` in toc today means "lossy parse" — rename that field) | multipart resolution |
@@ -349,18 +352,20 @@ Each step is one commit that builds and tests green on its own. The harness rewr
 section, to come) lands before step 8.
 
 1. **Delete** (§2). `go build ./... && go test ./...` green on what remains.
-2. **The `glyph` package** — pure Go, no cgo, no dependencies: parser, printer, per-language
-   alphabets, tests, per `docs/glyph.md`. Then `Symbol` gains its glyph, the owner chain, the head
+2. **The `glyph` package** — pure Go, no cgo, no dependencies: parser, printer, the Go alphabet,
+   tests, per `docs/glyph.md`; the structural split at `#` already accepts the other two. Then `Symbol` gains its glyph, the owner chain, the head
    span, and the unit walk (directory → Go unit; source root → Python module; namespace → C#).
 3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on fixtures for
    all three languages.
 4. **`map`** — the kept toc, re-keyed by glyph, headers and docs complete.
 5. **`members`** — head computation for Python and C#; the Go case falls out of `resolve`.
-6. **Extractor gaps** (§6): Python nested classes and attributes, C# partial, fields, properties.
+6. **Go extractor gaps** (§6): external test packages, `init` as multipart, package doc.
 7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then **MCP** as its mirror.
 8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` (now `map`) must
    reproduce its separation from control. That is the regression gate for the rewrite.
-9. **Phase 2 decision:** the type checker. Then `impact` and the full `assert-no-callers`.
+9. **Python and C#:** their glyph alphabets in `glyph`, the extractor gaps in §6, `members` heads.
+   Designed now, coded after 8.
+10. **Phase 2 decision:** the type checker. Then `impact` and the full `assert-no-callers`.
 
 ## 10. Non-goals
 

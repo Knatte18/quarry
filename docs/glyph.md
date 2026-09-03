@@ -8,6 +8,9 @@ stone, which is where quarry's names come from.
 This document is the contract. `docs/rewrite-plan.md` says how quarry implements it; Loomyard's plan
 format adopts it for card targets. Anything not stated here is not part of the contract.
 
+Go is implemented first. The Python and C# alphabets are specified here so the form is known to
+hold for them, and are implemented later (`docs/rewrite-plan.md` §9).
+
 ## 1. One form, three alphabets
 
 ```
@@ -47,6 +50,19 @@ Unique by construction in each language: two Go directories cannot share a path,
 modules cannot share a dotted path, and C# types are unique within a namespace by the compiler's
 rules. Nothing is enforced by quarry and nothing depends on a repository's naming discipline.
 
+Unit corner cases:
+
+- **Go, external test package.** `package logger_test` shares the directory with `package logger`
+  and is a second unit. Its unit name is the directory path with `_test` appended,
+  `internal/logger_test`, the pseudo-path `go doc` and gopls already use. `_test.go` files in the
+  package itself belong to the package's own unit.
+- **Python, the source root.** The nearest ancestor directory that is not itself a package (has no
+  `__init__.py`); `src/`-layout and flat-layout repositories both satisfy this. *Open:* namespace
+  packages without `__init__.py` (PEP 420) defeat the rule; a repository using them needs the root
+  declared, which is the one case where a glyph would depend on something outside the source.
+- **C#, the global namespace.** A type declared outside any namespace has the unit `global`, as in
+  C#'s own `global::`.
+
 The price is that a Go glyph carries `internal/` where Go's own name does. Shorter schemes were
 considered and rejected, each for the same reason — the glyph would change without the symbol
 changing:
@@ -69,19 +85,34 @@ first, joined with `.`.
 interface method. The receiver type is half the key — `dualHandler.Handle` and
 `durableHandler.Handle` are two glyphs — and whether it is a pointer receiver is not part of it.
 Go has no nesting and no overloading, so a member never has more than one `.` and never has
-parentheses. Type parameters are not part of a glyph: `Box[T]` is `Box`.
+parentheses. Type parameters are not part of a glyph: `Box[T]` is `Box` (Go does not allow `Box`
+and `Box[T]` to coexist). `func init()` may occur many times per package and Go gives them no
+individual identity, only an order: `internal/logger#init` is one glyph, and with several `init`
+functions it resolves `multipart`, every one returned in run order (file order, then line).
 
 **Python.** `name` for a module-level `def` or `class`; `Class.name` for a method; nested classes
-chain, `Beta.Inner.handle`. No overloading, so no parentheses.
+chain, `Beta.Inner.handle`. No overloading, so no parentheses. A `def` decorated with
+`@typing.overload` is a typing declaration of the implementation that follows it, not a second
+symbol: the stubs have no glyph and the undecorated implementation is the symbol. Any other
+redefinition of a name in one scope is `ambiguous`.
 
-**C#.** `Type.Name` for members, nested types chain, `Outer.Inner.Name`. Type parameters are not
-part of a glyph: `List<T>` is `List`. **A method or constructor always carries its parameter
-types**, in parentheses, comma-separated, no spaces, as written in the declaration:
-`Renderer.Draw(int)`, `Renderer.Draw(int,string)`, `Renderer.Draw()`, `Renderer.Renderer(Box)` for
-a constructor. Parameter *names* are never included; type names are never qualified beyond how
-the source writes them (`int`, not `System.Int32`; `List<Pane>`, not
-`System.Collections.Generic.List<Pane>`). Properties, fields, events and types have no
-parentheses, since they cannot be overloaded.
+**C#.** `Type.Name` for members, nested types chain, `Outer.Inner.Name`. **A method or
+constructor always carries its parameter types**, in parentheses, comma-separated, no spaces, as
+written in the declaration: `Renderer.Draw(int)`, `Renderer.Draw(int,string)`, `Renderer.Draw()`,
+`Renderer.Renderer(Box)` for a constructor. Parameter *names* and default values are never
+included; parameter modifiers are, since they distinguish overloads: `Draw(ref int)`,
+`Draw(out Box)`, `Draw(params string[])`. Type names are never qualified beyond how the source
+writes them (`int`, not `System.Int32`; `List<Pane>`, not `System.Collections.Generic.List<Pane>`).
+Properties, fields, events and types have no parentheses, since they cannot be overloaded.
+
+Generic arity is part of the name, because `Foo`, `Foo<T>` and `Foo<T,U>` are three types in one
+namespace. It is written the way C#'s own `typeof` writes an open generic type — commas only, no
+parameter names: `List<>`, `Dictionary<,>`, and `Draw<>(T)` for a generic method, whose parameter
+types are written as declared. The other members C# can declare are spelled as C# spells them:
+an indexer `Renderer.this[int]`, an operator `Box.operator +(Box,Box)`, a finalizer
+`Renderer.~Renderer()`. *Known:* an explicit interface implementation, `void ILayout.Draw(int)`
+inside `Renderer`, yields `Renderer.ILayout.Draw(int)`, which reads like a nested type; only
+resolution tells the two apart.
 
 The parentheses are always present, not only when an overload exists, because a name-only glyph
 would stop being unique the day someone else adds an overload — and then nothing says which of the
@@ -101,7 +132,7 @@ Which declarations get a glyph:
 |---|---|---|
 | Go | package-level `func`, `type`, `const`, `var`; methods; interface methods | struct fields, local declarations |
 | Python | module-level `def` and `class`; methods; nested classes | attributes, local functions |
-| C# | types (incl. nested), methods, constructors, properties, fields, events | locals, lambdas |
+| C# | types (incl. nested), methods, constructors, properties, fields, events, indexers, operators | locals, lambdas |
 
 ## 4. What a glyph does not carry
 
@@ -125,7 +156,7 @@ match. Results are ordered by file and then by start line, so the answer is dete
 | status | meaning |
 |---|---|
 | `found` | exactly one declaration |
-| `multipart` | one symbol the language lets be declared in several places: a C# `partial` type or partial method. Every part is returned. Go and Python never produce this |
+| `multipart` | one symbol the language lets be declared in several places: Go `init`, a C# `partial` type or partial method. Every part is returned. Python never produces this |
 | `ambiguous` | several *different* declarations match: Go build-tag duplicates, a Python name defined twice in one module. The candidates are returned, with their files; nothing is chosen |
 | `not_found` | no declaration matches. A C# method glyph without parentheses is `not_found`, not "all overloads" |
 
