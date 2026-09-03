@@ -92,9 +92,12 @@ is the part `report` depends on and the part a killed run must survive.
   and refuse immediately when an existing record's effective repetition count differs from this
   invocation's; call the invocation collector once, merge its result into the record and write the
   record, so a run that dies mid-matrix still leaves its own invocation on disk; when the existing
-  record already carries memory paths, scan them **before the first
-  new repetition** and abort on a fatal finding, because a resumed run skips the very repetition
-  that would otherwise reveal them; build the server once when and only when a selected cell has a
+  record already carries memory-path hashes, read the paths back from `raw/memory-paths.json` and
+  scan them **before the first
+  new repetition**, aborting on a fatal finding, because a resumed run skips the very repetition
+  that would otherwise reveal them; a record carrying hashes whose paths file is missing is treated
+  as unknown and re-derived from the next completed repetition exactly as a fresh root would, never
+  assumed clean; build the server once when and only when a selected cell has a
   non-empty allowed list, recording its hash into the record for every cell-and-repetition pair it
   serves.
   The loop is strictly sequential and **cell-minor**: repetition 1 of every selected cell, then
@@ -116,9 +119,11 @@ is the part `report` depends on and the part a killed run must survive.
   Then, in this write order with the state file last: parse the transcript; compute the metrics with
   the prefix from the loaded file and stamp the effort the harness passed, since the CLI does not
   echo it; on the first completed repetition of a fresh root, take the memory paths from the
-  session-init record, persist them into the provenance record at that moment rather than at the end
-  of the run, and scan them, discarding the repetition exactly like a blinding failure when tainted
-  and aborting the run; run gate 2 for a control cell over the whole marshalled transcript; extract
+  session-init record, write the paths themselves to `raw/memory-paths.json` inside the results
+  root's untracked raw tree and their hashes into the provenance record — at that moment rather than
+  at the end of the run, so a kill cannot lose them — and scan them, discarding the repetition
+  exactly like a blinding failure when tainted
+  and aborting the run; write this repetition's session fingerprint into the provenance record; run gate 2 for a control cell over the whole marshalled transcript; extract
   the answer as the **last** fenced JSON block of the final assistant record's concatenated text and
   decode it, with no schema-key validation; redact it and dispatch the scorer; write the six files
   the overview's the-six-per-repetition-filenames decision names, in that order — `transcript.jsonl`

@@ -1,0 +1,58 @@
+MILL_REVIEW_BEGIN
+# Review: Ladder harness around headless claude -p (T2) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: Claude Opus 5 (opus-5, high reasoning effort)
+reviewed_file: plan/
+date: 2026-09-03
+```
+
+## Findings
+
+### [BLOCKING:consistency] provenance.json can carry absolute host paths
+**Location:** batch 5 / card 23 (+ card 26, card 24)
+**Issue:** `provenance.json` sits at the results root, which the `.gitignore` decision leaves tracked (only `results/*/raw/` is ignored), yet card 23 stores `memory_paths` as the paths lifted from the session-init record — real CLI memory paths are absolute host paths — and `ladder_file`, fed from an operator `--config` that may be absolute; this directly violates the overview's no-machine-paths-in-tracked-output decision, and card 24 even asserts "a record round-trips through JSON with no absolute path in the output", which production data would falsify.
+**Fix:** state a disposition for both fields (base name, repo-relative form or hash, as the decision does for `loomyard_repo_sha256`) and make card 24's assertion match it.
+
+### [BLOCKING:decision] Six Provenance fields have no producer
+**Location:** batch 5 / card 23 (+ card 26)
+**Issue:** `MergeProvenance` derives top-level fields "from the invocation list", but `Invocation` carries no `ladder_file`, `loomyard_commit`, `loomyard_repo_sha256`, `quarry_dirty_files`, `server_name` or `session_fingerprints`; `CollectInvocation` is told to gather the target commit, the repo sha256 and the dirty-file list yet returns a struct with nowhere to put them, and no card in batch 5 or 6 says who records a rep's `SessionFingerprint` — even though `CompareFingerprints` exists and card 29's table prints its observations.
+**Fix:** name the producer and the carrier for each of the six fields (extend `Invocation`, or state that the run loop writes them into the record directly, as it already does for memory paths and server hashes).
+
+### [BLOCKING:design] BlindingInput omits the server name check (d) requires
+**Location:** batch 4 / card 16 (+ card 19)
+**Issue:** check (d) must reject a control prompt containing "the server name", but `BlindingInput`'s enumerated fields are only `MCPPrefix`, `QuarryRepoRoot` and the two booleans, and the batch's own scope list of explicit arguments omits the server name too — card 17's `RedactionInput` carries it separately from the prefix, so re-deriving it from the prefix is not the plan's own convention; card 19 also has no server-name case for check (d).
+**Fix:** add the server name to `BlindingInput` (or to check (d)'s signature) and add the corresponding test case.
+
+### [BLOCKING:scope] Card 35 hand-authors provenance.json without provenance.go
+**Location:** batch 8 / card 35
+**Issue:** the card creates `testdata/results/root/provenance.json` and requires it to carry the selected cells, the effective rep count and the CLI version the table header prints, but `provenance.go` — the only place those `json` tags are declared — is not in `Context:`, so the fixture's key spellings would be guessed.
+**Fix:** add `bench/loomyard-eval/ladder/internal/ladder/provenance.go` to card 35's `Context:`.
+
+### [BLOCKING:scope] Card 28 computes gate 1 without config.go in Context
+**Location:** batch 7 / card 28
+**Issue:** `CheckGrantedToolUsed(cfg Config, perRepQuarryToolUses []int)` takes a `Config`, and card 28 must synthesise one from run-state fields because it deliberately never loads the ladder file, but `config.go` — where `Config`'s fields are declared — is absent from its `Context:`.
+**Fix:** add `config.go` to card 28's `Context:`, or state that gate 1 is called with the cell id and allowed list rather than a `Config`.
+
+### [NIT:decision] Root-level output filenames never fixed
+**Location:** batch 7 / cards 28–29 (+ card 23, card 35)
+**Issue:** the six per-rep filenames are pinned as constants in card 25, but `summary.json`, `table.txt` and `provenance.json` exist only as prose ("the summary file at the results root"), which is the exact drift the six-filenames decision was written to prevent.
+**Fix:** pin the three root-level names as package-level constants in the card that first writes each.
+
+### [NIT:consistency] A third matching class appears in card 20
+**Location:** batch 5 / card 20 (+ batch 1 / card 2)
+**Issue:** card 2 declares "the two, and only the two" matching classes and its doc comment assigns "a worktree path" to the case-sensitive substring form, while card 20's worktree-root assertion requires a *case-insensitive* substring test for `quarry` (card 24 asserts `Quarry` in any casing is refused).
+**Fix:** either add the case-insensitive substring form to `match.go` with the same one-place rationale, or amend card 2's doc-comment wording so the worktree-root assertion is not described as the composed-string case.
+
+### [NIT:decision] ScanMemoryPaths has no stated missing-directory behaviour
+**Location:** batch 5 / card 23 (+ card 24)
+**Issue:** card 24 asserts "a directory that does not exist is reported rather than silently treated as clean", but card 23 never says whether that is an `error` or a `*Finding`, and the function returns both.
+**Fix:** state which of the two return channels carries the missing-directory case.
+
+## Verdict
+
+REQUEST_CHANGES
+Provenance record is under-specified and leaks host paths; two context lists incomplete.
+MILL_REVIEW_END

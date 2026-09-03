@@ -34,6 +34,7 @@ accounting fix cost a re-report rather than a re-run.
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
   - `bench/loomyard-eval/ladder/internal/ladder/score.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/config.go`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
@@ -84,7 +85,13 @@ accounting fix cost a re-report rather than a re-run.
   from `origin/v1-final:bench/loomyard-eval/ladder/internal/ladder/summarize.go` unchanged in
   substance — a comparison holds between a rung cell and its own ladder letter's control, and
   disjointness is non-overlapping minimum-maximum ranges, with no significance testing. Compute gate
-  1 per cell from the recomputed prefixed-tool-use counts. Do not exclude grep metrics from
+  1 per cell by calling `CheckGrantedToolUsed` with a `Config` value synthesised from the run-state
+  fields — the cell id, the ladder letter, the task id and the allowed list, which is every field
+  gate 1 reads — and the recomputed prefixed-tool-use counts. Synthesising it is what lets the
+  summariser call the same gate the run never calls while still never loading the ladder file.
+  `WriteSummary` writes to the name held by a package-level constant declared in this file,
+  `SummaryFile = "summary.json"`, the single spelling of that name, matching how card 23 pins the
+  provenance file's name and card 29 the table's. Do not exclude grep metrics from
   comparison: V1 had to because its two arms were given different steering, and this harness renders
   one preamble for every cell. `WriteSummary(resultsRoot string, s *Summary) error` writes the
   summary file at the results root.
@@ -117,8 +124,11 @@ accounting fix cost a re-report rather than a re-run.
   is non-zero, and when gate 1 fired. Below the rows, print each gate-1 finding verbatim, each
   comparison and its disjointness verdict, the incomplete list, the invalid list, any server-hash
   drift warning and any session-fingerprint drift observations. Use fixed-width column formatting;
-  do not depend on a table library. Both subcommands print this string to standard output and write
-  it to the results root's table file, so the printed and the written table are the same bytes.
+  do not depend on a table library. Declare `TableFile = "table.txt"` as a package-level constant in
+  this file, the single spelling of that name, matching how card 23 pins the provenance file's name
+  and card 28 the summary's; `WriteTable` writes to it. Both subcommands print this string to
+  standard output and write it to that file at the results root, so the printed and the written
+  table are the same bytes.
 - **Commit:** `feat(ladder): render the per-cell table with the cache caveat header`
 
 ### Card 30: the two-subcommand binary
