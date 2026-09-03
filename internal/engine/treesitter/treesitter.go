@@ -1,6 +1,6 @@
-// treesitter.go is the parsing backend for the toc verbs: grammar loading, parser construction,
-// and nothing else. It is the only place in the tree that constructs a *ts.Parser or a *ts.Tree —
-// every other package that needs a parse tree goes through WithTree.
+// treesitter.go is the parsing backend for the engine package: grammar loading, parser
+// construction, and nothing else. It is the only place in the tree that constructs a *ts.Parser or
+// a *ts.Tree — every other package that needs a parse tree goes through WithTree.
 
 // Package treesitter wraps the tree-sitter C bindings behind a single parse-and-release seam,
 // WithTree. It resolves a canonical language name to its compiled grammar, builds the parser and
@@ -17,6 +17,11 @@ import (
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 	tsgo "github.com/tree-sitter/tree-sitter-go/bindings/go"
+
+	// Blank-imported so cgoguard is a build-graph dependency of every package that links
+	// tree-sitter: this makes the CGO_ENABLED=0 guard fire before this package's own cgo imports
+	// would otherwise hit the raw linker error.
+	_ "github.com/Knatte18/quarry/internal/cgoguard"
 )
 
 // grammars maps each canonical language name this package wires to the unsafe.Pointer its grammar
