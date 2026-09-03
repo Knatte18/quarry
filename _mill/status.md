@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r4  '2026-09-03T18:15:39Z'
 discussed  '2026-09-03T18:29:51Z'
 planning  '2026-09-03T18:44:33Z'
 plan-review-r1  '2026-09-03T18:50:54Z'
+plan-fix-r1  '2026-09-03T18:53:45Z'
 ```

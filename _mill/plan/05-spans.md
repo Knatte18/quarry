@@ -11,7 +11,7 @@ depends-on: [4]
 
 ## Batch Scope
 
-This batch adds the internal span lookup (D16): the inverse of the walk, from a glyph back to the
+This batch adds the internal span lookup: the inverse of the walk, from a glyph back to the
 declarations it names. It is what makes batch 6's round-trip criterion checkable, and it is the seam
 the later `resolve` and `expand` verbs are built on — which is why it lives in `resolve.go`, the file
 those verbs will grow, rather than in a file they would have to move.

@@ -12,8 +12,8 @@ depends-on: [5]
 ## Batch Scope
 
 This batch is the task's done-criterion made runnable: the byte-for-byte goldens against the real
-repository plan §4's examples were taken from (D17), and the round trip that asserts, per glyph,
-that what `toc` listed and what `SpansOf` returns are the same set of spans (D6, D16). It adds no
+repository plan §4's examples were taken from, and the round trip that asserts, per glyph,
+that what `toc` listed and what `SpansOf` returns are the same set of spans. It adds no
 production rule; if a golden or a round trip fails, the defect is in an earlier batch and is fixed
 there.
 
@@ -114,6 +114,7 @@ leaving no diff, which drops the two unused indirect grammar requirements.
   - `internal/engine/repo.go`
   - `internal/engine/answer.go`
   - `internal/engine/walk.go`
+  - `internal/engine/ignore.go`
   - `glyph/glyph.go`
 - **Edits:** none
 - **Creates:**
@@ -126,6 +127,13 @@ leaving no diff, which drops the two unused indirect grammar requirements.
   unit**, and for each unit call `symbolsOfUnit` **once**; then assert, per glyph, that the set of
   `(File, Start, SigEnd, End)` tuples the lookup returned equals the set the walk listed. Zero
   misses, zero extras.
+
+  The walk side has no `File` of its own to compare — a symbol inside a `toc` answer leaves that
+  field empty on purpose, because it already sits inside its file entry. Compose it for the
+  comparison instead: forward-slash join the enclosing `DirAnswer.Dir` with the `FileEntry.Name`,
+  with the root's `"."` contributing no prefix, and use that as the tuple's first element. Without
+  this composition the two sets can never be equal and the criterion is unsatisfiable rather than
+  merely failing.
 
   Grouping by unit is required rather than an optimisation, and the comment must say so: a per-glyph
   lookup re-parses the whole unit directory for every glyph in it, nothing is cached, and the
@@ -143,6 +151,7 @@ leaving no diff, which drops the two unused indirect grammar requirements.
   - `internal/engine/toc.go`
   - `internal/engine/resolve.go`
   - `internal/engine/answer.go`
+  - `internal/engine/ignore.go`
   - `glyph/glyph.go`
   - `glyph/parse.go`
 - **Edits:**

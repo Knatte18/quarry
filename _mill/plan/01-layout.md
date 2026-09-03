@@ -22,8 +22,8 @@ For each `Moves:` pair the implementer MUST:
 
 ## Batch Scope
 
-This batch settles the package layout (D1, D2) and removes the two features the rewrite deletes
-outright (D14), with **no change to any extraction rule**. After it, `internal/quarryengine` and its
+This batch settles the package layout and removes the two features the rewrite deletes
+outright, with **no change to any extraction rule**. After it, `internal/quarryengine` and its
 `toc` subpackage are gone; there is one package `internal/engine`, one subpackage
 `internal/engine/treesitter`, and a new dependency-only package `internal/cgoguard`. `TOCFile` and
 `TOCDir` still exist with their current behaviour minus the doc-sentence option, and every ported
@@ -85,7 +85,7 @@ discussion says its `FirstParagraph` cases move to `text_test.go`, but on disk t
 ### Card 3: The engine root files move and the two package comments merge
 
 - **Context:**
-  - `internal/quarryengine/toc/sentences.go`
+  - `internal/quarryengine/toc/doc.go`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:**
@@ -146,7 +146,13 @@ discussion says its `FirstParagraph` cases move to `text_test.go`, but on disk t
   - `internal/quarryengine/toc/comments_test.go` -> `internal/engine/text_test.go`
   - `internal/quarryengine/toc/extension_test.go` -> `internal/engine/extension_test.go`
   - `internal/quarryengine/toc/toc_integration_test.go` -> `internal/engine/toc_integration_test.go`
-- **Requirements:** Change every moved test file's package clause to `package engine`. In
+- **Requirements:** Change every moved test file's package clause to `package engine`. Retarget the
+  imports the moves invalidate: `toc_test.go` imports both
+  `"github.com/Knatte18/quarry/internal/quarryengine"` and
+  `"github.com/Knatte18/quarry/internal/quarryengine/treesitter"`, and `golang_test.go` imports the
+  latter — neither package path exists after cards 2 and 3. Drop the first import from
+  `toc_test.go` and refer to `ErrLanguageUnsupported` unqualified at its one use site; change the
+  second to `"github.com/Knatte18/quarry/internal/engine/treesitter"` in both files. In
   `toc_integration_test.go`: the module-root climb from `runtime.Caller(0)` is now
   three `filepath.Dir` calls rather than four, because the file moved up one directory level; the
   target path becomes `internal`, `engine`, `treesitter`, `treesitter.go`; and the header comment's
