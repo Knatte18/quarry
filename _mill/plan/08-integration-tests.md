@@ -144,6 +144,7 @@ its own `package main`.
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/provenance.json`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/transcript.jsonl`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/answer.json`
+  - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/answer.redacted.json`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/score.json`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/run.json`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/2/transcript.jsonl`
@@ -154,12 +155,17 @@ its own `package main`.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** commit a complete raw tree for one control cell and two repetitions and **no
-  summary file**: repetition 1 is an ordinary scored run, repetition 2 hit the turn ceiling, so it
-  carries no answer file and a score record whose scored flag is false with the max-turns reason.
+  summary file**: repetition 1 is an ordinary scored run, carrying its answer and the redacted answer
+  the scorer saw; repetition 2 hit the turn ceiling, so it
+  carries neither answer file and a score record whose scored flag is false with the max-turns
+  reason — the absence of both answer files there is what a ceiling repetition looks like, not an
+  omission.
   Neither transcript may contain an absolute host path, and the provenance record must carry the
   selected cells and the effective repetition count, since those are what the incomplete calculation
-  needs. Deliberately omit the metrics file from both repetitions: the report path recomputes every
-  metric from the transcript, and a fixture that cannot supply stored metrics proves it. Extend
+  needs. The metrics file is the one per-repetition name deliberately absent from **both**
+  repetitions: the report path recomputes every metric from the transcript, and a fixture that cannot
+  supply stored metrics proves it. Every other file the six-filenames decision calls for is present
+  wherever that decision says it should be. Extend
   `e2e_test.go` with a report case that copies the fixture root into a temporary directory **under
   the same base-name directory `root`**, runs the
   summarise-and-report path over the copy, and compares the produced summary and table byte-for-byte
@@ -182,6 +188,7 @@ its own `package main`.
   - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
   - `bench/loomyard-eval/ladder/ladder-toc.yaml`
 - **Edits:** none
 - **Creates:**

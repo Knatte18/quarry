@@ -283,6 +283,7 @@ this section is the input `_plan_validate.py`'s `all-files-touched-mismatch` che
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/golden-table.txt`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/provenance.json`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/answer.json`
+- `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/answer.redacted.json`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/run.json`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/score.json`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/results/root/raw/a0-none/1/transcript.jsonl`

@@ -128,8 +128,13 @@ is the part `report` depends on and the part a killed run must survive.
   decode it, with no schema-key validation; redact it and dispatch the scorer; write the six files
   the overview's the-six-per-repetition-filenames decision names, in that order — `transcript.jsonl`
   already tee'd, then `answer.json`, `answer.redacted.json`, `usage.json`, `score.json` and
-  `run.json` last; record the dirtied observation from the worktree's
-  porcelain status and restore the worktree.
+  `run.json` last.
+  The worktree's porcelain status is read and passed to the dirtied check **before** the state file
+  is written, and the resulting observation is appended to that repetition's observations list, so
+  it rides out in the state file's single write; the worktree restore then follows the state write.
+  Ordering it the other way would leave the observation with no carrier — the state file's
+  observations list is the only place it is recorded, and the summariser and the table read it from
+  there — or would force a second write of the file the write-last rule exists to keep atomic.
   The scorer is a **second measured-binary invocation**, through the same runner seam and the same
   claude binary path, and it is the only other process this loop runs. Add
   `RunScorer(ctx context.Context, r Runner, claudeBin string, l *Ladder, task Task, prompt string)
