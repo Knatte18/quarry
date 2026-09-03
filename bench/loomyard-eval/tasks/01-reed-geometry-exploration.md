@@ -38,6 +38,22 @@ surveys a ~60-file, two-package subsystem, not the whole repo.
 >
 > Scope your answer to `internal/reedengine` and `internal/reedcli`.
 
+## Output schema (exploration tasks)
+
+This schema was recovered from the V1 benchmark protocol document after that document was deleted.
+
+```json
+{
+  "relevant_files": ["internal/reedengine/geometry.go", "..."],
+  "key_symbols": [
+    {"name": "FuncOrTypeName", "file": "path/to/file.go", "role": "one sentence"}
+  ],
+  "summary": "3-6 sentences explaining how the mechanism works end to end",
+  "confidence": "high|medium|low",
+  "open_questions": ["anything left uncertain, if any"]
+}
+```
+
 ## Notes for whoever prepares C's fasit / scores this
 
 Do not hand these to A/B/C — they are leads for verifying the fasit, not the
