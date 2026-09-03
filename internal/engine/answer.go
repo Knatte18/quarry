@@ -1,7 +1,7 @@
-// answer.go declares the engine package's result and option types: the closed Kind vocabulary,
-// Symbol, FileTOC, DirEntry, DirTOC, and Options. Every JSON tag here is the exact emitted key set
-// the plan's "the emitted key set is closed and is not re-litigated per batch" Shared Decision
-// fixes — no field is added or renamed without a corresponding Shared Decision change.
+// answer.go declares the engine package's answer shape: the closed Kind vocabulary, Symbol, the
+// recursive DirAnswer, FileEntry, and TOCOptions. Every JSON tag here is the exact emitted key set
+// the plan's "the emitted key set is plan §4's and is closed" Shared Decision fixes — no field is
+// added or renamed without a corresponding Shared Decision change.
 
 package engine
 
@@ -47,64 +47,82 @@ type Symbol struct {
 	End int `json:"end"`
 }
 
-// FileTOC is the result of a single-file toc extraction.
-type FileTOC struct {
-	// Header is the file's first-paragraph-truncated, delimiter-stripped leading comment, or empty
+// DirAnswer is the recursive answer to a table-of-contents query, per the rewrite plan's §4: one
+// directory's identity and package facts, its files, and — when the query's depth reaches this
+// far — its subdirectories as nested DirAnswer values. A file target is answered as a one-entry
+// DirAnswer carrying its enclosing directory's facts; see Repo.TOC's doc comment for that shape.
+type DirAnswer struct {
+	// Dir is the repository-relative path with forward slashes, "." for the repository root.
+	Dir string `json:"dir"`
+	// Package is the directory's package name, present only when the directory has one — a
+	// directory with no .go file, or one whose files agree on no single clause under the tie-break
+	// rule, has none.
+	Package string `json:"package,omitempty"`
+	// Language is the language of the directory's package, present only when Package is present.
+	Language string `json:"language,omitempty"`
+	// Doc is the directory's package documentation, selected from the files sharing Package. Empty
+	// when no such file carries one.
+	Doc string `json:"doc,omitempty"`
+	// Files is every listed file's entry, sorted lexicographically by Name. Omitted when a depth
+	// cut leaves this DirAnswer identity-plus-doc only.
+	Files []FileEntry `json:"files,omitempty"`
+	// Dirs is this directory's subdirectories, sorted lexicographically by Dir. Omitted at the
+	// bottom of a depth-limited query, where a subdirectory contributes nothing further.
+	Dirs []DirAnswer `json:"dirs,omitempty"`
+}
+
+// FileEntry is one file's summary inside a DirAnswer's Files.
+type FileEntry struct {
+	// Name is the file's base name.
+	Name string `json:"name"`
+	// Header is the file's first-paragraph-truncated, delimiter-stripped leading comment, or absent
 	// when the file has none.
 	Header string `json:"header,omitempty"`
-	// Language is the canonical language name toc resolved the file to.
-	Language string `json:"language"`
-	// Package is the file's declared package or namespace name, or empty for a language with no
-	// such concept, or a file that declares none. This is one field per file rather than per
-	// symbol: the value is identical for every symbol in the file, so repeating it per symbol would
-	// pay for the same string once per symbol for no benefit.
+	// Test is true when this file is a test file by its language's toolchain convention. It is a
+	// plain bool, not a pointer: the pointer in V1 existed to say "this language has no rule", a
+	// state that cannot arise while Go is the only language, and the plan forbids emitting
+	// "test: false" either way, so both the false value and the no-rule value collapse to the same
+	// omitted key.
+	Test bool `json:"test,omitempty"`
+	// Generated mirrors Test's plain-bool discipline for the same reason: true only when the file
+	// matches its language's generated-file banner convention, omitted otherwise.
+	Generated bool `json:"generated,omitempty"`
+	// Package is emitted only when this file's own package clause differs from the directory's
+	// package — the deviation case, such as an external test file's "_test" suffixed package.
 	Package string `json:"package,omitempty"`
-	// Symbols is every listable declaration in source order ascending by Start. It is always a
-	// non-nil, possibly-empty slice when the parse succeeded, so the emitted key is "[]" rather than
-	// "null".
-	Symbols []Symbol `json:"symbols"`
-	// Partial is true when the parse tree reported a syntax error and the result may be lossy. It
-	// is omitted when false.
-	Partial bool `json:"partial,omitempty"`
-}
-
-// DirEntry is one file's toc summary inside a directory listing.
-type DirEntry struct {
-	// Name is the file's base name. It carries json:"-" because internal/cli composes the emitted
-	// "path" key as filepath.Join(<the caller's own directory argument>, Name) — this package
-	// deliberately does not know the caller's frame of reference.
-	Name string `json:"-"`
-	// Language is the canonical language name toc resolved the file to.
-	Language string `json:"language"`
-	// Package mirrors FileTOC.Package: one field per file, omitted when the file declares none.
-	Package string `json:"package,omitempty"`
-	// Header mirrors FileTOC.Header: the first-paragraph-truncated, delimiter-stripped leading
-	// comment, omitted when absent.
-	Header string `json:"header,omitempty"`
-	// Partial mirrors FileTOC.Partial, omitted when false.
-	Partial bool `json:"partial,omitempty"`
-	// Test is a pointer, not a bool, because the contract distinguishes "false" from "the language
-	// has no rule": a nil pointer omits the "test" key entirely, and a pointer to false emits
-	// false. Do not "simplify" this to a plain bool — that would silently turn "cannot tell" into
-	// "no" for every language whose Strategy reports known == false.
-	Test *bool `json:"test,omitempty"`
-	// Generated mirrors Test's pointer discipline for the same reason: nil omits the "generated"
-	// key, a pointer to false emits false, and neither may be invented for a language with no
-	// reliable rule.
-	Generated *bool `json:"generated,omitempty"`
-	// Error is set only when this file could not be parsed at all — an unreadable file, invalid
-	// UTF-8, or an unsupported language — and is mutually exclusive with both Header and Partial.
+	// Language is emitted only when this file's language differs from the directory's language.
+	Language string `json:"language,omitempty"`
+	// Lossy is true when the parse tree reported a syntax error and the result may be incomplete.
+	// It carries what V1's Partial field carried; the rename frees the word "partial" for C#'s own
+	// meaning. Lossy and Error are never both set.
+	Lossy bool `json:"lossy,omitempty"`
+	// Error is set only when this file could not be read or parsed at all — an unreadable file or
+	// invalid UTF-8 — and is mutually exclusive with Lossy.
 	Error string `json:"error,omitempty"`
+	// Symbols is the one pointer field on this type, and deliberately so: a nil Symbols means
+	// symbols were not requested for this file, and a present, possibly-empty *[]Symbol means they
+	// were requested and the file declares none. encoding/json's omitempty drops a nil pointer and
+	// an empty slice alike, so only the pointer-vs-non-pointer distinction — not the slice's own
+	// length — can tell "not requested" apart from "requested, found none". A plain []Symbol field
+	// cannot make that distinction, which is why this field is the exception to every other slice
+	// in this file staying a plain, non-pointer type.
+	Symbols *[]Symbol `json:"symbols,omitempty"`
 }
 
-// DirTOC is the result of a directory toc listing.
-type DirTOC struct {
-	// Files is every listed file's entry. Ordering is the caller's (internal/cli's) responsibility,
-	// not this package's.
-	Files []DirEntry `json:"files"`
-	// Dirs is every direct subdirectory's base name, sorted lexicographically, with no other detail
-	// per entry: TOCDir never descends into a subdirectory, so nothing beyond its name is ever known
-	// here. Like Files, it is always a non-nil, possibly-empty slice, so the emitted key is "[]"
-	// rather than "null" or an omitted key.
-	Dirs []string `json:"dirs"`
+// DepthAll requests a TOC query recurse to the bottom of the tree, rather than stopping after a
+// fixed number of levels.
+const DepthAll = -1
+
+// TOCOptions carries the two knobs Repo.TOC accepts.
+type TOCOptions struct {
+	// Depth controls how far a directory query recurses. 0 fills the target directory's own Files
+	// and lists its direct subdirectories as identity-plus-doc DirAnswer values with no Files or
+	// Dirs of their own. N fills the Files of every subdirectory N levels down, with that level's
+	// own leaf Dirs again identity-plus-doc. DepthAll recurses to the bottom of the tree. Depth is
+	// ignored for a file target, since there is nothing below a file to fill.
+	Depth int
+	// Symbols selects whether each FileEntry's Symbols field is populated. nil selects the
+	// per-target default: true for a file target, false for a directory target. A non-nil value
+	// wins for every file entry at every depth of the query, overriding that default.
+	Symbols *bool
 }
