@@ -101,6 +101,17 @@ besides (see Constraints), under
   (`run`, and `table.txt`/`summary.json` again by `report`). `conclusion.md` is **hand-written** by
   whoever analyses the root — it is T7's deliverable per plan §12, not a harness output, and the
   harness neither creates nor templates it.
+
+  **Contents of the six raw files**, all written by `run` in this order with `run.json` last:
+  `transcript.jsonl` the tee'd `stream-json` stream; `answer.json` the decoded fenced block from the
+  final assistant record (answer-extraction); `answer.redacted.json` that same answer after the
+  scorer redaction (scorer) — kept because it is what the scorer actually saw, which is otherwise
+  unreconstructable when a score looks wrong; `usage.json` the computed per-rep metrics of the
+  metrics decision; `score.json` the scorer's parsed reply or its `{"scored": false, …}` stand-in;
+  `run.json` the payload specified under command-surface.
+  `usage.json` is **diagnostic only.** `report` recomputes every metric from `transcript.jsonl` —
+  that is what keeping the transcript buys — so a metrics bug is fixed by re-running `report`,
+  never by trusting the stored figures.
 - Rationale: this settles plan §11's open decision. Transcripts contain absolute host paths, and
   `HANDOFF.md` §1 states that no tracked file may carry a machine path — committing them
   would require V1's whole `redact.go` machinery back as a correctness-critical gate. The derived
@@ -434,7 +445,7 @@ besides (see Constraints), under
   execute, i.e. what `--cells` resolved to, defaulting to every cell in the file),
   **`reps_effective`** (the `--reps` override, else the file's `reps`), **`memory_paths`** (the
   resolved auto-memory directories — the paths, written as soon as the first rep reveals them; see
-  no-tmp-paths), and `session_fingerprints`: for each rep, the fields lifted
+  no-tmp-paths), `server_name`, and `session_fingerprints`: for each rep, the fields lifted
   from that run's `system.init` record — `claude_code_version`, `model`, `permissionMode`, `tools`,
   `mcp_servers`, whether `memory_paths` was non-empty, and the counts of `skills` and
   `slash_commands`.
@@ -447,8 +458,26 @@ besides (see Constraints), under
   contamination above means "comparable within one root" would otherwise rest on nothing checkable:
   the harness compares each rep's fingerprint against the root's first and reports any drift as a
   non-fatal observation.
+- **Write policy on a resumed root — merge, never overwrite.** `provenance.json` carries an
+  `invocations[]` array with one entry per `ladder run` against the root: `written_at`,
+  `selected_cells`, `reps_effective`, `quarry_commit`, `quarry_dirty`, `claude_version`,
+  `go_version`, `hostname`, `memory_paths`, and that invocation's `server_hashes`. The top-level
+  fields are derived from it: `selected_cells` is the **union** across invocations (which is what
+  `incomplete[]` needs — the set of reps the root as a whole was ever asked to produce),
+  `memory_paths` is the union, and `server_hashes` is merged by `"<cell>/<rep>"` key.
+  `reps_effective` must be **identical** across invocations: a resumed run passing a different
+  `--reps` is **refused** at startup, naming both values.
+- Rationale for that policy: overwriting would erase the earlier invocation's selected cells, so a
+  resumed run with a narrower `--cells` would make the missing cells vanish from `incomplete[]`
+  instead of being reported — the failure mode is a root that looks complete because the second run
+  asked for less. Refusing on a changed `reps` is stricter than merging because the per-cell `n`
+  would otherwise differ within one root, and HANDOFF §3's "comparable only within one root" is
+  exactly the property that would break. Keeping every invocation's commit, version and dirty flag
+  separately is also what makes "was the source edited mid-matrix" answerable across a resume, which
+  a single overwritten record cannot do.
 - Rejected: V1's struct as-is plus `claude_version` (carries the machine path); dropping the
-  session fingerprint (smaller, leaves the root's central assumption unverifiable).
+  session fingerprint (smaller, leaves the root's central assumption unverifiable); overwriting
+  `provenance.json` per invocation (loses the union and the drift history, as above).
 - Note: V1's `server_vcs_modified` field is dropped. It reads a build stamp that is structurally
   constant and carried no information; `server_hashes` is the check that works.
 
@@ -559,9 +588,29 @@ besides (see Constraints), under
 
 ### resume-and-failure
 
-- Decision: a rep is complete iff `results/<root>/raw/<cell>/<rep>/run.json` parses and has
-  `state: "complete"`. It is written **last**, after the transcript, the answer, the metrics, the
-  score and the gates.
+- Decision: a rep is complete — and therefore skipped by resume — iff
+  `results/<root>/raw/<cell>/<rep>/run.json` parses, has `state: "complete"`, **and has
+  `blinding_failed: false`**. `run.json` is written **last**, after the transcript, the answer, the
+  metrics, the score and the gates.
+
+  **Void reps.** A rep discarded for blinding — a fatal gate-2 finding, or a memory-taint discard —
+  is written as `complete` with `blinding_failed: true` so its transcript and the reason survive on
+  disk, but it is *void*: it contributes to no median, and by the clause above it does **not**
+  satisfy resume. Consequences, all deliberate:
+  - The next invocation re-attempts it. A deterministic cause (check (d), a still-tainted memory
+    directory) simply fails again — once per invocation, never retried within one — so nothing
+    loops; but once the operator fixes the cause, `ladder run` on the same root picks the rep up
+    with no special flag. Without this, a memory-taint discard would be permanently unrecoverable,
+    since resume would skip the very reps that need redoing.
+  - Void reps do **not** count as present for `incomplete[]`, so a control cell whose every rep
+    fails check (d) shows `n=0` medians *and* appears in `incomplete[]`, rather than silently
+    looking like a finished cell with no data.
+  - **Exit status:** the process exits non-zero if any cell has `blinding_failed_count > 0`, on the
+    same footing as a non-empty `incomplete[]`. Such cells are listed in `summary.json`'s
+    `invalid[]` and flagged in the table.
+- Rationale for the exit-status clause: a blinding failure is the one result that must never be
+  read as "the run finished". The whole comparison rests on the control being blind, so a root that
+  produced no valid control observations is not a cheaper result — it is not a result.
 
   **Failure taxonomy — every outcome has exactly one disposition:**
 
@@ -865,6 +914,7 @@ besides (see Constraints), under
     "state": "complete",
     "config_id": "a0-none", "ladder": "a", "task": "01-reed-geometry-exploration",
     "allowed": [], "is_control": true, "control_for_ladder": "a0-none",
+    "server_name": "quarry", "mcp_prefix": "mcp__quarry__",
     "rep": 1, "model": "claude-sonnet-5", "effort": "medium", "max_turns": 60,
     "scored": true, "score_skip_reason": null,
     "observations": [{"gate": "target_origin_quarry_mention", "message": "..."}],
@@ -874,7 +924,9 @@ besides (see Constraints), under
 
   `allowed` and `is_control` drive gate 1 and the control identification; `ladder` and
   `control_for_ladder` drive the `RangesDisjoint` comparisons; `scored`/`max_turns_hit`/
-  `blinding_failed` drive the median exclusions and the three counters. The set of reps a root
+  `blinding_failed` drive the median exclusions and the three counters; `mcp_prefix` is what makes
+  `quarry_tool_uses` — and therefore gate 1 — recomputable without the ladder file, since the
+  prefix derives from `server.name` and `report` never reads the yaml. The set of reps a root
   *should* contain — needed for `incomplete[]` — is `provenance.json`'s `selected_cells` ×
   `reps_effective`; without both, `report` could not tell a cell that ran 3 of 5 reps from one that
   ran 3 of 3. `ladder_file` is recorded for provenance only and is never read back as
@@ -962,8 +1014,17 @@ commands, a `## Scope` section, a blockquoted `` ## `<TASK TEXT>` `` block, and 
 section that **must never reach the agent**.
 
 Extraction is strictly **inclusion-based**: the harness takes the `<TASK TEXT>` block (dedented
-from its `>` blockquote) and the `## Output schema (…)` fenced block, and nothing else. It never
-looks for, matches, or excludes the answer-key heading. This matters because that heading is spelt
+from its `>` blockquote) and the output-schema fenced block, and nothing else. It never looks for,
+matches, or excludes the answer-key heading.
+
+**The schema heading is matched by prefix**, not by its full text: a heading line beginning
+`## Output schema` (case-sensitive, leading `#`s exact), whatever parenthetical follows — the two
+ladder-referenced files differ there (`(exploration tasks)` vs `(impact-analysis tasks)` at
+`04-…md:104`). The block taken is the first fenced JSON block after that heading. A task file with
+no such heading is a **hard load error** naming the file, not a silent empty schema. The heading's
+parenthetical is never cross-checked against the yaml's `schema:` field: `schema:` selects the
+scorer rule (`exploration` or `impact`) and nothing else, and tying it to prose would reintroduce
+exactly the spelling dependence this design removes. This matters because that heading is spelt
 five different ways across the five task files and no two of the ladder-referenced ones agree:
 
 | file | heading |
@@ -1068,17 +1129,23 @@ There is no `CONSTRAINTS.md` at the hub root. Constraints from the task brief, `
   cannot come back as code; (d) fatal on a rendered control prompt that names the token or a
   `quarry_tools` entry, and passing on the real rendered control prompt. Plus gate 1 over a cell
   with reps where `quarry_tool_uses` is `0` in all versus `0` in some, and a summariser case proving
-  a `blinding_failed` rep contributes to neither cost nor correctness medians.
+  a `blinding_failed` rep contributes to neither cost nor correctness medians, is absent from
+  `incomplete[]`'s "present" set, lands in `invalid[]`, and does not satisfy resume — a fixture root
+  whose control reps are all `blinding_failed` must re-attempt them on the next `run` and exit
+  non-zero.
 - `token-matching` — the shared matcher, table-tested with `quarry_tools: [toc]`: "protocol",
   "stochastic" and "October" do **not** match; "toc", "TOC", "the toc tool" and "`toc`" do; the
   `mcp__quarry__toc` prefix and a repo-root path match as substrings; a token containing regexp
   metacharacters is quoted rather than interpreted. This is the test that keeps a 3-character tool
   name from failing every control prompt.
 - `prompt.go` — `<TASK TEXT>` extraction, run against **both** ladder-referenced task files (`01-…`
-  and `04-…`, whose answer-key headings differ) and asserting that no text from the `## Setup` or
-  answer-key sections appears in the output. Since extraction is inclusion-based, the assertion is
-  that the output equals exactly the task-text and schema blocks — heading spelling is not
-  load-bearing and must not be tested as if it were.
+  and `04-…`, whose answer-key **and** output-schema headings both differ) and asserting that no
+  text from the `## Setup` or answer-key sections appears in the output. Since extraction is
+  inclusion-based, the assertion is that the output equals exactly the task-text and schema blocks —
+  answer-key heading spelling is not load-bearing and must not be tested as if it were. Two further
+  cases: the schema block is found by the `## Output schema` prefix in each file despite the
+  differing parenthetical, and a fixture task file with no such heading produces a load error rather
+  than an empty schema.
 - `fenced.go` / answer extraction — the `"last"` selector picks the answer and not the schema echo
   when both fences are present; a reply with no fence returns `ErrNoFencedJSONBlock`; an
   unrecognised selector errors rather than falling through; a fence whose body spans many lines is
@@ -1187,4 +1254,9 @@ contains. This is the acceptance step, not an automated test.
 - **Q:** [review round 6] How can T2 ship `server.args` that T6 has not chosen? **A:** It cannot, and now does not: the block ships `name` and `build`, and omits `args:` (optional, absent ⇒ no arguments) until T6's flags exist. **Why:** the migration and the server-block decision contradicted each other.
 - **Q:** [review round 6] Does T7 run the whole migrated matrix? **A:** No — `--cells a0-none,a2-toc-dir` at `reps: 5`, exactly plan §12's T7 row. `b0-none`/`b8-toc-dir` stay in the file for a later run. **Why:** an earlier draft would have silently widened §12 from two cells to four.
 - **Q:** [review round 6] Where does `report` learn how many reps a cell *should* have? **A:** `provenance.json` now carries `selected_cells` and `reps_effective`. **Why:** without them `report` cannot distinguish a cell that ran 3 of 5 from one that ran 3 of 3, so `incomplete[]` would be unreliable.
+- **Q:** [review round 7] A control cell whose every rep fails check (d) yields `n=0` medians, an empty `incomplete[]` and an unspecified exit code — and a memory-taint discard can never be re-run. Correct? **A:** Yes, and both are fixed. A rep with `blinding_failed: true` no longer satisfies resume's completeness test, so the next invocation re-attempts it once the operator fixes the cause; void reps do not count as present for `incomplete[]`; and any cell with `blinding_failed_count > 0` forces a non-zero exit and an `invalid[]` entry. **Why:** a root with no valid control observations is not a cheaper result, it is not a result — it must never read as "finished".
+- **Q:** [review round 7] What does a resumed run do to `provenance.json`? **A:** Merge, never overwrite. An `invocations[]` array holds one entry per `ladder run`; `selected_cells` and `memory_paths` are unions, `server_hashes` merges by key, and a resumed run passing a different `--reps` is **refused**. **Why:** overwriting would let a narrower second run erase cells from `incomplete[]`, making an incomplete root look finished; and a differing `reps` inside one root breaks "comparable only within one root".
+- **Q:** [review round 7] Where does `report` get the MCP prefix, since it never reads the yaml? **A:** From `run.json`, which now carries `server_name` and `mcp_prefix`. **Why:** `quarry_tool_uses` — and therefore gate 1 — is defined against the prefix, so without it `report` could not recompute the one metric gate 1 depends on.
+- **Q:** [review round 7] What are `usage.json` and `answer.redacted.json`? **A:** The computed per-rep metrics, and the exact redacted answer the scorer saw. Both written by `run`; `usage.json` is diagnostic only, since `report` recomputes from `transcript.jsonl`. **Why:** they were listed in the ignored inventory with no stated producer or contract.
+- **Q:** [review round 7] How is the output-schema block matched, given the two task files' headings differ? **A:** By the prefix `## Output schema`, parenthetical ignored; first fenced JSON block after it; a missing heading is a hard load error. `schema:` in the yaml selects the scorer rule only and is never cross-checked against the heading text. **Why:** anything else reintroduces the heading-spelling dependence that inclusion-based extraction exists to remove.
 - **Q:** Which V1 gates and metrics are retired? **A:** Retired: `GateRunPrompt`, `GateMaxTurns`, `GateModelPinned`, `GateNoTargetOverride`, `GateDeniedToolsNotUsed`, every cold/daemon gate; `denied_tool_attempts` and `_provisional` (`DenialShapePattern` was never validated against a real denial and the provisional flag was hardcoded `true`), `agent_id`, `transcript_source`, `server_vcs_modified`. **Why:** the CLI now enforces or reports each directly, or the field was structurally constant and carried no information.
