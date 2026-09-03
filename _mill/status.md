@@ -83,7 +83,9 @@ batches:
     commit_sha: 05d98605d8bd38541a02f5b458415367a7bdb2b0
     verify_baseline_failures: []
   - name: summarize-report-cli
-    state: pending
+    state: running
+    implementer_session: 0e56586a-378c-46a2-8083-219dc01da32e
+    start_sha: c01bd291ebe3d8884c9e191aaf657b9776926671
     verify_baseline_failures: []
   - name: integration-tests
     state: pending
