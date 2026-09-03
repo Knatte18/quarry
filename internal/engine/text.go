@@ -64,9 +64,9 @@ func StripComment(text, prefix string) string {
 // source — that ordering is the whole reason this one rule covers a "//" block and a "/* */" block
 // without a per-form special case.
 //
-// Both TOCFile and TOCDir call FirstParagraph on the file header: the truncation is symmetric across
-// the two verbs, and an "optimization" that skips it for one of them is a regression, not a
-// simplification.
+// The walk's file-entry rule (fileEntry, in walk.go) is the one caller for a file's header: every
+// file entry's Header goes through this same truncation, and an "optimization" that skips it for
+// some file entries would be a regression, not a simplification.
 func FirstParagraph(text string) string {
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
