@@ -5,9 +5,10 @@ reference. `main` is cleaned out and the rewrite is built there under the same m
 `github.com/Knatte18/quarry`. There is no "V2" in any name: when this plan is done, what is on `main`
 is quarry.
 
-The research notes (`docs/research/`), every results root with its `conclusion.md`, and
-`HANDOFF.md` stay where they are: they are the measurement record that motivates this document.
-The V1 harness code is replaced (§9a); the results it produced are kept.
+The research notes (`docs/research/`) and `HANDOFF.md` stay where they are: they are the
+measurement record that motivates this document. The V1 harness code is replaced (§9a), and the
+results roots it produced are archived with it on `v1-final`; `HANDOFF.md` summarises them, and a
+`conclusion.md` is read from that branch when a number is needed.
 
 ## 1. Why a rewrite, in four measured lessons
 
@@ -45,7 +46,8 @@ Non-test lines at `2565ef5`:
 | `go.mod`: every tree-sitter grammar but Go, LSP/JSON-RPC deps, `gopls` requirement | | **removed** — one language, no daemon |
 | `testdata/{impactfixture,clockfixture,buildtagfixture}` | | deleted with the layer that used them |
 | `bench/loomyard-eval/ladder/{cmd,internal,tools}`, `run*.sh`, `launch-session.sh`, `.claude/skills/ladder-run` | 9 000 (+8 300 test) | **deleted and rebuilt** around headless `claude -p` (§9a), ~1 000–1 500 lines |
-| `bench/loomyard-eval/ladder/results/**`, `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the record, the fasit, the task prompts; `docs/research/output-formats/` is the "before" side T5 adds `after/` to |
+| `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the fasit, the task prompts, the research record; `docs/research/output-formats/` is the "before" side T5 adds `after/` to |
+| `bench/loomyard-eval/results/**`, `bench/loomyard-eval/ladder/results/**`, `bench/loomyard-eval/scripts/gen_compact_toc.py` | | **deleted** — the V1 results roots are archived on `v1-final` with the harness that produced them; `HANDOFF.md` is their summary. The Python script goes with them: no Python in this repository, no exceptions |
 | `docs/mcp-setup.md`, `docs/when-to-use-quarry.md`, `docs/servers.yaml.example`, `.mcp.json` | | **deleted** — they describe the seven verbs, `cmd/quarry-mcp` and the daemon, all of which are on `v1-final`. Nothing is marked "superseded" on `main`: what is archived is deleted. T5 and T6 write the new documents and the new `.mcp.json` when the surface they describe exists |
 | `README.md` | | replaced by a short stub: what the rewrite is, `docs/rewrite-plan.md`, `docs/glyph.md`, and that V1 is on `v1-final`. T5/T6 write the real one |
 
@@ -481,8 +483,8 @@ by the existence of a rep's result file. Two gates survive because the CLI canno
 the cell used the tool it was granted (the `none` arm called nothing), and the control cells' blinding
 check. Everything else the CLI now guarantees.
 
-**Kept:** the yaml shape (cells, tasks, pins, fasit, reps, models), the scorer prompt and schemas,
-every results root and conclusion. `HANDOFF.md` §2 rules 1 (do not edit source mid-matrix; the
+**Kept:** the yaml shape (cells, tasks, pins, fasit, reps, models) and the scorer prompt and
+schemas. The V1 results roots are on `v1-final`. `HANDOFF.md` §2 rules 1 (do not edit source mid-matrix; the
 binary hash per rep stays) and 6 (cost within a root only) still apply. Rules 2, 3, 4, 5 and 7 are
 retired with the architecture that needed them.
 
@@ -503,7 +505,8 @@ retired with the architecture that needed them.
 - Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
 - C# long parameter lists: whether to cap a method glyph at N types plus a hash, decided only
   after measuring a real C# repository (`docs/glyph.md` §3).
-- Whether `results/**/raw/` is un-ignored (carried over from `HANDOFF.md` §4).
+- Whether the new harness's `results/**/raw/` is committed or ignored (carried over from
+  `HANDOFF.md` §4); T2 decides when it writes its first root.
 
 ## 12. Work breakdown — one mill task per row
 
@@ -513,14 +516,14 @@ test ./...` green in its worktree and one merge to `main`.
 
 | wave | task | scope | after | done when |
 |---|---|---|---|---|
-| 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, every grammar but Go and the LSP deps from `go.mod`, the Python and C# extractors and their tests, the V1 docs and `.mcp.json` of §2; README stub; keep `toc`, `treesitter` and the extension table reduced to Go, results, yaml, tasks, `docs/research`, the two rewrite documents | — | tree builds and tests green with only the Go extractor; nothing under `internal/` references a daemon or a language other than Go |
+| 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, every grammar but Go and the LSP deps from `go.mod`, the Python and C# extractors and their tests, the V1 docs and `.mcp.json` of §2, the V1 results roots and the Python script; README stub; keep `toc`, `treesitter` and the extension table reduced to Go, yaml, tasks, `docs/research`, the two rewrite documents | — | tree builds and tests green with only the Go extractor; nothing under `internal/` references a daemon or a language other than Go |
 | 1 | **T1 glyph package** | `glyph/`: pure Go, no deps; structural split at `#`; the Go alphabet (unit path, `_test` unit, `Type.Name`, `init`); `Parse(lang, s)`, `String`, canonical form; table tests from `docs/glyph.md` §1–§3 including rejects | T0 | every example and corner case in the spec is a test; `go list -deps` shows no cgo |
 | 1 | **T2 harness** | `bench/loomyard-eval/ladder/`: one Go program around `claude -p` per §9a; yaml loader for the kept shape; worktree pin; MCP config; stream-json capture and metrics; scorer; `summary.json`, `provenance.json`, table; resume; the two surviving gates. Integration test against a stub MCP server, not quarry | T0 | a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` completes end to end on this host, and the metrics match the transcript by hand |
 | 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers, `language` per file when it differs; `map` in the engine re-keyed by glyph | T1 | `map` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `map` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
 | 3 | **T4 resolve + members** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`), `unit: found|not_found` on a miss, paths without `#` as targets; grouping by unit; `members` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
 | 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `map`, `resolve`, `members` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
 | 5 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `map` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `members` until a ladder cell measures them | T5 | the harness probe of §9a runs against it: connect, `map` call, allowlist denial |
-| 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir` → `map`) with T2 against T6, reps 5; write `results/<date>-map/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `results/2026-09-02-toc`, or the conclusion says why not |
+| 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir` → `map`) with T2 against T6, reps 5; write `results/<date>-map/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md`, or the conclusion says why not |
 | 7 | **T8 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
 
 Wave 1 is the parallel one. T2 is the long pole of wave 1 and overlaps waves 2–5; it
