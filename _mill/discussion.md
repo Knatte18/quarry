@@ -142,11 +142,20 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 
 - Decision: `Symbol.HeadStart` / `HeadEnd`, JSON-hidden, populated only for `Kind == KindType`, where
   in Go they equal the type declaration's own `Start`/`End`. Zero for every other kind.
+- **Interfaces are the one Go type whose declaration contains its own members** (D5 gives every
+  `method_elem` a glyph), so state the rule rather than leave it to the general claim:
+  `HeadStart`/`HeadEnd` are the type declaration's own span for **every** Go type, interfaces
+  included. `expand` (T4) renders §5's "class span minus its member spans" by taking those lines and
+  omitting the lines covered by the member symbols it already has — the subtraction is the
+  consumer's, not the extractor's. One span pair therefore suffices, and no discontiguous span type
+  is needed.
 - Rationale: plan §9 step 2 and §12 T3 both name the head span as something `Symbol` gains in this
-  task, and §5 defines it: "the type's *head* (its own lines … in Go the `type` block)". Go's head
-  falls out trivially because a Go type never contains its methods; Python's and C#'s will not
-  (class span minus member spans), so the field is where the language difference lands. Making it
-  explicit now means `expand` (T4) reads a field instead of re-deriving a rule.
+  task, and §5 defines it: "the type's *head* (its own lines … in Go the `type` block)". For a
+  struct the head and the declaration coincide because a Go struct's methods live outside it
+  entirely; for an interface they do not, which is why the rule above is stated rather than assumed.
+  Python's and C#'s heads will need the same subtraction for every type, not just one kind, so the
+  field is still where the language difference lands. Making it explicit now means `expand` reads a
+  field instead of re-deriving a rule.
 - Rejected: letting T4 derive it from `Start`/`End` (works for Go, silently wrong for the first
   language that needs it, and contradicts the task text); emitting it in JSON (§4's key set does not
   carry it, and the byte-for-byte examples would break).
@@ -158,6 +167,15 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   covering both the grouped `const ( … )` and the multi-name `var x, y int` shapes), and interface
   methods (`method_elem` inside an `interface_type`, `Kind == method`, owner = the interface's type
   name).
+- **Only one kind of `interface_type` is walked:** the one that is the `type` of a file-scope
+  `type_spec` (or `type_alias`) — the interface named by a `type X interface { … }` declaration.
+  An **anonymous** interface — in a struct field, a parameter, a return type, a `var`, or a generic
+  constraint — is never descended into and its methods are never listed: it has no type name to own
+  them, and glyph.md §3 excludes struct fields and local declarations outright. An *embedded*
+  interface (`interface { io.Reader }`) is a `type_elem`, not a `method_elem`, so it falls out of the
+  walk naturally rather than by a special case, and the embedded name is not a member of the
+  embedder. Without this bound the walk would emit owner-less or wrongly-owned glyphs, and D5's own
+  note applies: the round trip compares two readings of one walk and cannot catch it.
 - Rationale: glyph.md §3's table says Go glyphs cover "package-level `func`, `type`, `const`, `var`;
   methods; interface methods". A `toc` that lists fewer than the glyph contract names leaves those
   declarations unaddressable, and the round-trip criterion would pass vacuously over them.
@@ -231,12 +249,21 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   treating `_test.go` *files* as the discriminator (wrong — §6 and glyph.md both key on the package
   clause, not the filename).
 
-**The repository root has no unit, so its own `.go` files carry no symbols.** A `.go` file directly
-in the root would take the unit `""` under the rule above, and `glyph.Parse` rejects it —
-`glyph/golang.go:checkGoUnit` returns `ReasonUnitEmpty` for `""` and `ReasonUnitDotSegment` for `"."`.
-So: files in the root directory are **listed** like any other file (`name`, `header`, `test`,
-`generated`) but their entry carries **no `symbols`**, and `SpansOf` never produces a root span. The
-root directory answer's `dir` is `"."`.
+**A directory whose path the Go alphabet cannot spell is listed but carries no symbols.** Its files
+get `name`, `header`, `test` and `generated` like any other file, their entry carries **no
+`symbols`**, and `SpansOf` never produces a span inside it.
+
+- The check is one call to the grammar, made once per directory before any extraction:
+  `glyph.Parse(glyph.Go, unit + "#x")`. On error, the directory's files carry no symbols. This
+  restates none of the alphabet's rules in the engine — it asks the one implementation (glyph.md §6)
+  and believes the answer.
+- It covers **every** rejection `checkGoUnit` makes, not just one: `ReasonUnitEmpty` for the
+  repository root (`""`), `ReasonUnitDotSegment` for a `.` or `..` segment, and `ReasonUnitBadRune`
+  for any segment holding a space, a `\`, or an ASCII control rune — so a package under
+  `test data/pkg/` is handled by the same rule as the root, rather than emitting an `id`
+  `glyph.Parse` would reject and failing Testing 15.
+- The root is the common instance: a `.go` file directly in the root takes the unit `""`. The root
+  directory answer's `dir` is `"."`.
 
 - Rationale: T3 must not invent an alphabet element. glyph.md §6 makes the `glyph` package the one
   implementation of the grammar and this discussion's Scope puts that package out of bounds, so the
@@ -244,8 +271,9 @@ root directory answer's `dir` is `"."`.
   which fails Testing 15's parse assertion and leaves `SpansOf` nothing to invert. Emitting nothing
   is the honest answer to a name the contract cannot spell.
 - The cost is presently zero and measured: **neither quarry nor Loomyard has a single `.go` file in
-  its repository root**, so nothing the done-criterion checks is lost, and the round trip stays exact
-  because a file with no listed symbols has nothing to invert.
+  its repository root**, nor a directory whose path the alphabet rejects, so nothing the
+  done-criterion checks is lost, and the round trip stays exact because a file with no listed symbols
+  has nothing to invert.
 - **Recorded as a glyph.md gap, not closed here.** glyph.md §2 spells a Go unit as "the path relative
   to the repository root" and never says what the root itself spells. The two candidate answers — a
   reserved literal (as C# reserves `global` for the global namespace) or the module's own path from
@@ -289,12 +317,18 @@ root directory answer's `dir` is `"."`.
   directory's own `.gitignore` to the set in force below it, and leaving it drops those patterns
   again. `SpansOf` builds the same set along the root → unit-directory chain, so the two entry points
   filter identically. `.git/` is always excluded.
-- This supersedes D22's "once per call, walking root-to-target" phrasing, which would have read only
-  the chain down to the *argument* and then descended blind: under `--depth all` a `.gitignore` in
-  any descendant would never be read, while `SpansOf` — whose target *is* the unit directory — would
-  read it, and a descendant-ignored `.go` file would become a round-trip **miss** under Testing
-  14/15. "Never cached" (D22) and "extended as the walk descends" are independent properties, and
-  both hold: nothing survives the call.
+- Reading only the chain down to the *argument* and then descending blind would be wrong, and the
+  failure is worth recording: under `--depth all` a `.gitignore` in any descendant would never be
+  read, while `SpansOf` — whose target *is* the unit directory — would read it, and a
+  descendant-ignored `.go` file would become a round-trip **miss** under Testing 14/15. "Never
+  cached" (D22) and "extended as the walk descends" are independent properties, and both hold:
+  nothing survives the call.
+- **Directory pruning is part of the rule, not an implementation detail.** A pattern that matches a
+  directory excludes everything beneath it, and the walk does not descend into it — so nothing under
+  an excluded directory can be re-included by a later pattern unless the *directory itself* is
+  re-included first. That is git's own rule, and it is what both live fixtures turn on: quarry's
+  `/quarry` matches the built binary and the package directory alike, and `!/quarry/` reopens the
+  directory so its contents are listed; Loomyard's `plugins/prowler/bin/` prunes a subtree outright.
 - Explicitly **not** supported (documented in the file's own comment): `core.excludesFile`,
   `.git/info/exclude`, and per-file `.gitattributes` interaction.
 - Rationale: §4 says `toc` lists "every file in the directory that is not gitignored", so the rule is
@@ -456,6 +490,28 @@ root directory answer's `dir` is `"."`.
   reject elsewhere, and T4's `resolve` needs the whole entry anyway, since §4 says `resolve` returns
   "this entry and nothing else for a symbol". The round trip compares the
   `(File, Start, SigEnd, End)` tuples of what `toc` listed against those of what `SpansOf` returned.
+- **`SpansOf` is a thin wrapper over a unit-level primitive**, and the primitive is what the round
+  trip uses:
+
+  ```go
+  func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet) ([]Symbol, error)
+  ```
+
+  It parses each of the unit's `.go` files once and returns every symbol in it. `SpansOf` calls it
+  and filters by owner chain and name.
+- **Why this is not an optimisation but a correctness matter for the test.** `SpansOf` per glyph
+  re-parses the whole unit directory, and D22 forbids caching, so a naive round trip is
+  O(glyphs × files-in-unit) parses. §5 measures 65 ms for one glyph in a 35-file package, and §4's
+  `internal/reedengine` holds 67 files — the Loomyard run would land in the minutes and inside reach
+  of `go test`'s 10-minute default timeout, and D5's widened `Kind` set multiplies the glyph count
+  further. **Testing 14/15 therefore group the listed glyphs by unit and call `symbolsOfUnit` once
+  per unit**, comparing whole sets. The budget that follows is §5's own measurement: one parse of
+  every file in the repository is 616 ms serial (469 files), so `toc --depth all --symbols` plus one
+  lookup pass is roughly 1.5 s — two orders of magnitude inside the timeout, with no cache and no
+  concurrency.
+- Grouping by unit is not a test-only trick: §5 requires it of `resolve` itself — "Many glyphs in one
+  call are grouped by unit and each unit is parsed once" — so `symbolsOfUnit` is the seam T4 needs
+  anyway, and building it here means T4 inherits it rather than refactoring `SpansOf` to get it.
 - **`SpansOf` validates its argument through `glyph.Parse`.** A `Glyph` is a plain struct a caller
   can build by hand, so before anything is read `SpansOf` round-trips it —
   `glyph.Parse(g.Lang, g.String())` — and returns the resulting `*glyph.ParseError` wrapped on
@@ -601,7 +657,7 @@ root directory answer's `dir` is `"."`.
 
 - Decision: `Repo` holds the root and nothing else. The `.gitignore` pattern set is collected fresh
   on each `TOC` and `SpansOf` call — never read from a previous call, and extended per directory as
-  the walk descends per D9's superseding paragraph — and discarded entirely when the call returns.
+  the walk descends (D9) — and discarded entirely when the call returns.
 - Rationale: this closes a contradiction with the Constraints ("No cache, index, daemon or
   concurrency in the engine … Every answer reads source as it is at that moment"). It is not
   pedantry: T6's MCP server is a long-lived process, so a process-lifetime pattern set would go stale
@@ -742,9 +798,15 @@ gate.
     (each its own sentinel via `errors.Is`), a gitignored target (answered, not refused), a target
     that is itself a symlink (`name`-only entry, not followed), and `""` and `"."` both meaning the
     root, whose answer carries `dir: "."`.
-11d. The root package (D7): a fixture with a `.go` file in the fixture root — assert it is listed
-    with its header and that its entry carries **no** `symbols`, and that `SpansOf` returns nothing
-    for any name in it.
+11d. Unspellable units (D7): a fixture with a `.go` file in the fixture root, and one in a directory
+    named `test data/` (a space, `ReasonUnitBadRune`) — each listed with its header, each carrying
+    **no** `symbols`, and `SpansOf` returning nothing for any name in either.
+11k. Interface walk scope (D5): a named `type X interface { … }` (methods listed, owner `X`), an
+    anonymous interface in a struct field, one in a parameter, one in a generic constraint (none
+    listed), and an embedded interface (`io.Reader` not a member of its embedder).
+11l. Interface head span (D4): a named interface's `HeadStart`/`HeadEnd` cover the whole
+    declaration, and its `method_elem` member spans lie inside that range — the shape T4's `expand`
+    subtracts.
 11e. `const`/`var` derivation (D5): the five shapes of D5's table — ungrouped, grouped, several
     names in one spec (distinct ids, identical spans), a bare `iota` spec, and an interface method —
     each asserted on `id`, span, `signature` and the absence of `sigend`.
@@ -778,8 +840,11 @@ gate.
 **Round trip** (the task's headline criterion):
 
 14. Over **quarry itself** — always runs, no environment needed. Walk the repository with
-    `--depth all --symbols`, collect every symbol, group by `id`, and assert for each glyph that
-    `SpansOf(Parse(Go, id))` returns exactly the same *set* of spans (D6). Zero misses, zero extras.
+    `--depth all --symbols`, collect every symbol, and **group the listed glyphs by unit**; for each
+    unit call `symbolsOfUnit` **once** and assert, per glyph, set-equality of the
+    `(File, Start, SigEnd, End)` tuples (D6). Zero misses, zero extras. Grouping is required, not an
+    optimisation — a per-glyph `SpansOf` re-parses the unit for every glyph in it and puts the
+    Loomyard run in the minutes (D16).
 15. Over **all of Loomyard** — the same assertion, env-gated, skipped under `-short`. Also assert
     that every listed symbol's `id` round-trips through `glyph.Parse` → `String()` unchanged, which
     is what "every declaration `toc` lists has a glyph" means operationally.
