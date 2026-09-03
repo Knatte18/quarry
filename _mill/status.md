@@ -48,7 +48,9 @@ batches:
     commit_sha: d611915ebfb8adae87fe0ec6b6d5f87af72ec0b6
     verify_baseline_failures: []
   - name: stream-and-metrics
-    state: pending
+    state: running
+    implementer_session: 5425f920-16ea-4f41-a8a9-bd03a44f685f
+    start_sha: 3db0e6e06c30920dd1d9520ba575bbc80597d558
     verify_baseline_failures: []
   - name: prompt-and-schema
     state: pending
