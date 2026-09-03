@@ -2,7 +2,7 @@
 // leading comment blocks are directives, not a file header), TestFileByName, and
 // GeneratedByBanner.
 
-package toc
+package engine
 
 import "strings"
 

@@ -1,9 +1,9 @@
-// types.go declares the toc package's result and option types: the closed Kind vocabulary, Symbol,
-// FileTOC, DirEntry, DirTOC, and Options. Every JSON tag here is the exact emitted key set the
-// plan's "the emitted key set is closed and is not re-litigated per batch" Shared Decision fixes —
-// no field is added or renamed without a corresponding Shared Decision change.
+// answer.go declares the engine package's result and option types: the closed Kind vocabulary,
+// Symbol, FileTOC, DirEntry, DirTOC, and Options. Every JSON tag here is the exact emitted key set
+// the plan's "the emitted key set is closed and is not re-litigated per batch" Shared Decision
+// fixes — no field is added or renamed without a corresponding Shared Decision change.
 
-package toc
+package engine
 
 // Kind is the closed vocabulary a Symbol's Kind field is drawn from.
 type Kind string

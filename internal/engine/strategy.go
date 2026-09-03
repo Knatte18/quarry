@@ -4,7 +4,7 @@
 // Implemented reports is derived from what actually compiled in rather than from a hand-maintained
 // slice.
 
-package toc
+package engine
 
 import (
 	"sort"
@@ -57,7 +57,7 @@ var strategies = make(map[string]Strategy)
 func Register(s Strategy) {
 	lang := s.Language()
 	if _, exists := strategies[lang]; exists {
-		panic("toc: duplicate Strategy registration for language " + lang)
+		panic("engine: duplicate Strategy registration for language " + lang)
 	}
 	strategies[lang] = s
 }

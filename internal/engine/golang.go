@@ -2,7 +2,7 @@
 // generated-file, and test-file rules. It registers itself under the canonical language name "go"
 // from this file's own init.
 
-package toc
+package engine
 
 import (
 	ts "github.com/tree-sitter/go-tree-sitter"

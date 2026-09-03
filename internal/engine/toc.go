@@ -1,12 +1,12 @@
-// toc.go implements the two entry points the toc package exports: TOCFile and TOCDir. Both resolve
-// a language, drive treesitter.WithTree, dispatch to the resolved language's registered Strategy,
-// and apply the two post-processing rules that belong to the entry point rather than to any
-// strategy — first-paragraph header truncation (FirstParagraph) and, for TOCFile alone, sentence
+// toc.go implements the two entry points the engine package exports: TOCFile and TOCDir. Both
+// resolve a language, drive treesitter.WithTree, dispatch to the resolved language's registered
+// Strategy, and apply the two post-processing rules that belong to the entry point rather than to
+// any strategy — first-paragraph header truncation (FirstParagraph) and, for TOCFile alone, sentence
 // trimming of every symbol's docstring (FirstSentences). Putting both rules here rather than in the
 // strategies gives each rule exactly one call site and keeps --doc-sentences from being threaded
 // through every strategy.
 
-package toc
+package engine
 
 import (
 	"fmt"
@@ -17,8 +17,7 @@ import (
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
-	"github.com/Knatte18/quarry/internal/quarryengine"
-	"github.com/Knatte18/quarry/internal/quarryengine/treesitter"
+	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
 // resolveLanguage resolves the canonical language name for path, honoring langOverride when it is
@@ -26,18 +25,18 @@ import (
 // not an error here.
 //
 // An extension that maps to no language, or an override naming a language with no registered
-// Strategy, both return a wrapped quarryengine.ErrLanguageUnsupported.
+// Strategy, both return a wrapped ErrLanguageUnsupported.
 func resolveLanguage(path, langOverride string) (string, error) {
 	lang := langOverride
 	if lang == "" {
 		resolved, ok := LanguageForExtension(filepath.Ext(path))
 		if !ok {
-			return "", fmt.Errorf("toc: %s: no language for extension %q: %w", path, filepath.Ext(path), quarryengine.ErrLanguageUnsupported)
+			return "", fmt.Errorf("toc: %s: no language for extension %q: %w", path, filepath.Ext(path), ErrLanguageUnsupported)
 		}
 		lang = resolved
 	}
 	if _, ok := StrategyFor(lang); !ok {
-		return "", fmt.Errorf("toc: %s: language %q has no toc strategy: %w", path, lang, quarryengine.ErrLanguageUnsupported)
+		return "", fmt.Errorf("toc: %s: language %q has no toc strategy: %w", path, lang, ErrLanguageUnsupported)
 	}
 	return lang, nil
 }
