@@ -314,6 +314,21 @@ the unit. Known gaps in the kept extractors:
 | Move | `resolve` → current file | — | `resolve` → new file |
 | any | every glyph in `Uses` and every target must resolve unambiguously, or the plan is invalid before an agent is spawned | `Uses` resolved into a pack: glyph, file, span, signature, doc, for a one-shot read | |
 
+**How the planner gets the glyphs right.** It never composes a glyph for an existing symbol: every
+symbol it knows about came from `map`, whose lines carry the glyph verbatim, so Edit, Delete,
+Rename-from, Move and `Uses` are copied, not spelled. Only Create composes one — an existing unit
+from `map` plus a new name — and that is what validation catches. **The planner validates before
+it hands off, with the same code the mechanical gate runs.** Loomyard exposes its own plan
+validator to the planning agent as a tool; it calls quarry's facade underneath, and the final
+mechanical gate is the same function. Passing one is passing the other, so a plan that reaches
+the gate never fails it on a glyph, and no fresh agent is spawned to fix what the running one
+could have. The validator's contract per glyph: parse (`glyph.Parse`, with the canonical spelling
+returned so `Draw (int)` comes back as `Draw(int)`), then `resolve` — Edit, Delete, Rename-from,
+Move and `Uses` must be `found`; Create and Rename-to must be `not_found` in a unit that exists or
+is itself a Create in the plan; `ambiguous` is always a rejection with its candidates. All glyphs
+of a draft go in one `resolve` call. The stencil's rule is one line: a plan is handed off with the
+validator's last answer green; the gate rejects everything else.
+
 The dependency graph the format derives (`Uses` ∩ other cards' targets) is a graph over glyphs;
 `resolve` makes every node in it checkable at plan time. The tier-1 verify scope ("packages holding
 the target symbols plus packages holding callers") is the glyph's unit in phase 1 and adds the callers' packages
@@ -344,7 +359,9 @@ in phase 2.
 
 Only through the same surfaces. What the ladders showed: `map` on unfamiliar code is worth a tool
 grant; nothing else was, in V1's shapes. Whether `resolve` and `members` earn a grant for an
-implementer that already has a pack is a ladder question for after they exist.
+implementer that already has a pack is a ladder question for after they exist. The planner is the
+one agent with a settled tool set: `map` to see what exists, and Loomyard's validator (over
+`resolve`) to check every glyph it wrote, in one call, before handing off (§8.1).
 
 ## 9. Build order on `main`
 
