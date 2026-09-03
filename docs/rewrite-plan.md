@@ -348,7 +348,7 @@ section, to come) lands before step 8.
    gains its glyph, the owner chain, the head span; the unit-name walk with the uniqueness check.
 3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on fixtures for
    all three languages.
-4. **`map`** — the kept toc, re-keyed by id, headers and docs complete.
+4. **`map`** — the kept toc, re-keyed by glyph, headers and docs complete.
 5. **`members`** — head computation for Python and C#; the Go case falls out of `resolve`.
 6. **Extractor gaps** (§6): Python nested classes and attributes, C# partial, fields, properties.
 7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then **MCP** as its mirror.
