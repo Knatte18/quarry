@@ -45,7 +45,9 @@ Non-test lines at `2565ef5`:
 | `go.mod`: tree-sitter Rust and TypeScript grammars, LSP/JSON-RPC deps, `gopls` requirement | | **removed** — three focus languages, no daemon |
 | `testdata/{impactfixture,clockfixture,buildtagfixture}` | | deleted with the layer that used them |
 | `bench/loomyard-eval/ladder/{cmd,internal,tools}`, `run*.sh`, `launch-session.sh`, `.claude/skills/ladder-run` | 9 000 (+8 300 test) | **deleted and rebuilt** around headless `claude -p` (§9a), ~1 000–1 500 lines |
-| `bench/loomyard-eval/ladder/results/**`, `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/`, `HANDOFF.md` | | kept — the record, the fasit, the task prompts |
+| `bench/loomyard-eval/ladder/results/**`, `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the record, the fasit, the task prompts; `docs/research/output-formats/` is the "before" side T5 adds `after/` to |
+| `docs/mcp-setup.md`, `docs/when-to-use-quarry.md`, `docs/servers.yaml.example`, `.mcp.json` | | **deleted** — they describe the seven verbs, `cmd/quarry-mcp` and the daemon, all of which are on `v1-final`. Nothing is marked "superseded" on `main`: what is archived is deleted. T5 and T6 write the new documents and the new `.mcp.json` when the surface they describe exists |
+| `README.md` | | replaced by a short stub: what the rewrite is, `docs/rewrite-plan.md`, `docs/glyph.md`, and that V1 is on `v1-final`. T5/T6 write the real one |
 
 The first commit on `main` after this document is the deletion, so nothing half-V1 can survive into
 the new code. Until the new `cmd/quarry-mcp` exists the harness cannot run; that is expected and
@@ -82,11 +84,13 @@ Loomyard.Engine.Layout#Renderer.Draw(int)   C#: namespace, Type.Name(param types
 Go never produces multipart: a type is declared once and each method once, however many files they
 span. That is a `members` question (§5), not a resolution question.
 
-**Alignment with Loomyard's plan format.** `manifest/designs/plan-card-format.md` already says
-"package-qualified short names (`shedrecipe.Lookup`), never file:line, never full import paths". As
-a glyph that is `internal/shedrecipe#Lookup`. The `#` splits unit from member so no parser needs the
-package list; the directory path is what makes it unique in any repository. Adopting it is
-Loomyard's decision; the parser change is an import of `glyph`, not a re-implementation.
+**Loomyard's plan format changes to match.** `manifest/designs/plan-card-format.md` today says
+"package-qualified short names (`shedrecipe.Lookup`), never file:line, never full import paths".
+As a glyph that is `internal/shedrecipe#Lookup`: the principle stays, the spelling changes in two places.
+The unit becomes the repository-relative directory instead of the bare package name, which is the price of uniqueness in a large repository,
+and the separator becomes `#`, so the parser splits unit from member without a package list.
+Card types, `Uses` and the derived dependency graph do not change.
+That is task T9 (§12): `planparser` imports `glyph` and drops its own name handling, the validator calls `resolve`, the planner prompt and the format document get the new spelling.
 
 ## 4. One envelope, one entry type at every depth
 
@@ -100,10 +104,13 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
   files. `resolve`, `members` and `map` all return this entry and nothing else for a symbol.
 - **One file entry everywhere, carrying only what is the file's own:** `name`, `header`, the
   deviations only when present (`test`, `generated`, `package` when it differs from the
-  directory's, as `logger_test` does), and `symbols` — filled for a file query, absent for a
-  directory query, filled for a directory only on explicit request. Everything the files share —
-  `dir`, `package`, `language` — lives on the directory answer that holds them, once. A file query
-  is a directory answer with one file entry; the file never repeats its parent's facts.
+  directory's, as `logger_test` does, `language` when it differs from the directory's), and
+  `symbols` — filled for a file query, absent for a directory query, filled for a directory only on
+  explicit request. Everything the files share — `dir`, `package`, `language` — lives on the
+  directory answer that holds them, once. A file query is a directory answer with one file entry;
+  the file never repeats its parent's facts.
+  Files that are not code are file entries too (below): `name`, a `header` where the format has a
+  place for one, never `symbols`.
 - **Shared facts once, defaults never.** Package, directory and language are stated once at the top.
   `test: false`, `generated: false`, `ok: true` inside data, empty `dirs: []`, and a directory prefix
   repeated on every path are V1 clutter: 25 files carried 100 fields that said nothing.
@@ -120,6 +127,8 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
 
 The answer is one recursive type. A **directory answer** holds `dir`, `package`, `language`, `doc`,
 its `files` and its `dirs`, and each entry in `dirs` is itself a directory answer.
+`language` is the language of the `package`, present only when there is one;
+it is what tells a consumer which glyph alphabet the `id`s below are spelled in.
 
 `doc` is the **package documentation**: what this directory is for, in the language's own place for
 saying so — Go's `// Package render ...` comment above the package clause, Python's `__init__.py`
@@ -140,6 +149,29 @@ They are separate because the two big shapes need them separately: a whole tree 
 (orientation) and one package with every symbol (mechanical consumers). Loomyard's `internal/` is
 72 directories and 394 KB at headers only, so even the header map of a whole tree is not something
 an agent gets without asking.
+
+### Files that are not code, and directories with more than one language
+
+`map` lists every file in the directory that is not gitignored, not only source files.
+The question `map` answers is whether a file is worth opening,
+and that question is asked of `README.md`, `viewer.html` and `config.yaml` as much as of `layout.go`.
+A file without a language gets `name` and a `header` taken from wherever its format keeps one:
+Markdown gives its first heading and first paragraph;
+HTML, CSS, JavaScript, YAML and shell give a leading comment when there is one;
+anything else gives the name alone.
+Such entries never carry `symbols`, and `--symbols` does not change them.
+
+The alphabet is chosen per file, never per repository.
+A repository is not assumed to hold one language:
+a Python data parser inside a C# tree gets a Python glyph (`tools.parse_data#load`) and the C# code around it gets C# glyphs, in the same `map` answer.
+A file whose language differs from its directory's `package` language says so with `language` on the file entry;
+a directory with no `package` says nothing and its files each carry their own.
+
+A file is itself a target.
+What `map` lists, `resolve` takes, and `map` lists file names,
+so a plan card whose target is a whole file — the HTML viewer an agent is to create, a Markdown page — names it by its repository-relative path and `resolve` answers `found` or `not_found` with the file entry (§5).
+A target without `#` is a path; a target with `#` is a glyph.
+Nothing else is needed for non-code deliverables, and `plan-card-format.md`'s rule "never file:line" stands: a path is not a line.
 
 ### Examples, real data (Loomyard 72c23d9)
 
@@ -227,9 +259,18 @@ internal/reedengine/render/layout.go (package render, go): layout.go is the layo
 Phase 1 is `resolve`, `members` and `map`: the same tree-sitter parse with three entry points. None
 needs a type checker, a daemon, or an index. Phase 1 says nothing about callers.
 
-**`resolve <glyph>...`** — where is this, right now. Per glyph: location(s) and status. Called by an
+**`resolve <glyph|path>...`** — where is this, right now. Per glyph: location(s) and status. Called by an
 implementer immediately before every read and every edit, because lines have moved since the last
 time. Many glyphs in one call are grouped by unit and each unit is parsed once.
+Three details of the answer exist for the validator (§8.1):
+
+- A `not_found` says whether the *unit* exists: `unit: found` when the directory, module or namespace is there and only the member is missing, `unit: not_found` otherwise.
+  A Create card needs the first and a typo in the unit produces the second, and the two are not the same finding.
+- An argument without `#` is a repository-relative path, file or directory, and resolves to its file entry or directory answer with `found` or `not_found`.
+  This is what makes a non-code deliverable (§4) a checkable target.
+- In a repository with more than one language, a glyph is tried against each alphabet present.
+  Go units contain `/` and collide with nothing; a Python module path and a C# namespace can spell the same string, and when both match the answer is `ambiguous` with the candidates marked by language.
+  There is no language prefix in the glyph; the case is rare and the status is honest.
 
 **`members <glyph>`** — what does this type consist of, across files. The glyph must name a type;
 on any other kind the answer is `ok: false` naming the kind. The type's *head* (its own
@@ -308,12 +349,12 @@ the unit. Known gaps in the kept extractors:
 
 | card | before dispatch (mechanical, plan-time) | during implementation (the agent) | after (mechanical, done-check) |
 |---|---|---|---|
-| Create | `resolve` target → must be `not_found`; `map`/`members` on the package for "nothing equivalent exists" | `map` the package it goes into | `resolve` → `found` |
+| Create | `glyph.Parse` for the form; `resolve` target → must be `not_found` with `unit: found`, or the unit is itself a Create in the plan; for `Type.Name` the owner `unit#Type` → `found` or a Create in the plan; `map`/`members` on the package for "nothing equivalent exists" | `map` the package it goes into | `resolve` → `found` |
 | Edit | `resolve` target → `found`; phase 2 `impact` → `ImpactSummary` and tier-1 test package set | `resolve` before each read/edit; `members` when the target is a type | `resolve` → still `found`, in the expected package |
 | Delete | `resolve` target → `found`; phase 2 `assert-no-callers`; until then Loomyard's degraded mode (scoped grep, a human) | — | `resolve` → `not_found` |
 | Rename | `resolve old` → found, `resolve new` → not_found | the rename mechanic is out of quarry's scope (go/types script) | `resolve old` → not_found, `resolve new` → found |
 | Move | `resolve` → current file | — | `resolve` → new file |
-| any | every glyph in `Uses` and every target must resolve unambiguously, or the plan is invalid before an agent is spawned | `Uses` resolved into a pack: glyph, file, span, signature, doc, for a one-shot read | |
+| any | every glyph in `Uses` and every target must resolve unambiguously, or the plan is invalid before an agent is spawned; a target without `#` is a path (an HTML viewer, a Markdown page) and follows the same rows with the file entry in place of the symbol | `Uses` resolved into a pack: glyph, file, span, signature, doc, for a one-shot read | |
 
 **How the planner gets the glyphs right.** It never composes a glyph for an existing symbol: every
 symbol it knows about came from `map`, whose lines carry the glyph verbatim, so Edit, Delete,
@@ -323,11 +364,14 @@ it hands off, with the same code the mechanical gate runs.** Loomyard exposes it
 validator to the planning agent as a tool; it calls quarry's facade underneath, and the final
 mechanical gate is the same function. Passing one is passing the other, so a plan that reaches
 the gate never fails it on a glyph, and no fresh agent is spawned to fix what the running one
-could have. The validator's contract per glyph: parse (`glyph.Parse`, with the canonical spelling
-returned so `Draw (int)` comes back as `Draw(int)`), then `resolve` — Edit, Delete, Rename-from,
-Move and `Uses` must be `found`; Create and Rename-to must be `not_found` in a unit that exists or
-is itself a Create in the plan; `ambiguous` is always a rejection with its candidates. All glyphs
-of a draft go in one `resolve` call. The stencil's rule is one line: a plan is handed off with the
+could have. The validator's contract per glyph has three layers, and only the last needs the symbol to exist:
+
+1. **Syntactic, no source read.** `glyph.Parse(lang, s)` checks the form against the alphabet — one `#`, a well-formed unit for the language, a well-formed member — and returns the canonical spelling, so `Draw (int)` comes back as `Draw(int)`.
+   The language is the card's: for an existing unit it is what `map` reported, for a unit the plan creates the card says it, since there is no directory to look at.
+2. **Structural, against what exists around the target.** `resolve` — Edit, Delete, Rename-from, Move and `Uses` must be `found`; Create and Rename-to must be `not_found` with `unit: found`, or in a unit that is itself a Create in the plan; a Create of `Type.Name` needs its owner `unit#Type` found or created in the plan; `ambiguous` is always a rejection with its candidates.
+3. **Plan-internal.** Two Create cards with one glyph, or a Create that collides with another card's Rename-to, are rejected without asking quarry.
+
+All glyphs of a draft go in one `resolve` call. The stencil's rule is one line: a plan is handed off with the
 validator's last answer green; the gate rejects everything else.
 
 The dependency graph the format derives (`Uses` ∩ other cards' targets) is a graph over glyphs;
@@ -459,11 +503,11 @@ test ./...` green in its worktree and one merge to `main`.
 
 | wave | task | scope | after | done when |
 |---|---|---|---|---|
-| 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, Rust/TypeScript grammars and LSP deps from `go.mod`; keep `toc`, `treesitter`, the extension table, results, yaml, tasks, docs | — | tree builds and tests green with only the extractors; nothing under `internal/` references a daemon |
-| 1 | **T1 glyph package** | `glyph/`: pure Go, no deps; structural split at `#`; the Go alphabet (unit path, `_test` unit, `Type.Name`, `init`); `Parse`, `String`, canonical form; table tests from `docs/glyph.md` §1–§3 including rejects | T0 | every example and corner case in the spec is a test; `go list -deps` shows no cgo |
+| 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, Rust/TypeScript grammars and LSP deps from `go.mod`, the V1 docs and `.mcp.json` of §2; README stub; keep `toc`, `treesitter`, the extension table, results, yaml, tasks, `docs/research`, the two rewrite documents | — | tree builds and tests green with only the extractors; nothing under `internal/` references a daemon |
+| 1 | **T1 glyph package** | `glyph/`: pure Go, no deps; structural split at `#`; the Go alphabet (unit path, `_test` unit, `Type.Name`, `init`); `Parse(lang, s)`, `String`, canonical form; table tests from `docs/glyph.md` §1–§3 including rejects | T0 | every example and corner case in the spec is a test; `go list -deps` shows no cgo |
 | 1 | **T2 harness** | `bench/loomyard-eval/ladder/`: one Go program around `claude -p` per §9a; yaml loader for the kept shape; worktree pin; MCP config; stream-json capture and metrics; scorer; `summary.json`, `provenance.json`, table; resume; the two surviving gates. Integration test against a stub MCP server, not quarry | T0 | a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` completes end to end on this host, and the metrics match the transcript by hand |
-| 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`; `map` in the engine re-keyed by glyph | T1 | `map` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `map` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
-| 3 | **T4 resolve + members** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`); grouping by unit; `members` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
+| 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers, `language` per file when it differs; `map` in the engine re-keyed by glyph | T1 | `map` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `map` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
+| 3 | **T4 resolve + members** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`), `unit: found|not_found` on a miss, paths without `#` as targets; grouping by unit; `members` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
 | 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `map`, `resolve`, `members` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
 | 5 | **T6 MCP** | `cmd/quarry-mcp` as a mirror of the CLI: three tools, verb names, JSON in `content[].text`, text view on request | T5 | the harness probe of §9a runs against it: connect, `map` call, allowlist denial |
 | 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir` → `map`) with T2 against T6, reps 5; write `results/<date>-map/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `results/2026-09-02-toc`, or the conclusion says why not |
@@ -479,5 +523,4 @@ needs no quarry code until T7. T9 is Loomyard work and can start as soon as T5 m
 - Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
 - C# long parameter lists: whether to cap a method glyph at N types plus a hash, decided only
   after measuring a real C# repository (`docs/glyph.md` §3).
-- When Loomyard's plan parser adopts glyphs by importing `glyph` (§3).
 - Whether `results/**/raw/` is un-ignored (carried over from `HANDOFF.md` §4).
