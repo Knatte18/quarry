@@ -72,7 +72,7 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - Decision: collapse `internal/quarryengine` and `internal/quarryengine/toc` into **`internal/engine`**,
   one package, files per concern. `treesitter` stays a subpackage at `internal/engine/treesitter`
   (it is a seam, not a verb). Planned files:
-  `doc.go` (package doc), `answer.go` (`DirAnswer`, `FileEntry`, `Symbol`, `Kind`, `Span`),
+  `doc.go` (package doc), `answer.go` (`DirAnswer`, `FileEntry`, `Symbol`, `Kind`),
   `repo.go` (`Repo`, `Open`, path resolution), `ignore.go` (gitignore matching),
   `walk.go` (directory walk, unit identity, per-directory package/language), `toc.go` (the `TOC`
   entry point and the depth/symbols knobs), `resolve.go` (the internal span lookup),
@@ -132,7 +132,8 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   the glyph grammar" rule exists to prevent. `ID` is stored rather than computed per marshal so the
   emitted key set is a plain struct with plain tags and needs no custom `MarshalJSON`.
 - `File` is empty (and therefore omitted) in a `toc` answer, where the symbol already sits inside its
-  file entry; it is filled by `SpansOf` and by T4's `resolve`/`expand`, whose entries do span files.
+  file entry; it is filled by `SpansOf` (D16, which returns `Symbol` values precisely so this field
+  has a writer in T3) and by T4's `resolve`/`expand`, whose entries do span files.
 - Rejected: a custom `MarshalJSON` computing `id` (hides the contract); keeping `Name`/`Owner`
   alongside the glyph (two sources of truth); making `Glyph` unexported (T4 and the facade need it
   typed, not re-parsed from a string).
@@ -160,7 +161,13 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - Rationale: glyph.md §3's table says Go glyphs cover "package-level `func`, `type`, `const`, `var`;
   methods; interface methods". A `toc` that lists fewer than the glyph contract names leaves those
   declarations unaddressable, and the round-trip criterion would pass vacuously over them.
-- **Span and signature per shape**, stated as explicitly as the type case already is:
+- **Span and signature per shape**, stated as explicitly as the type case already is. In every row
+  below, "the node's span" means `End` is the node's own last line and **`Start` is the first line of
+  the comment block `CommentBlockAbove` attaches, when it returns one, and the node's own first line
+  otherwise** — the rule `goDeclSymbol` already implements and the one §4's `placement` demonstrates
+  (`"start": 16` with the `type` clause on line 20). Stating it per row matters because the round
+  trip cannot catch a wrong reading: it compares `toc`'s output against a lookup built from the same
+  code.
 
   | shape | Start / End | Signature | SigEnd |
   |---|---|---|---|
@@ -188,13 +195,14 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 
 - Decision: every `func init()` in a package gets `id: "<unit>#init"`. `toc` lists each declaration
   separately, with its own span, all carrying that one id. The round-trip check asserts, per glyph,
-  that the *set* of spans `SpansOf` returns equals the *set* of spans `toc` listed under that glyph.
+  that the *set* of `(File, Start, SigEnd, End)` tuples `SpansOf` returns equals the *set* of tuples
+  `toc` listed under that glyph.
 - Rationale: glyph.md §3 — "`internal/logger#init` is one glyph, and with several `init` functions it
   resolves `multipart`, every one returned in run order (file order, then line)". A one-to-one
   round trip would be unsatisfiable by construction here, and equally so for build-tag duplicates
   (which resolve `ambiguous`, several declarations, one glyph). Set-equality is the honest form of
   "zero misses, zero extras".
-- `SpansOf` returns spans ordered by file then start line, so the ordering guarantee T4 needs is
+- `SpansOf` returns its symbols ordered by file then start line, so the ordering guarantee T4 needs is
   already in place.
 - Rejected: strict one-to-one (fails on `init` and on build tags, the two cases §6 explicitly calls
   out); suffixing duplicate glyphs (`init#2`) — glyph.md forbids any spelling not in the alphabet.
@@ -204,7 +212,11 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - Decision: per directory,
   1. read every `.go` file's package clause;
   2. the **directory's package** is the most common clause among files whose clause does not end in
-     `_test`; if every file's clause ends in `_test`, it is the most common clause overall;
+     `_test`; if every file's clause ends in `_test`, it is the most common clause overall. **On a
+     tie, the lexicographically smallest clause wins** — a directory holding a `//go:build ignore`
+     `package main` file beside a one-file package splits evenly, and without a tie-break the
+     directory's `package`, every file's `package` deviation key and every glyph unit below it would
+     depend on `os.ReadDir`'s order, which is exactly what D18 exists to eliminate;
   3. a file whose clause is exactly `<dirPackage>_test` belongs to the unit `<dirRelPath>_test`;
      every other `.go` file belongs to `<dirRelPath>`;
   4. `_test.go` files declaring the package itself belong to the package's own unit (glyph.md §2).
@@ -272,8 +284,17 @@ root directory answer's `dir` is `"."`.
   to its own `.gitignore`'s directory" rule, and the "pattern with no slash matches at any depth"
   rule. (Loomyard's `plugins/prowler/bin/` is the interior-slash case: anchored by its slash,
   directory-only by its trailing one.) Patterns are
-  collected from `.gitignore` files from the repository root down to the directory being listed,
-  later files and later patterns winning. `.git/` is always excluded.
+  collected from `.gitignore` files from the repository root down to **and including every directory
+  the walk enters**, later files and later patterns winning: entering a subdirectory appends that
+  directory's own `.gitignore` to the set in force below it, and leaving it drops those patterns
+  again. `SpansOf` builds the same set along the root → unit-directory chain, so the two entry points
+  filter identically. `.git/` is always excluded.
+- This supersedes D22's "once per call, walking root-to-target" phrasing, which would have read only
+  the chain down to the *argument* and then descended blind: under `--depth all` a `.gitignore` in
+  any descendant would never be read, while `SpansOf` — whose target *is* the unit directory — would
+  read it, and a descendant-ignored `.go` file would become a round-trip **miss** under Testing
+  14/15. "Never cached" (D22) and "extended as the walk descends" are independent properties, and
+  both hold: nothing survives the call.
 - Explicitly **not** supported (documented in the file's own comment): `core.excludesFile`,
   `.git/info/exclude`, and per-file `.gitattributes` interaction.
 - Rationale: §4 says `toc` lists "every file in the directory that is not gitignored", so the rule is
@@ -426,15 +447,25 @@ root directory answer's `dir` is `"."`.
 - Decision: `resolve.go` gets
 
   ```go
-  type Span struct {
-      File   string
-      Start  int
-      SigEnd int
-      End    int
-  }
-
-  func (r *Repo) SpansOf(g glyph.Glyph) ([]Span, error)
+  func (r *Repo) SpansOf(g glyph.Glyph) ([]Symbol, error)
   ```
+
+  It returns full `Symbol` values — the same type `toc` emits — each with `File` set to the
+  declaration's repository-relative path. There is no separate `Span` type: a bare span would leave
+  `Symbol.File` (D3) with no writer anywhere in T3, a dead carrier of exactly the kind D14 and D21
+  reject elsewhere, and T4's `resolve` needs the whole entry anyway, since §4 says `resolve` returns
+  "this entry and nothing else for a symbol". The round trip compares the
+  `(File, Start, SigEnd, End)` tuples of what `toc` listed against those of what `SpansOf` returned.
+- **`SpansOf` validates its argument through `glyph.Parse`.** A `Glyph` is a plain struct a caller
+  can build by hand, so before anything is read `SpansOf` round-trips it —
+  `glyph.Parse(g.Lang, g.String())` — and returns the resulting `*glyph.ParseError` wrapped on
+  failure. That one check covers the empty unit, a `.`/`..` segment, a member that is too deep, and
+  every other alphabet violation, and it covers them by *calling the one implementation of the
+  grammar* rather than restating its rules in the engine. It is also what makes D7's claim
+  "`SpansOf` never produces a root span" true rather than aspirational: `Glyph{Unit: ""}` is rejected
+  here, instead of silently resolving to the repository root and returning spans `toc` never listed.
+  A non-Go `Lang` is rejected by the same call, with `ErrLanguageUnsupported` per D21 taking
+  precedence so the error names the real cause.
 
   It maps the glyph's unit to a directory **literal-first**, parses that directory's `.go` files, and
   returns every declaration whose owner chain and name match, ordered by file then start line. It has
@@ -569,8 +600,8 @@ root directory answer's `dir` is `"."`.
 ### D22 — Nothing is cached, including the ignore set
 
 - Decision: `Repo` holds the root and nothing else. The `.gitignore` pattern set is collected fresh
-  on each `TOC` and `SpansOf` call — once per call, walking root-to-target, not once per directory
-  visited — and discarded when the call returns.
+  on each `TOC` and `SpansOf` call — never read from a previous call, and extended per directory as
+  the walk descends per D9's superseding paragraph — and discarded entirely when the call returns.
 - Rationale: this closes a contradiction with the Constraints ("No cache, index, daemon or
   concurrency in the engine … Every answer reads source as it is at that moment"). It is not
   pedantry: T6's MCP server is a long-lived process, so a process-lifetime pattern set would go stale
@@ -719,6 +750,19 @@ gate.
     each asserted on `id`, span, `signature` and the absence of `sigend`.
 11f. Extensionless files (D10): a `Makefile` with a leading `#` block resolves through the
     base-name table; a `Dockerfile`; an extensionless file in neither table gets `name` alone.
+11g. Ignore-set freshness (D22): two `TOC` calls on **one** `Repo` with the fixture's `.gitignore`
+    rewritten between them — the second answer must reflect the new patterns. Nothing else in T3
+    would notice a set accidentally cached on `Repo`, because the staleness it prevents only shows
+    inside T6's long-lived process.
+11h. Descendant `.gitignore` (D9): a fixture with an ignore file two levels down — assert
+    `--depth all` honours it and that `SpansOf` on that descendant unit filters identically, so the
+    file is neither a round-trip miss nor an extra.
+11i. `SpansOf` argument validation (D16): a hand-built `Glyph{Unit: ""}`, one with a `..` segment,
+    and one with a three-component member — each rejected via the `glyph.Parse` round-trip, with the
+    `*glyph.ParseError` surfacing rather than a silent root-directory answer.
+11j. Package-clause tie-break (D7): a fixture directory splitting evenly between two clauses —
+    assert the lexicographically smaller one becomes the directory's `package` and that the answer is
+    identical across repeated runs.
 
 **Golden tests against Loomyard** (env-gated per D17):
 
