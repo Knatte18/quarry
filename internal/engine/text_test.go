@@ -92,6 +92,16 @@ func TestFirstParagraph(t *testing.T) {
 			text: "Foo does a thing across one whole paragraph with no break.",
 			want: "Foo does a thing across one whole paragraph with no break.",
 		},
+		{
+			name: "PackageCommentContinuesAfterBlankLine",
+			text: StripLineComment("// Package foo does a thing.\n//\n// It continues here with more detail.", "//"),
+			want: "Package foo does a thing.",
+		},
+		{
+			name: "PackageCommentWithNoBlankLine",
+			text: StripLineComment("// Package foo does a thing across one whole comment with no break.", "//"),
+			want: "Package foo does a thing across one whole comment with no break.",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
