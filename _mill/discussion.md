@@ -23,7 +23,8 @@ ladder run against the rewritten engine — is the regression gate for the whole
 nothing to run with. T2 is wave 1's long pole and needs no quarry code until T7, so it starts now
 and overlaps waves 2–5.
 
-This task builds that replacement: one Go program of roughly 1 000–1 500 lines with tests, under
+This task builds that replacement: one Go program of roughly 1 000–1 500 non-test lines, with tests
+besides (see Constraints), under
 `bench/loomyard-eval/ladder/`, replacing `cmd/ladderbench`, `internal/ladder`, `tools/runmatrix`,
 `run*.sh`, `launch-session.sh` and `.claude/skills/ladder-run`.
 
@@ -99,17 +100,44 @@ This task builds that replacement: one Go program of roughly 1 000–1 500 lines
 
 ### no-tmp-paths
 
-- Decision: the harness derives every filesystem location itself. Task worktrees go to
-  `<quarry-repo>/.scratch/ladder-worktrees/<task-id>`; nothing is written to `/tmp`. The yaml keys
-  `worktree:`, `session_dir_template:`, `cold:`, `warm_counterpart:`, `cold_worktree_template:`,
-  `annex:`, `annexes:` and `toc_format:` are removed from the shape, and the loader **errors** with
-  a named message when it encounters any of them.
-- Rationale: `/tmp` is banned by this task's constraints, and V1's own `ladder.yaml` comment
-  records why — Claude Code treats a fresh `/tmp` directory as an untrusted workspace and silently
-  ignores `permissions.allow`. `.scratch/` is gitignored and sits under an already-trusted
-  ancestor. Erroring on retired keys makes V1 residue loud instead of silent.
-- Rejected: keeping `worktree:` and validating it (a field whose only remaining job is to be
-  rejected); silently ignoring unknown keys (hides drift).
+- Decision: the harness derives every filesystem location itself, and **task worktrees live outside
+  the quarry repository**: `${XDG_CACHE_HOME:-$HOME/.cache}/quarry-ladder/worktrees/<task-id>`. The
+  harness's own scratch — generated MCP config documents, rendered prompts, the built server binary
+  — stays under `<quarry-repo>/.scratch/ladder/`. Nothing is written to `/tmp`. At startup the
+  harness **asserts** that the resolved worktree root is not under the quarry repo root and refuses
+  to run if it is. The yaml keys `worktree:`, `session_dir_template:`, `cold:`,
+  `warm_counterpart:`, `cold_worktree_template:`, `annex:`, `annexes:` and `toc_format:` are
+  removed from the shape, and the loader **errors** with a named message when it encounters any of
+  them.
+- Rationale: `/tmp` is banned by this task's constraints. But putting the task worktree *inside*
+  the quarry repo collides head-on with the blinding gate, in two ways. First, check (b) below
+  ("the transcript contains the quarry repo root path") would then match the cell's own `cwd` in
+  every `system.init` record and every absolute path in a tool block, killing every control rep.
+  Second — and this is the reason prefix-stripping is not the fix — `Bash` is granted bare, so a
+  blinded control agent sitting at `<quarry-repo>/.scratch/…` can simply `cat ../../../internal/…`
+  and read quarry's own source. Relocating the worktree is what makes check (b) mean something
+  again; stripping the prefix would mask exactly the leak the check exists to catch. V1's gate was
+  sound only because its worktrees were at `/tmp/loomyard-eval-01`, far from the quarry root.
+  `~/.cache` is not `/tmp` (it is stable, per-user and not world-writable), holds no tracked file,
+  and is resolved at runtime so no machine path is committed. Erroring on retired keys makes V1
+  residue loud instead of silent.
+- Rejected: `<quarry-repo>/.scratch/ladder-worktrees/` (breaks the blinding gate as above);
+  whitelisting the worktree prefix inside check (b) (masks the walk-up leak); keeping `worktree:`
+  and validating it (a field whose only remaining job is to be rejected); silently ignoring unknown
+  keys (hides drift).
+- Note on the brief's wording: the task brief says "scratch under `.scratch/`". That is honoured
+  for the harness's own scratch. Task worktrees are the deliberate exception, for the blinding
+  reason above; they are a checkout of *Loomyard*, not quarry scratch.
+- Note on directory trust, **not probed**: V1's `/tmp` lesson was specifically that Claude Code
+  treats a fresh, untrusted directory as one where `permissions.allow` **from `settings.json`** is
+  silently ignored (deny rules still apply). This design never uses a settings file — it passes
+  `--setting-sources ""` and puts the whole tool grant on the command line via `--tools` and
+  `--allowedTools` — so the mechanism that failed for V1 is not in play. That is reasoning, not a
+  measurement, and a freshly created worktree in a new location is exactly the case V1 warned
+  about. It is therefore verified rather than assumed: the live smoke test asserts the
+  `system.init` record's `tools` list is exactly `["Bash","Glob","Grep","Read"]` (plus any granted
+  `mcp__*` names) when run from inside a **freshly created** ladder worktree. If that assertion
+  fails, the tool grant is being silently degraded and every metric from such a run is void.
 
 ### one-ladder-file
 
@@ -182,7 +210,7 @@ This task builds that replacement: one Go program of roughly 1 000–1 500 lines
 - **Risk, stated deliberately:** removing the "use this tool first, don't grep" steering may mean
   a treatment cell never calls its granted tool, in which case gate 1 fires and the cell measures
   the tool's prompt cost rather than the tool. It may also move T7's numbers relative to
-  `v1-final:results/2026-09-02-toc/`. That is acceptable because HANDOFF rule 6 already says cost
+  `v1-final:results/2026-09-02-toc/`. That is acceptable because HANDOFF §3 already says cost
   numbers are comparable only within one root, and T7 measures its own control in its own root.
   T7's done-criterion should be read as "a2 separates from *its own* control", not "a2 reproduces
   the August absolute numbers".
@@ -305,7 +333,9 @@ This task builds that replacement: one Go program of roughly 1 000–1 500 lines
     -- this cell measures the tool's prompt cost, not the tool`.
   - **Gate 2 — control blinding.** Per *rep*, fatal, applied only when the cell's `allowed` is
     empty. Three checks, in order, short-circuiting: (a) the marshalled transcript contains the
-    literal `mcp__quarry__` → fatal; (b) it contains the quarry repo root path → fatal; (c)
+    literal `mcp__quarry__` → fatal; (b) it contains the quarry repo root path → fatal (this is
+    only meaningful because task worktrees live outside the quarry repo — see no-tmp-paths; the
+    harness refuses to start if that invariant does not hold); (c)
     case-insensitive bare `quarry` — if it occurs **only** inside a `tool_result` payload, record
     the non-fatal observation `target_origin_quarry_mention`; anywhere else → fatal. The
     tool_result/elsewhere split is done by re-marshalling the transcript with every `tool_result`
@@ -584,12 +614,23 @@ There is no `CONSTRAINTS.md` at the hub root. Constraints from the task brief, `
 - Go repository. **No Python.** No shell wrappers.
 - **No tracked file may carry a machine path.** This drives results-raw-ignored, the
   `loomyard_repo_sha256` field, and the `source_repo: env:…` literal.
-- No `/tmp`. Scratch under `.scratch/`, which is gitignored.
-- Roughly 1 000–1 500 lines including tests.
-- `HANDOFF.md` §2 rule 1 survives: do not edit the code under test while a matrix runs; the binary
-  hash per repetition stays in `provenance.json`.
-- `HANDOFF.md` §2 rule 6 survives: cost numbers are comparable only within one results root.
-- Rules 2, 3, 4, 5 and 7 are retired with the architecture that needed them.
+- No `/tmp`. The harness's own scratch goes under `.scratch/`, which is gitignored. Task worktrees
+  are the one deliberate exception and live outside the quarry repo entirely — see no-tmp-paths for
+  why the blinding gate requires it.
+- Roughly 1 000–1 500 **non-test** lines, with tests besides. Plan §2's table sets the `~1 000–1 500`
+  budget against V1's `9 000 (+8 300 test)` row, so it parallels the non-test figure; §9a's "roughly
+  1 000–1 500 lines with tests" means "accompanied by tests", not "including tests". The Testing
+  section below — six table-tested files, two test-built helper binaries, resume and failure paths —
+  does not fit inside 1 500 lines total and is not meant to.
+- Both surviving harness rules are prose in `HANDOFF.md` **§3** ("Two harness rules carry over into
+  T2"); HANDOFF has no numbered rules, and plan §9a cites §3 for them too. They are: do not edit the
+  code under test while a matrix runs (the binary hash per repetition stays in `provenance.json`),
+  and cost numbers are comparable only within one results root.
+- Everything else the old harness enforced is retired with the architecture that needed it; `claude
+  -p` now guarantees it (plan §9a).
+- The task brief's citation of "`HANDOFF.md` §2 rules 1 and 6" is an addressing error in the brief:
+  §2 is the decisions list and the rule numbering belongs to the V1 README on `v1-final`, if
+  anywhere. The content it points at is correct and is restated above.
 - No quarry code may be required to build or test the harness. It must not wait on T1.
 - `go build ./... && go test ./...` green; `go test ./...` must not require network, auth, or
   spend money.
@@ -640,8 +681,12 @@ There is no `CONSTRAINTS.md` at the hub root. Constraints from the task brief, `
   took a `Builder` seam for exactly this reason.
 
 **Live smoke test, skipped by default:** guarded by an environment variable (e.g.
-`LADDER_LIVE_TEST=1`), running one `reps: 1` `a0-none` cell against the real CLI. This is the
-mechanised form of the task's done-criterion.
+`LADDER_LIVE_TEST=1`), running one `reps: 1` `a0-none` cell against the real CLI from a **freshly
+created** ladder worktree. This is the mechanised form of the task's done-criterion. It must assert
+the `system.init` record's `tools` list is exactly `["Bash","Glob","Grep","Read"]` plus any granted
+`mcp__*` names, and that `mcp_servers` is empty for a control — i.e. that a brand-new worktree
+directory does not silently degrade the tool grant (see the trust note under no-tmp-paths) and that
+`--strict-mcp-config` held.
 
 **Done-criterion verification, by hand:** a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` on
 this host, after which the operator opens `raw/a0-none/1/transcript.jsonl` and checks by hand that
@@ -653,7 +698,7 @@ contains. This is the acceptance step, not an automated test.
 
 - **Q:** Package layout inside `bench/loomyard-eval/ladder/`? **A:** [auto-pick] `cmd/ladder/main.go` (thin) + `internal/ladder/` (one package, files per concern). **Why:** the shape V1 proved, keeps the yaml at its tracked paths, matches the plan's "files per concern, never a package per verb" rule, and keeps internals unit-testable.
 - **Q:** Is `results/**/raw/` committed or ignored (plan §11)? **A:** [auto-pick] Ignored; the derived artifacts (`summary.json`, `provenance.json`, `table.txt`, `conclusion.md`) are committed. **Why:** transcripts carry absolute host paths and no tracked file may carry a machine path; committing them would resurrect V1's whole redaction gate.
-- **Q:** Worktree and scratch locations, given the yaml's `/tmp` paths? **A:** [auto-pick] The harness derives them as `<repo>/.scratch/ladder-worktrees/<task-id>`; `worktree:`, `session_dir_template:`, `cold:`, `warm_counterpart:`, `cold_worktree_template:` are removed and the loader errors on them. **Why:** `/tmp` is banned and Claude Code treats a fresh `/tmp` dir as an untrusted workspace; erroring on retired keys makes V1 residue loud.
+- **Q:** Worktree and scratch locations, given the yaml's `/tmp` paths? **A:** [auto-pick, revised in review round 1] Task worktrees go **outside** the quarry repo, to `${XDG_CACHE_HOME:-$HOME/.cache}/quarry-ladder/worktrees/<task-id>`, asserted at startup; the harness's own scratch stays at `<repo>/.scratch/ladder/`. `worktree:`, `session_dir_template:`, `cold:`, `warm_counterpart:`, `cold_worktree_template:` are removed and the loader errors on them. **Why:** `/tmp` is banned, but the first answer — `<repo>/.scratch/ladder-worktrees/` — collided with the blinding gate: check (b) matches the quarry repo root, which would then be the cell's own `cwd` in every record, and with bare `Bash` a blinded agent could walk up into quarry's source. Relocation is what makes the check mean anything.
 - **Q:** What happens to the other five `ladder*.yaml`? **A:** [auto-pick] Migrate `ladder-toc.yaml`; delete the other five. **Why:** they declare seven tools, annexes, cold cells and a daemon that no longer exist; HANDOFF §2 says nothing in the tree describes what it does not support, and all five are recoverable at `origin/v1-final`.
 - **Q:** Cell concurrency? **A:** [auto-pick] Strictly sequential, cell-minor rep ordering. **Why:** duration and cost are measured metrics and parallel runs share rate limits and the prompt cache; resume is what makes a serial run restartable.
 - **Q:** Where does the exploration output schema live, now that T0 deleted `bench/loomyard-eval/README.md`? **A:** [auto-pick] Recover it from `origin/v1-final` and inline it into `01-reed-geometry-exploration.md`, mirroring the impact schema in `04-…md`. **Why:** it is the schema `a0-none` — this task's own done-criterion — needs, and one schema per task file collapses V1's two-source parsing into one path.
@@ -670,4 +715,7 @@ contains. This is the acceptance step, not an automated test.
 - **Q:** How is prompt-cache contamination between reps handled? **A:** [auto-pick] Report cache-read and cache-creation separately, never summed, plus an `input_tokens_total`; state the effect in `conclusion.md`; do not try to defeat the cache. **Why:** a probe showed a second run reading 10 308 tokens cached by the first minutes earlier; cell-minor ordering spreads it evenly, and defeating the cache would make the numbers unrepresentative.
 - **Q:** The exact per-cell `claude -p` invocation? **A:** [auto-pick] `--tools Read,Grep,Glob,Bash` for every cell, `--allowedTools` carrying only the granted `mcp__quarry__*` names (omitted entirely on a control), always `--mcp-config … --strict-mcp-config` (empty document on controls), plus `--model`, `--effort`, `--max-turns`, `--output-format stream-json --verbose`, `--no-session-persistence`, `--setting-sources ""`, cwd = the pinned worktree, stdin `/dev/null`. **Why:** probe-verified — without `--strict-mcp-config` the operator's personal Gmail/Drive MCP servers load into the cell and roughly double the system-prompt token count; §9a's `--tools ""` was isolating the allowlist and would leave the control unable to read the codebase; `--bare` is unusable because this host is OAuth.
 - **Q:** Bash granted bare, or narrowed to read-only command patterns? **A:** Revised during the interview to bare `Bash`, matching V1's control set exactly, with a `worktree_dirtied` observation and a `git restore` between reps. **Why:** narrowing it would make denied Bash calls a behavioural difference between arms, which is exactly the kind of confound the one-preamble decision exists to remove.
+- **Q:** [review round 1] Does the ~1 000–1 500 line budget include tests? **A:** No — non-test lines, tests besides. **Why:** plan §2's table sets that budget against V1's `9 000 (+8 300 test)` row, so it parallels the non-test figure, and the testing plan here cannot fit in 1 500 lines total.
+- **Q:** [review round 1] Where do the two surviving harness rules actually live? **A:** `HANDOFF.md` §3, as prose; there are no numbered rules anywhere. **Why:** the task brief cites "§2 rules 1 and 6", but §2 is the decisions list; plan §9a cites §3 correctly. Content right, address fabricated.
+- **Q:** [review round 1] Is a fresh worktree "already trusted" by Claude Code? **A:** Not asserted any more — the V1 hazard was `permissions.allow` in `settings.json` being ignored in an untrusted directory, and this design uses no settings file at all (`--setting-sources ""`, grant on the command line). The live smoke test verifies it rather than assuming it, asserting the `system.init` tools list from inside a freshly created worktree. **Why:** every other invocation claim in this document is probe-backed; this one was not.
 - **Q:** Which V1 gates and metrics are retired? **A:** Retired: `GateRunPrompt`, `GateMaxTurns`, `GateModelPinned`, `GateNoTargetOverride`, `GateDeniedToolsNotUsed`, every cold/daemon gate; `denied_tool_attempts` and `_provisional` (`DenialShapePattern` was never validated against a real denial and the provisional flag was hardcoded `true`), `agent_id`, `transcript_source`, `server_vcs_modified`. **Why:** the CLI now enforces or reports each directly, or the field was structurally constant and carried no information.
