@@ -46,10 +46,19 @@ var booleanFlags = map[string]bool{
 }
 
 func main() {
+	args := os.Args[1:]
+
+	// CollectInvocation probes the binary's own version with a bare "--version" invocation, outside
+	// either the measured-cell or the scorer argument vector; answer it directly rather than routing
+	// it through the flag assertions below.
+	if len(args) == 1 && args[0] == "--version" {
+		fmt.Println("0.0.0-fake")
+		return
+	}
+
 	values := map[string]string{}
 	present := map[string]bool{}
 
-	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
