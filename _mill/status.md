@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-layout
+phase: approved-text-rules
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r4  '2026-09-03T19:21:23Z'
 planned  '2026-09-03T19:21:35Z'
 implementing  '2026-09-03T19:22:09Z'
 approved-layout  '2026-09-03T19:31:47Z'
+approved-text-rules  '2026-09-03T19:38:53Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     commit_sha: a1a21ddb2a669308d26bfbecd8ea5b4ac70d2e6c
     verify_baseline_failures: []
   - name: text-rules
-    state: running
+    state: approved
     implementer_session: 7096c14b-9599-4fa0-840e-49dd203a6258
     start_sha: c534f06430b2c78fb519f59c3e4b8cf0810e85c7
+    commit_sha: b72cd21fd91bda1b8d071ff9c6559ab8fd753441
     verify_baseline_failures: []
   - name: answer-and-walk
     state: pending
