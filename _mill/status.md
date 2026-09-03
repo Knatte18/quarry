@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-text-rules
+phase: approved-answer-and-walk
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-09-03T19:21:35Z'
 implementing  '2026-09-03T19:22:09Z'
 approved-layout  '2026-09-03T19:31:47Z'
 approved-text-rules  '2026-09-03T19:38:53Z'
+approved-answer-and-walk  '2026-09-03T20:00:49Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     commit_sha: b72cd21fd91bda1b8d071ff9c6559ab8fd753441
     verify_baseline_failures: []
   - name: answer-and-walk
-    state: running
+    state: approved
     implementer_session: 4fa63e51-258a-486d-8df8-86176c6ffdc8
     start_sha: ec5cbd5dab644fccaaac0c1db2cae8996292edd8
+    commit_sha: 8594cdef8bb8777330e108cc41db4c2e651a36ab
     verify_baseline_failures: []
   - name: glyph-symbols
     state: pending
