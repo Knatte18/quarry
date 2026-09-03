@@ -12,11 +12,10 @@ depends-on: [3]
 ## Batch Scope
 
 This batch moves the engine onto the glyph. `Symbol` gains its `glyph.Glyph`, its `id`, its `file`
-and its head span and loses `Name` and `Owner` (D3, D4); `Kind` widens to the five values glyph.md's
-Go table names (D5); the Go declaration walk grows package-level `const` and `var` and interface
-methods, strips type parameters from a generic receiver's owner, and skips the blank identifier
-(D5); and the walk derives each file's unit, including the external `_test` unit and the
-unspellable-unit exclusion (D7).
+and its head span and loses `Name` and `Owner`; `Kind` widens to the five values glyph.md's
+Go table names; the Go declaration walk grows package-level `const` and `var` and interface
+methods, strips type parameters from a generic receiver's owner, and skips the blank identifier; and the walk derives each file's unit, including the external `_test` unit and the
+unspellable-unit exclusion.
 
 After this batch a `toc` answer emits §4's symbol entry exactly — `id`, `kind`, `start`, `sigend`,
 `end`, `signature`, `doc` — which is what makes batch 6's goldens meaningful and batch 5's round
@@ -260,6 +259,7 @@ never modified — it is the one implementation of the grammar.
   - `internal/engine/toc_test.go`
   - `internal/engine/answer_test.go`
   - `internal/engine/toc_integration_test.go`
+  - `internal/engine/classify_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -270,7 +270,9 @@ never modified — it is the one implementation of the grammar.
   pointer and a value receiver, an ungrouped and a grouped `type`, and a type alias whose absent
   `sigend` is asserted through the marshalled JSON. In `toc_test.go`, `answer_test.go` and
   `toc_integration_test.go`, update the symbol assertions the same way; the integration test's three
-  expected function names become their three expected ids.
+  expected function names become their three expected ids. In `classify_test.go`, `fakeStrategy`'s
+  `Symbols` method gains the `unit string` parameter so it still satisfies the interface — without
+  it the package does not build.
 - **Commit:** `test(engine): port the Go strategy tests onto the glyph-keyed symbol`
 
 ### Card 30: Glyph, widening and unit tests

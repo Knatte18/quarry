@@ -12,12 +12,9 @@ depends-on: [1, 2]
 ## Batch Scope
 
 This batch replaces the answer shape and the entry point: the two unrelated results `FileTOC` and
-`DirTOC` become the one recursive `DirAnswer` of plan §4 (D12), the package-level `TOCFile`/`TOCDir`
-become `Repo.TOC` (D13, D15), and the walk gains everything §4's directory answer needs — the
-directory's package with its tie-break (D7 steps 1–2), the package doc (D8), the language rule
-(D11), every non-gitignored file rather than only `.go` files (D9, D10), lexicographic ordering
-(D18), symlinks as name-only entries (D19), target validation (D20), and a per-call ignore set
-(D22).
+`DirTOC` become the one recursive `DirAnswer` of plan §4, the package-level `TOCFile`/`TOCDir`
+become `Repo.TOC`, and the walk gains everything §4's directory answer needs — the
+directory's package with its tie-break, the package doc, the language rule, every non-gitignored file rather than only `.go` files, lexicographic ordering, symlinks as name-only entries, target validation, and a per-call ignore set.
 
 `Symbol` is deliberately untouched here: it keeps `Name`, `Owner` and `Docstring`, and the Go walk
 keeps its three kinds. Batch 4 replaces it with the glyph-keyed symbol and widens the walk. Splitting
@@ -227,6 +224,11 @@ exclusion.
   - `walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool, identityOnly bool) (DirAnswer, error)`
     — the recursion. On entry it calls `ig.extend(dirRel)` and on exit `ig.trim` of the same count,
     so a directory's own patterns are in force for its subtree and are dropped again on the way out.
+    `walkDir` owns the extend/trim for **its own** directory, at every level including the first:
+    the caller hands it a set already carrying the chain from the root down to the target's
+    **parent** and never the target's own, so no directory's patterns are appended twice and the
+    trim accounting stays exact. State that split in the comment, since it is not inferable from
+    either side alone.
     It reads the directory once with `os.ReadDir`, drops every entry `ig.match` excludes, and never
     descends into an excluded directory. An entry whose `DirEntry.Type()` has `fs.ModeSymlink` set
     becomes a `FileEntry` carrying `Name` alone — never descended into, never opened, no `Header`, no
@@ -258,7 +260,8 @@ exclusion.
   declare `func (r *Repo) TOC(target string, opts TOCOptions) (DirAnswer, error)`.
 
   It validates `target` through `resolveTarget`, builds a fresh `ignoreSet` for the repository root
-  and extends it along the root-to-target chain, and then answers:
+  and extends it along the chain from the root down to the target's **parent** — never the target's
+  own directory, which `walkDir` extends itself on entry — and then answers:
 
   - A directory target: `walkDir` on it. `opts.Depth` of `0` fills the target's own `files` and
     lists its direct subdirectories as identity-plus-doc answers; `N` fills the files of
@@ -331,6 +334,7 @@ exclusion.
   - `internal/engine/walk.go`
   - `internal/engine/answer.go`
   - `internal/engine/treesitter/treesitter.go`
+  - `internal/engine/scratchtree_test.go`
 - **Edits:**
   - `internal/engine/toc_test.go`
   - `internal/engine/toc_integration_test.go`
@@ -356,9 +360,16 @@ exclusion.
   language, package, not lossy, non-empty header, the three expected function names, and ascending
   starts.
 
-  In `golang_test.go` and `classify_test.go`, adjust only what the changed `Strategy` signatures
-  force: calls to `Generated` and `TestFile` now take one return value. Do not otherwise rewrite
-  them; batch 4 owns their widening.
+  Every fixture in `toc_test.go` currently lands in a `t.TempDir()` — nineteen call sites including
+  the `writeTempFile` helper — which the system-temp ban and the fixture Shared Decision both
+  forbid. Rebuild every one of them through `writeScratchTree`, and delete `writeTempFile` in favour
+  of it.
+
+  In `golang_test.go` and `classify_test.go`, adjust what the changed `Strategy` signatures force:
+  calls to `Generated` and `TestFile` now take one return value, and `classify_test.go`'s
+  `fakeStrategy` — which implements the whole interface — gains a `PackageDoc` method returning the
+  empty string and drops the second return from its own `Generated` and `TestFile`. Without that the
+  package does not build. Do not otherwise rewrite them; batch 4 owns their widening.
 - **Commit:** `test(engine): port the existing tests onto Repo.TOC`
 
 ### Card 21: Walk and target-validation tests
@@ -377,7 +388,7 @@ exclusion.
   - `internal/engine/walk_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** `repo_test.go` covers target validation (D20): an absolute target, a
+- **Requirements:** `repo_test.go` covers target validation: an absolute target, a
   `..`-escaping target and a nonexistent target each asserted with `errors.Is` against their own
   sentinel; a gitignored target answered rather than refused; a target that is itself a symlink
   answered as a name-only entry inside its parent, not followed; and `""` and `"."` both answering
@@ -389,9 +400,9 @@ exclusion.
   for `tree/sub` (a file header without the `Package ` prefix is not package documentation); the
   `package` deviation key appearing only on the external-test file, and a directory whose package is
   legitimately named `httptest` NOT being split; the tie-break under `tiebreak/` picking the
-  lexicographically smaller clause and doing so identically across repeated runs; ordering (D18)
+  lexicographically smaller clause and doing so identically across repeated runs; ordering
   over a `.scratch/` tree whose creation order is not lexicographic, asserting `files` and `dirs`
-  come back sorted and symbols in source order; symlinks (D19) over a `.scratch/` tree with a
+  come back sorted and symbols in source order; symlinks over a `.scratch/` tree with a
   symlink to a directory, a symlink to a file and a symlink cycle, asserting each is a name-only
   entry, that `DepthAll` terminates, and that nothing behind a link is listed or parsed; and a
   descendant `.gitignore` two levels down being honoured under `DepthAll`.
@@ -417,20 +428,20 @@ exclusion.
   key present as `[]` for a symbol-bearing query of a file with no declaration, and the key present
   and populated otherwise.
 
-  Cover the knobs (D13) over the committed `tree/` fixture: `Depth` of `0` versus `1` versus
+  Cover the knobs over the committed `tree/` fixture: `Depth` of `0` versus `1` versus
   `DepthAll`, with `0` listing direct subdirectories as `dir`, `package` and `doc` and no other key;
   `Symbols` defaulting per target kind for a file target and a directory target, and both explicit
   overrides winning; a file target answering as a one-entry directory answer that carries the
   enclosing directory's facts and no `dirs`; and a non-zero `Depth` on a file target changing
   nothing.
 
-  Cover the failure entries (D12) over the committed `broken/` fixture: an unreadable file (created
+  Cover the failure entries over the committed `broken/` fixture: an unreadable file (created
   in a `.scratch/` tree, since a committed file cannot be unreadable), an invalid-UTF-8 file and a
   file the grammar reports an error on — `error` and `lossy` set, never both, and the file still
-  listed rather than skipped. Cover the extensionless-file rule (D10) over `Makefile` and a file in
+  listed rather than skipped. Cover the extensionless-file rule over `Makefile` and a file in
   neither header table.
 
-  Cover ignore-set freshness (D22) with two `TOC` calls on **one** `Repo`, the `.scratch/` fixture's
+  Cover ignore-set freshness with two `TOC` calls on **one** `Repo`, the `.scratch/` fixture's
   `.gitignore` rewritten between them: the second answer must reflect the new patterns. Nothing else
   in this task would notice a set accidentally cached on `Repo`.
 - **Commit:** `test(engine): pin the answer shape, the knobs and the failure entries`

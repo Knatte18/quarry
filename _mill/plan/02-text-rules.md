@@ -12,7 +12,7 @@ depends-on: [1]
 ## Batch Scope
 
 This batch adds the two pure-text rules the new walk depends on and nothing else: the gitignore
-matcher (D9) and the non-code header extractors (D10). Both are pure functions over strings and
+matcher and the non-code header extractors. Both are pure functions over strings and
 paths with no tree-sitter node in any signature, so they are written test-first and land before the
 walk that consumes them. Nothing in the package calls them yet, so the batch cannot regress any
 existing behaviour — that is why it is separated from batch 3.
@@ -87,6 +87,12 @@ the batch 6 round trip over quarry itself.
   module root from `runtime.Caller(0)`, creates `.scratch/engine-tests/<name>/`, writes each
   `files` entry (key = a forward-slash relative path, value = its contents, parent directories
   created as needed), registers a `t.Cleanup` that removes the tree, and returns its absolute path.
+
+  The helper writes regular files only. A test needing a symlink, a directory-only entry, an
+  unreadable file, or a specific creation order creates it itself on the path the helper returns —
+  that is deliberate, so one helper does not grow a mode/type/order parameter for the handful of
+  cases that need one. Say so in its doc comment.
+
   It must never call `t.TempDir()` — the system temp directory is banned by this task's constraints,
   and `.scratch/` is the sanctioned location.
 
@@ -100,48 +106,22 @@ the batch 6 round trip over quarry itself.
   with no pattern present at all, and another that `trim` restores the previous set exactly.
 - **Commit:** `test(engine): table-test the gitignore matcher`
 
-### Card 10: The two header-rule lookup tables
-
-- **Context:**
-  - `internal/engine/doc.go`
-- **Edits:**
-  - `internal/engine/extension.go`
-- **Creates:** none
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:** Leave `extensionLanguages` and its three views (`LanguageForExtension`,
-  `ExtensionsForLanguage`, `ExtensionLanguages`) exactly as they are — the extension-to-*language*
-  table stays Go-only. Add two new unexported lookup tables beside them:
-
-  - `extensionHeaderRules map[string]headerRule` — keyed by a lowercase, dot-prefixed extension.
-  - `baseNameHeaderRules map[string]headerRule` — keyed by an exact file base name, consulted only
-    when `filepath.Ext` returns the empty string, and holding `Makefile` and `Dockerfile`.
-
-  `headerRule` is a named function type declared in `headers.go` (card 11). Populate
-  `extensionHeaderRules` per D10: `.md` to the Markdown rule; `.html` and `.htm` to the leading
-  `<!-- ... -->` rule; `.css` to the leading `/* ... */` rule; `.js`, `.mjs` and `.ts` to the leading
-  `//`-block-or-`/* ... */` rule; `.yaml`, `.yml`, `.toml`, `.sh`, `.bash` and `.zsh` to the leading
-  `#`-block rule. Add a comment stating that these tables are deliberately separate from
-  `extensionLanguages`: an entry here gives a file a header, never a language, and never `symbols`.
-  Explain in that same comment why the base-name table exists rather than a sentinel key inside the
-  extension table — an extensionless file is a real case and a key that reads like an extension and
-  is not one would be a lie.
-- **Commit:** `feat(engine): add the non-code header lookup tables`
-
-### Card 11: The non-code header extractors
+### Card 10: The non-code header rules
 
 - **Context:**
   - `internal/engine/text.go`
-  - `internal/engine/extension.go`
+  - `internal/engine/doc.go`
 - **Edits:** none
 - **Creates:**
   - `internal/engine/headers.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** New file `headers.go`, `package engine`. Declare
-  `type headerRule func(src []byte) string` and the concrete rules the tables in card 10 name:
-  `markdownHeader`, `htmlCommentHeader`, `cssCommentHeader`, `scriptCommentHeader` and
-  `hashBlockHeader`. Each is pure: bytes in, prose out, no I/O, no tree-sitter.
+  `type headerRule func(src []byte) string` and the five concrete rules the next card's tables map
+  to: `markdownHeader`, `htmlCommentHeader`, `cssCommentHeader`, `scriptCommentHeader` and
+  `hashBlockHeader`. Each is pure: bytes in, prose out, no I/O, no tree-sitter. This card declares
+  the type and the rules only; the tables and the entry point that dispatches through them are the
+  next card's, so nothing here refers to a table that does not exist yet.
 
   - `markdownHeader` returns the file's first ATX (`#`-prefixed) or setext (underlined with `=` or
     `-`) heading, then the first paragraph that follows it, joined by a newline. A file with no
@@ -156,14 +136,42 @@ the batch 6 round trip over quarry itself.
   Every rule returns the first paragraph only, via `FirstParagraph`, so a long leading comment does
   not become the header. Leading blank lines are skipped before the rule looks for its delimiter; a
   comment that does not start the file is not a header.
+- **Commit:** `feat(engine): add the per-format non-code header rules`
 
-  Also declare the one entry point the walk calls:
+### Card 11: The lookup tables and HeaderForFile
+
+- **Context:**
+  - `internal/engine/doc.go`
+- **Edits:**
+  - `internal/engine/extension.go`
+  - `internal/engine/headers.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Leave `extensionLanguages` and its three views (`LanguageForExtension`,
+  `ExtensionsForLanguage`, `ExtensionLanguages`) exactly as they are — the extension-to-*language*
+  table stays Go-only. Add two new unexported lookup tables beside them in `extension.go`:
+
+  - `extensionHeaderRules map[string]headerRule` — keyed by a lowercase, dot-prefixed extension.
+  - `baseNameHeaderRules map[string]headerRule` — keyed by an exact file base name, consulted only
+    when `filepath.Ext` returns the empty string, and holding `Makefile` and `Dockerfile`.
+
+  Populate `extensionHeaderRules`: `.md` to the Markdown rule; `.html` and `.htm` to the leading
+  `<!-- ... -->` rule; `.css` to the leading `/* ... */` rule; `.js`, `.mjs` and `.ts` to the leading
+  `//`-block-or-`/* ... */` rule; `.yaml`, `.yml`, `.toml`, `.sh`, `.bash` and `.zsh` to the leading
+  `#`-block rule. Add a comment stating that these tables are deliberately separate from
+  `extensionLanguages`: an entry here gives a file a header, never a language, and never `symbols`.
+  Explain in that same comment why the base-name table exists rather than a sentinel key inside the
+  extension table — an extensionless file is a real case and a key that reads like an extension and
+  is not one would be a lie.
+
+  Then add the one entry point the walk calls to `headers.go`:
   `HeaderForFile(base string, src []byte) string`. It looks `filepath.Ext(base)` up in
   `extensionHeaderRules`, falls back to `baseNameHeaderRules[base]` when the extension is the empty
   string, and returns the empty string when neither table has an entry. It never consults
   `extensionLanguages` and never parses Go — a Go file's header comes from the Go strategy, not from
   here.
-- **Commit:** `feat(engine): add the per-format non-code header rules`
+- **Commit:** `feat(engine): add the non-code header tables and HeaderForFile`
 
 ### Card 12: Header-rule and FirstParagraph tests
 
@@ -185,7 +193,7 @@ the batch 6 round trip over quarry itself.
   base-name table; an extensionless file in neither table; and an unknown extension. Every case
   asserts the exact returned string.
 
-  In `text_test.go`, extend `TestFirstParagraph` with the two cases D8 turns on: a package comment
+  In `text_test.go`, extend `TestFirstParagraph` with the two cases the package-doc rule turns on: a package comment
   that continues after a blank line (only the first paragraph is returned) and one that does not
   (the whole text is returned). Do not change the existing `TestStripLineComment` or
   `TestStripComment` cases.
