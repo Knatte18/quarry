@@ -1,0 +1,27 @@
+MILL_REVIEW_BEGIN
+# Review: Ladder harness around headless claude -p (T2) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-03
+```
+
+## Findings
+
+### [BLOCKING:design] Provenance write deferred past two abort paths, breaking crash-safety
+**Location:** `bench/loomyard-eval/ladder/internal/ladder/run.go:94-186`
+**Issue:** Card 26 requires "call the invocation collector once, merge its result into the record and write the record, so a run that dies mid-matrix still leaves its own invocation on disk." `Run` merges the invocation (line 123) but defers the single `WriteProvenance` call to line 184, *after* the resumed-root memory-path scan (which can `return true, err` at line 145 on a fatal finding) and *after* `BuildServer` (which can `return false, err` at line 167 on a build failure). In both of those error paths the freshly collected+merged invocation — commit SHAs, dirty flags, selected cells — is never persisted, exactly the loss the plan's write-early rule exists to prevent. The code's own comment at line 182-183 ("Writing here... is what keeps a run that dies mid-matrix leaving its own invocation on disk") is not true for these two paths.
+**Fix:** Move `WriteProvenance(opts.ResultsRoot, prov)` to immediately after `MergeProvenance` succeeds (before the memory-path scan and server build), matching the plan's stated ordering; a later server-hash update can call `WriteProvenance` again once the hash is known.
+
+### [NIT:consistency] Unused `cfg` parameter threaded through two answer-redaction helpers
+**Location:** `bench/loomyard-eval/ladder/internal/ladder/run.go:657,663`
+**Issue:** `redactedAnswerText(l *Ladder, cfg Config, quarryRepoRoot, taskWorktreePath, answerText string)` and `writeAnswerFiles(dir string, l *Ladder, cfg Config, ...)` both accept `cfg` but never read it — `redactionInputFor` builds `RedactionInput` from `l`, `quarryRepoRoot`, and `taskWorktreePath` only. This compiles fine but is dead parameter surface the line-budget decision's "no unused fields/params" spirit discourages.
+**Fix:** Drop the unused `cfg` parameter from both functions.
+
+## Verdict
+
+REQUEST_CHANGES
+Provenance persistence is skipped on two startup abort paths, contradicting the plan's explicit crash-safety guarantee.
+MILL_REVIEW_END
