@@ -104,7 +104,7 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
 - **One symbol entry everywhere:** `id` (the glyph), `kind` (a word, never an LSP integer), `start`, `sigend`,
   `end` (1-based, inclusive), `signature` (verbatim source), `doc` (complete, never truncated by
   extraction), and `file` (relative to the repository root, never absolute) wherever entries can span
-  files. `resolve`, `members` and `map` all return this entry and nothing else for a symbol.
+  files. `resolve`, `members` and `toc` all return this entry and nothing else for a symbol.
 - **One file entry everywhere, carrying only what is the file's own:** `name`, `header`, the
   deviations only when present (`test`, `generated`, `package` when it differs from the
   directory's, as `logger_test` does, `language` when it differs from the directory's), and
@@ -117,7 +117,7 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
 - **Shared facts once, defaults never.** Package, directory and language are stated once at the top.
   `test: false`, `generated: false`, `ok: true` inside data, empty `dirs: []`, and a directory prefix
   repeated on every path are V1 clutter: 25 files carried 100 fields that said nothing.
-- **Glyphs as keys in every output**, under the JSON key `id`. What `map` lists is what `resolve` takes.
+- **Glyphs as keys in every output**, under the JSON key `id`. What `toc` lists is what `resolve` takes.
 - **`verified` per entry** on anything that claims a reference (phase 2 `impact`: `true` when the
   type checker confirmed it, `false` when it could not). A consumer that wants only verified entries
   filters; a gate that reads unverified entries as proof is a defect.
@@ -137,10 +137,10 @@ it is what tells a consumer which glyph alphabet the `id`s below are spelled in.
 saying so — Go's `// Package render ...` comment above the package clause, Python's `__init__.py`
 module docstring, and for C# the first paragraph of a `README.md` in the directory, since the
 language has no convention. It is carried whole (one paragraph) and it is the one thing a
-subdirectory entry carries besides its identity, so `map` on a parent is a list of its
+subdirectory entry carries besides its identity, so `toc` on a parent is a list of its
 subdirectories each saying what it holds. Loomyard today: 54 of 83 packages have one; the 29
 without are mostly `*cli` packages. A missing `doc` is absent, not empty, and is a repository
-invariant `map` can report (§8.2). Two independent
+invariant `toc` can report (§8.2). Two independent
 knobs say how much of the tree is filled in:
 
 | knob | values | default |
@@ -155,8 +155,8 @@ an agent gets without asking.
 
 ### Files that are not code, and directories with more than one language
 
-`map` lists every file in the directory that is not gitignored, not only source files.
-The question `map` answers is whether a file is worth opening,
+`toc` lists every file in the directory that is not gitignored, not only source files.
+The question `toc` answers is whether a file is worth opening,
 and that question is asked of `README.md`, `viewer.html` and `config.yaml` as much as of `layout.go`.
 A file without a language gets `name` and a `header` taken from wherever its format keeps one:
 Markdown gives its first heading and first paragraph;
@@ -166,19 +166,19 @@ Such entries never carry `symbols`, and `--symbols` does not change them.
 
 The alphabet is chosen per file, never per repository.
 A repository is not assumed to hold one language:
-a Python data parser inside a C# tree gets a Python glyph (`tools.parse_data#load`) and the C# code around it gets C# glyphs, in the same `map` answer.
+a Python data parser inside a C# tree gets a Python glyph (`tools.parse_data#load`) and the C# code around it gets C# glyphs, in the same `toc` answer.
 A file whose language differs from its directory's `package` language says so with `language` on the file entry;
 a directory with no `package` says nothing and its files each carry their own.
 
 A file is itself a target.
-What `map` lists, `resolve` takes, and `map` lists file names,
+What `toc` lists, `resolve` takes, and `toc` lists file names,
 so a plan card whose target is a whole file — the HTML viewer an agent is to create, a Markdown page — names it by its repository-relative path and `resolve` answers `found` or `not_found` with the file entry (§5).
 A target without `#` is a path; a target with `#` is a glyph.
 Nothing else is needed for non-code deliverables, and `plan-card-format.md`'s rule "never file:line" stands: a path is not a line.
 
 ### Examples, real data (Loomyard 72c23d9)
 
-`map internal/reedengine/render` — a directory: its files with headers, nothing below:
+`toc internal/reedengine/render` — a directory: its files with headers, nothing below:
 
 ```json
 { "dir": "internal/reedengine/render", "package": "render", "language": "go",
@@ -191,7 +191,7 @@ Nothing else is needed for non-code deliverables, and `plan-card-format.md`'s ru
     ... 12 files ] }
 ```
 
-`map internal/reedengine` — a directory with a subdirectory. At `depth: 0` the subdirectory is an
+`toc internal/reedengine` — a directory with a subdirectory. At `depth: 0` the subdirectory is an
 entry with its identity and its package doc, nothing else:
 
 ```json
@@ -203,13 +203,13 @@ entry with its identity and its package doc, nothing else:
       "doc": "Package render owns the closed display vocabulary and the deterministic Rules(strands, box, params) -> (layout, focus) function that turns a set of strands into a tmux window_layout string. It is a pure leaf: no I/O, no tmux, no engine import." } ] }
 ```
 
-`map internal` — the orientation map: no files of its own, every package under it with its doc.
+`toc internal` — the orientation map: no files of its own, every package under it with its doc.
 The 29 packages without one show as `dir` and `package` alone, which is the finding.
 
-`map internal/reedengine --depth 1` — the same, with the subdirectory filled the way the first
+`toc internal/reedengine --depth 1` — the same, with the subdirectory filled the way the first
 example is; `--depth all` keeps going down.
 
-`map internal/reedengine/render/layout.go` — a file: a directory answer with one file entry, and
+`toc internal/reedengine/render/layout.go` — a file: a directory answer with one file entry, and
 that entry carries `symbols` because the argument was a file:
 
 ```json
@@ -232,8 +232,8 @@ that entry carries `symbols` because the argument was a file:
           "doc": "..." } ] } ] }
 ```
 
-`map internal/reedengine/render --symbols` — every one of the 12 files shaped like `layout.go`
-above. `map internal --depth all --symbols` is the whole repository, every symbol: the shape a
+`toc internal/reedengine/render --symbols` — every one of the 12 files shaped like `layout.go`
+above. `toc internal --depth all --symbols` is the whole repository, every symbol: the shape a
 diff-to-symbols or documentation-drift check wants in one call.
 
 The same directory answer as lossless text, for the MCP block — no keys, no defaults, prose intact:
@@ -259,7 +259,7 @@ internal/reedengine/render/layout.go (package render, go): layout.go is the layo
 
 ## 5. The queries
 
-Phase 1 is `resolve`, `members` and `map`: the same tree-sitter parse with three entry points. None
+Phase 1 is `resolve`, `members` and `toc`: the same tree-sitter parse with three entry points. None
 needs a type checker, a daemon, or an index. Phase 1 says nothing about callers.
 
 **`resolve <glyph|path>...`** — where is this, right now. Per glyph: location(s) and status. Called by an
@@ -283,8 +283,8 @@ One line per member; the caller chooses what to read. This is how a large class 
 names members, `members` gives the map, the implementer reads head + the named member + siblings it
 picks. The whole class is `start`–`end` of the type symbol and is available, never the default.
 
-**`map <dir|file>... [--depth N|all] [--symbols]`** — what is here. V1's `toc dir` and `toc file` as
-one verb over one recursive answer (§4 Depth): a directory answers with its files and its
+**`toc <dir|file>... [--depth N|all] [--symbols]`** — what is here: a table of contents. V1's
+`toc dir` and `toc file` as one verb over one recursive answer (§4 Depth): a directory answers with its files and its
 subdirectories' identities, a file with its entry and symbols, and the two knobs fill in more of the
 tree or more of each file. The measured win. Headers and docs complete (lesson 4).
 
@@ -345,7 +345,7 @@ is kept and in the V1 Python and C# extractors on `v1-final`, for whoever picks 
    LLM. Typed results, no JSON round-trip, grammars loaded once per process.
 3. **The CLI.** Same queries, JSON out, exit codes for gates. The scripting contract.
 4. **MCP.** A mirror of the CLI for an LLM that has the tools granted, and kept thin:
-   only the tools a ladder cell measures, `map` first. Tool names are verbs, never protocol methods.
+   only the tools a ladder cell measures, `toc` first. Tool names are verbs, never protocol methods.
 
 ## 8. How Loomyard uses it
 
@@ -353,7 +353,7 @@ is kept and in the V1 Python and C# extractors on `v1-final`, for whoever picks 
 
 | card | before dispatch (mechanical, plan-time) | during implementation (the agent) | after (mechanical, done-check) |
 |---|---|---|---|
-| Create | `glyph.Parse` for the form; `resolve` target → must be `not_found` with `unit: found`, or the unit is itself a Create in the plan; for `Type.Name` the owner `unit#Type` → `found` or a Create in the plan; `map`/`members` on the package for "nothing equivalent exists" | `map` the package it goes into | `resolve` → `found` |
+| Create | `glyph.Parse` for the form; `resolve` target → must be `not_found` with `unit: found`, or the unit is itself a Create in the plan; for `Type.Name` the owner `unit#Type` → `found` or a Create in the plan; `toc`/`members` on the package for "nothing equivalent exists" | `toc` the package it goes into | `resolve` → `found` |
 | Edit | `resolve` target → `found`; phase 2 `impact` → `ImpactSummary` and tier-1 test package set | `resolve` before each read/edit; `members` when the target is a type | `resolve` → still `found`, in the expected package |
 | Delete | `resolve` target → `found`; phase 2 `assert-no-callers`; until then Loomyard's degraded mode (scoped grep, a human) | — | `resolve` → `not_found` |
 | Rename | `resolve old` → found, `resolve new` → not_found | the rename mechanic is out of quarry's scope (go/types script) | `resolve old` → not_found, `resolve new` → found |
@@ -361,9 +361,9 @@ is kept and in the V1 Python and C# extractors on `v1-final`, for whoever picks 
 | any | every glyph in `Uses` and every target must resolve unambiguously, or the plan is invalid before an agent is spawned; a target without `#` is a path (an HTML viewer, a Markdown page) and follows the same rows with the file entry in place of the symbol | `Uses` resolved into a pack: glyph, file, span, signature, doc, for a one-shot read | |
 
 **How the planner gets the glyphs right.** It never composes a glyph for an existing symbol: every
-symbol it knows about came from `map`, whose lines carry the glyph verbatim, so Edit, Delete,
+symbol it knows about came from `toc`, whose lines carry the glyph verbatim, so Edit, Delete,
 Rename-from, Move and `Uses` are copied, not spelled. Only Create composes one — an existing unit
-from `map` plus a new name — and that is what validation catches. **The planner validates before
+from `toc` plus a new name — and that is what validation catches. **The planner validates before
 it hands off, with the same code the mechanical gate runs.** Loomyard exposes its own plan
 validator to the planning agent as a tool; it calls quarry's facade underneath, and the final
 mechanical gate is the same function. Passing one is passing the other, so a plan that reaches
@@ -371,7 +371,7 @@ the gate never fails it on a glyph, and no fresh agent is spawned to fix what th
 could have. The validator's contract per glyph has three layers, and only the last needs the symbol to exist:
 
 1. **Syntactic, no source read.** `glyph.Parse(lang, s)` checks the form against the alphabet — one `#`, a well-formed unit for the language, a well-formed member — and returns the canonical spelling, so `Draw (int)` comes back as `Draw(int)`.
-   The language is the card's: for an existing unit it is what `map` reported, for a unit the plan creates the card says it, since there is no directory to look at.
+   The language is the card's: for an existing unit it is what `toc` reported, for a unit the plan creates the card says it, since there is no directory to look at.
 2. **Structural, against what exists around the target.** `resolve` — Edit, Delete, Rename-from, Move and `Uses` must be `found`; Create and Rename-to must be `not_found` with `unit: found`, or in a unit that is itself a Create in the plan; a Create of `Type.Name` needs its owner `unit#Type` found or created in the plan; `ambiguous` is always a rejection with its candidates.
 3. **Plan-internal.** Two Create cards with one glyph, or a Create that collides with another card's Rename-to, are rejected without asking quarry.
 
@@ -397,10 +397,10 @@ in phase 2.
   cached, because the previous card may have moved things.
 - **Done-checks per card**, table above. A Create card whose symbol does not resolve is not done; a
   Delete card whose symbol still resolves is not done. No judgment involved.
-- **Diff to symbols.** Given a diff's changed line ranges, `map` on the touched files gives the set of
+- **Diff to symbols.** Given a diff's changed line ranges, `toc` on the touched files gives the set of
   symbols the diff touched, by glyph. That is review scope, changelog input, and the check that a card
   changed only its declared targets.
-- **Documentation drift.** `map` over a package against the symbol names a doc or a codeguide page
+- **Documentation drift.** `toc` over a package against the symbol names a doc or a codeguide page
   claims; missing or extra names are mechanical findings.
 - **Repository invariants.** Every package has a package doc (29 of 83 do not, today); every
   exported symbol has a doc. The extractor already knows both.
@@ -411,10 +411,10 @@ in phase 2.
 
 ### 8.3 LLM use
 
-Only through the same surfaces. What the ladders showed: `map` on unfamiliar code is worth a tool
+Only through the same surfaces. What the ladders showed: `toc` on unfamiliar code is worth a tool
 grant; nothing else was, in V1's shapes. Whether `resolve` and `members` earn a grant for an
 implementer that already has a pack is a ladder question for after they exist. The planner is the
-one agent with a settled tool set: `map` to see what exists, and Loomyard's validator (over
+one agent with a settled tool set: `toc` to see what exists, and Loomyard's validator (over
 `resolve`) to check every glyph it wrote, in one call, before handing off (§8.1).
 
 ## 9. Build order on `main`
@@ -427,12 +427,12 @@ before step 8.
    tests, per `docs/glyph.md`; the structural split at `#` already accepts the other two. Then `Symbol` gains its glyph, the owner chain, the head
    span, and the unit walk (directory → Go unit; source root → Python module; namespace → C#).
 3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on Go fixtures.
-4. **`map`** — the kept toc, re-keyed by glyph, headers and docs complete.
+4. **`toc`** — the kept extractor, re-keyed by glyph, headers and docs complete.
 5. **`members`** — the Go head falls out of `resolve`.
 6. **Go extractor gaps** (§6): external test packages, `init` as multipart, package doc.
 7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then a thin **MCP**: only
-   the tools the ladder measures, `map` first.
-8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` (now `map`) must
+   the tools the ladder measures, `toc` first.
+8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` must
    reproduce its separation from control. That is the regression gate for the rewrite.
 9. **The next language, when wanted:** its glyph alphabet in `glyph`, an extractor written against
    the contract, its `members` head. Python and C# are designed now, coded after 8, one at a time.
@@ -519,11 +519,11 @@ test ./...` green in its worktree and one merge to `main`.
 | 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, every grammar but Go and the LSP deps from `go.mod`, the Python and C# extractors and their tests, the V1 docs and `.mcp.json` of §2, the V1 results roots and the Python script; README stub; keep `toc`, `treesitter` and the extension table reduced to Go, yaml, tasks, `docs/research`, the two rewrite documents | — | tree builds and tests green with only the Go extractor; nothing under `internal/` references a daemon or a language other than Go |
 | 1 | **T1 glyph package** | `glyph/`: pure Go, no deps; structural split at `#`; the Go alphabet (unit path, `_test` unit, `Type.Name`, `init`); `Parse(lang, s)`, `String`, canonical form; table tests from `docs/glyph.md` §1–§3 including rejects | T0 | every example and corner case in the spec is a test; `go list -deps` shows no cgo |
 | 1 | **T2 harness** | `bench/loomyard-eval/ladder/`: one Go program around `claude -p` per §9a; yaml loader for the kept shape; worktree pin; MCP config; stream-json capture and metrics; scorer; `summary.json`, `provenance.json`, table; resume; the two surviving gates. Integration test against a stub MCP server, not quarry | T0 | a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` completes end to end on this host, and the metrics match the transcript by hand |
-| 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers, `language` per file when it differs; `map` in the engine re-keyed by glyph | T1 | `map` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `map` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
+| 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers, `language` per file when it differs; `toc` in the engine re-keyed by glyph | T1 | `toc` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `toc` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
 | 3 | **T4 resolve + members** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`), `unit: found|not_found` on a miss, paths without `#` as targets; grouping by unit; `members` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
-| 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `map`, `resolve`, `members` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
-| 5 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `map` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `members` until a ladder cell measures them | T5 | the harness probe of §9a runs against it: connect, `map` call, allowlist denial |
-| 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir` → `map`) with T2 against T6, reps 5; write `results/<date>-map/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md`, or the conclusion says why not |
+| 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `toc`, `resolve`, `members` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
+| 5 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `toc` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `members` until a ladder cell measures them | T5 | the harness probe of §9a runs against it: connect, `toc` call, allowlist denial |
+| 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir`) with T2 against T6, reps 5; write `results/<date>-toc/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md`, or the conclusion says why not |
 | 7 | **T8 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
 
 Wave 1 is the parallel one. T2 is the long pole of wave 1 and overlaps waves 2–5; it
