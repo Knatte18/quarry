@@ -1,7 +1,7 @@
 // toc_test.go covers TOCFile: language resolution (extension-based and langOverride), the
 // docstring-trimming policy driven by Options.DocSentences, the header first-paragraph truncation,
 // range stability across DocSentences values, and every error route (unsupported extension,
-// designed-but-unimplemented language, nonexistent path, invalid UTF-8, and a partial parse). Every
+// nonexistent path, invalid UTF-8, and a partial parse). Every
 // fixture is written into a t.TempDir(), since TOCFile is the first code in this package that
 // touches disk.
 //
@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/quarry/internal/quarryengine"
-	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 	"github.com/Knatte18/quarry/internal/quarryengine/treesitter"
 )
 
@@ -309,21 +308,10 @@ func TestTOCFile_UnsupportedExtension(t *testing.T) {
 	}
 }
 
-// TestTOCFile_DesignedButUnimplementedLanguage asserts a .rs file returns the same wrapped
-// ErrLanguageUnsupported, proving a designed-but-unimplemented language is not a silent empty
-// result.
-func TestTOCFile_DesignedButUnimplementedLanguage(t *testing.T) {
-	path := writeTempFile(t, "main.rs", "fn main() {}\n")
-	_, err := TOCFile(path, "", Options{DocSentences: 1})
-	if !errors.Is(err, quarryengine.ErrLanguageUnsupported) {
-		t.Errorf("TOCFile(%q) error = %v; want errors.Is(err, ErrLanguageUnsupported)", path, err)
-	}
-}
-
-// TestTOCFile_LangOverrideWinsOverExtensionMismatch asserts a langOverride of "go" on a .py file
+// TestTOCFile_LangOverrideWinsOverExtensionMismatch asserts a langOverride of "go" on a .txt file
 // parses with the Go grammar and does not error on the extension mismatch.
 func TestTOCFile_LangOverrideWinsOverExtensionMismatch(t *testing.T) {
-	path := writeTempFile(t, "foo.py", "package p\n\nfunc Foo() {}\n")
+	path := writeTempFile(t, "foo.txt", "package p\n\nfunc Foo() {}\n")
 	got, err := TOCFile(path, "go", Options{DocSentences: 1})
 	if err != nil {
 		t.Fatalf("TOCFile(%q, \"go\", ...) returned error: %v", path, err)
@@ -402,14 +390,13 @@ func entryByName(t *testing.T, files []DirEntry, name string) DirEntry {
 	return DirEntry{}
 }
 
-// TestTOCDir_MixedDirectoryOrdering asserts a mixed directory holding Go, Python, and C# files
-// produces one list, each entry carrying its own resolved language, and Files in lexicographic order
-// by base filename regardless of creation order.
-func TestTOCDir_MixedDirectoryOrdering(t *testing.T) {
+// TestTOCDir_FileOrdering asserts a directory's Files come back in lexicographic order by base
+// filename regardless of creation order, each entry carrying its resolved language and package.
+func TestTOCDir_FileOrdering(t *testing.T) {
 	dir := t.TempDir()
 	writeDirFile(t, dir, "zebra.go", "package p\n\nfunc F() {}\n")
-	writeDirFile(t, dir, "apple.py", "def f():\n    pass\n")
-	writeDirFile(t, dir, "middle.cs", "namespace N { class C {} }\n")
+	writeDirFile(t, dir, "apple.go", "package p\n\nfunc G() {}\n")
+	writeDirFile(t, dir, "middle.go", "package p\n\nfunc H() {}\n")
 
 	got, err := TOCDir(dir, "")
 	if err != nil {
@@ -418,20 +405,17 @@ func TestTOCDir_MixedDirectoryOrdering(t *testing.T) {
 	if len(got.Files) != 3 {
 		t.Fatalf("len(Files) = %d; want 3", len(got.Files))
 	}
-	wantOrder := []string{"apple.py", "middle.cs", "zebra.go"}
+	wantOrder := []string{"apple.go", "middle.go", "zebra.go"}
 	for i, name := range wantOrder {
 		if got.Files[i].Name != name {
 			t.Errorf("Files[%d].Name = %q; want %q", i, got.Files[i].Name, name)
 		}
-	}
-	if entryByName(t, got.Files, "zebra.go").Language != "go" {
-		t.Error("zebra.go Language != go")
-	}
-	if entryByName(t, got.Files, "apple.py").Language != "python" {
-		t.Error("apple.py Language != python")
-	}
-	if entryByName(t, got.Files, "middle.cs").Language != "csharp" {
-		t.Error("middle.cs Language != csharp")
+		if got.Files[i].Language != "go" {
+			t.Errorf("Files[%d].Language = %q; want %q", i, got.Files[i].Language, "go")
+		}
+		if got.Files[i].Package != "p" {
+			t.Errorf("Files[%d].Package = %q; want %q", i, got.Files[i].Package, "p")
+		}
 	}
 }
 
@@ -542,29 +526,6 @@ func TestTOCDir_NoSupportedFileEmptyNonNilFilesNilError(t *testing.T) {
 	}
 }
 
-// TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty asserts a directory holding only
-// unimplemented-language files returns a non-empty Files, each entry carrying Error and no Header,
-// and a nil directory-level error.
-func TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty(t *testing.T) {
-	dir := t.TempDir()
-	writeDirFile(t, dir, "main.rs", "fn main() {}\n")
-
-	got, err := TOCDir(dir, "")
-	if err != nil {
-		t.Fatalf("TOCDir returned error: %v", err)
-	}
-	if len(got.Files) != 1 {
-		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
-	}
-	entry := got.Files[0]
-	if entry.Error == "" {
-		t.Error("Error is empty; want it set for an unimplemented language")
-	}
-	if entry.Header != "" {
-		t.Errorf("Header = %q; want empty", entry.Header)
-	}
-}
-
 // TestTOCDir_HeaderFirstParagraphOnly asserts a file with a multi-paragraph header gets Header set
 // to its first paragraph only.
 func TestTOCDir_HeaderFirstParagraphOnly(t *testing.T) {
@@ -585,49 +546,24 @@ func TestTOCDir_HeaderFirstParagraphOnly(t *testing.T) {
 	}
 }
 
-// TestTOCDir_PackagePerFileOmittedForPython asserts a Go and a C# file each carry their own package
-// or namespace name, and a Python file in the same listing has Package empty (and hence the key
-// omitted).
-func TestTOCDir_PackagePerFileOmittedForPython(t *testing.T) {
-	dir := t.TempDir()
-	writeDirFile(t, dir, "a.go", "package mypkg\n\nfunc F() {}\n")
-	writeDirFile(t, dir, "b.cs", "namespace MyNamespace { class C {} }\n")
-	writeDirFile(t, dir, "c.py", "def f():\n    pass\n")
-
-	got, err := TOCDir(dir, "")
-	if err != nil {
-		t.Fatalf("TOCDir returned error: %v", err)
-	}
-	if p := entryByName(t, got.Files, "a.go").Package; p != "mypkg" {
-		t.Errorf("a.go Package = %q; want %q", p, "mypkg")
-	}
-	if p := entryByName(t, got.Files, "b.cs").Package; p != "MyNamespace" {
-		t.Errorf("b.cs Package = %q; want %q", p, "MyNamespace")
-	}
-	if p := entryByName(t, got.Files, "c.py").Package; p != "" {
-		t.Errorf("c.py Package = %q; want empty", p)
-	}
-}
-
-// TestTOCDir_TestPointerAndOmission asserts a Go test-suffixed file gets Test pointing to true, and
-// a C# file (a language with no test-file rule) gets a nil Test pointer — the omission case, which
-// must be asserted as nil rather than as false.
-func TestTOCDir_TestPointerAndOmission(t *testing.T) {
+// TestTOCDir_TestPointer asserts a test-suffixed file gets Test pointing to true and a plain file
+// gets Test pointing to false — a pointer in both cases, since Go has a test-file rule.
+func TestTOCDir_TestPointer(t *testing.T) {
 	dir := t.TempDir()
 	writeDirFile(t, dir, "foo_test.go", "package p\n\nfunc TestFoo(t *testing.T) {}\n")
-	writeDirFile(t, dir, "bar.cs", "namespace N { class C {} }\n")
+	writeDirFile(t, dir, "foo.go", "package p\n\nfunc Foo() {}\n")
 
 	got, err := TOCDir(dir, "")
 	if err != nil {
 		t.Fatalf("TOCDir returned error: %v", err)
 	}
-	goEntry := entryByName(t, got.Files, "foo_test.go")
-	if goEntry.Test == nil || !*goEntry.Test {
-		t.Errorf("foo_test.go Test = %v; want pointer to true", goEntry.Test)
+	testEntry := entryByName(t, got.Files, "foo_test.go")
+	if testEntry.Test == nil || !*testEntry.Test {
+		t.Errorf("foo_test.go Test = %v; want pointer to true", testEntry.Test)
 	}
-	csEntry := entryByName(t, got.Files, "bar.cs")
-	if csEntry.Test != nil {
-		t.Errorf("bar.cs Test = %v; want nil (the omission case)", csEntry.Test)
+	plainEntry := entryByName(t, got.Files, "foo.go")
+	if plainEntry.Test == nil || *plainEntry.Test {
+		t.Errorf("foo.go Test = %v; want pointer to false", plainEntry.Test)
 	}
 }
 
@@ -739,52 +675,27 @@ func TestTOCDir_SyntaxErrorIsListedWithPartialNoError(t *testing.T) {
 	}
 }
 
-// TestTOCDir_LangOverrideRestrictsListing asserts a langOverride of "python" on a mixed directory
-// lists only the Python files.
+// TestTOCDir_LangOverrideRestrictsListing asserts a langOverride of "go" lists only the files with
+// a Go extension.
 func TestTOCDir_LangOverrideRestrictsListing(t *testing.T) {
 	dir := t.TempDir()
 	writeDirFile(t, dir, "a.go", "package p\n")
-	writeDirFile(t, dir, "b.py", "def f():\n    pass\n")
-	writeDirFile(t, dir, "c.py", "def g():\n    pass\n")
+	writeDirFile(t, dir, "b.txt", "package p\n")
 
-	got, err := TOCDir(dir, "python")
+	got, err := TOCDir(dir, "go")
 	if err != nil {
-		t.Fatalf("TOCDir(dir, \"python\") returned error: %v", err)
+		t.Fatalf("TOCDir(dir, \"go\") returned error: %v", err)
 	}
-	if len(got.Files) != 2 {
-		t.Fatalf("len(Files) = %d; want 2", len(got.Files))
-	}
-	for _, f := range got.Files {
-		if f.Language != "python" {
-			t.Errorf("Files entry %q Language = %q; want python", f.Name, f.Language)
-		}
+	if len(got.Files) != 1 || got.Files[0].Name != "a.go" {
+		t.Fatalf("Files = %v; want only a.go", got.Files)
 	}
 }
 
-// TestTOCDir_LangOverrideOnUnimplementedLanguageListsWithErrorNoDirError asserts a langOverride of
-// "rust" on a directory holding Rust files lists those files with Error set, and the call itself
-// returns no error.
-func TestTOCDir_LangOverrideOnUnimplementedLanguageListsWithErrorNoDirError(t *testing.T) {
-	dir := t.TempDir()
-	writeDirFile(t, dir, "main.rs", "fn main() {}\n")
-
-	got, err := TOCDir(dir, "rust")
-	if err != nil {
-		t.Fatalf("TOCDir(dir, \"rust\") returned error: %v", err)
-	}
-	if len(got.Files) != 1 {
-		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
-	}
-	if got.Files[0].Error == "" {
-		t.Error("Error is empty; want it set for the unimplemented rust strategy")
-	}
-}
-
-// TestImplemented_MatchesRegisteredStrategies asserts Implemented() returns exactly the three
-// languages this task ships a concrete Strategy for, in sorted order — a guard against a strategy
-// silently failing to register itself, or a stray extra one leaking in from a test.
+// TestImplemented_MatchesRegisteredStrategies asserts Implemented() returns exactly the languages
+// with a concrete Strategy, in sorted order — a guard against a strategy silently failing to
+// register itself, or a stray extra one leaking in from a test.
 func TestImplemented_MatchesRegisteredStrategies(t *testing.T) {
-	want := []string{"csharp", "go", "python"}
+	want := []string{"go"}
 	got := Implemented()
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Implemented() = %v; want %v", got, want)
@@ -796,22 +707,22 @@ func TestImplemented_MatchesRegisteredStrategies(t *testing.T) {
 // get half-added — an extension resolving to a language name the backend cannot parse, surfacing as
 // a confusing runtime error rather than a build-time one.
 //
-// It also asserts every name Implemented() reports appears in registry.ExtensionLanguages(), so a
+// It also asserts every name Implemented() reports appears in ExtensionLanguages(), so a
 // strategy can never be registered under a name no extension resolves to.
 func TestExtensionLanguages_AllHaveGrammars(t *testing.T) {
-	for _, lang := range registry.ExtensionLanguages() {
+	for _, lang := range ExtensionLanguages() {
 		if !treesitter.Supported(lang) {
-			t.Errorf("registry.ExtensionLanguages() includes %q, but treesitter.Supported(%q) = false", lang, lang)
+			t.Errorf("ExtensionLanguages() includes %q, but treesitter.Supported(%q) = false", lang, lang)
 		}
 	}
 
 	extensionLangs := make(map[string]bool)
-	for _, lang := range registry.ExtensionLanguages() {
+	for _, lang := range ExtensionLanguages() {
 		extensionLangs[lang] = true
 	}
 	for _, lang := range Implemented() {
 		if !extensionLangs[lang] {
-			t.Errorf("Implemented() includes %q, which is not in registry.ExtensionLanguages()", lang)
+			t.Errorf("Implemented() includes %q, which is not in ExtensionLanguages()", lang)
 		}
 	}
 }

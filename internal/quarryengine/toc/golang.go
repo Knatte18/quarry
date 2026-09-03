@@ -95,7 +95,7 @@ func goDeclSymbol(kind Kind, name, owner string, decl, body *ts.Node, src []byte
 		Signature: SignatureCut(decl, body, src),
 		Docstring: StripComment(raw, "//"),
 		Start:     start,
-		SigEnd:    SigEnd(decl, body, true),
+		SigEnd:    SigEnd(decl, body),
 		End:       end,
 	}
 }
@@ -169,7 +169,7 @@ func goUngroupedTypeSymbol(decl, spec *ts.Node, src []byte) Symbol {
 		Signature: SignatureCut(decl, body, src),
 		Docstring: StripComment(raw, "//"),
 		Start:     start,
-		SigEnd:    SigEnd(decl, body, true),
+		SigEnd:    SigEnd(decl, body),
 		End:       end,
 	}
 }
@@ -196,10 +196,8 @@ func goGroupedTypeSymbol(spec *ts.Node, src []byte) Symbol {
 		Signature: "type " + SignatureCut(spec, body, src),
 		Docstring: StripComment(raw, "//"),
 		Start:     start,
-		// spec, not decl, is SigEnd's clamp floor: passing the enclosing type_declaration here would
-		// floor every spec in the group at the group's own "type (" line.
-		SigEnd: SigEnd(spec, body, true),
-		End:    end,
+		SigEnd:    SigEnd(spec, body),
+		End:       end,
 	}
 }
 

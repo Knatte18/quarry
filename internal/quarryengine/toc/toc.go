@@ -18,24 +18,19 @@ import (
 	ts "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/Knatte18/quarry/internal/quarryengine"
-	"github.com/Knatte18/quarry/internal/quarryengine/registry"
 	"github.com/Knatte18/quarry/internal/quarryengine/treesitter"
 )
 
 // resolveLanguage resolves the canonical language name for path, honoring langOverride when it is
 // non-empty. A non-empty langOverride wins outright regardless of path's extension — a mismatch is
-// not an error here, matching what --lang means on every existing verb. Validating langOverride
-// against toc's own vocabulary (Implemented()) is the CLI's job, not this function's: a second
-// validation here would drift from the flag's own error message over time.
+// not an error here.
 //
-// An extension that maps to no language, or a resolved language with no registered Strategy (a
-// designed-but-unimplemented language), both return a wrapped quarryengine.ErrLanguageUnsupported.
-// The unimplemented case is detected via StrategyFor rather than a second hard-coded language list,
-// so the two checks can never drift apart.
+// An extension that maps to no language, or an override naming a language with no registered
+// Strategy, both return a wrapped quarryengine.ErrLanguageUnsupported.
 func resolveLanguage(path, langOverride string) (string, error) {
 	lang := langOverride
 	if lang == "" {
-		resolved, ok := registry.LanguageForExtension(filepath.Ext(path))
+		resolved, ok := LanguageForExtension(filepath.Ext(path))
 		if !ok {
 			return "", fmt.Errorf("toc: %s: no language for extension %q: %w", path, filepath.Ext(path), quarryengine.ErrLanguageUnsupported)
 		}
@@ -125,7 +120,7 @@ func applyDocSentences(symbols []Symbol, docSentences int) {
 // For each remaining (non-directory) entry, the language is resolved from its extension; an
 // extension mapping to no language skips the file entirely, so a Markdown or YAML file never
 // appears. When langOverride is non-empty, the file listing is restricted to that language's
-// extensions via registry.ExtensionsForLanguage, rather than reinterpreting every other file under
+// extensions via ExtensionsForLanguage, rather than reinterpreting every other file under
 // the override. langOverride has no effect on Dirs: a subdirectory name carries no language, so
 // there is nothing for the override to restrict.
 //
@@ -134,11 +129,9 @@ func applyDocSentences(symbols []Symbol, docSentences int) {
 // the two lists never influence each other's order.
 //
 // Error and Partial are mutually exclusive by construction: Partial is only ever set on the route
-// that actually parsed the file through treesitter.WithTree. A language with no registered
-// Strategy, an unreadable file, and invalid UTF-8 all set Error instead and leave Header and Partial
-// unset — the file is still listed, never skipped, and still counts as a code file for the
-// empty-directory question: a directory holding only unimplemented-language files returns a
-// non-empty Files, not an empty one.
+// that actually parsed the file through treesitter.WithTree. An unreadable file and invalid UTF-8
+// both set Error instead and leave Header and Partial unset — the file is still listed, never
+// skipped.
 //
 // A directory containing no file with a supported extension returns a DirTOC whose Files is an
 // empty, non-nil slice and a nil error — a true answer to "what code is in here", not a failure.
@@ -158,7 +151,7 @@ func TOCDir(dir string, langOverride string) (DirTOC, error) {
 
 	var allowedExts map[string]bool
 	if langOverride != "" {
-		exts := registry.ExtensionsForLanguage(langOverride)
+		exts := ExtensionsForLanguage(langOverride)
 		allowedExts = make(map[string]bool, len(exts))
 		for _, ext := range exts {
 			allowedExts[ext] = true
@@ -172,7 +165,7 @@ func TOCDir(dir string, langOverride string) (DirTOC, error) {
 			continue
 		}
 		base := entry.Name()
-		lang, ok := registry.LanguageForExtension(filepath.Ext(base))
+		lang, ok := LanguageForExtension(filepath.Ext(base))
 		if !ok {
 			continue
 		}
@@ -191,16 +184,11 @@ func TOCDir(dir string, langOverride string) (DirTOC, error) {
 }
 
 // buildDirEntry builds one DirEntry for base (a file's base name inside dir), already resolved to
-// lang. See TOCDir's doc comment for the Error/Partial mutual-exclusion invariant this function
-// upholds.
+// lang, a language from the extension table and therefore one with a registered Strategy. See
+// TOCDir's doc comment for the Error/Partial mutual-exclusion invariant this function upholds.
 func buildDirEntry(dir, base, lang string) DirEntry {
 	entry := DirEntry{Name: base, Language: lang}
-
-	strategy, ok := StrategyFor(lang)
-	if !ok {
-		entry.Error = quarryengine.ErrLanguageUnsupported.Error()
-		return entry
-	}
+	strategy, _ := StrategyFor(lang)
 
 	path := filepath.Join(dir, base)
 	src, err := os.ReadFile(path)

@@ -1,8 +1,8 @@
 // toc_integration_test.go runs TOCFile against a real file in this repository —
-// internal/output/output.go — rather than a synthetic fixture, so the extraction pipeline is proven
-// against source nobody wrote to satisfy this package's own tests. It is hermetic (reads one file,
-// writes nothing, spawns nothing) and belongs in the default test tier alongside the rest of the
-// package.
+// internal/quarryengine/treesitter/treesitter.go — rather than a synthetic fixture, so the
+// extraction pipeline is proven against source nobody wrote to satisfy this package's own tests. It
+// is hermetic (reads one file, writes nothing, spawns nothing) and belongs in the default test tier
+// alongside the rest of the package.
 
 package toc
 
@@ -12,20 +12,20 @@ import (
 	"testing"
 )
 
-// TestTOCFile_RepositoryFile_OutputPackage runs TOCFile against internal/output/output.go, chosen
-// because it is small, stable, and carries a file header plus three well-documented functions. It
-// asserts the symbol names, kinds, and range ordering loosely enough to survive an ordinary edit to
-// that file — a test that has to be updated every time an unrelated comment is reflowed is a test
-// that gets deleted.
-func TestTOCFile_RepositoryFile_OutputPackage(t *testing.T) {
+// TestTOCFile_RepositoryFile_TreesitterPackage runs TOCFile against
+// internal/quarryengine/treesitter/treesitter.go, chosen because it is small, stable, and carries a
+// file header plus three well-documented functions. It asserts the symbol names, kinds, and range
+// ordering loosely enough to survive an ordinary edit to that file — a test that has to be updated
+// every time an unrelated comment is reflowed is a test that gets deleted.
+func TestTOCFile_RepositoryFile_TreesitterPackage(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("could not determine this test file's own source location")
 	}
 	// This file sits at internal/quarryengine/toc/toc_integration_test.go, so the module root is
-	// three levels up.
+	// four levels up.
 	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(thisFile))))
-	targetPath := filepath.Join(moduleRoot, "internal", "output", "output.go")
+	targetPath := filepath.Join(moduleRoot, "internal", "quarryengine", "treesitter", "treesitter.go")
 
 	got, err := TOCFile(targetPath, "", Options{DocSentences: 1})
 	if err != nil {
@@ -35,8 +35,8 @@ func TestTOCFile_RepositoryFile_OutputPackage(t *testing.T) {
 	if got.Language != "go" {
 		t.Errorf("Language = %q; want %q", got.Language, "go")
 	}
-	if got.Package != "output" {
-		t.Errorf("Package = %q; want %q", got.Package, "output")
+	if got.Package != "treesitter" {
+		t.Errorf("Package = %q; want %q", got.Package, "treesitter")
 	}
 	if got.Partial {
 		t.Error("Partial = true; want false for a real, well-formed repository file")
@@ -45,7 +45,7 @@ func TestTOCFile_RepositoryFile_OutputPackage(t *testing.T) {
 		t.Error("Header is empty; want the file's first header paragraph")
 	}
 
-	wantNames := map[string]bool{"Ok": true, "Err": true, "ErrFields": true}
+	wantNames := map[string]bool{"Supported": true, "Languages": true, "WithTree": true}
 	found := make(map[string]bool, len(wantNames))
 	for _, sym := range got.Symbols {
 		if !wantNames[sym.Name] {

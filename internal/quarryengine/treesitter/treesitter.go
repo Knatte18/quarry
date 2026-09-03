@@ -16,22 +16,14 @@ import (
 	"sort"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
-	tscsharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	tsgo "github.com/tree-sitter/tree-sitter-go/bindings/go"
-	tspython "github.com/tree-sitter/tree-sitter-python/bindings/go"
-	tsrust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
-	tstypescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 )
 
 // grammars maps each canonical language name this package wires to the unsafe.Pointer its grammar
 // module exports. NewLanguage is called lazily, once per WithTree call, rather than once at
-// package init, so a language nobody parses never pays the *ts.Language construction cost.
+// package init.
 var grammars = map[string]func() *ts.Language{
-	"csharp":     func() *ts.Language { return ts.NewLanguage(tscsharp.Language()) },
-	"go":         func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
-	"python":     func() *ts.Language { return ts.NewLanguage(tspython.Language()) },
-	"rust":       func() *ts.Language { return ts.NewLanguage(tsrust.Language()) },
-	"typescript": func() *ts.Language { return ts.NewLanguage(tstypescript.LanguageTypescript()) },
+	"go": func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
 }
 
 // onRelease is an unexported test seam: nil in production, and invoked from WithTree after both
@@ -68,13 +60,7 @@ func Languages() []string {
 // fn must never retain root beyond its own return: root is invalidated the moment WithTree closes
 // the tree that owns it.
 //
-// An unknown lang returns a plain, unwrapped error naming lang and the wired set. This
-// deliberately does not use quarryengine.ErrNoLanguage: that sentinel's own doc comment defines it
-// narrowly as "no registry entry's markers matched under the target directory" — a
-// directory-detection outcome, not a grammar-wiring one — so reusing it here would make that
-// documented meaning false. It also does not use quarryengine.ErrLanguageUnsupported, which does
-// not exist at this batch and means "no toc strategy is registered", a different layer from "no
-// grammar is wired".
+// An unknown lang returns a plain, unwrapped error naming lang and the wired set.
 func WithTree(lang string, src []byte, fn func(root *ts.Node, partial bool) error) error {
 	newLanguage, ok := grammars[lang]
 	if !ok {
