@@ -1,9 +1,7 @@
-// toc_test.go covers TOCFile: language resolution (extension-based and langOverride), the
-// docstring-trimming policy driven by Options.DocSentences, the header first-paragraph truncation,
-// range stability across DocSentences values, and every error route (unsupported extension,
-// nonexistent path, invalid UTF-8, and a partial parse). Every
-// fixture is written into a t.TempDir(), since TOCFile is the first code in this package that
-// touches disk.
+// toc_test.go covers TOCFile: language resolution (extension-based and langOverride), the header
+// first-paragraph truncation, and every error route (unsupported extension, nonexistent path,
+// invalid UTF-8, and a partial parse). Every fixture is written into a t.TempDir(), since TOCFile
+// is the first code in this package that touches disk.
 //
 // It also covers TOCDir: single-level listing and ordering, per-file language resolution and
 // langOverride restriction, the Error/Partial mutual-exclusion invariant, and every per-file failure
@@ -44,7 +42,7 @@ func TestTOCFile_GoFileWithSymbols(t *testing.T) {
 		"func Bar() {}\n"
 	path := writeTempFile(t, "foo.go", src)
 
-	got, err := TOCFile(path, "", Options{DocSentences: 1})
+	got, err := TOCFile(path, "")
 	if err != nil {
 		t.Fatalf("TOCFile(%q, \"\", ...) returned error: %v", path, err)
 	}
@@ -79,7 +77,7 @@ func TestTOCFile_HeaderTruncation(t *testing.T) {
 			"package p\n"
 		path := writeTempFile(t, "doc.go", src)
 
-		got, err := TOCFile(path, "", Options{DocSentences: 1})
+		got, err := TOCFile(path, "")
 		if err != nil {
 			t.Fatalf("TOCFile returned error: %v", err)
 		}
@@ -98,7 +96,7 @@ func TestTOCFile_HeaderTruncation(t *testing.T) {
 			"package p\n"
 		path := writeTempFile(t, "doc.go", src)
 
-		got, err := TOCFile(path, "", Options{DocSentences: 1})
+		got, err := TOCFile(path, "")
 		if err != nil {
 			t.Fatalf("TOCFile returned error: %v", err)
 		}
@@ -109,136 +107,12 @@ func TestTOCFile_HeaderTruncation(t *testing.T) {
 	})
 }
 
-// TestTOCFile_DocSentencesPolicy covers Options.DocSentences: the default of 1, AllSentences, 0, and
-// an N larger than the sentence count.
-func TestTOCFile_DocSentencesPolicy(t *testing.T) {
-	src := "package p\n" +
-		"\n" +
-		"// Foo does a thing. It has a second sentence. And a third.\n" +
-		"func Foo() {}\n"
-	path := writeTempFile(t, "foo.go", src)
-
-	t.Run("DefaultOneSentence", func(t *testing.T) {
-		got, err := TOCFile(path, "", Options{DocSentences: 1})
-		if err != nil {
-			t.Fatalf("TOCFile returned error: %v", err)
-		}
-		want := "Foo does a thing."
-		if got.Symbols[0].Docstring != want {
-			t.Errorf("Docstring = %q; want %q", got.Symbols[0].Docstring, want)
-		}
-	})
-
-	t.Run("AllSentences", func(t *testing.T) {
-		got, err := TOCFile(path, "", Options{DocSentences: AllSentences})
-		if err != nil {
-			t.Fatalf("TOCFile returned error: %v", err)
-		}
-		want := "Foo does a thing. It has a second sentence. And a third."
-		if got.Symbols[0].Docstring != want {
-			t.Errorf("Docstring = %q; want %q", got.Symbols[0].Docstring, want)
-		}
-	})
-
-	t.Run("ZeroOmitsEveryDocstring", func(t *testing.T) {
-		got, err := TOCFile(path, "", Options{DocSentences: 0})
-		if err != nil {
-			t.Fatalf("TOCFile returned error: %v", err)
-		}
-		for i, sym := range got.Symbols {
-			if sym.Docstring != "" {
-				t.Errorf("Symbols[%d].Docstring = %q; want empty", i, sym.Docstring)
-			}
-		}
-	})
-
-	t.Run("NLargerThanSentenceCountReturnsWholeNoError", func(t *testing.T) {
-		got, err := TOCFile(path, "", Options{DocSentences: 100})
-		if err != nil {
-			t.Fatalf("TOCFile returned error: %v", err)
-		}
-		want := "Foo does a thing. It has a second sentence. And a third."
-		if got.Symbols[0].Docstring != want {
-			t.Errorf("Docstring = %q; want %q", got.Symbols[0].Docstring, want)
-		}
-	})
-}
-
-// TestTOCFile_DocSentencesDoesNotSplitOnAbbreviationOrBacktickIdentifier covers two of
-// FirstSentences' exclusion shapes, exercised through TOCFile under the default DocSentences of 1.
-func TestTOCFile_DocSentencesDoesNotSplitOnAbbreviationOrBacktickIdentifier(t *testing.T) {
-	t.Run("AbbreviationInFirstSentence", func(t *testing.T) {
-		src := "package p\n" +
-			"\n" +
-			"// Foo handles e.g. this case and returns. Second sentence.\n" +
-			"func Foo() {}\n"
-		path := writeTempFile(t, "foo.go", src)
-
-		got, err := TOCFile(path, "", Options{DocSentences: 1})
-		if err != nil {
-			t.Fatalf("TOCFile returned error: %v", err)
-		}
-		want := "Foo handles e.g. this case and returns."
-		if got.Symbols[0].Docstring != want {
-			t.Errorf("Docstring = %q; want %q", got.Symbols[0].Docstring, want)
-		}
-	})
-
-	t.Run("BacktickQuotedDottedIdentifier", func(t *testing.T) {
-		src := "package p\n" +
-			"\n" +
-			"// Foo calls `a.b.c` internally. Second sentence.\n" +
-			"func Foo() {}\n"
-		path := writeTempFile(t, "foo.go", src)
-
-		got, err := TOCFile(path, "", Options{DocSentences: 1})
-		if err != nil {
-			t.Fatalf("TOCFile returned error: %v", err)
-		}
-		want := "Foo calls `a.b.c` internally."
-		if got.Symbols[0].Docstring != want {
-			t.Errorf("Docstring = %q; want %q", got.Symbols[0].Docstring, want)
-		}
-	})
-}
-
-// TestTOCFile_RangesStableAcrossDocSentences asserts Start, SigEnd, and End are identical across
-// DocSentences values 0, 1, and AllSentences for the same fixture — no range shrinks with the
-// emitted text.
-func TestTOCFile_RangesStableAcrossDocSentences(t *testing.T) {
-	src := "package p\n" +
-		"\n" +
-		"// Foo does a thing. It has a second sentence.\n" +
-		"func Foo() {\n" +
-		"\treturn\n" +
-		"}\n"
-	path := writeTempFile(t, "foo.go", src)
-
-	var results []FileTOC
-	for _, n := range []int{0, 1, AllSentences} {
-		got, err := TOCFile(path, "", Options{DocSentences: n})
-		if err != nil {
-			t.Fatalf("TOCFile(DocSentences: %d) returned error: %v", n, err)
-		}
-		results = append(results, got)
-	}
-
-	want := results[0].Symbols[0]
-	for i, got := range results {
-		sym := got.Symbols[0]
-		if sym.Start != want.Start || sym.SigEnd != want.SigEnd || sym.End != want.End {
-			t.Errorf("results[%d].Symbols[0] ranges = {Start:%d SigEnd:%d End:%d}; want {Start:%d SigEnd:%d End:%d}",
-				i, sym.Start, sym.SigEnd, sym.End, want.Start, want.SigEnd, want.End)
-		}
-	}
-}
-
 // TestTOCFile_Package asserts Package matches the fixture's package clause, and is empty when the
 // package clause is lost under a Partial parse.
 func TestTOCFile_Package(t *testing.T) {
 	t.Run("NormalFile", func(t *testing.T) {
 		path := writeTempFile(t, "foo.go", "package mypkg\n\nfunc F() {}\n")
-		got, err := TOCFile(path, "", Options{DocSentences: 1})
+		got, err := TOCFile(path, "")
 		if err != nil {
 			t.Fatalf("TOCFile returned error: %v", err)
 		}
@@ -252,7 +126,7 @@ func TestTOCFile_Package(t *testing.T) {
 		// tree-sitter's error recovery.
 		src := "packag mypkg\n\nfunc F() {}\n"
 		path := writeTempFile(t, "foo.go", src)
-		got, err := TOCFile(path, "", Options{DocSentences: 1})
+		got, err := TOCFile(path, "")
 		if err != nil {
 			t.Fatalf("TOCFile returned error: %v", err)
 		}
@@ -278,7 +152,7 @@ func TestTOCFile_SigEndOrderingInvariant(t *testing.T) {
 		"\tX int\n" +
 		"}\n"
 	path := writeTempFile(t, "foo.go", src)
-	got, err := TOCFile(path, "", Options{DocSentences: 1})
+	got, err := TOCFile(path, "")
 	if err != nil {
 		t.Fatalf("TOCFile returned error: %v", err)
 	}
@@ -301,7 +175,7 @@ func TestTOCFile_SigEndOrderingInvariant(t *testing.T) {
 // TestTOCFile_UnsupportedExtension asserts a .md file returns a wrapped ErrLanguageUnsupported.
 func TestTOCFile_UnsupportedExtension(t *testing.T) {
 	path := writeTempFile(t, "readme.md", "# Title\n")
-	_, err := TOCFile(path, "", Options{DocSentences: 1})
+	_, err := TOCFile(path, "")
 	if !errors.Is(err, ErrLanguageUnsupported) {
 		t.Errorf("TOCFile(%q) error = %v; want errors.Is(err, ErrLanguageUnsupported)", path, err)
 	}
@@ -311,7 +185,7 @@ func TestTOCFile_UnsupportedExtension(t *testing.T) {
 // parses with the Go grammar and does not error on the extension mismatch.
 func TestTOCFile_LangOverrideWinsOverExtensionMismatch(t *testing.T) {
 	path := writeTempFile(t, "foo.txt", "package p\n\nfunc Foo() {}\n")
-	got, err := TOCFile(path, "go", Options{DocSentences: 1})
+	got, err := TOCFile(path, "go")
 	if err != nil {
 		t.Fatalf("TOCFile(%q, \"go\", ...) returned error: %v", path, err)
 	}
@@ -323,7 +197,7 @@ func TestTOCFile_LangOverrideWinsOverExtensionMismatch(t *testing.T) {
 // TestTOCFile_NonexistentPath asserts a nonexistent path returns a wrapped os error.
 func TestTOCFile_NonexistentPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "does-not-exist.go")
-	_, err := TOCFile(path, "", Options{DocSentences: 1})
+	_, err := TOCFile(path, "")
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("TOCFile(%q) error = %v; want errors.Is(err, os.ErrNotExist)", path, err)
 	}
@@ -338,7 +212,7 @@ func TestTOCFile_InvalidUTF8(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package p\n\xff\n"), 0o644); err != nil {
 		t.Fatalf("os.WriteFile(%q, ...) failed: %v", path, err)
 	}
-	_, err := TOCFile(path, "", Options{DocSentences: 1})
+	_, err := TOCFile(path, "")
 	if err == nil {
 		t.Fatal("TOCFile returned nil error for invalid UTF-8 content; want an error naming the path")
 	}
@@ -356,7 +230,7 @@ func TestTOCFile_PartialParseReturnsSurvivingSymbols(t *testing.T) {
 		"\n" +
 		"func Recovered() {}\n"
 	path := writeTempFile(t, "foo.go", src)
-	got, err := TOCFile(path, "", Options{DocSentences: 1})
+	got, err := TOCFile(path, "")
 	if err != nil {
 		t.Fatalf("TOCFile returned error: %v", err)
 	}

@@ -32,9 +32,8 @@ type Symbol struct {
 	// Signature is the verbatim source text from the declaration's first byte to the start of its
 	// body-bearing child, trimmed — never reformatted, never truncated.
 	Signature string `json:"signature"`
-	// Docstring is the symbol's full, delimiter-stripped docstring, optionally trimmed to its first
-	// N sentences by the entry point per the caller's --doc-sentences option. An empty docstring is
-	// never emitted as "" — its absence is always signalled by omitting this key.
+	// Docstring is the symbol's complete, untrimmed, delimiter-stripped docstring. An empty
+	// docstring is never emitted as "" — its absence is always signalled by omitting this key.
 	Docstring string `json:"docstring,omitempty"`
 	// Start is the first line of the docstring when the docstring is a sibling of the declaration,
 	// and the first line of the declaration otherwise. 1-based, inclusive.
@@ -108,20 +107,4 @@ type DirTOC struct {
 	// here. Like Files, it is always a non-nil, possibly-empty slice, so the emitted key is "[]"
 	// rather than "null" or an omitted key.
 	Dirs []string `json:"dirs"`
-}
-
-// AllSentences is the Options.DocSentences sentinel meaning "keep the whole docstring, unsplit".
-const AllSentences = -1
-
-// Options configures how much of each symbol's docstring toc emits.
-type Options struct {
-	// DocSentences controls how many leading sentences of each symbol's docstring reach the
-	// emitted "docstring" key: 0 omits the key from every symbol, a positive N keeps the first N
-	// sentences (an N larger than the sentence count keeps the whole docstring and is not an
-	// error), and AllSentences keeps the docstring unsplit.
-	//
-	// The zero value of Options therefore means "omit every docstring" — every caller must set this
-	// field explicitly. A forgotten Options{} silently drops every docstring rather than defaulting
-	// to some other behavior.
-	DocSentences int
 }

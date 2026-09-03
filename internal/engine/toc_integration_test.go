@@ -27,7 +27,7 @@ func TestTOCFile_RepositoryFile_TreesitterPackage(t *testing.T) {
 	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 	targetPath := filepath.Join(moduleRoot, "internal", "engine", "treesitter", "treesitter.go")
 
-	got, err := TOCFile(targetPath, "", Options{DocSentences: 1})
+	got, err := TOCFile(targetPath, "")
 	if err != nil {
 		t.Fatalf("TOCFile(%q, \"\", ...) returned error: %v", targetPath, err)
 	}
