@@ -1,0 +1,166 @@
+# Batch: summarize-report-cli
+
+```yaml
+task: "Ladder harness around headless claude -p (T2)"
+batch: "summarize-report-cli"
+number: 7
+cards: 4
+verify: go test ./bench/loomyard-eval/ladder/...
+depends-on: [6]
+```
+
+## Batch Scope
+
+This batch turns a results root into the numbers a reader acts on: the summariser that re-derives
+every metric from the raw tree, the per-cell table, and the two-subcommand binary. It is one batch
+because the summariser's output shape and the table's columns are one decision, and the binary is
+thirty lines of flag parsing over both. After it, the harness is complete as a program; batch 8 is
+the test layer that proves it. The external interface batch 8 consumes is `Summarize`,
+`WriteSummary`, `RenderTable` and the two subcommands.
+
+Batch-local decision: the summariser reads the raw tree only — every metric is recomputed from each
+repetition's transcript, never taken from the metrics file that repetition wrote. The stored metrics
+are diagnostic; recomputing is exactly what keeping the transcripts buys, and it is what makes an
+accounting fix cost a re-report rather than a re-run.
+
+## Cards
+
+### Card 28: the summariser
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/metrics.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+- **Edits:** none
+- **Creates:**
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** create `package ladder` file `summarize.go`. Declare `MetricStats` carrying the
+  median, minimum, maximum and sample count for one metric; `CellRecord` carrying the cell id, the
+  ladder letter, the task id, the allowed list, the control flag, a metric-name to statistics map,
+  the three counters `max_turns_count`, `unscored_count` and `blinding_failed_count`, and the cell's
+  gate-1 finding when present; and `Summary` carrying the cells, the comparisons, an `incomplete`
+  slice, an `invalid` slice and a meta block naming the results root and the write time.
+  `Summarize(resultsRoot string) (*Summary, error)` walks the raw tree, reads each repetition's
+  state file for its cell metadata — the ladder letter, the allowed list, the control flag and the
+  MCP prefix all come from there, so no ladder file is consulted — recomputes that repetition's
+  metrics from its own transcript using the prefix the state file carries, and aggregates.
+  Exclusion rules, all three distinct: a repetition whose blinding-failed flag is set contributes
+  **nothing at all**, neither cost nor correctness, and increments the blinding-failed counter; a
+  repetition that hit the turn ceiling contributes its cost metrics but is excluded from the recall
+  and precision medians and increments the max-turns counter; a repetition whose score record
+  carries a false scored flag for any other reason is likewise excluded from those two medians and
+  increments the unscored counter. A cell's cost sample count and its correctness sample count may
+  therefore legitimately differ, and both are reported.
+  The set of repetitions a root *should* contain is the provenance record's selected cells crossed
+  with its effective repetition count; a cell short of that count, counting only repetitions that are
+  present **and** not void, is added to the incomplete slice. Any cell with a non-zero
+  blinding-failed count is added to the invalid slice. Port V1's `Comparison` and `RangesDisjoint`
+  from `origin/v1-final:bench/loomyard-eval/ladder/internal/ladder/summarize.go` unchanged in
+  substance — a comparison holds between a rung cell and its own ladder letter's control, and
+  disjointness is non-overlapping minimum-maximum ranges, with no significance testing. Compute gate
+  1 per cell from the recomputed prefixed-tool-use counts. Do not exclude grep metrics from
+  comparison: V1 had to because its two arms were given different steering, and this harness renders
+  one preamble for every cell. `WriteSummary(resultsRoot string, s *Summary) error` writes the
+  summary file at the results root.
+- **Commit:** `feat(ladder): summarize a results root by recomputing from raw transcripts`
+
+### Card 29: the per-cell table
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+- **Edits:** none
+- **Creates:**
+  - `bench/loomyard-eval/ladder/internal/ladder/report.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** create `package ladder` file `report.go` with `RenderTable(s *Summary, p
+  *Provenance) string` and `WriteTable(resultsRoot, table string) error`. The table opens with a
+  header block carrying the results root, the effective repetition count, the CLI version from the
+  provenance record, and the cache caveat stated in the harness's own words: the first repetition of
+  a root pays cache creation while later repetitions read it, so cache-read and cache-creation
+  figures are reported separately, never summed, and per-repetition numbers are not interchangeable
+  — the median over repetitions is the honest statistic. Then one row per cell, columns for the cell
+  id, the ladder letter, the sample count, and the median of turns, duration, cost, the two cache
+  figures, output tokens, total input tokens, tool uses, prefixed tool uses, grep fallbacks, tool
+  result bytes and read bytes, followed by recall and precision with their own sample count. Flag a
+  cell in its row when its blinding-failed count is non-zero, when its max-turns or unscored count
+  is non-zero, and when gate 1 fired. Below the rows, print each gate-1 finding verbatim, each
+  comparison and its disjointness verdict, the incomplete list, the invalid list, any server-hash
+  drift warning and any session-fingerprint drift observations. Use fixed-width column formatting;
+  do not depend on a table library. Both subcommands print this string to standard output and write
+  it to the results root's table file, so the printed and the written table are the same bytes.
+- **Commit:** `feat(ladder): render the per-cell table with the cache caveat header`
+
+### Card 30: the two-subcommand binary
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/internal/ladder/run.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/report.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+- **Edits:** none
+- **Creates:**
+  - `bench/loomyard-eval/ladder/cmd/ladder/main.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** create a thin `package main` with exactly two subcommands and no third.
+  The run subcommand takes a required ladder-file flag, a required results-root flag, an optional
+  comma-separated cell-id list, an optional repetition override and an optional claude-binary flag
+  defaulting to the bare name `claude` resolved on the path. It resolves the quarry repository root
+  from the working directory, calls the run entry point, then summarises, writes the summary, and
+  prints and writes the table. The report subcommand takes a required results-root flag and **no
+  ladder-file flag at all** — a results root is self-describing because every repetition's state
+  file carries its own cell metadata — and re-derives the summary and the table from the raw tree
+  without running or scoring anything.
+  Exit non-zero when the run entry point reports an incomplete cell or a cell with a blinding
+  failure; exit non-zero on any returned error, printing it to standard error. Keep all logic in the
+  package the overview's layout decision names: this file parses flags, wires them and exits. Do not
+  add a shell wrapper, a configuration-file loader for flags, or any further subcommand — V1's
+  twelve existed because an external orchestrator drove the loop one step at a time.
+- **Commit:** `feat(ladder): add the run and report subcommands`
+
+### Card 31: summariser and table tests
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/report.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+- **Edits:** none
+- **Creates:**
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize_test.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/report_test.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** write `summarize_test.go` building small raw trees under a temporary directory
+  from in-test state files and short transcripts, asserting: median, minimum, maximum and sample
+  count over an odd and an even number of values; the disjointness predicate for overlapping and
+  non-overlapping ranges; the incomplete slice populated when a cell has fewer present, non-void
+  repetitions than the provenance record's selected cells crossed with its effective repetition
+  count, and empty when it has exactly that many; and the three exclusion rules asserted
+  independently — a blinding-failed repetition contributes to neither the cost nor the correctness
+  medians, is not counted as present for the incomplete calculation, and puts its cell in the invalid
+  slice; a max-turns repetition contributes cost but not recall or precision and increments its own
+  counter; an unscored repetition does the same and increments the other counter. Assert that a cell
+  whose cost sample count and correctness sample count differ reports both rather than one.
+  Write `report_test.go` rendering a table from a constructed summary and provenance value,
+  asserting the header carries the cache caveat and the CLI version, that a cell with a non-zero
+  blinding-failed count is flagged in its row, that a gate-1 finding is printed verbatim below the
+  rows, and that the incomplete and invalid lists appear. Do not compare against a golden file
+  here — the golden comparison belongs with the fixture root in the next batch.
+- **Commit:** `test(ladder): cover the summariser exclusions and the table rendering`
+
+## Batch Tests
+
+`verify: go test ./bench/loomyard-eval/ladder/...` covers this batch through `summarize_test.go`
+and `report_test.go`, over raw trees the tests build in a temporary directory. The three exclusion
+rules are asserted separately on purpose: they are three different dispositions that a single
+combined test would let collapse into one, and the blinding-failed rule is the one whose failure
+would silently corrupt the baseline every later contrast is measured against.
