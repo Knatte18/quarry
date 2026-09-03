@@ -69,7 +69,9 @@ batches:
     commit_sha: 29ab02b835cb8e8f83b91f2896fdb9c67bcdb8be
     verify_baseline_failures: []
   - name: environment-and-provenance
-    state: pending
+    state: running
+    implementer_session: f86e220b-368a-4052-ba30-8c102fe54160
+    start_sha: dfd90e3a6a6172a12f598426f08146f097e0884a
     verify_baseline_failures: []
   - name: run-loop
     state: pending
