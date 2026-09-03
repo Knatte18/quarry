@@ -1,0 +1,28 @@
+MILL_REVIEW_BEGIN
+# Review: The glyph package (T1) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: Claude Opus 4.x-class model (Anthropic); exact build not self-observable
+reviewed_file: plan/
+date: 2026-09-03
+```
+
+## Findings
+
+### [BLOCKING:decision] TDD ordering from the discussion has no disposition
+**Location:** batch 1 cards 1–3; batch 2 cards 4–7
+**Issue:** `_mill/discussion.md` § Testing opens "TDD is the right shape for the whole package … Write the tables first, watch them fail, then implement," and the plan orders every implementation card ahead of the card that tests it (1,2 before 3; 4 before 5–7) without ever naming that directive or recording a decision to override it.
+**Fix:** either reorder the test cards ahead of their implementation cards, or add a Shared Decision stating that per-commit compilability (batch 1's Batch Scope rationale) is chosen over test-first and that the discussion's TDD instruction is knowingly not followed.
+
+### [NIT:consistency] Module-wide verify quoted unscoped in three places
+**Location:** batch 1 § Batch Tests; batch 2 § Batch Tests; batch 2 card 8 requirement text
+**Issue:** the overview's `verify:` and the "golangci-lint runs, scoped to the new package only" Shared Decision both fix the command as `go vet ./... && golangci-lint run ./glyph/...`, but all three prose restatements drop the `./glyph/...` scope and say plain `golangci-lint run` — the exact repository-wide form the Shared Decision argues against, since it would make this task's verify depend on the pre-existing cgo engine packages staying clean.
+**Fix:** restate the command as `go vet ./... && golangci-lint run ./glyph/...` in both Batch Tests sections and in card 8.
+
+## Verdict
+
+REQUEST_CHANGES
+Plan is accurate and complete; TDD ordering needs a stated disposition.
+MILL_REVIEW_END

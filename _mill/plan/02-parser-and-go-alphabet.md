@@ -420,7 +420,8 @@ Batch-local decisions beyond the overview's Shared Decisions:
   3. Confirm `go.mod` is unchanged by this task: no new `require` line, no new module.
 
   These three are exactly the checks the plan's verify commands do not already cover. `go test` is
-  the batch's own `verify:`, `go vet ./...` and `golangci-lint run` are the overview's module-wide
+  the batch's own `verify:`, `go vet ./...` and `golangci-lint run ./glyph/...` are the overview's
+  module-wide
   `verify:` at the same batch boundary, and `go test ./...` is the hub's done gate; none of them is
   repeated here.
 
@@ -435,7 +436,8 @@ Batch-local decisions beyond the overview's Shared Decisions:
 `glyph/golang_test.go` and `glyph/string_test.go`. Scope is the new package only: nothing else in
 the repository imports it, so no other package's tests can be affected, and the full repository suite
 would add only the two pre-existing extractor packages that this batch cannot touch. The module-wide
-`verify:` in the overview — `go vet ./... && golangci-lint run` — runs afterwards at the batch
+`verify:` in the overview — `go vet ./... && golangci-lint run ./glyph/...` — runs afterwards at the
+batch
 boundary.
 
 Card 8's checks are not Go tests on purpose: the dependency guarantee is a toolchain question, and

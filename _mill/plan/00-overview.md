@@ -3,7 +3,7 @@
 ```yaml
 task: "The glyph package (T1)"
 slug: "glyph-package"
-approved: false
+approved: true
 started: "20260903-163743"
 parent: "main"
 root: ""
@@ -48,6 +48,23 @@ _Cross-cutting decisions every batch inherits._
 - **Rationale:** the discussion is the reviewed artefact; the plan is the executable transcription of
   it. Restating rather than cross-referencing keeps each card readable cold, which is what a Sonnet
   implementer needs.
+- **Applies to:** all batches
+
+### Decision: per-commit compilability is chosen over card-level test-first ordering
+
+- **Decision:** every card that implements something is ordered ahead of the card that tests it —
+  cards 1 and 2 before card 3, card 4 before cards 5, 6 and 7. The discussion's `## Testing` section
+  opens "TDD is the right shape for the whole package … Write the tables first, watch them fail, then
+  implement." That instruction is knowingly not followed **at card granularity**, and this Decision is
+  the record of that override.
+- **Rationale:** each card is one commit (`Commit:` is per card, and a pushed commit is never
+  amended), so a test card placed first would push a commit whose package does not compile — a Go
+  test file naming `Parse`, `Reason` or `Glyph` before they exist is a build failure, not a red test.
+  The value TDD is being bought for here is already banked elsewhere: the accept table, the
+  thirty-three-row reject table with its expected `Detail` column, and the round-trip property were
+  all written into this plan, from the spec, before any implementation card was authored — so the
+  tables genuinely came first, and no implementer chooses what to assert. Within a single card the
+  implementer is free to write the test body before the code it exercises.
 - **Applies to:** all batches
 
 ### Decision: standard library only, in package and test files alike
