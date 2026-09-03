@@ -142,16 +142,28 @@ besides (see Constraints), under
   `~/.cache/ladder-eval/worktrees/probe` with `--mcp-config` pointing at a file under the quarry
   repo produced a transcript containing **zero** case-insensitive `quarry` occurrences. The
   invocation's own argv is not echoed anywhere in `stream-json`. The only two fields that carried
-  the token when cwd was inside the quarry repo were `system.init`'s `cwd` and `memory_paths`, and
-  both are derived from cwd — so relocating the worktree clears both:
-  `memory_paths.auto` became `…/projects/-home-knatte--cache-ladder-eval-worktrees-probe/memory/`.
+  the token when cwd was inside the quarry repo were `system.init`'s `cwd` and `memory_paths`.
   The harness's own scratch may therefore stay under `<quarry-repo>/.scratch/ladder/`.
-- **A second reason the relocation matters, beyond the gate.** `memory_paths.auto` is the
-  operator's per-project auto-memory directory, keyed on cwd. With cwd inside the quarry repo it
-  resolved to the *quarry project's* memory — notes written while working on this very benchmark.
-  A fresh worktree at the relocated path gets its own project key and therefore an empty memory
-  directory, so no operator notes about quarry can reach a blinded cell. This is blinding in
-  substance, not just gate arithmetic.
+  This was then re-probed from a **real pinned Loomyard worktree** rather than an empty directory —
+  `git worktree add --detach` at `975578cd`, a `Grep`/`Read`/`Bash` question about
+  `internal/reedengine`, three turns, zero permission denials — and that transcript also contained
+  **zero** case-insensitive `quarry` occurrences, with `cwd` and `memory_paths` both token-free.
+- **Auto-memory is a real blinding surface, and it is not keyed on cwd.** `memory_paths.auto` is
+  the operator's per-project auto-memory directory, whose content the CLI loads into the session.
+  With cwd inside the quarry repo it resolved to the *quarry project's* memory — notes written
+  while working on this very benchmark. **Correcting a round-3 claim in this document:** a fresh
+  worktree does *not* get its own empty project key. Probed from a real pinned Loomyard worktree at
+  `~/.cache/ladder-eval/worktrees/probe01`, `memory_paths.auto` resolved to
+  `…/projects/-home-knatte-Code-loomyard-wts-loomyard/memory/` — the **main Loomyard repo's**
+  memory, not the worktree's. Claude Code keys the project on the repository, not the working
+  directory, so every cell loads whatever the operator has written about Loomyard.
+  Therefore: the harness **reads the resolved auto-memory directory at startup and refuses to run a
+  matrix containing control cells if any file in it matches the token** (case-insensitive), naming
+  the offending file. Today that directory holds six files and zero matches, but it is
+  operator-mutable and will plausibly acquire quarry mentions once T7 work reaches Loomyard — at
+  which point every control would be silently unblinded rather than loudly refused. `memory_paths`
+  is also recorded in the session fingerprint (see provenance) so a root's contents are auditable
+  after the fact.
 - **Correction to an earlier draft of this decision:** a previous revision argued that a worktree
   inside the quarry repo also let a blinded agent holding bare `Bash` read quarry's own source via
   `cat ../../../internal/…`. That is **false**, and it was probed rather than assumed after the
@@ -408,12 +420,25 @@ besides (see Constraints), under
     record, every field, `system.init`'s `cwd` included — not a selected subset of fields. Three
     checks, in order, short-circuiting: (a) it contains the MCP tool prefix (see mcp-tool-prefix)
     → fatal; (b) it contains the quarry repo root path → fatal; (c) case-insensitive bare `quarry`,
-    classified by **provenance rather than by location**: the occurrence is `target_origin` — the
-    non-fatal observation `target_origin_quarry_mention` — when the token also appears in some
-    `tool_result` payload **earlier in the same transcript**; it is fatal only when it appears with
-    no such antecedent. V1's mechanism is still how the source set is identified (re-marshal with
-    every `tool_result` block's nested content replaced by `"REDACTED"`, as `redactToolResultContent`
-    did), but that split now selects provenance instead of being the verdict itself.
+    classified by **provenance rather than by location**. The occurrence is `target_origin` — the
+    non-fatal observation `target_origin_quarry_mention` — when it has any of the three antecedents
+    below, and fatal only when it has none:
+      1. the token appears in a `tool_result` payload earlier in the same transcript (V1's
+         mechanism: re-marshal with every `tool_result` block's nested content replaced by
+         `"REDACTED"`, as `redactToolResultContent` did — that split now *selects provenance*, it is
+         no longer the verdict);
+      2. the token appears anywhere in the **pinned target worktree's tracked files**, which the
+         harness scans once per task and caches as a boolean;
+      3. the token appears in the project context the CLI auto-loads with no tool call — the
+         worktree's `CLAUDE.md`, `CONSTRAINTS.md` and `.claude/**`.
+
+    Antecedent 2 is what makes the rule sound, and it is not a corner case: at the pinned Loomyard
+    commit `975578cd` the token occurs in **12 tracked files**, including an entire
+    `docs/research/quarry-holistic-fix-log.md`. A control agent that reads one of those and then
+    *paraphrases* it emits the token in its own assistant text with no `tool_result` carrying it
+    verbatim, so a transcript-only provenance test would call that a fatal leak. Antecedent 3
+    exists because that content reaches the agent without ever passing through a tool call; at
+    `975578cd` those files happen to be clean, but the rule must not depend on it.
     **A gate-2 failure is not retried:** the rep fails once, is recorded, and the cell moves on —
     it never enters the `.invalid-<k>` path in resume-and-failure.
   Scanning everything rather than selected fields is what makes the two startup assertions in
@@ -448,7 +473,10 @@ besides (see Constraints), under
 ### single-run-lock
 
 - Decision: concurrent `ladder run` invocations are **out of scope**, and enforced rather than
-  assumed. `run` takes an advisory lock by creating `<worktree-root>/.ladder.lock` with `O_EXCL`,
+  assumed. `run` takes an advisory lock by creating
+  `${LADDER_WORKTREE_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/ladder-eval}/.ladder.lock` with `O_EXCL`
+  — one level **above** `worktrees/`, never inside a task worktree, where it would trip
+  `worktree_dirtied` every rep and be deleted by the pinned restore —
   writing its pid and results root into it, and removing it on exit; a second invocation fails
   immediately with `another ladder run holds <path> (pid N, results <root>)`. A stale lock is
   cleared by the operator, not automatically — the harness does not guess whether a pid belongs to
@@ -471,13 +499,40 @@ besides (see Constraints), under
 
 - Decision: a rep is complete iff `results/<root>/raw/<cell>/<rep>/run.json` parses and has
   `state: "complete"`. It is written **last**, after the transcript, the answer, the metrics, the
-  score and the gates. A rep that fails (non-zero exit, unparseable stream, missing answer block,
-  fatal gate) has its directory renamed to `<dir>.invalid-<k>` and is retried; after **3** attempts
-  the cell is recorded in `summary.json`'s `incomplete[]`, the run continues with the remaining
-  cells, and the process exits non-zero at the end.
+  score and the gates.
+
+  **Failure taxonomy — every outcome has exactly one disposition:**
+
+  | outcome | disposition |
+  |---|---|
+  | `claude` exits non-zero, stream unparseable, or `result.is_error: true` | infrastructure failure → `.invalid-<k>`, retried |
+  | run completed but no fenced answer / undecodable JSON | formatting miss → `.invalid-<k>`, retried |
+  | `terminal_reason: max_turns` | **complete, not a failure.** A legitimate measurement of a cell that ran out of budget |
+  | fatal gate-2 finding | **complete as a failed rep, never retried** (see gates) |
+  | scorer fails (non-zero exit, no fence, missing derived required field) | **only the scorer is retried**, up to 3 times; the measured run is never re-executed |
+
+  A `max_turns` rep records its full cost metrics, writes no `answer.json`, does not invoke the
+  scorer, and writes `score.json` as `{"scored": false, "reason": "max_turns"}`. A rep whose scorer
+  exhausts its 3 attempts is likewise complete with `{"scored": false, "reason": "scorer_failed"}`.
+  In both cases `recall` and `precision` are **excluded from the cell's medians** — the metric's
+  `n` counts only scored reps, so a cell's cost `n` and correctness `n` may legitimately differ —
+  and the cell records `max_turns_count` and `unscored_count` in `summary.json`.
+
+  A rep that fails one of the two retried categories has its directory renamed to
+  `<dir>.invalid-<k>`; after **3** attempts the cell is recorded in `summary.json`'s
+  `incomplete[]`, the run continues with the remaining cells, and the process exits non-zero at the
+  end.
 - Rationale: write-last is what makes resume safe against a kill mid-rep. Continuing salvages the
   rest of an expensive root while the non-zero exit and the `incomplete[]` list make the shortfall
-  impossible to miss.
+  impossible to miss. The taxonomy exists because "retry on failure" is wrong for three of the five
+  outcomes: `max_turns` is a *result* (the ceiling is a measured variable, and retrying would
+  quietly discard the cells that hit it, biasing the root toward cheap runs); a gate-2 failure is
+  deterministic, so three retries buy three identical failures at full price; and a scorer flake
+  must never re-run the measured cell, which is the expensive half and was already valid — the
+  transcript is on disk and re-scoring is what `report` is for.
+- Rejected: one retry rule for everything (biases the root by discarding `max_turns` cells);
+  re-running the measured cell when the scorer fails (pays for a fresh run to fix a judgment call);
+  treating a `max_turns` rep as incomplete (it has valid cost metrics, which are most of the point).
 - Rejected: aborting the matrix on the third failure (loses every unrun cell over one bad config);
   resuming on the transcript file's existence (a killed run leaves a truncated transcript that
   would read as done).
@@ -541,8 +596,12 @@ besides (see Constraints), under
   score fields is derived at runtime by regexing `"(\w+)":` out of the rule's own fenced example,
   as V1 did, so the rule text and its validator cannot drift. The answer is redacted before
   embedding: the alternation is built from the ladder file's own `quarry_tools` (bare and
-  prefixed with the MCP tool prefix of mcp-tool-prefix), the quarry repo root and the task worktree
-  path.
+  prefixed with the MCP tool prefix of mcp-tool-prefix), **the bare `server.name` token itself**,
+  the quarry repo root and the task worktree path.
+  The bare server name is in the alternation deliberately: without it, an answer whose prose says
+  "the quarry toc tool told me…" reaches the scorer intact and identifies the arm, defeating the
+  decision's own stated invariant — and it is exactly the token gate 2's check (c) treats as
+  leakage in a control transcript. The two must agree on what the giveaway token is.
 - Rationale: recall and precision here are judgment calls (does the answer's summary describe the
   same mechanism the fasit found, not merely overlapping filenames), which is why they are produced
   by the model and only validated for presence in Go. Redaction preserves V1's stated invariant —
@@ -608,6 +667,9 @@ besides (see Constraints), under
   `go list -deps` stays clean for the engine packages that care (plan §12's T1 criterion).
   HANDOFF §1's description of `go.mod` as tree-sitter-only is a statement of T0's result, not a
   prohibition on later tasks; this is nevertheless a deliberate widening and is recorded as such.
+  Note the current file is minimal in its *direct* requires only — `tree-sitter-python`,
+  `tree-sitter-rust` and `mattn/go-pointer` are still there as indirect ones — so this adds the
+  first non-tree-sitter **direct** dependency, not the first dependency.
 - Rejected: a nested module under `bench/loomyard-eval/ladder/` (keeps the root `go.mod` pure but
   drops the harness out of the done-criterion's own command, and needs a `go.work` to be usable);
   `sigs.k8s.io/yaml` (routes through JSON tags, loses yaml-native comments and error positions, and
@@ -762,7 +824,9 @@ ported (see answer-extraction).
 **Current tree.** `bench/loomyard-eval/` holds only `ladder/` (six yaml files, no Go) and `tasks/`
 (five task markdown files, three `*.fasit.json` — tasks 02 and 03 have no fasit and no ladder file
 references them). `go.mod` is module `github.com/Knatte18/quarry`, Go 1.26, requiring only
-`go-tree-sitter` and `tree-sitter-go`; there is no existing yaml parser. `gopkg.in/yaml.v3` is
+`go-tree-sitter` and `tree-sitter-go` **directly** — it also still carries `tree-sitter-python`,
+`tree-sitter-rust` and `mattn/go-pointer` as *indirect* requires, so "tree-sitter and nothing else"
+is true of the direct set only. There is no existing yaml parser. `gopkg.in/yaml.v3` is
 added to that module — see the module-and-yaml-dependency decision, which is where the choice and
 its alternatives are settled rather than here.
 
@@ -891,6 +955,13 @@ There is no `CONSTRAINTS.md` at the hub root. Constraints from the task brief, `
   `summary.json`, `provenance.json`, table. Includes a resume test — kill after rep 1, re-run,
   assert rep 1 is not re-executed — and a failure test — three bad reps produce
   `.invalid-1..3`, an `incomplete[]` entry and a non-zero exit.
+- **`report` over a fixture `raw/`.** A committed `testdata/` results root holding a complete
+  `raw/<cell>/<rep>/` tree (transcripts, answers, scores, `run.json`) and *no* `summary.json`:
+  `report` must produce `summary.json` and `table.txt` matching a golden file, while the fake
+  `claude` binary asserts it was **never invoked** — re-deriving without re-running or re-scoring is
+  the subcommand's entire justification. A second case covers a root containing a `max_turns` rep
+  and an unscored rep, asserting `recall`/`precision` medians exclude them and that
+  `max_turns_count`/`unscored_count` are populated.
 - The `claude` binary path must therefore be injectable (a `--claude-bin` flag defaulting to
   `claude` on `PATH`, or an equivalent seam), as must the `git` and `go build` runners — V1 already
   took a `Builder` seam for exactly this reason.
@@ -945,9 +1016,14 @@ contains. This is the acceptance step, not an automated test.
 - **Q:** [review round 2] Is the answer-key heading spelling load-bearing for prompt extraction? **A:** No, and it must not be: extraction is inclusion-based (task-text block + schema block only). The five task files spell that heading five different ways. **Why:** an exclusion-based extractor keyed on one spelling would silently leak the answer key from the others.
 - **Q:** [review round 3] How does the harness find the cell's answer in the transcript? **A:** The **last** ` ```json … ``` ` fenced block in the final assistant record's text, via V1's `ExtractFencedJSON(text, "last")` ported verbatim (`fenced.go:36-54`). No fence or undecodable JSON fails the rep and *is* retried; no schema-key validation. **Why:** it was undefined while `answer.json` and "missing answer block" were already named outputs; "last" is required because the prompt embeds the schema as its own fenced block.
 - **Q:** [review round 3] Does the `--mcp-config` path — which lives under the quarry repo and contains the token — reach the transcript and kill controls? **A:** No, probed: a run from the relocated worktree with `--mcp-config` pointing under the quarry repo produced **zero** `quarry` occurrences in the whole transcript; argv is not echoed in `stream-json`. Harness scratch may stay at `<repo>/.scratch/ladder/`. **Why:** the earlier probe established `mcp_servers: []`, which is not the same claim.
-- **Q:** [review round 3] Anything else in the stream carrying the token? **A:** Yes — `system.init.memory_paths`, which is derived from cwd. Relocating the worktree clears it, and it also means a blinded cell no longer loads the operator's *quarry-project* auto-memory (notes written while working on this benchmark). A fresh worktree gets its own empty project memory. **Why:** found while probing the finding above; it is a substantive blinding fix, not only a gate-arithmetic one.
+- **Q:** [review round 3] Anything else in the stream carrying the token? **A:** Yes — `system.init.memory_paths`, which is derived from cwd. Relocating the worktree clears it, and it also means a blinded cell no longer loads the operator's *quarry-project* auto-memory (notes written while working on this benchmark). *(This entry also claimed a fresh worktree gets its own empty project memory. **Round 4 probed that and it is false** — memory is keyed on the repository, so a Loomyard worktree loads the main Loomyard repo's memory. See the round-4 entry below for the startup check that replaces the assumption.)* **Why:** found while probing the finding above; it is a substantive blinding fix, not only a gate-arithmetic one.
 - **Q:** [review round 3] A control agent quoting Loomyard prose that says "quarry" fails check (c) fatally and deterministically — then gets retried three times. Is that intended? **A:** No. Check (c) now classifies by **provenance**: `target_origin` (non-fatal) when the token also appears in an earlier `tool_result` payload, fatal only without such an antecedent. And gate-2 failures are never retried — the rep fails once. **Why:** a blinding failure is a property of the configuration or the target's contents, not a flake.
 - **Q:** [review round 3] Is `mcp__quarry__` hardcoded while `server.name` is yaml data? **A:** It was. The prefix is now computed once as `"mcp__" + server.name + "__"` (default `mcp__quarry__` with no `server:` block) and read by metrics, gate 2 check (a), the redactor and `--allowedTools`. **Why:** a renamed server would otherwise silently zero gate 1, blind gate 2 to real leakage, and stop the redactor hiding tool names from the scorer — three silent, different corruptions.
 - **Q:** [review round 3] Where do `PARALLEL_OPENING` and `PARALLEL_BLOCK` come from, and does their "parallel" framing survive one-cell-at-a-time execution? **A:** Ported verbatim from `preamble.go:14-16` and `:20-33` (plus `closingSentence` at `:44-45`), all byte-for-byte copies of the V1 README's committed preambles. "Parallel" means parallel *tool calls in one turn*, not parallel arms; the A/B/C vocabulary never enters the prompt. **Why:** they are the two largest parts of the prompt and had no cited source.
 - **Q:** [review round 3] Which module does the harness join, and which yaml library? **A:** The root module `github.com/Knatte18/quarry`, plus `gopkg.in/yaml.v3` — one new dependency, recorded as a deliberate widening of a `go.mod` T0 had reduced to tree-sitter only. **Why:** the done-criterion is `go build ./... && go test ./...` at the repo root, and a nested module is silently excluded from both.
+- **Q:** [review round 4] Does check (c) still kill a control that echoes the target's own auto-loaded context? The round-3 probe ran from an empty directory, not a Loomyard checkout. **A:** Fair — the probe was re-run from a real pinned worktree (`git worktree add --detach` at `975578cd`, three turns, zero denials) and again showed **zero** `quarry` occurrences. Independently, the antecedent set is broadened so the rule does not depend on that: a token is `target_origin` if it appears in an earlier `tool_result`, **or anywhere in the pinned worktree's tracked files** (12 of them at this pin), **or** in the auto-loaded `CLAUDE.md`/`CONSTRAINTS.md`/`.claude/**`. **Why:** an agent that paraphrases one of those 12 files emits the token with no verbatim `tool_result` behind it.
+- **Q:** [review round 4] Is auto-memory keyed on the worktree, as round 3 claimed? **A:** **No — that claim was wrong.** Probed from the pinned Loomyard worktree, `memory_paths.auto` resolved to `…/projects/-home-knatte-Code-loomyard-wts-loomyard/memory/`: the main repo's memory, not the worktree's. Claude Code keys the project on the repository. The harness therefore refuses to start a matrix with control cells if that directory contains the token (today: six files, zero matches). **Why:** it is operator-mutable and will plausibly gain quarry mentions once T7 work reaches Loomyard, silently unblinding every control.
+- **Q:** [review round 4] Does the scorer redaction hide the bare server name? **A:** It did not; it now does. `server.name` bare joins the alternation alongside the prefixed and unprefixed tool names. **Why:** "the quarry toc tool told me…" in an answer's prose identifies the arm, and it is the same token gate 2 check (c) treats as leakage — the two must agree.
+- **Q:** [review round 4] What happens to a `max_turns` rep, and to a scorer that fails? **A:** A `max_turns` rep is **complete, not a failure**: full cost metrics, no answer, scorer skipped, `score.json` records `{"scored": false, "reason": "max_turns"}`, and recall/precision are excluded from the cell's medians. A scorer failure retries **only the scorer**, 3 times, never the measured run. Full five-outcome table added to resume-and-failure. **Why:** retrying `max_turns` would discard the cells that hit the ceiling and bias the root toward cheap runs; re-running the measured cell over a judgment flake pays full price for the wrong half.
+- **Q:** [review round 4] Where exactly does the lock file go? **A:** `${LADDER_WORKTREE_ROOT:-…/ladder-eval}/.ladder.lock` — one level above `worktrees/`, never inside a task worktree. **Why:** inside a worktree it would trip `worktree_dirtied` every rep and be deleted by the pinned restore.
 - **Q:** Which V1 gates and metrics are retired? **A:** Retired: `GateRunPrompt`, `GateMaxTurns`, `GateModelPinned`, `GateNoTargetOverride`, `GateDeniedToolsNotUsed`, every cold/daemon gate; `denied_tool_attempts` and `_provisional` (`DenialShapePattern` was never validated against a real denial and the provisional flag was hardcoded `true`), `agent_id`, `transcript_source`, `server_vcs_modified`. **Why:** the CLI now enforces or reports each directly, or the field was structurally constant and carried no information.
