@@ -110,11 +110,16 @@ is the part `report` depends on and the part a killed run must survive.
   rendered prompt **before dispatch** and, on a finding, write the repetition as complete with the
   blinding-failed flag set and move on without spending an API call; write the per-cell MCP
   configuration; invoke the measured process through the runner seam with the working directory set
-  to the pinned worktree, standard input from the null device, and exactly the flag set the
-  discussion's claude-invocation decision fixes — model, effort, max turns, the BuiltinTools slice
-  from `config.go` as the tools value, the granted tool names as an allowlist **omitted entirely for a control cell**, the per-cell MCP
-  configuration with strict configuration mode, stream-json output with verbose on, session
-  persistence off, and empty setting sources. No permission-mode flag is passed. Tee standard output
+  to the pinned worktree, standard input from the null device, and exactly this argument vector,
+  spelled literally because these are the probe-verified spellings and one of them cannot be
+  recovered from the CLI's own help output: the prompt as a positional argument after `-p`, then
+  `--model <run model>`, `--effort <run effort>`, `--max-turns <ceiling>` (accepted by the CLI but
+  absent from `--help`, so it cannot be rediscovered by reading the tool), `--tools
+  Read,Grep,Glob,Bash` from the `BuiltinTools` slice in `config.go`, `--allowedTools "<space-free
+  comma-joined prefixed tool names>"` **omitted entirely for a control cell**, `--mcp-config <path>`,
+  `--strict-mcp-config`, `--output-format stream-json`, `--verbose`, `--no-session-persistence` and
+  `--setting-sources ""`. No `--permission-mode` flag is passed at all: the session runs in the
+  CLI's default mode, which is what every probe behind this design measured. Tee standard output
   to the repetition's transcript file as it arrives.
   Then, in this write order with the state file last: parse the transcript; compute the metrics with
   the prefix from the loaded file and stamp the effort the harness passed, since the CLI does not
@@ -138,11 +143,15 @@ is the part `report` depends on and the part a killed run must survive.
   The scorer is a **second measured-binary invocation**, through the same runner seam and the same
   claude binary path, and it is the only other process this loop runs. Add
   `RunScorer(ctx context.Context, r Runner, claudeBin string, l *Ladder, task Task, prompt string)
-  (ScoreRecord, error)` to `run.go`, invoking the binary with the scorer model and effort taken from
-  the ladder file's own scorer block — never the cell's run model or effort — an empty tools value,
-  a turn ceiling of one, an empty MCP configuration document with strict configuration mode,
-  stream-json output with verbose on, session persistence off, empty setting sources, and standard
-  input from the null device. It runs with the working directory set to the harness's own scratch
+  (ScoreRecord, error)` to `run.go`, invoking the binary with this argument vector, again spelled
+  literally: the prompt after `-p`, then `--model <scorer model>` and `--effort <scorer effort>`
+  taken from the ladder file's own scorer block — never the cell's run model or effort — then
+  `--tools ""`, `--max-turns 1`, `--mcp-config <path to a document whose servers map is empty>`,
+  `--strict-mcp-config`, `--output-format stream-json`, `--verbose`, `--no-session-persistence` and
+  `--setting-sources ""`, with standard
+  input from the null device. The empty tools value and the ceiling of one are what distinguish a
+  scorer invocation from a measured one at the argument level, which is what lets the offline test's
+  fake binary tell the two apart without any out-of-band signal. It runs with the working directory set to the harness's own scratch
   directory, **not** the pinned worktree: the scorer needs no codebase and must not be given one.
   Its prompt is the assembled four-part scorer prompt built from the rule the task's schema selects,
   the extracted task text, the meta-stripped fasit and the redacted answer; its reply is parsed with

@@ -67,16 +67,27 @@ its own `package main`.
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** write a `package main` that stands in for the measured binary. It asserts on the
-  flags it was given before emitting anything, failing with a non-zero exit and a message on
-  standard error when an expected flag is absent or carries an unexpected value: the model, the
+- **Requirements:** write a `package main` that stands in for the measured binary. It stands in for
+  **two** different invocations — the measured cell and the scorer — and it distinguishes them from
+  the arguments alone, with no out-of-band signal, because both reach it through the same binary
+  path within one process run of the harness and per-invocation environment is therefore not
+  available. The discriminator is the pair card 26 fixes for exactly this purpose: an invocation
+  carrying `--tools ""` together with `--max-turns 1` is the scorer; anything else is a measured
+  cell. Assert a different flag set on each branch, failing with a non-zero exit and a message on
+  standard error when an expected flag is absent or carries an unexpected value.
+  For a **measured cell**: the model, the
   effort, the turn ceiling, the built-in tool set named in the overview's the-four-built-in-tools
   decision, the MCP configuration path, strict
-  configuration mode, stream-json output, verbose, no session persistence and empty setting sources.
+  configuration mode, stream-json output, verbose, no session persistence and empty setting sources;
+  plus the allowlist flag **absent** when an environment variable the test sets marks the invocation
+  as a control, and present with the expected prefixed names otherwise.
+  For the **scorer**: the scorer model and effort — asserted to differ from the cell's, so a mix-up
+  fails the test rather than passing quietly — the empty tools value, the turn ceiling of one, an
+  MCP configuration path, strict configuration mode, stream-json output, verbose, no session
+  persistence and empty setting sources; and the allowlist flag absent unconditionally.
   Those failure messages are readable by the test because the runner seam carries a separate error
   writer, per the overview's injectable-external-commands decision.
-  It asserts the allowlist flag is **absent** when an environment variable the test sets marks the
-  invocation as a control, and present with the expected prefixed names otherwise. The fake never
+  The fake never
   spells the built-in tool names itself — it is a separate `package main` and cannot reference the
   harness package's slice — so the test passes the expected tools value in through an environment
   variable built from that slice, and the fake compares against what it was given. It then writes a
@@ -119,8 +130,13 @@ its own `package main`.
   the state file — assert the state file's modification time is not earlier than every other file in
   that directory, which is what makes resume safe against a kill. Assert the summary, the provenance
   record and the table are all written at the results root and that the printed table equals the
-  written one. Add a resume test: run once with one repetition, then run again with two, and assert
-  the first repetition's transcript was not rewritten while the second was produced. Add a failure
+  written one. Add a resume test that keeps the effective repetition count **constant** across both
+  invocations, since a differing one is refused at startup by the provenance rule and a test that
+  changed it could never pass: run a two-cell, two-repetition matrix restricted by the cell selector
+  to the first cell, then run it again with no cell restriction, and assert that the first cell's
+  two repetitions were skipped — their transcripts unchanged by modification time and content —
+  while the second cell's two were produced. That is also the case the merge rule's union of
+  selected cells exists for, so the test covers both at once. Add a failure
   test: with the fake configured to fail, assert three suffixed invalid directories are produced,
   the cell appears in the summary's incomplete list, the run continues past that cell, and the entry
   point reports a non-zero exit. Add a blinding test: with the fake configured to emit a transcript
