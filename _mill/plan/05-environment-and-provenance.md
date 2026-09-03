@@ -110,15 +110,26 @@ this batch runs goes through the injectable runner seam the overview defines —
   empty, and nothing else; for a granted cell, an object declaring exactly one server under the
   ladder file's server name, with the built binary as its command, the server block's argument list
   with every occurrence of the literal placeholder token `{target_dir}` — that exact spelling,
-  braces included, which is the ladder-file contract and the same token the pre-migration file
-  already used — replaced by the pinned worktree path, and the server block's environment map. A granted cell whose ladder file declares no server block is an error naming the
+  braces included — replaced by the pinned worktree path, and the server block's environment map.
+  This placeholder is a **new contract this plan defines**, not an existing one: no ladder file in
+  the tree uses it today, and the migrated file ships with no argument list at all, so the
+  substitution has no consumer until the MCP-server task writes one. Document the token in two
+  places so that task spells it identically: a doc comment on this function naming it as the only
+  placeholder the argument list supports, and one line in the migrated ladder file's header comment
+  (card 5) stating that the server block's future argument list may use `{target_dir}` and that the
+  harness substitutes the pinned worktree path for it. A granted cell whose ladder file declares no server block is an error naming the
   cell id and stating that the file declares no server block — raised here, at run time, never at
-  load time. `WriteMCPConfig(dir string, doc []byte) (string, error)` writes the document under the
+  load time. Also give `MCPConfigDocument` a doc comment stating that `{target_dir}` is the only
+  placeholder the argument list supports.
+  `WriteMCPConfig(dir string, doc []byte) (string, error)` writes the document under the
   harness's own scratch directory at `.scratch/ladder/` beneath the quarry repository root and
   returns its path; that location is deliberate and was measured — the invocation's own argument
   list is not echoed anywhere in the stream, so a configuration path under the repository never
-  reaches a transcript. `BuildServer(ctx, r Runner, buildTarget, outPath string) (sha256 string,
-  err error)` runs the Go build through the runner seam, setting `CGO_ENABLED` to `1` in the
+  reaches a transcript. `BuildServer(ctx, r Runner, quarryRepoRoot, buildTarget, outPath string) (sha256 string,
+  err error)` runs the Go build through the runner seam with the command's working directory set to
+  the quarry repository root — the build target is written as a repository-relative path in the
+  ladder file, so resolving it against the harness process's own working directory would make the
+  build depend on where the operator happened to invoke it — and setting `CGO_ENABLED` to `1` in the
   command's environment map rather than mutating the harness's own process environment, because the target server links C grammars and the failure otherwise reads as
   unrelated, then returns the hex sha256 of the produced binary. The build happens at most once per
   invocation and only when a selected cell has a non-empty allowed list; when every selected cell
@@ -214,7 +225,8 @@ this batch runs goes through the injectable runner seam the overview defines —
   granted cell against a ladder file with no server block errors naming the cell id, and the build
   helper sets the cgo variable in the command's environment map rather than in the harness process's
   own environment — asserted by inspecting the recorded command, and by asserting the harness's own
-  environment is unchanged after the call. Write `provenance_test.go` asserting: a read of a root
+  environment is unchanged after the call — and that the recorded command's working directory is the
+  supplied quarry repository root, so a repository-relative build target resolves. Write `provenance_test.go` asserting: a read of a root
   with no record returns a nil record and no error while a malformed record errors naming the file;
   a written record round-trips; the collector fills the commit, dirty, host, Go-version and
   CLI-version fields from the recording fake runner's canned output and puts the target repository's

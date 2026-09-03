@@ -78,12 +78,9 @@ is the part `report` depends on and the part a killed run must survive.
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** create `package ladder` file `run.go`. Declare in it the package-level slice
-  `BuiltinTools = []string{"Read", "Grep", "Glob", "Bash"}`, the single spelling of the tool set the
-  overview's the-four-built-in-tools decision fixes; every other site that needs those names —
-  the rendered prompt's tool list, gate check (d)'s passing case in the tests, the fake binary's
-  flag assertion and the live test's session-init assertion — references this identifier rather than
-  re-spelling them. Then declare `RunOptions` carrying the ladder file
+- **Requirements:** create `package ladder` file `run.go`. It uses the package-level `BuiltinTools`
+  slice declared in `config.go` by batch 1 as its tools value and never re-spells those names.
+  Declare `RunOptions` carrying the ladder file
   path, the results root, the selected cell ids, an optional repetition override, the claude binary
   path, the quarry repository root and a `Runner`, and `Run(ctx context.Context, opts RunOptions)
   (exitNonZero bool, err error)`.
@@ -105,14 +102,14 @@ is the part `report` depends on and the part a killed run must survive.
   metrics, and parallel runs share both the rate limit and the prompt cache. Skip any repetition
   whose directory already satisfies the completeness predicate.
   Per repetition: prepare or restore the pinned worktree; render the prompt from the task file's
-  extracted content, the worktree path and the cell's tool names, which are the built-in tool slice
-  declared above plus each granted tool prefixed with the MCP prefix; for a control cell run gate check (d) on that
+  extracted content, the worktree path and the cell's tool names, which are the BuiltinTools slice
+  from `config.go` plus each granted tool prefixed with the MCP prefix; for a control cell run gate check (d) on that
   rendered prompt **before dispatch** and, on a finding, write the repetition as complete with the
   blinding-failed flag set and move on without spending an API call; write the per-cell MCP
   configuration; invoke the measured process through the runner seam with the working directory set
   to the pinned worktree, standard input from the null device, and exactly the flag set the
-  discussion's claude-invocation decision fixes — model, effort, max turns, the built-in tool slice
-  declared above as the tools value, the granted tool names as an allowlist **omitted entirely for a control cell**, the per-cell MCP
+  discussion's claude-invocation decision fixes — model, effort, max turns, the BuiltinTools slice
+  from `config.go` as the tools value, the granted tool names as an allowlist **omitted entirely for a control cell**, the per-cell MCP
   configuration with strict configuration mode, stream-json output with verbose on, session
   persistence off, and empty setting sources. No permission-mode flag is passed. Tee standard output
   to the repetition's transcript file as it arrives.
