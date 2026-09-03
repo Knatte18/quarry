@@ -126,8 +126,12 @@ can host this code.
 ### The Go unit alphabet
 
 - **Decision:** a Go unit is one or more `/`-separated segments. Each segment must be non-empty, must
-  not be `.` or `..`, and must contain no `/`, no `#`, no `\`, no ASCII control character, and no
-  whitespace (space, tab, newline, or any `unicode.IsSpace` rune). Everything else is allowed —
+  not be `.` or `..`, and must contain no `\`, no ASCII control character, and no
+  whitespace (space, tab, newline, or any `unicode.IsSpace` rune). `/` is the segment separator, so
+  it cannot occur *inside* a segment by construction. **`#` needs no ban and gets none:** the split
+  takes the first `#`, so the unit half never contains one, and `unit_bad_rune` accordingly covers
+  `\`, control characters and whitespace only. Do not implement a `#` check here — it is unreachable,
+  and a reachable-looking check that can never fire is worse than none. Everything else is allowed —
   Unicode letters, digits, `.`, `-`, `+`, `~` — because a Go package directory may legitimately be
   named any of them. There is no leading `./`, no leading `/`, and no trailing `/`.
 - **Rationale:** §2 — the Go unit is "its path relative to the repository root". The `.`/`..`/empty
@@ -138,8 +142,17 @@ can host this code.
   spec derives a whitespace ban. The argument for it is weaker and separate: a unit containing a space
   gives one directory two easily-confused spellings in a plan file, and no Go repository in evidence
   needs one. T1 adopts it so the alphabet is closed rather than open-ended, and routes it to the hub
-  below as a non-blocking spec question the hub may accept or drop. Dropping it deletes one predicate
-  in `golang.go` and one reject-table row.
+  below as a non-blocking spec question the hub may accept or drop.
+- **What dropping the whitespace ban would actually cost**, stated precisely so the hub's decision is
+  informed rather than cheap-sounding: one predicate in `golang.go`; **two** reject-table rows deleted
+  (`internal/my logger#run` and the leading-space `" internal/logger#run"`); **two** further rows
+  reworded, since `internal/../lo gger#run` and `internal//lo gger#run` are annotated "doubly
+  invalid … **and** a space" and would become singly invalid; and the unit half of the Decision
+  "Input is not trimmed" retracted — leading whitespace would no longer be a `unit_bad_rune` reject,
+  so either the input is trimmed after all or a leading space is silently part of the first segment.
+  The member half of that decision is unaffected: trailing whitespace stays a `member_bad_rune`
+  reject either way. This is a small change but not a one-line one, and the untrimmed-input coupling
+  is the part worth seeing before answering.
 - **`_test` needs no special handling.** §2's external-test-package unit, `internal/logger_test`, is
   an ordinary path as far as the parser is concerned — it satisfies the segment rules with no rule of
   its own. The fixed struct carries no flag for it, and distinguishing "the directory `logger_test`"
@@ -210,6 +223,16 @@ can host this code.
   immediately below the constant block: Go cannot reflect over package-level constants, so this slice
   is the only way a test or an exhaustive caller can enumerate them. Adding a constant means adding
   it to `Reasons` in the same edit.
+- **What `Detail` holds, per reason.** For the eleven reasons that name a specific piece of the input,
+  `Detail` is that piece verbatim: the offending segment (`unit_empty_segment`, `unit_dot_segment`),
+  the offending component (`member_empty_component`, `member_keyword`, `member_not_identifier`), or
+  the offending rune as a quoted single-rune string (`unit_bad_rune`, `member_bad_rune`,
+  `member_type_params`, `member_parens`, `member_pointer`), and the whole unit half for `unit_empty`'s
+  sibling cases where no smaller piece is at fault. For the four reasons where nothing smaller than
+  the input is at fault — `no_separator`, `unsupported_language`, `member_empty`, `member_too_deep` —
+  **`Detail` is the empty string**, and `Error()` composes a complete message from `Reason`, `Lang`
+  and `Input` alone. Empty is a defined value here, not an oversight; a reader of `errors.go` should
+  not have to guess whether a blank `Detail` means "no detail" or "detail not filled in".
 
   | `Reason` | fires on | example input |
   |---|---|---|
@@ -439,6 +462,13 @@ TDD is the right shape for the whole package: the spec supplies the cases before
 the accept and reject tables can be written first and drive the implementation. Write the tables
 first, watch them fail, then implement.
 
+**All three test files are `package glyph`** — white-box, not `package glyph_test`. This is not a
+preference: `parse_test.go` tests the unexported split directly, the round-trip test in
+`string_test.go` is driven from `golang_test.go`'s accept table, and the `Reasons` completeness test
+must see reject rows declared in more than one file. All three need to share one package for any of
+that to compile. Note that a `glyph_test` external package would also be a second unit under §2's own
+rule — `glyph_test` — which is a pleasing coincidence but not the reason.
+
 **`parse_test.go` — the language-free layer.**
 
 - The structural split over every example in §1's table, including the three Python and C# rows
@@ -464,8 +494,11 @@ first, watch them fail, then implement.
 `internal/logger#stderrHandlerSnapshot`, `internal/logger#dualHandler.stderr`,
 `internal/reedengine/render#Renderer.Draw`, `cmd/lyx#run`, `internal/shedrecipe#Lookup` (§7),
 `internal/logger#init` (§3), `internal/logger_test#SomeName` (§2, the external test unit),
-`internal/logger#Box` (§3, the type-parameter corner case's canonical form), a single-segment unit,
-a deep unit, a Unicode identifier, and `_` as a member name. Each case asserts the **whole** parsed
+`internal/logger#Box` (§3, the type-parameter corner case's canonical form),
+`internal/logger#dualHandler.Handle` **and** `internal/logger#durableHandler.Handle` (§3's
+receiver-pair example — "the receiver type is half the key … are two glyphs"; both are needed, since
+the point is that they differ only in `Owner`, and the test should assert exactly that), a
+single-segment unit, a deep unit, a Unicode identifier, and `_` as a member name. Each case asserts the **whole** parsed
 `Glyph` — `Lang`, `Unit`, `Owner`, `Name` and `Params`, including that `Owner` is nil for a
 package-level name and that `Params` is nil always.
 
@@ -540,6 +573,14 @@ on sight. The earlier claim that this "fails the build" unconditionally was wron
 plan should implement. `Reasons` earns its place regardless: it is what makes the vocabulary
 enumerable at run time for any caller that wants to switch exhaustively over it.
 
+**`Error()` itself is tested, not assumed.** Scope requires "an error whose message names what was
+wrong", and nothing above would catch an `Error()` that returned `""` or the same string for every
+reason. Two assertions, both ranging over `Reasons` so they stay complete as the vocabulary changes:
+every `Reason` produces a non-empty `Error()`, and the fifteen messages are pairwise distinct. These
+are smoke assertions on purpose — they pin the property Scope asks for without freezing wording, so
+messages can still be improved without touching a test. The reject table's own cases continue to
+assert `Reason` only.
+
 *Case sensitivity*: `internal/Logger#Foo` and `internal/logger#foo` are different glyphs and neither
 folds into the other.
 
@@ -584,7 +625,9 @@ merged; the first blocks T3 from meeting its done criterion.
    the contract states. T1 rejects whitespace anyway, on the narrower ground that a unit with a space
    gives one directory two easily-confused spellings in a plan file. **The hub is free to accept the
    rule into §2 or to drop it**; this is not a gap in the spec so much as an offer to close one.
-   Dropping it deletes one predicate in `golang.go` and one reject-table row, and nothing else moves.
+   Dropping it costs one predicate in `golang.go`, two deleted reject-table rows, two reworded ones,
+   and the unit half of the "Input is not trimmed" decision — itemised under the Decision "The Go
+   unit alphabet", which is the list to read before answering.
 
 ## Q&A log
 
