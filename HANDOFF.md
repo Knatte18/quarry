@@ -1,16 +1,54 @@
-# HANDOFF — state as of 2026-09-02 evening, and what to do next
+# HANDOFF
 
-> **2026-09-03: superseded by the rewrite.** V1 is frozen on the `v1-final` branch (worktree
-> `wts/v1-final`). `main` is being cleaned out and rebuilt per `docs/rewrite-plan.md`, which is the
-> plan a fresh session should act on. Everything below is the V1 record — its measurements and
-> rules still hold, and the rewrite plan cites them — but the §3–§6 "next step" items are replaced by
-> the build order in `docs/rewrite-plan.md` §9.
+## State as of 2026-09-03 evening — the rewrite
 
-Self-contained: a fresh session on any machine should be able to act on this file alone. The research
-report it descends from is `docs/research/quarry-improvement-research.md`; the benchmark suite is
-`bench/loomyard-eval/ladder/` (its README is the reference for design, metrics, scoring, and the
-enforcement gates). Every results root named below has a `conclusion.md` that is the record of that
-run; read those before re-deriving anything from `summary.json`.
+**T0 is done: `main` holds only the Go tree-sitter extractor.** V1 is frozen on branch `v1-final`
+(worktree `wts/v1-final` on the machine that ran it; on any other machine, `git worktree add
+wts/v1-final v1-final`). The deletion was squash-merged as `a18d490`; the six-commit branch history
+is on tag `archive/delete-v1`.
+
+What `main` contains now:
+
+- `internal/quarryengine` — the cgo guard pair, a short `doc.go`, `ErrLanguageUnsupported`.
+- `internal/quarryengine/toc` — the Go strategy, the shared helpers, the extension table (`.go` only).
+- `internal/quarryengine/treesitter` — the Go grammar only. `go.mod` requires `go-tree-sitter` and
+  `tree-sitter-go`, nothing else.
+- `docs/rewrite-plan.md` (the plan; §12 is the task table) and `docs/glyph.md` (the identifier
+  contract). Both are current as of `d437cfb`.
+- `bench/loomyard-eval/ladder/ladder*.yaml` and `bench/loomyard-eval/tasks/` (prompts and
+  `*.fasit.json`) — the inputs the new harness (T2) and the first ladder run (T7) need.
+- `docs/research/**` and this file — the measurement record. `CLAUDE.md` is one line: Go, no Python.
+
+Decisions taken 2026-09-03, all written into the plan and the spec:
+
+- **Go only.** Other languages are added one at a time, when wanted, with extractors written against
+  the glyph contract; the V1 Python and C# extractors are on `v1-final` as reference only.
+- **The listing verb is `toc`**, not `map`: it is a table of contents, and `map` is a keyword in Go.
+- **T6 MCP is thin**: one `toc` tool, nothing more until a ladder cell measures more.
+- Python/C# and Loomyard's adoption of glyphs are **not tasks** in this repository's §12.
+- **No Python** in this repository, no exceptions. The V1 results roots and `gen_compact_toc.py` are
+  on `v1-final`; their raw transcripts were never committed and sit outside the repository on the
+  WSL2 host (`v1-raw-results/` beside the worktrees).
+
+**Next.** The mill wiki backlog holds `glyph-package` (T1) and `ladder-harness` (T2), wave 1, each
+with a proposal, unclaimed. Spawn them with `mill-spawn` when ready; T2 needs `.scratch/ladder.env`
+with `LADDER_LOOMYARD_REPO` in its worktree. For mechanical tasks later (T5, T6) use `mill-quick`
+rather than the full pipeline; T0 showed the review rounds are overhead for a deletion.
+
+Millhouse notes: the wiki is a daemon-backed store that renders `Home.md` and the proposal files —
+edit tasks through the `millpy-*` wrappers or `wiki._client`, never the files. `mill-merge` strips
+`_mill/` before squashing; a manual squash must `git rm -r _mill` first.
+
+## The V1 record (2026-09-02 and before)
+
+> Everything below is the V1 record. Its measurements and rules still hold and the rewrite plan cites
+> them, but the "next step" items in §3–§6 are replaced by `docs/rewrite-plan.md` §9 and §12.
+> The results roots, the harness and its README it refers to are on `v1-final`
+> (`bench/loomyard-eval/ladder/results/<root>/conclusion.md` there).
+
+The research report this descends from is `docs/research/quarry-improvement-research.md`. Every
+results root named below has a `conclusion.md` that is the record of that run; read those before
+re-deriving anything from `summary.json`.
 
 ## 0. DONE: the working tree is committed
 
