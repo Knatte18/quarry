@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-summarize-report-cli  '2026-09-03T19:26:25Z'
 approved-integration-tests  '2026-09-03T19:43:03Z'
 holistic-reviewing  '2026-09-03T19:43:34Z'
 holistic-fixing  '2026-09-03T19:47:47Z'
+holistic-reviewing  '2026-09-03T19:50:19Z'
 ```
 
 ## Batches
