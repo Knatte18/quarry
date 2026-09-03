@@ -50,7 +50,9 @@ batches:
     commit_sha: b72cd21fd91bda1b8d071ff9c6559ab8fd753441
     verify_baseline_failures: []
   - name: answer-and-walk
-    state: pending
+    state: running
+    implementer_session: 4fa63e51-258a-486d-8df8-86176c6ffdc8
+    start_sha: ec5cbd5dab644fccaaac0c1db2cae8996292edd8
     verify_baseline_failures: []
   - name: glyph-symbols
     state: pending
