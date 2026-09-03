@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-integration-tests
+phase: holistic-reviewing
 slug: ladder-harness
 branch: ladder-harness
 plan: _mill/plan
@@ -42,6 +42,7 @@ approved-environment-and-provenance  '2026-09-03T19:06:58Z'
 approved-run-loop  '2026-09-03T19:17:57Z'
 approved-summarize-report-cli  '2026-09-03T19:26:25Z'
 approved-integration-tests  '2026-09-03T19:43:03Z'
+holistic-reviewing  '2026-09-03T19:43:34Z'
 ```
 
 ## Batches
