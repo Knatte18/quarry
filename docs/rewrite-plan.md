@@ -46,10 +46,10 @@ Non-test lines at `2565ef5`:
 | `go.mod`: every tree-sitter grammar but Go, LSP/JSON-RPC deps, `gopls` requirement | | **removed** — one language, no daemon |
 | `testdata/{impactfixture,clockfixture,buildtagfixture}` | | deleted with the layer that used them |
 | `bench/loomyard-eval/ladder/{cmd,internal,tools}`, `run*.sh`, `launch-session.sh`, `.claude/skills/ladder-run` | 9 000 (+8 300 test) | **deleted and rebuilt** around headless `claude -p` (§9a), ~1 000–1 500 lines |
-| `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the fasit, the task prompts, the research record; `docs/research/output-formats/` is the "before" side T5 adds `after/` to |
+| `ladder*.yaml`, `bench/loomyard-eval/tasks`, `docs/research/**`, `docs/toc-docstring-association.md`, `HANDOFF.md` | | kept — the fasit, the task prompts, the research record; `docs/research/output-formats/` is the "before" side T5a/T5b add `after/` to |
 | `bench/loomyard-eval/results/**`, `bench/loomyard-eval/ladder/results/**`, `bench/loomyard-eval/scripts/gen_compact_toc.py` | | **deleted** — the V1 results roots are archived on `v1-final` with the harness that produced them; `HANDOFF.md` is their summary. The Python script goes with them: no Python in this repository, no exceptions |
-| `docs/mcp-setup.md`, `docs/when-to-use-quarry.md`, `docs/servers.yaml.example`, `.mcp.json` | | **deleted** — they describe the seven verbs, `cmd/quarry-mcp` and the daemon, all of which are on `v1-final`. Nothing is marked "superseded" on `main`: what is archived is deleted. T5 and T6 write the new documents and the new `.mcp.json` when the surface they describe exists |
-| `README.md` | | replaced by a short stub: what the rewrite is, `docs/rewrite-plan.md`, `docs/glyph.md`, and that V1 is on `v1-final`. T5/T6 write the real one |
+| `docs/mcp-setup.md`, `docs/when-to-use-quarry.md`, `docs/servers.yaml.example`, `.mcp.json` | | **deleted** — they describe the seven verbs, `cmd/quarry-mcp` and the daemon, all of which are on `v1-final`. Nothing is marked "superseded" on `main`: what is archived is deleted. T5b and T6 write the new documents and the new `.mcp.json` when the surface they describe exists |
+| `README.md` | | replaced by a short stub: what the rewrite is, `docs/rewrite-plan.md`, `docs/glyph.md`, and that V1 is on `v1-final`. T5b/T6 write the real one |
 
 The first commit on `main` after this document is the deletion, so nothing half-V1 can survive into
 the new code. Until the new `cmd/quarry-mcp` exists the harness cannot run; that is expected and
@@ -84,7 +84,7 @@ Loomyard.Engine.Layout#Renderer.Draw(int)   C#: namespace, Type.Name(param types
 | multipart | the glyph names *one* symbol the language allows in several places (C# `partial class`, C# partial methods) | success, every part returned |
 
 Go never produces multipart: a type is declared once and each method once, however many files they
-span. That is a `members` question (§5), not a resolution question.
+span. That is an `expand` question (§5), not a resolution question.
 
 **Loomyard's plan format changes to match.** `manifest/designs/plan-card-format.md` today says
 "package-qualified short names (`shedrecipe.Lookup`), never file:line, never full import paths".
@@ -92,7 +92,7 @@ As a glyph that is `internal/shedrecipe#Lookup`: the principle stays, the spelli
 The unit becomes the repository-relative directory instead of the bare package name, which is the price of uniqueness in a large repository,
 and the separator becomes `#`, so the parser splits unit from member without a package list.
 Card types, `Uses` and the derived dependency graph do not change.
-That is Loomyard work, done in Loomyard's repository once T5 (§12) has merged, and not a task here:
+That is Loomyard work, done in Loomyard's repository once T5b (§12) has merged, and not a task here:
 `planparser` imports `glyph` and drops its own name handling, the validator calls `resolve`, the planner prompt and the format document get the new spelling.
 
 ## 4. One envelope, one entry type at every depth
@@ -104,7 +104,7 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
 - **One symbol entry everywhere:** `id` (the glyph), `kind` (a word, never an LSP integer), `start`, `sigend`,
   `end` (1-based, inclusive), `signature` (verbatim source), `doc` (complete, never truncated by
   extraction), and `file` (relative to the repository root, never absolute) wherever entries can span
-  files. `resolve`, `members` and `toc` all return this entry and nothing else for a symbol.
+  files. `resolve`, `expand` and `toc` all return this entry and nothing else for a symbol.
 - **One file entry everywhere, carrying only what is the file's own:** `name`, `header`, the
   deviations only when present (`test`, `generated`, `package` when it differs from the
   directory's, as `logger_test` does, `language` when it differs from the directory's), and
@@ -259,7 +259,7 @@ internal/reedengine/render/layout.go (package render, go): layout.go is the layo
 
 ## 5. The queries
 
-Phase 1 is `resolve`, `members` and `toc`: the same tree-sitter parse with three entry points. None
+Phase 1 is `resolve`, `expand` and `toc`: the same tree-sitter parse with three entry points. None
 needs a type checker, a daemon, or an index. Phase 1 says nothing about callers.
 
 **`resolve <glyph|path>...`** — where is this, right now. Per glyph: location(s) and status. Called by an
@@ -275,13 +275,24 @@ Three details of the answer exist for the validator (§8.1):
   Go units contain `/` and collide with nothing; a Python module path and a C# namespace can spell the same string, and when both match the answer is `ambiguous` with the candidates marked by language.
   There is no language prefix in the glyph; the case is rare and the status is honest.
 
-**`members <glyph>`** — what does this type consist of, across files. The glyph must name a type;
+**`expand <glyph>`** — what does this type consist of, across files. The glyph must name a type;
 on any other kind the answer is `ok: false` naming the kind. The type's *head* (its own
 lines: declaration, doc, fields, class-level attributes — in Go the `type` block; in Python and C#
 the class span minus its member spans) and every member with its location, sorted by file and line.
 One line per member; the caller chooses what to read. This is how a large class is handled: the plan
-names members, `members` gives the map, the implementer reads head + the named member + siblings it
+names members, `expand` gives the map, the implementer reads head + the named member + siblings it
 picks. The whole class is `start`–`end` of the type symbol and is available, never the default.
+
+`expand` is `toc`'s question asked of an owner instead of a container: the head, plus every glyph
+whose owner chain begins with the type. It carries no new information — `toc <unit> --symbols`
+already lists every one of those entries, grouped by file — `expand` is the one-type slice, grouped
+by owner. It stays a separate verb, and `toc` never takes a glyph: a table of contents means
+something only for containers, and a Go type's methods live in other files and belong to no file's
+toc, so folding the two would give `toc` an argument class it can only partly answer and make its
+file answers depend on files not asked about. On a C# `partial` type the head is the sum of the
+parts' own lines, matching `resolve`'s `multipart` answer; a Go type never splits (only `init`
+does) — Go's spread is members only, which is why `resolve` of a Go type returns one block and
+`expand` is how the rest is found.
 
 **`toc <dir|file>... [--depth N|all] [--symbols]`** — what is here: a table of contents. V1's
 `toc dir` and `toc file` as one verb over one recursive answer (§4 Depth): a directory answers with its files and its
@@ -329,10 +340,10 @@ is kept and in the V1 Python and C# extractors on `v1-final`, for whoever picks 
 | language | gap today | needed for |
 |---|---|---|
 | Go | external test package (`logger_test`) not distinguished from the package; several `init` must resolve `multipart` | unit identity, `resolve` |
-| Python | nested classes dropped (`Beta.Inner` and its methods absent; `Owner` is one level) | glyph uniqueness, `members` |
-| Python | class-level attributes are not symbols | the type head in `members` |
+| Python | nested classes dropped (`Beta.Inner` and its methods absent; `Owner` is one level) | glyph uniqueness, `expand` |
+| Python | class-level attributes are not symbols | the type head in `expand` |
 | C# | `partial` not recognised (the word `partial` in toc today means "lossy parse" — rename that field) | multipart resolution |
-| C# | fields and properties not emitted as members | `members` |
+| C# | fields and properties not emitted as members | `expand` |
 | C# | overloads share a glyph | ambiguity reporting now; a signature suffix later if a real plan needs to name one overload |
 | Go | none known; build-tag duplicates must report as ambiguous | |
 | all | package doc is not extracted (Go `// Package x` block, Python `__init__.py` docstring, C# `README.md` first paragraph) | `doc` on the directory answer |
@@ -353,8 +364,8 @@ is kept and in the V1 Python and C# extractors on `v1-final`, for whoever picks 
 
 | card | before dispatch (mechanical, plan-time) | during implementation (the agent) | after (mechanical, done-check) |
 |---|---|---|---|
-| Create | `glyph.Parse` for the form; `resolve` target → must be `not_found` with `unit: found`, or the unit is itself a Create in the plan; for `Type.Name` the owner `unit#Type` → `found` or a Create in the plan; `toc`/`members` on the package for "nothing equivalent exists" | `toc` the package it goes into | `resolve` → `found` |
-| Edit | `resolve` target → `found`; phase 2 `impact` → `ImpactSummary` and tier-1 test package set | `resolve` before each read/edit; `members` when the target is a type | `resolve` → still `found`, in the expected package |
+| Create | `glyph.Parse` for the form; `resolve` target → must be `not_found` with `unit: found`, or the unit is itself a Create in the plan; for `Type.Name` the owner `unit#Type` → `found` or a Create in the plan; `toc`/`expand` on the package for "nothing equivalent exists" | `toc` the package it goes into | `resolve` → `found` |
+| Edit | `resolve` target → `found`; phase 2 `impact` → `ImpactSummary` and tier-1 test package set | `resolve` before each read/edit; `expand` when the target is a type | `resolve` → still `found`, in the expected package |
 | Delete | `resolve` target → `found`; phase 2 `assert-no-callers`; until then Loomyard's degraded mode (scoped grep, a human) | — | `resolve` → `not_found` |
 | Rename | `resolve old` → found, `resolve new` → not_found | the rename mechanic is out of quarry's scope (go/types script) | `resolve old` → not_found, `resolve new` → found |
 | Move | `resolve` → current file | — | `resolve` → new file |
@@ -412,7 +423,7 @@ in phase 2.
 ### 8.3 LLM use
 
 Only through the same surfaces. What the ladders showed: `toc` on unfamiliar code is worth a tool
-grant; nothing else was, in V1's shapes. Whether `resolve` and `members` earn a grant for an
+grant; nothing else was, in V1's shapes. Whether `resolve` and `expand` earn a grant for an
 implementer that already has a pack is a ladder question for after they exist. The planner is the
 one agent with a settled tool set: `toc` to see what exists, and Loomyard's validator (over
 `resolve`) to check every glyph it wrote, in one call, before handing off (§8.1).
@@ -428,14 +439,15 @@ before step 8.
    span, and the unit walk (directory → Go unit; source root → Python module; namespace → C#).
 3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on Go fixtures.
 4. **`toc`** — the kept extractor, re-keyed by glyph, headers and docs complete.
-5. **`members`** — the Go head falls out of `resolve`.
+5. **`expand`** — the Go head falls out of `resolve`.
 6. **Go extractor gaps** (§6): external test packages, `init` as multipart, package doc.
-7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then a thin **MCP**: only
-   the tools the ladder measures, `toc` first.
+7. **Facade** and **CLI** for `toc` (one envelope, exit codes), then a thin **MCP**: only the
+   tools the ladder measures. `resolve` and `expand` join the facade and CLI as their own
+   commit, before or after the MCP — the MCP exposes neither, so their order against it is free.
 8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` must
    reproduce its separation from control. That is the regression gate for the rewrite.
 9. **The next language, when wanted:** its glyph alphabet in `glyph`, an extractor written against
-   the contract, its `members` head. Python and C# are designed now, coded after 8, one at a time.
+   the contract, its `expand` head. Python and C# are designed now, coded after 8, one at a time.
 10. **Phase 2 decision:** the type checker. Then `impact` and the full `assert-no-callers`.
 
 ## 9a. The harness is rewritten too
@@ -520,19 +532,24 @@ test ./...` green in its worktree and one merge to `main`.
 | 0 | **T0 delete V1** | remove the LSP layer, the seven-verb CLI and MCP, the facade, the fixtures, the V1 harness code and skill, every grammar but Go and the LSP deps from `go.mod`, the Python and C# extractors and their tests, the V1 docs and `.mcp.json` of §2, the V1 results roots and the Python script; README stub; keep `toc`, `treesitter` and the extension table reduced to Go, yaml, tasks, `docs/research`, the two rewrite documents | — | tree builds and tests green with only the Go extractor; nothing under `internal/` references a daemon or a language other than Go |
 | 1 | **T1 glyph package** | `glyph/`: pure Go, no deps; structural split at `#`; the Go alphabet (unit path, `_test` unit, `Type.Name`, `init`); `Parse(lang, s)`, `String`, canonical form; table tests from `docs/glyph.md` §1–§3 including rejects | T0 | every example and corner case in the spec is a test; `go list -deps` shows no cgo |
 | 1 | **T2 harness** | `bench/loomyard-eval/ladder/`: one Go program around `claude -p` per §9a; yaml loader for the kept shape; worktree pin; MCP config; stream-json capture and metrics; scorer; `summary.json`, `provenance.json`, table; resume; the two surviving gates. Integration test against a stub MCP server, not quarry | T0 | a `reps: 1` run of `ladder-toc.yaml` cell `a0-none` completes end to end on this host, and the metrics match the transcript by hand |
-| 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers; `toc` in the engine re-keyed by glyph; T3 also settles the engine package layout, since `resolve` and `members` join `toc` next: one package, files per concern, never a package per verb | T1 | `toc` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `toc` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
-| 3 | **T4 resolve + members** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`), `unit: found|not_found` on a miss, paths without `#` as targets; grouping by unit; `members` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
-| 4 | **T5 facade + CLI** | `quarry/` facade with typed results; CLI verbs `toc`, `resolve`, `members` over one envelope; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the Loomyard commands from `docs/research/output-formats/` | T4 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for the same commands |
-| 5 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `toc` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `members` until a ladder cell measures them | T5 | the harness probe of §9a runs against it: connect, `toc` call, allowlist denial |
-| 6 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir`) with T2 against T6, reps 5; write `results/<date>-toc/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md`, or the conclusion says why not |
-| 7 | **T8 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
+| 2 | **T3 engine core** | `Symbol` gains glyph, owner chain, head span; the Go unit walk (directory → unit, external test package, several `init`); package-doc extraction; the recursive directory answer of §4 with `depth`/`symbols`, non-code files with headers; `toc` in the engine re-keyed by glyph; T3 also settles the engine package layout, since `resolve` and `expand` join `toc` next: one package, files per concern, never a package per verb | T1 | `toc` on `internal/reedengine/render` and on `layout.go` reproduce the §4 examples byte for byte, apart from prose; **round trip over all of Loomyard:** every declaration `toc` lists has a glyph, `resolve` of each returns exactly that span, zero misses, zero extras |
+| 3 | **T4 resolve + expand** | `resolve` with `found`/`not_found`/`ambiguous`/`multipart` (build tags, `init`), `unit: found|not_found` on a miss, paths without `#` as targets; grouping by unit; `expand` with the Go head; ordering guarantees; timing test against Loomyard kept as a benchmark | T3 | glyph.md §5 statuses each have a fixture; `resolve` of twenty glyphs across five units under 150 ms on this host |
+| 3 | **T5a facade + CLI, toc** | `quarry/` facade with typed results; the one envelope of §4; CLI verb `toc`; `ok` = exit code; relative paths; JSON and the lossless text view; golden tests on the `toc` commands from `docs/research/output-formats/` | T3 | `docs/research/output-formats/` gets an `after/` directory with the new outputs for its `toc` commands |
+| 4 | **T5b facade + CLI, resolve + expand** | `resolve` and `expand` join the facade and the CLI: same envelope, same view rules, nothing new invented here | T4, T5a | `after/` covers the same command set as the "before" side — nothing missing |
+| 4 | **T6 MCP, thin** | `cmd/quarry-mcp` with only what the ladder measures: one `toc` tool over the facade, JSON in `content[].text`; no text view, no `resolve` or `expand` until a ladder cell measures them | T5a | the harness probe of §9a runs against it: connect, `toc` call, allowlist denial |
+| 5 | **T7 ladder** | run `ladder-toc.yaml` (`a0-none`, `a2-toc-dir`) with T2 against T6, reps 5; write `results/<date>-toc/conclusion.md` | T2, T6 | `a2` separates from control on turns and cache_read as in `v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md`, or the conclusion says why not |
+| 6 | **T8 type checker** | decide gopls vs `go/packages`; `impact`, `assert-no-callers`, `verified` per entry; the DAG tightening of §8.2 | T7 | a Delete card's gate refuses on a caller found through an interface |
 
-Wave 1 is the parallel one. T2 is the long pole of wave 1 and overlaps waves 2–5; it
-needs no quarry code until T7.
+Waves 1, 3 and 4 are the parallel ones. The measurement (T7) needs only `toc` over MCP — T6
+deliberately exposes nothing else — so `resolve` and `expand` (T4, T5b) sit off the critical
+path entirely: it runs T0 → T1 → T3 → T5a → T6 → T7, and everything after T3 on it is
+mechanical. The envelope T5a builds on is fixed by §4, not by T4 — T3's done-when pins it byte
+for byte. T2 is the long pole of wave 1 and overlaps waves 2–4; it needs no quarry code until
+T7.
 
 **Not tasks yet.** Go only, until T7 has run.
 A second language becomes a task when it is wanted, one language per task:
-its alphabet in `glyph/`, an extractor written against the contract (the V1 one on `v1-final` is reference, not a starting point), its `members` head, its package doc source.
+its alphabet in `glyph/`, an extractor written against the contract (the V1 one on `v1-final` is reference, not a starting point), its `expand` head, its package doc source.
 The done criterion is the T3 round trip over a real repository in that language at 100 %;
 for C#, built-in aliases (`Int32` → `int`) canonicalised by a fixed table.
-Loomyard's adoption of glyphs (§8) is work in Loomyard's repository after T5 merges, never a task in this one.
+Loomyard's adoption of glyphs (§8) is work in Loomyard's repository after T5b merges, never a task in this one.

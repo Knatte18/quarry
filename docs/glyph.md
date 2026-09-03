@@ -178,7 +178,7 @@ match. Results are ordered by file and then by start line, so the answer is dete
 
 Resolution never guesses. There is no fuzzy matching, no case folding, no "did you mean". A glyph
 that does not resolve is `not_found`; a caller that wants to see what exists asks `toc` or
-`members`.
+`expand`.
 
 In a repository with more than one language the glyph is tried against each alphabet present.
 Go units contain `/` and collide with nothing.
