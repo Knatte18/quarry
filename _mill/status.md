@@ -62,7 +62,9 @@ batches:
     commit_sha: 21deafa821a6ebad9983d4efe62e3787abd1a060
     verify_baseline_failures: []
   - name: gates-and-scorer
-    state: pending
+    state: running
+    implementer_session: 49b7a646-d252-45d5-be3d-960ad78d7679
+    start_sha: 10c9fefcb48944f4ead915e8b66fff1b8a43df66
     verify_baseline_failures: []
   - name: environment-and-provenance
     state: pending
