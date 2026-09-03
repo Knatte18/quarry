@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'auto: discussion review gaps unresolved after 7 rounds'
+phase: discussed
 slug: ladder-harness
 branch: ladder-harness
 plan: null
@@ -17,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-09-03T15:55:23Z'
 blocked  '2026-09-03T17:00:49Z'
+discussed  '2026-09-03T17:09:13Z'
 ```
