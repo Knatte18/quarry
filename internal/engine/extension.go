@@ -1,7 +1,8 @@
 // extension.go is the file-extension → language map: what language does this one file's extension
-// name, with no directory context at all. It is the one definition of the extension set;
-// LanguageForExtension, ExtensionsForLanguage, and ExtensionLanguages are all views over the single
-// map below.
+// name, with no directory context at all. extensionLanguages is the one definition of the extension
+// set; LanguageForExtension, ExtensionsForLanguage, and ExtensionLanguages are all views over that
+// one map. The two header-rule lookup tables below it are a separate concern with their own map —
+// see their own comment for why.
 
 package engine
 
@@ -53,4 +54,38 @@ func ExtensionLanguages() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// extensionHeaderRules and baseNameHeaderRules are deliberately separate from extensionLanguages: an
+// entry here gives a file a header, never a language, and never symbols. A file can appear in one
+// table, both, or neither — a Markdown file has a header rule but no language, a Go file has a
+// language but its header comes from the Go strategy rather than from either table here, and a JSON
+// file has neither.
+//
+// extensionHeaderRules is keyed by a lowercase, dot-prefixed extension.
+var extensionHeaderRules = map[string]headerRule{
+	".md":   markdownHeader,
+	".html": htmlCommentHeader,
+	".htm":  htmlCommentHeader,
+	".css":  cssCommentHeader,
+	".js":   scriptCommentHeader,
+	".mjs":  scriptCommentHeader,
+	".ts":   scriptCommentHeader,
+	".yaml": hashBlockHeader,
+	".yml":  hashBlockHeader,
+	".toml": hashBlockHeader,
+	".sh":   hashBlockHeader,
+	".bash": hashBlockHeader,
+	".zsh":  hashBlockHeader,
+}
+
+// baseNameHeaderRules is keyed by an exact file base name and is consulted only when
+// filepath.Ext(base) returns the empty string. A sentinel key inside extensionHeaderRules (say,
+// "" or ".") would conflate "this file has no extension" with "this file's extension is unknown",
+// and a key that reads like an extension but is not one would be a lie; an extensionless file — a
+// Makefile, a Dockerfile — is a real, distinct case, so it gets its own table keyed by the whole
+// base name instead.
+var baseNameHeaderRules = map[string]headerRule{
+	"Makefile":   hashBlockHeader,
+	"Dockerfile": hashBlockHeader,
 }
