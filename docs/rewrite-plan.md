@@ -50,48 +50,39 @@ The first commit on `main` after this document is the deletion, so nothing half-
 the new code. Until the new `cmd/quarry-mcp` exists the harness cannot run; that is expected and
 short.
 
-## 3. The symbol identifier
+## 3. The glyph
+
+The identifier is specified in `docs/glyph.md`, which is the contract Loomyard's plan format adopts.
+In one line:
 
 ```
-<package>#<Owner.>Name
+<unit>#<Owner.>Name        e.g.  logger#dualHandler.stderr   render#Renderer.Draw   lyx#run
 ```
 
-- `package` is the **basename of the package directory**: `reedengine`, `render`, `logger`, `lyx`.
-  Not the package clause (`main` is eight directories in Loomyard), not the import path (`internal/`
-  would be written thousands of times in plan files).
-- `Owner` is the enclosing type for a method or member, absent for a package-level symbol. Nested
-  owners chain with dots: `Beta.Inner.handle`.
-- `Name` is the declared name.
-
-Examples: `logger#stderrHandlerSnapshot`, `logger#dualHandler.stderr`, `render#Renderer.Draw`,
-`lyx#run`.
-
-**One spelling.** No suffix matching, no aliases, no import-path form. An id is a name, not a path.
-
-**Uniqueness is an invariant quarry checks, not assumes.** Package basenames must be unique across
-the repository. Loomyard today: 83 packages, 0 duplicate basenames (measured 2026-09-03). If two
-directories share a basename, `resolve` refuses both with both paths in the error until one is
-renamed. The convention that makes ids short is enforced the first time someone breaks it.
-
-**What the id abstracts away, and nothing more:** the file within the package (a Go method moves
-between files freely) and every line number. Moving a package or renaming a symbol changes the id,
-deliberately: the id *is* the name, and a Rename card's `old -> new` pair is exactly a pair of ids.
+- `unit` is the **basename of the package directory** (Go), module or package (Python), directory
+  (C#). Not the package clause (`main` is eight directories in Loomyard), not the import path
+  (`internal/` would be written thousands of times in plan files). Unit names are unique across the
+  repository — an invariant quarry checks on every resolution and refuses to work around. Loomyard
+  today: 83 packages, 0 duplicates.
+- The member is the name, preceded by the enclosing types outermost first. One spelling, no aliases.
+- A glyph carries no file and no line: those are what quarry returns for it, and they move while it
+  does not. Rename or move-between-units is a new glyph, deliberately — the glyph is the name.
 
 **Two outcomes that must never be confused:**
 
 | outcome | meaning | result |
 |---|---|---|
-| ambiguous | the id matches several *different* symbols (Go build-tag duplicates, C# overloads, a Python name defined twice in one module) | error, candidates listed, never a silent pick |
-| multipart | the id names *one* symbol the language allows in several places (C# `partial class`, C# partial methods) | success, every part returned |
+| ambiguous | the glyph matches several *different* symbols (Go build-tag duplicates, C# overloads, a Python name defined twice in one module) | error, candidates listed, never a silent pick |
+| multipart | the glyph names *one* symbol the language allows in several places (C# `partial class`, C# partial methods) | success, every part returned |
 
 Go never produces multipart: a type is declared once and each method once, however many files they
 span. That is a `members` question (§5), not a resolution question.
 
 **Alignment with Loomyard's plan format.** `manifest/designs/plan-card-format.md` already says
 "package-qualified short names (`shedrecipe.Lookup`), never file:line, never full import paths". That
-is this id with `.` instead of `#`. Loomyard can keep `.` and map the first separator to `#`, or adopt
-`#`. Recommendation: adopt `#`, because `pkg.Type.Method` and `pkg.Name` are then distinguished by
-the separator alone and no parser needs the package list to split them. This is Loomyard's decision.
+is a glyph with `.` where the `#` goes. Recommendation: adopt `#` (`shedrecipe#Lookup`), because the
+separator alone then splits unit from member and no parser needs the package list. This is
+Loomyard's decision.
 
 ## 4. One envelope, one entry type at every depth
 
@@ -99,7 +90,7 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
 
 - **`ok` agrees with the exit code.** V1's `definition` returned `ok: true` and exited 2.
 - **`status` per entry:** `found`, `not_found`, `ambiguous` (with `candidates`), `multipart`.
-- **One symbol entry everywhere:** `id`, `kind` (a word, never an LSP integer), `start`, `sigend`,
+- **One symbol entry everywhere:** `id` (the glyph), `kind` (a word, never an LSP integer), `start`, `sigend`,
   `end` (1-based, inclusive), `signature` (verbatim source), `doc` (complete, never truncated by
   extraction), and `file` (relative to the repository root, never absolute) wherever entries can span
   files. `resolve`, `members` and `map` all return this entry and nothing else for a symbol.
@@ -112,7 +103,7 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
 - **Shared facts once, defaults never.** Package, directory and language are stated once at the top.
   `test: false`, `generated: false`, `ok: true` inside data, empty `dirs: []`, and a directory prefix
   repeated on every path are V1 clutter: 25 files carried 100 fields that said nothing.
-- **Ids as keys in every output.** What `map` lists is what `resolve` takes.
+- **Glyphs as keys in every output**, under the JSON key `id`. What `map` lists is what `resolve` takes.
 - **`verified` per entry** on anything that claims a reference (phase 2 `impact`: `true` when the
   type checker confirmed it, `false` when it could not). A consumer that wants only verified entries
   filters; a gate that reads unverified entries as proof is a defect.
@@ -232,11 +223,11 @@ internal/reedengine/render/layout.go (package render, go): layout.go is the layo
 Phase 1 is `resolve`, `members` and `map`: the same tree-sitter parse with three entry points. None
 needs a type checker, a daemon, or an index. Phase 1 says nothing about callers.
 
-**`resolve <id>...`** — where is this, right now. Per id: location(s) and status. Called by an
+**`resolve <glyph>...`** — where is this, right now. Per glyph: location(s) and status. Called by an
 implementer immediately before every read and every edit, because lines have moved since the last
-time. Many ids in one call are grouped by package and each package is parsed once.
+time. Many glyphs in one call are grouped by unit and each unit is parsed once.
 
-**`members <id>`** — what does this type consist of, across files. The id must name a type;
+**`members <glyph>`** — what does this type consist of, across files. The glyph must name a type;
 on any other kind the answer is `ok: false` naming the kind. The type's *head* (its own
 lines: declaration, doc, fields, class-level attributes — in Go the `type` block; in Python and C#
 the class span minus its member spans) and every member with its location, sorted by file and line.
@@ -253,14 +244,14 @@ tree or more of each file. The measured win. Headers and docs complete (lesson 4
 name shared by several methods (`Apply`, `Run`, `Handle`) it never returns zero and its hits mean
 nothing, and on a unique name grep is as good. Anything about callers waits for the type checker.
 
-**`impact <id>` (phase 2)** — who calls this, type-resolved. Tree-sitter cannot do this: at a call
+**`impact <glyph>` (phase 2)** — who calls this, type-resolved. Tree-sitter cannot do this: at a call
 site `x.Run()` the receiver type is not in the syntax, and guessing it is the silent pick §3 forbids.
 Needs a type checker. The open decision is which: gopls as in V1, or `go/packages` in-process for Go
 (exact, no daemon, no protocol, Go-only; Python and C# would need a language server when they need
-this). Decided when phase 2 starts, not now. `impact` returns each caller as an id plus location plus
+this). Decided when phase 2 starts, not now. `impact` returns each caller as a glyph plus location plus
 `verified: true`.
 
-**`assert-no-callers <id>` (phase 2)** — the exit-code contract for a Delete card's verify step.
+**`assert-no-callers <glyph>` (phase 2)** — the exit-code contract for a Delete card's verify step.
 
 Performance, measured 2026-09-03 in-process on a 4-core WSL2 host, Loomyard, every file read fresh
 from disk, no cache:
@@ -268,9 +259,9 @@ from disk, no cache:
 | operation | time |
 |---|---|
 | walk repository, basename→directory map (83 packages) | 2 ms |
-| resolve one id, 5-file package (32 KB) | 5–8 ms |
-| resolve one id, 35-file package (317 KB), serial / name-prefiltered / parallel | 65 / 24 / 26 ms |
-| 20 ids across 5 packages, grouped, serial / packages in parallel | 109 / 76 ms |
+| resolve one glyph, 5-file package (32 KB) | 5–8 ms |
+| resolve one glyph, 35-file package (317 KB), serial / name-prefiltered / parallel | 65 / 24 / 26 ms |
+| 20 glyphs across 5 packages, grouped, serial / packages in parallel | 109 / 76 ms |
 | every symbol in the repository, 469 files, serial / parallel | 616 / 237 ms |
 
 Nearly all of it is cgo into tree-sitter (parse 47 of the 65 ms; node access and allocation
@@ -286,11 +277,11 @@ extractors, all phase 1:
 
 | language | gap today | needed for |
 |---|---|---|
-| Python | nested classes dropped (`Beta.Inner` and its methods absent; `Owner` is one level) | id uniqueness, `members` |
+| Python | nested classes dropped (`Beta.Inner` and its methods absent; `Owner` is one level) | glyph uniqueness, `members` |
 | Python | class-level attributes are not symbols | the type head in `members` |
 | C# | `partial` not recognised (the word `partial` in toc today means "lossy parse" — rename that field) | multipart resolution |
 | C# | fields and properties not emitted as members | `members` |
-| C# | overloads share an id | ambiguity reporting now; a signature suffix later if a real plan needs to name one overload |
+| C# | overloads share a glyph | ambiguity reporting now; a signature suffix later if a real plan needs to name one overload |
 | Go | none known; build-tag duplicates must report as ambiguous | |
 | all | package doc is not extracted (Go `// Package x` block, Python `__init__.py` docstring, C# `README.md` first paragraph) | `doc` on the directory answer |
 
@@ -313,16 +304,16 @@ extractors, all phase 1:
 | Delete | `resolve` target → `found`; phase 2 `assert-no-callers`; until then Loomyard's degraded mode (scoped grep, a human) | — | `resolve` → `not_found` |
 | Rename | `resolve old` → found, `resolve new` → not_found | the rename mechanic is out of quarry's scope (go/types script) | `resolve old` → not_found, `resolve new` → found |
 | Move | `resolve` → current file | — | `resolve` → new file |
-| any | every symbol in `Uses` and every target must resolve unambiguously, or the plan is invalid before an agent is spawned | `Uses` resolved into a pack: id, file, span, signature, doc, for a one-shot read | |
+| any | every glyph in `Uses` and every target must resolve unambiguously, or the plan is invalid before an agent is spawned | `Uses` resolved into a pack: glyph, file, span, signature, doc, for a one-shot read | |
 
-The dependency graph the format derives (`Uses` ∩ other cards' targets) is a graph over ids; `resolve`
-makes every node in it checkable at plan time. The tier-1 verify scope ("packages holding the target
-symbols plus packages holding callers") is the id's package in phase 1 and adds the callers' packages
+The dependency graph the format derives (`Uses` ∩ other cards' targets) is a graph over glyphs;
+`resolve` makes every node in it checkable at plan time. The tier-1 verify scope ("packages holding
+the target symbols plus packages holding callers") is the glyph's unit in phase 1 and adds the callers' packages
 in phase 2.
 
 ### 8.2 Mechanical use from Loomyard's Go code, without any LLM
 
-- **Plan validation gate.** Every id in a plan resolves, unambiguously, before dispatch. Catches
+- **Plan validation gate.** Every glyph in a plan resolves, unambiguously, before dispatch. Catches
   typos, stale names and ambiguity when they are cheap.
 - **Plan pack generation.** The annex the ladder harness already builds by hand: resolved spans for
   `Uses` and the targets, injected into the implementer's prompt at dispatch. Re-resolved, never
@@ -330,7 +321,7 @@ in phase 2.
 - **Done-checks per card**, table above. A Create card whose symbol does not resolve is not done; a
   Delete card whose symbol still resolves is not done. No judgment involved.
 - **Diff to symbols.** Given a diff's changed line ranges, `map` on the touched files gives the set of
-  symbols the diff touched, by id. That is review scope, changelog input, and the check that a card
+  symbols the diff touched, by glyph. That is review scope, changelog input, and the check that a card
   changed only its declared targets.
 - **Documentation drift.** `map` over a package against the symbol names a doc or a codeguide page
   claims; missing or extra names are mechanical findings.
@@ -353,8 +344,8 @@ Each step is one commit that builds and tests green on its own. The harness rewr
 section, to come) lands before step 8.
 
 1. **Delete** (§2). `go build ./... && go test ./...` green on what remains.
-2. **Types and the id.** `Symbol` gains `ID`, the owner chain, the head span; the id grammar with
-   parser, printer and tests; the package-basename walk with the uniqueness check.
+2. **Types and the glyph.** `Glyph` with parser, printer and tests per `docs/glyph.md`; `Symbol`
+   gains its glyph, the owner chain, the head span; the unit-name walk with the uniqueness check.
 3. **`resolve`** in the engine, with the ambiguity/multipart distinction and tests on fixtures for
    all three languages.
 4. **`map`** — the kept toc, re-keyed by id, headers and docs complete.
@@ -377,6 +368,6 @@ section, to come) lands before step 8.
 ## 11. Open decisions
 
 - Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
-- C# overload naming (a signature suffix on the id, or ambiguity only).
+- C# overload naming (a signature suffix on the glyph, or ambiguity only).
 - Whether Loomyard adopts `#` or keeps `.` with the mapping (§3).
 - Whether `results/**/raw/` is un-ignored (carried over from `HANDOFF.md` §4).
