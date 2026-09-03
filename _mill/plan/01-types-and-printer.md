@@ -204,7 +204,8 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
 `verify: go test ./glyph/` runs the one test file this batch creates, `glyph/string_test.go`. Scope
 is the new package only: nothing else in the repository imports it yet, so no other package's tests
-can be affected. The module-wide `verify:` in the overview — `go vet ./... && golangci-lint run` —
+can be affected. The module-wide `verify:` in the overview —
+`go vet ./... && golangci-lint run ./glyph/...` —
 runs afterwards at the batch boundary and catches vet and lint regressions across the repository,
 including in the new files.
 
