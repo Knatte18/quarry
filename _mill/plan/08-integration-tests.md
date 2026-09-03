@@ -66,8 +66,11 @@ its own `package main`.
 - **Requirements:** write a `package main` that stands in for the measured binary. It asserts on the
   flags it was given before emitting anything, failing with a non-zero exit and a message on
   standard error when an expected flag is absent or carries an unexpected value: the model, the
-  effort, the turn ceiling, the four built-in tools, the MCP configuration path, strict
+  effort, the turn ceiling, the built-in tool set named in the overview's the-four-built-in-tools
+  decision, the MCP configuration path, strict
   configuration mode, stream-json output, verbose, no session persistence and empty setting sources.
+  Those failure messages are readable by the test because the runner seam carries a separate error
+  writer, per the overview's injectable-external-commands decision.
   It asserts the allowlist flag is **absent** when an environment variable the test sets marks the
   invocation as a control, and present with the expected prefixed names otherwise. It then writes a
   canned stream to standard output, chosen by an environment variable the test sets, covering at
@@ -103,7 +106,9 @@ its own `package main`.
   and commits so a pinned worktree can actually be created. Assert the happy path end to end: the
   worktree is prepared, the MCP configuration is written, the process is invoked with the expected
   flags, the transcript is tee'd to the repetition directory, the metrics are computed, the gates
-  run, the scorer is invoked with a redacted answer, and the six-file repetition directory ends with
+  run, the scorer is invoked as its own second process with a redacted answer and the ladder file's
+  scorer model and effort, and the repetition directory holds exactly the six files the overview's
+  the-six-per-repetition-filenames decision names and ends with
   the state file — assert the state file's modification time is not earlier than every other file in
   that directory, which is what makes resume safe against a kill. Assert the summary, the provenance
   record and the table are all written at the results root and that the printed table equals the
@@ -176,7 +181,7 @@ its own `package main`.
   migrated ladder file against the real CLI, in a **freshly created** worktree — the test removes
   any existing worktree for that task first, so the directory under test is genuinely new. It then
   asserts three things about the resulting transcript. First, the session-init record's tool list is
-  exactly the four built-ins plus any granted prefixed names, which for this control cell means the
+  exactly the four built-in tools named in the overview's the-four-built-in-tools decision plus any granted prefixed names, which for this control cell means the
   four alone: a silently degraded tool grant in a new directory would void every metric from such a
   run, and this is the assertion that catches it. Second, the server list is empty, proving strict
   configuration mode held and the operator's own personal servers did not load. Third — and this is

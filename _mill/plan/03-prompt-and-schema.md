@@ -101,8 +101,9 @@ silent invalidation of every affected run rather than a visible error.
   mention of the arm, the rung, the server or the word quarry. Add `RenderPrompt(target
   TaskContent, targetDir string, toolNames []string) string` assembling, in order:
   `PARALLEL_OPENING`, the body, the task text, `PARALLEL_BLOCK`, `closingSentence`, and the schema
-  block. The tool-name list the caller passes is the built-in set plus any granted MCP tool names
-  for that cell; `RenderPrompt` lists what it is given and derives nothing. Add a doc comment
+  block. The tool-name list the caller passes is the four built-in tools the overview's
+  the-four-built-in-tools decision fixes, plus any granted MCP tool names for that cell;
+  `RenderPrompt` lists what it is given and derives nothing. Add a doc comment
   stating that the word parallel in both constant names refers to parallel tool calls within one
   turn, not to parallel arms, so nothing in the text contradicts one-cell-at-a-time execution.
 - **Commit:** `feat(ladder): render one identical preamble for every cell`
@@ -123,11 +124,12 @@ silent invalidation of every affected run rather than a visible error.
   an object with `relevant_files` as an array of file-path strings, `key_symbols` as an array of
   objects each carrying `name`, `file` and `role`, `summary` as a string described as three to six
   sentences explaining how the mechanism works end to end, `confidence` as the alternation
-  high-medium-low, and `open_questions` as an array of strings. Reproduce it in the exact form the
-  discussion's exploration-schema-recovery decision quotes, including the placeholder values, so
-  the schema the cells receive is the one the fasit was written against. Add one short sentence
-  above the fence stating the schema was recovered from the V1 benchmark protocol document at
-  `origin/v1-final` after that document was deleted. Change nothing else in the file — the task
+  high-medium-low, and `open_questions` as an array of strings. Take the block **verbatim** from the
+  V1 benchmark protocol document, read with the shared decision's git-show form at the path
+  `origin/v1-final:bench/loomyard-eval/README.md`, from the section headed `Output schemas` — copy
+  its exploration block byte-for-byte, including its placeholder values, so the schema the cells
+  receive is the one the fasit was written against rather than a paraphrase. Add one short sentence
+  above the fence stating the schema was recovered from that document after it was deleted. Change nothing else in the file — the task
   text, the scope section, the setup section and the scorer notes stay exactly as they are, since
   the fasit was produced against them.
 - **Commit:** `docs(bench): recover the exploration output schema into task 01`
@@ -159,7 +161,7 @@ silent invalidation of every affected run rather than a visible error.
   spelling. Assert the schema block is found in both files despite their differing parentheticals,
   and that the fixture with no schema heading produces an error naming the file rather than an
   empty schema. Add a `RenderPrompt` test asserting the six parts appear in the fixed order, that
-  the rendered prompt for a control cell whose tool list is the four built-ins contains neither the
+  the rendered prompt for a control cell whose tool list is the four built-in tools named in the overview's the-four-built-in-tools decision contains neither the
   word quarry nor the token `toc` under the shared bare-token matcher, and that a rendered prompt
   for a granted cell lists the prefixed tool name it was passed.
 - **Commit:** `test(ladder): cover fenced extraction, task-file parsing and prompt rendering`

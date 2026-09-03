@@ -47,7 +47,12 @@ accounting fix cost a re-report rather than a re-run.
   `Summarize(resultsRoot string) (*Summary, error)` walks the raw tree, reads each repetition's
   state file for its cell metadata — the ladder letter, the allowed list, the control flag and the
   MCP prefix all come from there, so no ladder file is consulted — recomputes that repetition's
-  metrics from its own transcript using the prefix the state file carries, and aggregates.
+  cost metrics from its own transcript using the prefix the state file carries, and reads that
+  repetition's recall and precision from its score record. The two inputs are asymmetric on purpose:
+  every cost metric is recomputed, which is what keeping the transcripts buys, while recall and
+  precision are the scorer's judgment and exist nowhere else, so the score record is their only
+  source. The metrics file is never read — it is diagnostic, and a summariser that trusted it would
+  carry an accounting bug forward across a re-report.
   Exclusion rules, all three distinct: a repetition whose blinding-failed flag is set contributes
   **nothing at all**, neither cost nor correctness, and increments the blinding-failed counter; a
   repetition that hit the turn ceiling contributes its cost metrics but is excluded from the recall
@@ -114,7 +119,8 @@ accounting fix cost a re-report rather than a re-run.
   The run subcommand takes a required ladder-file flag, a required results-root flag, an optional
   comma-separated cell-id list, an optional repetition override and an optional claude-binary flag
   defaulting to the bare name `claude` resolved on the path. It resolves the quarry repository root
-  from the working directory, calls the run entry point, then summarises, writes the summary, and
+  by calling `ResolveQuarryRepoRoot` with the process working directory — the single producer of
+  that path, created in batch 5 — calls the run entry point, then summarises, writes the summary, and
   prints and writes the table. The report subcommand takes a required results-root flag and **no
   ladder-file flag at all** — a results root is self-describing because every repetition's state
   file carries its own cell metadata — and re-derives the summary and the table from the raw tree
