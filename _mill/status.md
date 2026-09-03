@@ -6,6 +6,7 @@ slug: engine-core
 branch: engine-core
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Engine core (T3)
 task_description: |
   Engine core (T3)
@@ -35,15 +36,23 @@ implementing  '2026-09-03T19:22:09Z'
 ```yaml
 batches:
   - name: layout
-    state: pending
+    state: running
+    implementer_session: aaef91cb-802d-4573-a731-4b2e496bf5ef
+    start_sha: 315f9304f70116e2ed90fe52aac7fb3330b5c633
+    verify_baseline_failures: []
   - name: text-rules
     state: pending
+    verify_baseline_failures: []
   - name: answer-and-walk
     state: pending
+    verify_baseline_failures: []
   - name: glyph-symbols
     state: pending
+    verify_baseline_failures: []
   - name: spans
     state: pending
+    verify_baseline_failures: []
   - name: goldens-and-round-trip
     state: pending
+    verify_baseline_failures: []
 ```
