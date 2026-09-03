@@ -7,7 +7,7 @@ approved: false
 started: "20260903-183356"
 parent: "main"
 root: ""
-verify: CGO_ENABLED=1 go vet ./...
+verify: CGO_ENABLED=1 go build ./... && CGO_ENABLED=1 go vet ./... && CGO_ENABLED=1 go test ./internal/...
 ```
 
 ## Batch Index
@@ -113,9 +113,11 @@ batches:
 ### Decision: every batch leaves the tree building and every test passing
 
 - **Decision:** each batch's `verify:` is `CGO_ENABLED=1 go build ./...` followed by
-  `CGO_ENABLED=1 go test ./internal/...`, and the module-wide `verify:` is
-  `CGO_ENABLED=1 go vet ./...`. No batch may leave a package uncompilable or a test deleted without
-  its subject.
+  `CGO_ENABLED=1 go test ./internal/...`, and the module-wide `verify:` run at every batch boundary
+  is the same pair with `CGO_ENABLED=1 go vet ./...` between them. The module-wide gate runs the
+  tests too, not vet alone: this task's own done-criterion — the quarry round trip and the Loomyard
+  goldens — is ordinary Go tests, and a gate that skipped them would never exercise the thing the
+  task is for. No batch may leave a package uncompilable or a test deleted without its subject.
 - **Rationale:** the build is part of the gate because the cgo guard has no test files at all — a
   build is the only thing that exercises it — and because Go compiles a package as a whole, so a
   half-applied type change is a build failure rather than a test failure. `./internal/...` rather

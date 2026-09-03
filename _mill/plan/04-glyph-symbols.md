@@ -116,8 +116,14 @@ never modified — it is the one implementation of the grammar.
   `.go` file belongs to `dirRel`. Deriving the external-test unit from that exact spelling rather
   than from any `_test` suffix is what keeps a package legitimately named `mytest` or `httptest`
   from being split, and a `_test.go` file declaring the package itself belongs to the package's own
-  unit — the discriminator is the clause, never the filename. Say both in the comment. The
-  repository root's `dirRel` is `"."`, whose unit is the empty string.
+  unit — the discriminator is the clause, never the filename. Say both in the comment.
+
+  The repository root is the exception to the suffix rule: `dirRel` is `"."` there, and `unitFor`
+  returns the empty string for **both** branches, so a root-level external test package does not
+  become the unit `"._test"`. Left unhandled it would, and `glyph.Parse` accepts `._test` as a legal
+  segment — so root-level `_test` files would be emitted under a unit while their siblings in the
+  same directory are excluded as unspellable. The empty string keeps the root wholly out, which is
+  the same open gap the next paragraph records, not a second rule.
 
   Add `func (r *Repo) unitSpellable(unit string) bool`: one call to `glyph.Parse(glyph.Go, unit +
   "#x")`, made once per directory before any extraction, returning whether it succeeded. A directory
@@ -302,8 +308,9 @@ never modified — it is the one implementation of the grammar.
   methods, an anonymous interface in a struct field, one in a parameter and one in a generic
   constraint, and an embedded interface; a generic type with both a value-receiver and a
   pointer-receiver method; a `var _ = ...`, a `var _ Iface = (*T)(nil)` and a `type _ struct{}`; and
-  three `func init()`. Under `testdata/units/`, `root.go` and a file in a directory whose name
-  contains a space give the two unspellable-unit cases.
+  three `func init()`. Under `testdata/units/`, a file in a directory whose name contains a space gives the bad-rune
+  case, and `root.go` — a `.go` file sitting directly in `testdata/units/` — gives the empty-unit
+  case, which is only reachable when that directory is itself the repository root.
 
   `glyph_test.go` asserts:
 
@@ -318,8 +325,13 @@ never modified — it is the one implementation of the grammar.
     of the anonymous or embedded cases contributing a symbol.
   - The interface head span: the type symbol's `HeadStart`/`HeadEnd` cover the whole declaration and
     every member symbol's span lies inside that range.
-  - Unspellable units: both fixture cases are listed with their headers, neither carries `symbols`,
-    and the answer is otherwise unchanged.
+  - Unspellable units, two cases with different entry points. The bad-rune case is queried from
+    the quarry root as usual: the space-bearing directory's file is listed with its header and
+    carries no `symbols`. The empty-unit case cannot be reached that way — from the quarry root
+    that file's unit is a perfectly legal path — so the test `Open`s the `testdata/units` directory
+    as its **own** repository root and queries `"."`, where the unit genuinely is the empty string:
+    the file is listed with its header and carries no `symbols`. Assert in both cases that the
+    entry is otherwise unchanged, and that `SpansOf` returns nothing for any name in either.
 - **Commit:** `test(engine): cover glyph assignment, the widened walk and unspellable units`
 
 ## Batch Tests

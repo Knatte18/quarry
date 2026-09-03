@@ -17,8 +17,8 @@ paths with no tree-sitter node in any signature, so they are written test-first 
 walk that consumes them. Nothing in the package calls them yet, so the batch cannot regress any
 existing behaviour — that is why it is separated from batch 3.
 
-The external interface batch 3 consumes: `newIgnoreSet`, `(*ignoreSet).extend`, `(*ignoreSet).match`
-in `ignore.go`, and `HeaderForFile` in `headers.go`.
+The external interface batches 3 and 5 consume: `newIgnoreSet`, `(*ignoreSet).extend`,
+`(*ignoreSet).trim` and `(*ignoreSet).match` in `ignore.go`, and `HeaderForFile` in `headers.go`.
 
 Batch-local decision: every fixture that exercises `.gitignore` behaviour is built at run time under
 `.scratch/engine-tests/<test-name>/`, never committed under `testdata/`. A committed fixture tree
@@ -46,11 +46,13 @@ the batch 6 round trip over quarry itself.
   Declare:
 
   - `newIgnoreSet(root string) *ignoreSet` — an empty set for a repository rooted at `root`.
-  - `func (s *ignoreSet) extend(dirRel string) error` — read the `.gitignore` file in the
-    repository-relative directory `dirRel` when one exists, append its patterns to the set, and
-    record how many were appended so `trim` can undo it; a missing file is not an error.
+  - `func (s *ignoreSet) extend(dirRel string) (n int, err error)` — read the `.gitignore` file in
+    the repository-relative directory `dirRel` when one exists, append its patterns to the set, and
+    **return how many were appended**; a missing file is not an error and returns `0`.
   - `func (s *ignoreSet) trim(n int)` — drop the last `n` appended patterns, so the walk can leave a
-    directory and lose that directory's own patterns again.
+    directory and lose that directory's own patterns again. `n` is always the value the matching
+    `extend` returned: the count is the caller's to hold, not the set's, so the set keeps no frame
+    stack and a caller that extends twice before trimming is expressing exactly what it means.
   - `func (s *ignoreSet) match(pathRel string, isDir bool) bool` — report whether `pathRel` (a
     repository-relative, forward-slash path) is excluded.
 

@@ -93,7 +93,18 @@ The external interface batch 6 consumes: `SpansOf`, `symbolsOfUnit` and `unitDir
     resolves its directories through `unitDirs` and, when both exist, returns the union. In every
     branch the directory's `.go` files are filtered through the same ignore set the walk uses before
     being parsed: without that filter a gitignored `.go` file beside listed ones would contribute
-    spans the walk never listed. A file that cannot be read, is not valid UTF-8, or belongs to a
+    spans the walk never listed.
+
+    **Who extends the ignore set, exactly.** The caller hands `symbolsOfUnit` a set carrying the
+    repository root's own patterns and nothing below them — `newIgnoreSet(root)` followed by one
+    `extend(".")`. For **each** directory `unitDirs` returns, `symbolsOfUnit` then extends that set
+    down the chain from the root to that directory **inclusive**, one `extend` per intervening
+    directory, holding each returned count, and trims them all back in reverse before moving to the
+    next directory. The target directory's own `.gitignore` is included here — unlike the walk,
+    which descends into the target and so lets `walkDir` own that last step; nothing descends here,
+    so the last step is `symbolsOfUnit`'s. Doing it per directory rather than once is what makes the
+    two-directory collision case correct: the literal directory and the suffix-stripped one sit
+    under different chains, and one set built for either would filter the other wrongly. A file that cannot be read, is not valid UTF-8, or belongs to a
     directory whose unit is unspellable contributes nothing — exactly as it contributes no symbols
     to a walk answer, which is what keeps the two readings equal. A parse the grammar reports an
     error on still contributes its surviving symbols, for the same reason.
@@ -105,8 +116,8 @@ The external interface batch 6 consumes: `SpansOf`, `symbolsOfUnit` and `unitDir
     dot segment, a member that is too deep and every other alphabet violation by calling the one
     implementation of the grammar rather than restating its rules here. It is also what makes the
     walk's claim that no root span is ever produced true rather than aspirational. It then builds a
-    fresh `ignoreSet` for the root, extends it along the root-to-unit-directory chain, calls
-    `symbolsOfUnit`, and filters by owner chain and name. Zero matches is an empty slice and a nil
+    fresh `ignoreSet` for the root carrying the root's own patterns only, per the paragraph above,
+    calls `symbolsOfUnit`, and filters by owner chain and name. Zero matches is an empty slice and a nil
     error — there is no status vocabulary here.
 
   Say in `symbolsOfUnit`'s doc comment why it is the primitive and `SpansOf` the wrapper rather than
