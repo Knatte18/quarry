@@ -63,7 +63,7 @@ tasks:
     pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
     worktree: /tmp/loomyard-eval-01
     schema: exploration
-    fasit: bench/loomyard-eval/results/2026-08-28/01-reed-geometry-exploration/c.json
+    fasit: bench/loomyard-eval/tasks/01-reed-geometry-exploration.fasit.json
 
 source_repo: env:LADDER_LOOMYARD_REPO
 

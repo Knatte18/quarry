@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "task": "05-mergeresolve-resolve-impact",
+    "type": "impact-analysis",
+    "pinned_sha": "975578cda8d6f3a81580bd4e73725e060211b766",
+    "scope": [
+      "internal/landingshed",
+      "internal/mergeresolve"
+    ],
+    "date": "2026-09-01",
+    "arm": "C",
+    "role": "reference/fasit -- built directly by the operator from a compiler experiment (not a dispatched agent), then cross-checked by an independent search agent; see method note below",
+    "method_note": "Ground truth was established two ways, independently: (1) a blind search agent (no hint of the eventual decoy) surveyed Loomyard for a genuine same-package name-collision case and reported this one with its own file:line evidence; (2) the operator then patched both mergeresolve.Resolver.Resolve's signature and the mirroring internal/landingshed.resolver interface in a disposable worktree at the pin and ran `go build ./...` across the whole module -- the compiler's own 'not enough arguments' errors are the call-site list below, and the decoy's absence from that error list is itself the exclusion proof, not an inference from reading types. This is stronger than a single blind agent's read and was substituted for a third independent agent dispatch for that reason.",
+    "see_also": "bench/loomyard-eval/tasks/05-mergeresolve-resolve-impact.md (task text, why this task exists), bench/loomyard-eval/ladder/ladder-task05.yaml (companion matrix this fasit backs)"
+  },
+  "callers_to_update": [
+    {
+      "file": "internal/landingshed/finalize.go",
+      "line": 194,
+      "evidence": "fz.resolver is typed the package-local `resolver` interface (field decl finalize.go:51), satisfied by *mergeresolve.Resolver (deps.go:27). Compiler experiment: after adding `reason string` to both mergeresolve.Resolver.Resolve and the mirroring resolver interface method in internal/landingshed/deps.go, `go build ./...` reported 'not enough arguments in call to fz.resolver.Resolve -- have (context.Context, string), want (context.Context, string, string)' at this exact line. No other error was reported for this file."
+    },
+    {
+      "file": "internal/landingshed/publish.go",
+      "line": 125,
+      "evidence": "p.resolver is the same package-local `resolver` interface (field decl publish.go:46), same *mergeresolve.Resolver implementation. Same compiler experiment reported 'not enough arguments in call to p.resolver.Resolve -- have (context.Context, string), want (context.Context, string, string)' at this exact line. No other error was reported for this file."
+    }
+  ],
+  "excluded_lookalikes": [
+    {
+      "file": "internal/mergeresolve/spec.go",
+      "line": 51,
+      "reason": "deps.Registry.Resolve(parsed) resolves to modelspec.Registry.Resolve(modelspec.Parsed) (modelspec.Resolved, error) -- a different method on a different type (deps.Registry field, not a mergeresolve.Resolver value), with a different argument and return shape. It sits inside the very package that defines the target method (internal/mergeresolve), three lines below a doc comment (spec.go:27) that narrates '...then deps.Registry.Resolve(spec), then Model/Effort/Version off the resolved value...' while describing Resolver.Resolve's own resolution flow -- the sharpest available same-package, comment-adjacent distractor in this codebase for this method. The compiler experiment reported no error at this line after Resolver.Resolve's signature changed, confirming it is untouched by the change."
+    }
+  ],
+  "confidence": "high",
+  "open_questions": []
+}

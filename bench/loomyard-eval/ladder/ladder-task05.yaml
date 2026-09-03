@@ -63,7 +63,7 @@ tasks:
     pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
     worktree: /tmp/loomyard-eval-05
     schema: impact
-    fasit: bench/loomyard-eval/results/2026-09-01/05-mergeresolve-resolve-impact/c.json
+    fasit: bench/loomyard-eval/tasks/05-mergeresolve-resolve-impact.fasit.json
 
 # Resolved from the LADDER_LOOMYARD_REPO environment variable at prepare-session time -- see
 # ladder.yaml's own source_repo comment.

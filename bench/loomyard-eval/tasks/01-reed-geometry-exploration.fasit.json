@@ -1,0 +1,146 @@
+{
+  "_meta": {
+    "task": "01-reed-geometry-exploration",
+    "type": "exploration",
+    "pinned_sha": "975578cda8d6f3a81580bd4e73725e060211b766",
+    "scope": [
+      "internal/reedengine",
+      "internal/reedcli"
+    ],
+    "date": "2026-08-28",
+    "arm": "C",
+    "role": "reference/fasit agent -- unlimited time/token budget, produces the ground-truth answer the other two arms are scored against; may use quarry itself if helpful and is told to cross-check with more than one method",
+    "see_also": "scorecard.md (scoring/analysis), usage.json (tokens/tool-calls/duration, revision notes)"
+  },
+  "relevant_files": [
+    "internal/reedcli/attach.go",
+    "internal/reedengine/windowsize.go",
+    "internal/reedengine/attach.go",
+    "internal/reedengine/apply.go",
+    "internal/reedengine/spawn.go",
+    "internal/reedengine/lifecycle.go",
+    "internal/reedengine/config.go",
+    "internal/reedengine/state.go",
+    "internal/reedengine/overlay.go",
+    "internal/reedengine/render/layout.go",
+    "internal/reedengine/render/types.go",
+    "internal/reedengine/render/rules.go",
+    "internal/reedengine/doc.go",
+    "internal/reedengine/template_posix.yaml",
+    "internal/reedengine/template_windows.yaml",
+    "internal/reedengine/attach_test.go",
+    "internal/reedengine/windowsize_test.go",
+    "internal/reedengine/apply_test.go",
+    "internal/reedengine/attachgeometry_integration_test.go",
+    "internal/loomcli/run.go"
+  ],
+  "key_symbols": [
+    {
+      "name": "attachCmd",
+      "file": "internal/reedcli/attach.go",
+      "role": "Reads the operator's own terminal size with term.GetSize(os.Stdout.Fd()) and passes it to Engine.AttachArgv, degrading to (0,0) plus a logger.Warn on a non-TTY rather than aborting."
+    },
+    {
+      "name": "Engine.AttachArgv",
+      "file": "internal/reedengine/attach.go",
+      "role": "Builds the attach argv, chaining a select-layout planned against the attaching client's told cols/rows onto attach-session; returns no error and degrades to the bare argv on every failure."
+    },
+    {
+      "name": "bareAttachArgv",
+      "file": "internal/reedengine/attach.go",
+      "role": "The five-element unchained fallback argv."
+    },
+    {
+      "name": "chainedAttachArgv",
+      "file": "internal/reedengine/attach.go",
+      "role": "Appends the literal one-character ';' separator plus select-layout to the bare argv."
+    },
+    {
+      "name": "errAttachChainSuppressed",
+      "file": "internal/reedengine/attach.go",
+      "role": "Sentinel marking a benign precondition failure so the single warn-and-degrade tail returns the bare argv."
+    },
+    {
+      "name": "Engine.liveBoxLocked",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "Reads the live window size via display-message and falls back to cfg.Width/cfg.Height on error or a malformed answer."
+    },
+    {
+      "name": "parseWindowSize",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "Pure parser requiring exactly two whitespace-separated strictly-positive integers from the window-size query."
+    },
+    {
+      "name": "Engine.pinGeometryOptionsLocked",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "Session/window-targeted pins of status off and window-size latest, issued at boot and again in AttachArgv's pre-flight."
+    },
+    {
+      "name": "Engine.readWindowSizeLatestLocked",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "Reads the effective window-size back and gates the attach chain on it being exactly latest."
+    },
+    {
+      "name": "Engine.readStatusRowsLocked",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "Reads the effective status back and converts it to reserved rows subtracted from the told box height."
+    },
+    {
+      "name": "reservedRowsFromStatus",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "Maps a status readback to reserved rows; any other value reports ok=false and suppresses the chain."
+    },
+    {
+      "name": "windowSizeAllowsChain",
+      "file": "internal/reedengine/windowsize.go",
+      "role": "Reports whether a window-size readback permits chaining."
+    },
+    {
+      "name": "Engine.planLayout",
+      "file": "internal/reedengine/apply.go",
+      "role": "The told-box seam: computes the window_layout string and focus pane against a caller-supplied render.Box, querying tmux for nothing."
+    },
+    {
+      "name": "Engine.applyLayoutLocked",
+      "file": "internal/reedengine/apply.go",
+      "role": "The ordinary-op reconciliation: resolves a fresh live box via liveBoxLocked, re-plans, and applies select-layout/select-pane."
+    },
+    {
+      "name": "anyPlacedStrand",
+      "file": "internal/reedengine/apply.go",
+      "role": "Guard preventing a zero-pane layout string, which tmux answers by destroying every pane."
+    },
+    {
+      "name": "Engine.reconcileApplyPersistLocked",
+      "file": "internal/reedengine/spawn.go",
+      "role": "Shared tail of every mutating op that re-enumerates panes, reconciles bindings, re-applies the layout against the live window, and persists state."
+    },
+    {
+      "name": "Engine.ensureServerAndSessionLocked",
+      "file": "internal/reedengine/lifecycle.go",
+      "role": "Boots the session with new-session -x/-y and issues the first pinGeometryOptionsLocked; boot pins never re-apply to an already-up session."
+    },
+    {
+      "name": "buildStackBody",
+      "file": "internal/reedengine/render/layout.go",
+      "role": "Emits the box's W/H as the layout string's root cell -- the dimensions tmux compares against the live window."
+    },
+    {
+      "name": "Config.Width / Config.Height",
+      "file": "internal/reedengine/config.go",
+      "role": "The configured boot size and the only fallback box when the live window size cannot be read."
+    },
+    {
+      "name": "ReedState",
+      "file": "internal/reedengine/state.go",
+      "role": "The persisted reed.json record -- carries NO width/height, which is why there is no stored-vs-fresh terminal-size comparison anywhere."
+    }
+  ],
+  "summary": "Terminal geometry is never persisted in reed.json; it is read fresh at two places and funnelled into one told-box seam. On attach, internal/reedcli/attach.go reads the operator's own terminal with term.GetSize and hands cols/rows to Engine.AttachArgv, which under a single op lock re-pins status off and window-size latest, reads both options' EFFECTIVE values back with display-message (a set-option exit 0 is not proof the pin took), converts status into reserved rows, applies a floor, and calls planLayout against a told render.Box -- never liveBoxLocked, since at argv-build time the live window is still the pre-attach size. The resulting argv chains select-layout after attach-session so tmux first resizes the window to the new client and only then applies a layout string already sized to that client, landing verbatim instead of being silently rescaled proportionally by tmux. Mismatch handling degrades to the bare unchained attach argv with a warn on any precondition failure (bad readback, missing session, too few panes, no placed strand); a pane-set race between plan and exec is caught by tmux itself refusing the mismatched layout. For every non-attach op, reconcileApplyPersistLocked -> applyLayoutLocked resolves a FRESH live box and re-plans. A resize while already attached triggers no reed-side reaction at all -- tmux's own proportional rescale governs until the next lyx reed op re-renders, a gap explicitly deferred to a future watchdog daemon.",
+  "confidence": "high",
+  "open_questions": [
+    "The second production caller of AttachArgv is internal/loomcli/run.go:309 (lyx run's attach tail), outside the requested reedengine/reedcli scope but part of the same end-to-end path.",
+    "internal/reedengine/geometry.go's Geometry type is paths/identity, not terminal geometry -- treated as out of scope for this mechanism.",
+    "The end-to-end integration test is gated behind '//go:build integration && linux' and needs a real tmux; unit-level tests were confirmed passing at HEAD but the integration tier was not executed."
+  ]
+}
