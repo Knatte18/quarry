@@ -6,7 +6,10 @@
 
 package engine
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // headerRule extracts the header prose from a non-code file's raw source bytes. Every concrete rule
 // returns the first paragraph only, via FirstParagraph, so a long leading comment does not become
@@ -148,6 +151,25 @@ func leadingDelimitedComment(text, openDelim, closeDelim string) (inner string, 
 		return "", false
 	}
 	return rest[:idx], true
+}
+
+// HeaderForFile returns the header prose for a non-code file named base with contents src. It
+// looks filepath.Ext(base) up in extensionHeaderRules, falls back to baseNameHeaderRules[base] when
+// the extension is the empty string, and returns the empty string when neither table has an entry.
+// It never consults extensionLanguages and never parses Go — a Go file's header comes from the Go
+// strategy, not from here.
+func HeaderForFile(base string, src []byte) string {
+	ext := strings.ToLower(filepath.Ext(base))
+	if ext != "" {
+		if rule, ok := extensionHeaderRules[ext]; ok {
+			return rule(src)
+		}
+		return ""
+	}
+	if rule, ok := baseNameHeaderRules[base]; ok {
+		return rule(src)
+	}
+	return ""
 }
 
 // stripBlockCommentBody trims each line of a "/* ... */" comment's already-delimiter-stripped body,
