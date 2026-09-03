@@ -103,17 +103,17 @@ Every command, every surface, the same shape. Deviations are what made V1 three 
   `start`, `sigend`, `end` (1-based, inclusive), `kind` (a word, never an LSP integer), `id`,
   `signature` (verbatim source), `doc` (complete, never truncated by extraction).
 - **Ids as keys in every output.** What `map` lists is what `resolve` takes.
-- **`verified` per entry** on anything that claims a reference (phase 1 textual refs: always
-  `false`; phase 2 impact: `true` when the type checker confirmed it). A consumer that wants only
-  verified entries filters; a gate that reads unverified entries as proof is a defect.
+- **`verified` per entry** on anything that claims a reference (phase 2 `impact`: `true` when the
+  type checker confirmed it, `false` when it could not). A consumer that wants only verified entries
+  filters; a gate that reads unverified entries as proof is a defect.
 - **JSON is the contract** for the CLI and the facade. The MCP `content[].text` block carries the
   same JSON. A compact text view may exist as an explicit option; it is never the default and never
   the only form.
 
 ## 5. The queries
 
-All phase-1 queries are the same tree-sitter parse with a different entry point. None needs a type
-checker, a daemon, or an index.
+Phase 1 is `resolve`, `members` and `map`: the same tree-sitter parse with three entry points. None
+needs a type checker, a daemon, or an index. Phase 1 says nothing about callers.
 
 **`resolve <id>...`** — where is this, right now. Per id: location(s) and status. Called by an
 implementer immediately before every read and every edit, because lines have moved since the last
@@ -129,11 +129,9 @@ picks. The whole class is `start`–`end` of the type symbol and is available, n
 **`map <package|file>...`** — what is here. V1's `toc dir`/`toc file`, the measured win, with ids as
 keys. The first call on unfamiliar code. Headers and docs complete (lesson 4).
 
-**`refs <id>` (phase 1, textual)** — every occurrence of the name in the repository with its
-enclosing symbol. A syntactic over-approximation: exact for rare names, noisy for `Run`/`Handle`/
-`New`, blind to reflection and string dispatch like everything else. Every entry `verified: false`.
-It exists as a candidate list and as one gate direction: **zero textual hits proves zero callers;
-one or more hits proves nothing.**
+**No reference query in phase 1.** A textual search for a name was considered and dropped: on a
+name shared by several methods (`Apply`, `Run`, `Handle`) it never returns zero and its hits mean
+nothing, and on a unique name grep is as good. Anything about callers waits for the type checker.
 
 **`impact <id>` (phase 2)** — who calls this, type-resolved. Tree-sitter cannot do this: at a call
 site `x.Run()` the receiver type is not in the syntax, and guessing it is the silent pick §3 forbids.
@@ -142,8 +140,7 @@ Needs a type checker. The open decision is which: gopls as in V1, or `go/package
 this). Decided when phase 2 starts, not now. `impact` returns each caller as an id plus location plus
 `verified: true`.
 
-**`assert-no-callers <id>` (phase 2 as a gate; phase 1 only in its zero-hit direction)** — the
-exit-code contract for a Delete card's verify step.
+**`assert-no-callers <id>` (phase 2)** — the exit-code contract for a Delete card's verify step.
 
 Performance, measured 2026-09-03 in-process on a 4-core WSL2 host, Loomyard, every file read fresh
 from disk, no cache:
@@ -192,8 +189,8 @@ extractors, all phase 1:
 |---|---|---|---|
 | Create | `resolve` target → must be `not_found`; `map`/`members` on the package for "nothing equivalent exists" | `map` the package it goes into | `resolve` → `found` |
 | Edit | `resolve` target → `found`; phase 2 `impact` → `ImpactSummary` and tier-1 test package set | `resolve` before each read/edit; `members` when the target is a type | `resolve` → still `found`, in the expected package |
-| Delete | `refs` textual: zero hits proves it; hits → phase 2 `assert-no-callers` or a human | — | `resolve` → `not_found`; `refs` old name → zero |
-| Rename | `resolve old` → found, `resolve new` → not_found | the rename mechanic is out of quarry's scope (go/types script) | `resolve old` → not_found, `resolve new` → found, `refs old` → zero |
+| Delete | `resolve` target → `found`; phase 2 `assert-no-callers`; until then Loomyard's degraded mode (scoped grep, a human) | — | `resolve` → `not_found` |
+| Rename | `resolve old` → found, `resolve new` → not_found | the rename mechanic is out of quarry's scope (go/types script) | `resolve old` → not_found, `resolve new` → found |
 | Move | `resolve` → current file | — | `resolve` → new file |
 | any | every symbol in `Uses` and every target must resolve unambiguously, or the plan is invalid before an agent is spawned | `Uses` resolved into a pack: id, file, span, signature, doc, for a one-shot read | |
 
@@ -214,13 +211,12 @@ in phase 2.
 - **Diff to symbols.** Given a diff's changed line ranges, `map` on the touched files gives the set of
   symbols the diff touched, by id. That is review scope, changelog input, and the check that a card
   changed only its declared targets.
-- **Test targeting.** Textual `refs` restricted to `_test.go` files is exact enough to say which test
-  files mention a changed symbol, without types.
 - **Documentation drift.** `map` over a package against the symbol names a doc or a codeguide page
   claims; missing or extra names are mechanical findings.
-- **Repository invariants.** Unique package basenames; every exported symbol has a doc (lesson: the
-  extractor already knows); a Rename left no old-name occurrence.
-- **Phase 2:** `impact` before/after sets on Edit and Rename, `assert-no-callers` on Delete, and the
+- **Repository invariants.** Unique package basenames; every exported symbol has a doc (the
+  extractor already knows).
+- **Phase 2:** `impact` before/after sets on Edit and Rename, `assert-no-callers` on Delete, test
+  targeting by caller package, and the
   31-false-positive class of incident (`docs/research/scout-agent-usage-findings.md`) prevented by
   `verified` being read, not assumed.
 
@@ -232,7 +228,8 @@ implementer that already has a pack is a ladder question for after they exist.
 
 ## 9. Build order on `main`
 
-Each step is one commit that builds and tests green on its own.
+Each step is one commit that builds and tests green on its own. The harness rewrite (its own
+section, to come) lands before step 8.
 
 1. **Delete** (§2). `go build ./... && go test ./...` green on what remains.
 2. **Types and the id.** `Symbol` gains `ID`, the owner chain, the head span; the id grammar with
@@ -243,10 +240,9 @@ Each step is one commit that builds and tests green on its own.
 5. **`members`** — head computation for Python and C#; the Go case falls out of `resolve`.
 6. **Extractor gaps** (§6): Python nested classes and attributes, C# partial, fields, properties.
 7. **Facade**, then **CLI** (three verbs, one envelope, exit codes), then **MCP** as its mirror.
-8. **Textual `refs`** with `verified: false`, and the zero-hit direction of `assert-no-callers`.
-9. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` (now `map`) must
+8. **Ladder.** `run-toc.sh` against the new `cmd/quarry-mcp`: `a2-toc-dir` (now `map`) must
    reproduce its separation from control. That is the regression gate for the rewrite.
-10. **Phase 2 decision:** the type checker. Then `impact` and the full `assert-no-callers`.
+9. **Phase 2 decision:** the type checker. Then `impact` and the full `assert-no-callers`.
 
 ## 10. Non-goals
 
