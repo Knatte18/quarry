@@ -159,7 +159,10 @@ accounting fix cost a re-report rather than a re-run.
   by calling `ResolveQuarryRepoRoot` with the process working directory — the single producer of
   that path, created in batch 5 — calls the run entry point, then summarises, writes the summary, and
   prints and writes the table. The report subcommand re-derives the summary and the table from the
-  raw tree without running or scoring anything.
+  raw tree without running or scoring anything, and writes **both** at the results root through the
+  same `WriteSummary` and `WriteTable` calls the run subcommand uses, printing the table to standard
+  output as well — re-deriving without rewriting would leave a stale summary beside a fresh table,
+  which is the opposite of what the subcommand exists for.
   Exit non-zero when the run entry point reports an incomplete cell or a cell with a blinding
   failure; exit non-zero on any returned error, printing it to standard error. Keep all logic in the
   package the overview's layout decision names: this file parses flags, wires them and exits. Do not

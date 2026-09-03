@@ -40,8 +40,13 @@ rejection table harder to read than the code it tests.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** add `gopkg.in/yaml.v3` as a direct require of the root module
-  `github.com/Knatte18/quarry` by running `go get gopkg.in/yaml.v3` from the repository root, so
-  `go.mod` and `go.sum` are both updated by the toolchain rather than hand-edited. Do not add any
+  `github.com/Knatte18/quarry` by running `go get gopkg.in/yaml.v3` from the repository root, so the
+  toolchain writes the requirement rather than a hand edit. Expect `go.mod` to gain the direct
+  require and `go.sum` to be **unchanged**: it already carries both `gopkg.in/yaml.v3 v3.0.1` lines,
+  the module hash and the go.mod hash, so the checksum database needs nothing new. An unchanged
+  `go.sum` is the correct outcome here, not a sign the command failed; it stays in this card's
+  `Edits:` only so that a toolchain-driven change to it, should the resolved version differ, is
+  authorised rather than an unlisted file in the commit. Do not add any
   other dependency and do not create a nested module under `bench/loomyard-eval/ladder/` — the
   task's done-criterion is `go build ./... && go test ./...` at the repository root, and a nested
   module is silently excluded from both. Create
@@ -166,8 +171,13 @@ rejection table harder to read than the code it tests.
   `cold: false` line. Add a `server` block carrying exactly `name: quarry` and
   `build: ./cmd/quarry-mcp`, with no `args` key at all — T2 cannot write an argument list the MCP
   server task has not chosen yet, and an absent args key means no arguments. Keep `run_model`,
-  `run_effort`, `max_turns`, `reps`, the scorer block, the tasks map's remaining fields and
-  `source_repo` unchanged. Rewrite the file's long header comment so it describes the new harness and
+  `run_effort`, `max_turns`, `reps`, the scorer block, the tasks map's remaining fields and the
+  `source_repo` **value** unchanged — but rewrite the two-line inline comment above `source_repo`,
+  which currently points at another ladder file's own comment for the explanation and describes the
+  resolution as happening at prepare-session time. Card 6 deletes that file, and prepare-session is
+  retired vocabulary from the V1 dispatch protocol; replace both with a self-contained sentence
+  stating that the harness itself resolves the named environment variable at startup, falling back
+  to the scratch env file. No line in this file may point at a file this batch deletes. Rewrite the file's long header comment so it describes the new harness and
   the file's surviving contents, with no line describing something the file no longer has. Keep the
   design rationale for the a-versus-b contrast and the August result that motivates the matrix.
   Rewrite the design block so it lists exactly the four surviving cell ids and their roles: the two
