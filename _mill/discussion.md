@@ -167,6 +167,22 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   covering both the grouped `const ( … )` and the multi-name `var x, y int` shapes), and interface
   methods (`method_elem` inside an `interface_type`, `Kind == method`, owner = the interface's type
   name).
+- **A generic receiver's owner is the bare type name, type arguments stripped.** glyph.md §3 is
+  explicit — "Type parameters are not part of a glyph: `Box[T]` is `Box`" — but `goReceiverTypeName`
+  returns the receiver type node's verbatim text, so `func (b *Box[T]) M()` yields the owner `Box[T]`
+  and the id `unit#Box[T].M`, which `glyph.Parse` rejects with `ReasonMemberTypeParams`. The fix is
+  in the receiver walk only: when the receiver's type (after unwrapping a `pointer_type`) is a
+  `generic_type`, take its `type` field's identifier rather than the node's whole text. Type *names*
+  are already safe — `spec.ChildByFieldName("name")` is bare — so this is the one place the rule has
+  to be applied.
+- **A declaration whose name is `_` is skipped.** `var _ = …`, `var _ Iface = (*T)(nil)` and
+  `type _ struct{}` name nothing a plan can target, and `unit#_` would be a glyph for the blank
+  identifier — many of them per package, collapsing the way `init` does but without `init`'s defined
+  meaning. This is live in-tree: `cgoguard_nocgo.go`'s `var _ = quarry_requires_CGO_ENABLED_1_…`
+  (`internal/cgoguard/` after D2), which Testing 14's self-round-trip walks. glyph.md is silent on
+  the blank identifier, so this is quarry's choice and is recorded as such rather than read into the
+  contract; skipping keeps every emitted id addressable, which is the property the round trip is
+  really asserting.
 - **Only one kind of `interface_type` is walked:** the one that is the `type` of a file-scope
   `type_spec` (or `type_alias`) — the interface named by a `type X interface { … }` declaration.
   An **anonymous** interface — in a struct field, a parameter, a return type, a `var`, or a generic
@@ -393,14 +409,24 @@ get `name`, `header`, `test` and `generated` like any other file, their entry ca
       Generated bool     `json:"generated,omitempty"`
       Package   string   `json:"package,omitempty"`
       Language  string   `json:"language,omitempty"`
-      Lossy     bool     `json:"lossy,omitempty"`
-      Error     string   `json:"error,omitempty"`
-      Symbols   []Symbol `json:"symbols,omitempty"`
+      Lossy     bool      `json:"lossy,omitempty"`
+      Error     string    `json:"error,omitempty"`
+      Symbols   *[]Symbol `json:"symbols,omitempty"`
   }
   ```
 
   Every optional key is `omitempty`; `dirs: []` and `test: false` are never emitted. V1's `*bool`
   discipline on `Test`/`Generated` is dropped.
+- **`Symbols` is the one field that keeps a pointer, and for the opposite reason.** It has a genuine
+  third state that a plain slice cannot express: **absent** means symbols were not requested (a
+  directory query), while **`[]`** means they were requested and the file has no declaration —
+  today's `types.go` already forces `[]` over `null` for exactly this reason. `encoding/json`'s
+  `omitempty` drops a nil and an empty slice alike, so `*[]Symbol` is what distinguishes them: nil →
+  key absent, non-nil → key present, emitting `[]` when empty. This does not reopen D12's removal of
+  the `Test`/`Generated` pointers: there the third state ("this language has no rule") cannot arise
+  while Go is the only language, and here it arises on every directory query. §4's "defaults never"
+  list names `test`, `generated` and `dirs` — not `symbols` — so nothing in the plan asks for these
+  two to be collapsed.
 - Rationale: §4's "Shared facts once, defaults never" is explicit that `test: false`,
   `generated: false` and an empty `dirs: []` are the V1 clutter this rewrite removes. The `*bool`
   existed to distinguish "false" from "this language has no rule"; with Go the only language and
@@ -434,7 +460,9 @@ get `name`, `header`, `test` and `generated` like any other file, their entry ca
   bottom. `Symbols` nil means `true` when `target` is a file and `false` when it is a directory;
   a non-nil value wins for every file entry at every depth.
 - A file target answers as "a directory answer with one file entry" (§4): the enclosing directory's
-  `dir`/`package`/`language`/`doc`, `files` holding exactly that one entry, no `dirs`.
+  `dir`/`package`/`language`/`doc`, `files` holding exactly that one entry, no `dirs`. **`Depth` is
+  ignored for a file target** — there is nothing below a file to fill — and a non-zero `Depth` with a
+  file target is not an error.
 - Rationale: this is §4's knob table stated as a type. `Depth: 0` is direct children only because
   that is what the table says ("`0` lists subdirectories by `dir`, `package` and `doc` only");
   §4's prose "`toc internal` — every package under it with its doc" is loose, and the whole-tree
@@ -537,9 +565,20 @@ get `name`, `header`, `test` and `generated` like any other file, their entry ca
   (D9, collected fresh per call per D22) before being parsed. Without that filter a gitignored `.go`
   file beside listed ones would contribute spans `toc` never listed — a round-trip *extra* under
   Testing 14/15, and a `resolve` in T4 that points at a file `toc` says does not exist.
-  When **both** directories exist, both interpretations are collected and the collision is recorded
-  on the result for T4 to report as `ambiguous`; T3 itself returns the union of spans, so the round
-  trip stays exact either way.
+  When **both** directories exist, both interpretations are collected and `SpansOf` returns the
+  union, so the round trip stays exact either way.
+- **The collision has a named carrier, and it is not `SpansOf`'s return.** The mapping above lives in
+  an unexported helper:
+
+  ```go
+  func (r *Repo) unitDirs(unit string) (dirs []string, collision bool)
+  ```
+
+  `SpansOf` keeps its plain `([]Symbol, error)` shape and ignores `collision`; T4 promotes that
+  second return into the `ambiguous` status when it builds the status vocabulary. Testing 11 asserts
+  on `unitDirs` directly. Putting the flag on an internal helper rather than on `SpansOf`'s return
+  means T3 records the fact without inventing a status type that is T4's to design — and it gives the
+  test something real to assert, which "recorded on the result" did not.
 - Rationale for literal-first: a directory literally named `foo_test/` is legal Go, and D7's walk
   gives its declarations the unit `…/foo_test`. An unconditional strip would send the lookup into a
   `foo/` directory that need not exist, so one glyph string would name two different units. Neither
@@ -764,14 +803,25 @@ gate.
 3. `text.go` — `FirstParagraph` (kept), against a package comment that continues after a blank line
    (the `render` case) and one that does not.
 
-**Fixture-driven unit tests** (`internal/engine/testdata/`, small Go trees committed in-repo):
+**Fixture-driven unit tests** (`internal/engine/testdata/`, small Go trees committed in-repo).
+
+Two cases cannot be committed and are **built at runtime**: 11b needs a symlink cycle and 11g must
+rewrite a `.gitignore` between two calls, neither of which a committed tree can provide without
+dirtying the worktree. Both construct their tree under `.scratch/engine-tests/<test-name>/`, resolved
+from the module root via `runtime.Caller(0)` the way `toc_integration_test.go` already locates
+itself, and remove it in `t.Cleanup`. **Never `t.TempDir()`** — it writes to the system temp
+directory, which the Constraints ban outright; `.scratch/` is the sanctioned scratch location and is
+gitignored.
 
 4. The Go declaration walk: a package-level `func`, a method with a pointer and a value receiver, an
    ungrouped and a grouped `type`, a grouped `const`, a `var x, y int`, an interface with two
    methods, a type alias (no body → `sigend` absent). Assert each symbol's `id`, `kind`, span and
    `signature`.
 5. Glyph assignment: `cmd/lyx#run` from a `package main`; `internal/logger#dualHandler.Handle` from a
-   method; an interface method's owner.
+   method; an interface method's owner; **a method on a generic type, `func (b Box[T]) M()` and
+   `func (b *Box[T]) M()`, whose owner must be `Box` and never `Box[T]`** — assert the id round-trips
+   through `glyph.Parse`, which is what would have caught it; and a `var _ = …` / `type _ struct{}`
+   pair, asserted **absent** from the symbol list.
 6. The unit walk (D7): a directory with `pkg`, `pkg`'s own `_test.go`, and a `pkg_test` external
    test file — three files, two units; assert the file entry's `package` deviation key appears only
    on the external-test file. A directory whose package is legitimately named `httptest` must **not**
@@ -782,12 +832,16 @@ gate.
    `Package` prefix (→ `doc` absent); a package whose comment has a second paragraph (→ first only).
 9. The answer shape (D12/D13): `depth: 0` vs `1` vs `all`; `symbols` defaults for a file target and
    a directory target and both explicit overrides; a file target answering as a one-entry directory
-   answer. Assert the *marshalled JSON*, so `omitempty` on `dirs`, `test` and `generated` is pinned.
+   answer, and a non-zero `Depth` on a file target changing nothing. Assert the *marshalled JSON*,
+   so `omitempty` on `dirs`, `test` and `generated` is pinned — including the `symbols` three-state:
+   key **absent** on a directory query, key present as **`[]`** for a symbol-bearing query of a file
+   with no declarations.
 10. Failure entries: an unreadable file, an invalid-UTF-8 file, a file the grammar reports an error
     on → `error` / `lossy` set and mutually exclusive, and the file still listed, never skipped.
 11. `SpansOf` (D16): a hit, a miss (empty slice, no error), an external-test unit, a glyph whose unit
     directory does not exist, a fixture with a directory literally named `foo_test/` (literal-first
-    wins), the both-exist collision (union returned, collision recorded), and a non-Go `Lang`
+    wins), the both-exist collision (`unitDirs` returns both directories with `collision == true`,
+    while `SpansOf` returns the union), and a non-Go `Lang`
     (`ErrLanguageUnsupported`, D21).
 11a. Ordering (D18): a fixture directory whose `os.ReadDir` order is not lexicographic — assert
     `files` and `dirs` come back sorted and symbols come back in source order.
