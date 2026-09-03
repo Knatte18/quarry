@@ -111,8 +111,8 @@ its own `package main`.
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+- **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
-- **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
 - **Deletes:** none
