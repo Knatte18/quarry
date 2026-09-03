@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-types-and-printer
 slug: glyph-package
 branch: glyph-package
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-review-r5  '2026-09-03T17:07:15Z'
 plan-fix-r5  '2026-09-03T17:08:00Z'
 planned  '2026-09-03T17:08:09Z'
 implementing  '2026-09-03T17:08:36Z'
+approved-types-and-printer  '2026-09-03T17:12:02Z'
 ```
 
 ## Batches
@@ -41,9 +42,10 @@ implementing  '2026-09-03T17:08:36Z'
 ```yaml
 batches:
   - name: types-and-printer
-    state: running
+    state: approved
     implementer_session: a97b913c-a38f-4dd6-9dd3-db3b60c85b27
     start_sha: f7827b1552ab64ae8488787e406e63853ce727de
+    commit_sha: 297fe4518c46e51bd1ef317baccb4664cbeb63fc
     verify_baseline_failures: ["FAIL\t./glyph [setup failed]"]
   - name: parser-and-go-alphabet
     state: pending
