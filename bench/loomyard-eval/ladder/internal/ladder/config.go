@@ -88,7 +88,7 @@ func LoadLadder(path string) (*Ladder, error) {
 
 	var l Ladder
 	if err := dec.Decode(&l); err != nil {
-		return nil, fmt.Errorf("decode ladder file %s: %w", path, err)
+		return nil, fmt.Errorf("decode ladder file %s: %w", path, wrapRetiredKeyError(err))
 	}
 
 	if err := l.validate(); err != nil {
@@ -135,8 +135,110 @@ func (l *Ladder) ControlFor(letter string) (Config, bool) {
 	return Config{}, false
 }
 
-// validate checks l against every rule the ladder file format requires. It is extended below with
-// the full rule set; this declaration exists so LoadLadder has a validation step to call.
+// retiredKeys are the yaml keys the V1 architecture used that this loader must refuse rather than
+// silently accept. KnownFields(true) already turns any of these into a decode-time unknown-key
+// error; wrapRetiredKeyError only recognises the ones on this list and names them explicitly, so a
+// stale file fails legibly instead of with a bare "field not found" message.
+var retiredKeys = []string{
+	"worktree",
+	"session_dir_template",
+	"cold",
+	"warm_counterpart",
+	"cold_worktree_template",
+	"annex",
+	"annexes",
+	"toc_format",
+}
+
+// wrapRetiredKeyError inspects a decode error for the name of a retired key and, when it finds one,
+// wraps err with a message stating that the key was removed with the V1 architecture. A decode
+// error naming any other unrecognised key is returned unchanged.
+func wrapRetiredKeyError(err error) error {
+	for _, key := range retiredKeys {
+		if MatchesBareToken(err.Error(), key) {
+			return fmt.Errorf("field %q was removed with the V1 architecture: %w", key, err)
+		}
+	}
+	return err
+}
+
+// validate checks l against every rule the ladder file format requires: the kept-from-V1 rules
+// (source_repo's literal value, config id uniqueness, task and tool-list references, one control
+// per ladder letter that appears, and the non-zero run/scorer/task fields) plus the schema
+// enumeration. Retired-key rejection happens earlier, at decode time, via wrapRetiredKeyError.
 func (l *Ladder) validate() error {
+	if l.SourceRepo != "env:LADDER_LOOMYARD_REPO" {
+		return fmt.Errorf("source_repo: must be the literal %q, got %q", "env:LADDER_LOOMYARD_REPO", l.SourceRepo)
+	}
+	if l.RunModel == "" {
+		return fmt.Errorf("run_model: must be non-zero")
+	}
+	if l.RunEffort == "" {
+		return fmt.Errorf("run_effort: must be non-zero")
+	}
+	if l.MaxTurns == 0 {
+		return fmt.Errorf("max_turns: must be non-zero")
+	}
+	if l.Reps == 0 {
+		return fmt.Errorf("reps: must be non-zero")
+	}
+	if l.Scorer.Model == "" {
+		return fmt.Errorf("scorer.model: must be non-zero")
+	}
+	if l.Scorer.Effort == "" {
+		return fmt.Errorf("scorer.effort: must be non-zero")
+	}
+
+	for name, task := range l.Tasks {
+		if task.TaskFile == "" {
+			return fmt.Errorf("tasks.%s.task_file: must be set", name)
+		}
+		if task.PinnedSHA == "" {
+			return fmt.Errorf("tasks.%s.pinned_sha: must be set", name)
+		}
+		if task.Fasit == "" {
+			return fmt.Errorf("tasks.%s.fasit: must be set", name)
+		}
+		if task.Schema != "exploration" && task.Schema != "impact" {
+			return fmt.Errorf("tasks.%s.schema: must be \"exploration\" or \"impact\", got %q", name, task.Schema)
+		}
+	}
+
+	toolSet := make(map[string]bool, len(l.QuarryTools))
+	for _, t := range l.QuarryTools {
+		toolSet[t] = true
+	}
+
+	seenIDs := make(map[string]bool, len(l.Configs))
+	controlsByLetter := make(map[string]int)
+	lettersSeen := make(map[string]bool)
+	for _, c := range l.Configs {
+		if seenIDs[c.ID] {
+			return fmt.Errorf("configs: duplicate id %q", c.ID)
+		}
+		seenIDs[c.ID] = true
+		lettersSeen[c.Ladder] = true
+
+		if _, ok := l.Tasks[c.Task]; !ok {
+			return fmt.Errorf("configs.%s.task: %q is not a key in tasks", c.ID, c.Task)
+		}
+
+		for _, a := range c.Allowed {
+			if !toolSet[a] {
+				return fmt.Errorf("configs.%s.allowed: %q is not in quarry_tools", c.ID, a)
+			}
+		}
+
+		if c.IsControl() {
+			controlsByLetter[c.Ladder]++
+		}
+	}
+
+	for letter := range lettersSeen {
+		if n := controlsByLetter[letter]; n != 1 {
+			return fmt.Errorf("ladder %q: expected exactly one control (empty allowed list), found %d", letter, n)
+		}
+	}
+
 	return nil
 }
