@@ -166,6 +166,34 @@ architecture they replace.
   `typescript` `TestFile` branch dormant (it is filename-only and would still pass, but it claims
   support that is gone); keeping the grammars.
 
+### unreachable-no-strategy-branch-kept
+
+- Decision: keep `buildDirEntry`'s no-strategy branch (`toc.go:199-202`, `entry.Error =
+  quarryengine.ErrLanguageUnsupported.Error()`) and its `TOCFile` counterpart, even though neither
+  can be reached once the extension table is `{go, python, csharp}` and all three register a
+  `Strategy`. Do not add a comment marking them unreachable either.
+- Rationale: these are three lines of defensive code guarding an invariant that holds only by
+  coincidence at this commit. `toc/strategy.go`'s own `Implemented()` doc says the point of the
+  registry is to let callers "distinguish 'designed but not implemented' from 'unknown extension'",
+  and T3 and T8 put languages back. Deleting a live guard from a kept package is re-architecting
+  it, which T0 is not; the "remove the dependent code path" rule exists for code that no longer
+  compiles, not for code that no longer happens to fire.
+- Rejected: deleting both branches as dead code; annotating them as currently unreachable (a
+  comment that goes stale the moment T8 lands).
+
+### compact-test-row-repointed
+
+- Decision: in `compact_test.go`, repoint the `bad.rs` / `"rust"` fixture row rather than deleting
+  it, so `TestCompactDir` keeps a `DirEntry` with `Error` set and the `5 files` count in its
+  expected header stays correct.
+- Rationale: `DirEntry.Error` survives this task — `buildDirEntry` still sets it from the
+  read-failure and invalid-UTF-8 branches (`toc.go:206-214`) — so `CompactDir`'s error-line
+  rendering still has a live producer and must keep its coverage. Deleting the row would drop that
+  coverage *and* force the header count and the `want` list to change, a materially larger diff
+  than repointing.
+- Rejected: deleting the row (loses live coverage, larger diff); leaving the choice open for
+  mill-plan to make.
+
 ### guard-tests-deleted
 
 - Decision: `internal/quarryengine/layering_test.go` and
@@ -313,23 +341,52 @@ this task. `cmd/` is gone; `quarry/` is gone.
   `ExtensionLanguages()` in the other. Dropping the Rust/TypeScript grammars *without* dropping
   `.rs`/`.ts`/`.tsx` from the table breaks the first check. Dropping both leaves all three sets
   equal to `{csharp, go, python}` and both checks pass unmodified.
-- `internal/quarryengine/toc/toc_test.go:765-780` (`TOCDir(dir, "rust")`) tests the
-  "known extension, unimplemented strategy" path via Rust specifically. Once `rust` leaves the
-  extension table, `TOCDir` takes the unknown-override path instead and the test's expectation no
-  longer holds. Delete the test; there is no third language left in the table that is in the table
-  but has no strategy, so the path it covered no longer exists.
+- **Three `toc` tests depend on Rust, and only one of them says so in a greppable way.** The
+  extension table is what makes a `.rs` file reach `toc` at all, so a test can depend on Rust
+  purely through a filename. All three are listed under Testing with their disposition:
+  `toc_test.go:765` (`TOCDir(dir, "rust")`), `toc_test.go:547`
+  (`TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty`, which writes `main.rs` and calls
+  `TOCDir(dir, "")`), and `toc_test.go:312`
+  (`TestTOCFile_DesignedButUnimplementedLanguage`, which writes `main.rs` and calls
+  `TOCFile(path, "")`). The middle one is the trap: it names no language, and it goes **red** in
+  commit 3, because once `.rs` leaves the table `toc.go:175` returns `ok == false` and the loop
+  `continue`s, so `len(Files)` is 0 where the test asserts 1.
+- **How that inventory was derived, so a plan writer can re-derive it rather than trust the list:**
+  grepping for `rust`/`typescript` is not sufficient. The complete derivation is (a) grep the
+  package for `rust`, `typescript`, `\.rs`, `\.ts`, `\.tsx`; (b) grep for every remaining literal
+  filename with one of those extensions, including ones built by `writeTempFile` /
+  `writeDirFile` helpers; and (c) after making the change, run `go test ./...` and treat any
+  failure in `toc` or `treesitter` as a missed site rather than as a reason to edit an unrelated
+  test. Step (c) is the authoritative check; (a) and (b) only make it a short loop.
 - `internal/quarryengine/toc/compact_test.go:41,52` build a fixture entry with
-  `Name: "bad.rs", Language: "rust"`. Repoint or remove those cases.
+  `Name: "bad.rs", Language: "rust", Error: "language not yet supported"` and assert its rendered
+  line. `DirEntry.Error` stays reachable after this task through `buildDirEntry`'s read-failure and
+  invalid-UTF-8 branches (`toc.go:206-214`), so the rendering this fixture covers still has a live
+  producer — **repoint** the row rather than delete it (see the `compact-test-row-repointed`
+  decision).
 - `internal/quarryengine/toc/classify_test.go:90-97,122` carry TypeScript and Rust cases for
   `TestFile` and `Generated`.
 - `internal/quarryengine/treesitter/treesitter_test.go:29-30` parse TypeScript and Rust sources.
 - `cgoguard_nocgo.go` deliberately references an undeclared identifier to fail a `CGO_ENABLED=0`
   build with a readable message. It is not broken; do not "fix" it.
-- `toc/strategy.go`'s `Strategy` interface doc says it is "designed to accommodate all five
-  languages the toc survey covers (Go, Python, C#, TypeScript, Rust)" — a comment that names
-  removed languages, so it is in the narrow comment pass.
-- `toc/classify.go:31,93-96,101-102,126` is where the live `typescript` branch and its
-  rust/typescript comments sit.
+- **The comment sites below are illustrative, not exhaustive — the rule in
+  `doc-comment-pass-is-narrow` governs.** Any comment in kept code that names a deleted package or
+  names Rust/TypeScript is in the pass, whether or not it appears here. Known sites:
+  - `toc/strategy.go:76` — the `Strategy` interface doc says it is "designed to accommodate all
+    five languages the toc survey covers (Go, Python, C#, TypeScript, Rust)".
+  - `toc/classify.go:31,93-96,101-102,126` — the live `typescript` branch and its rust/typescript
+    comments.
+  - `toc/doc.go:1-11` — names `registry` and `internal/cli`, and cites the root package doc's
+    "The engine/CLI split" section that commit 2 rewrites away.
+  - `toc/toc.go:128` — names `registry.ExtensionsForLanguage`, which becomes an unqualified
+    in-package call in commit 2.
+  - `errors.go:1-2` and `errors.go:14-17` — name `internal/cli` as the sole caller and
+    `DetectLanguage` as `ErrNoLanguage`'s producer; `DetectLanguage` lives in `registry/detect.go`
+    and is deleted, so `ErrNoLanguage`'s doc must be restated in terms of its surviving producer in
+    `toc`.
+  - `extension.go:1-7` — arrives in `toc` in commit 2 still describing "package registry", the
+    marker-based `DetectLanguage` it sat beside, and "the LSP verbs"; its header is rewritten as
+    part of the move.
 
 **`go.mod` after `go mod tidy`.** The surviving Go code uses only `github.com/tree-sitter/
 go-tree-sitter` plus the `go`, `python` and `c-sharp` grammars. `cobra`, `pflag`, `mousetrap`,
@@ -366,12 +423,31 @@ cases whose subject no longer exists.
 **`internal/quarryengine/toc`** — the suite stays as-is apart from these edits, all in commit 3
 except the import fix in commit 2:
 
-- `toc_test.go`: drop the `registry.` qualifier on the three `ExtensionLanguages()` call sites
-  (commit 2, when the table moves in-package); delete `TestTOCDir` at line 765 for the Rust
-  override (commit 3).
+- `toc_test.go`, commit 2: drop the `registry.` qualifier on the `ExtensionLanguages()` call sites
+  at lines 802 and 809 (and in the comment at 799) when the table moves in-package.
+- `toc_test.go`, commit 3: delete **three** tests, all of which depend on Rust being in the
+  extension table:
+  - line 765, the `TOCDir(dir, "rust")` override test — once `rust` is not a table language the
+    override takes the unknown-language path and the expectation no longer holds.
+  - line 547, `TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty` — writes `main.rs`, calls
+    `TOCDir(dir, "")`, asserts `len(Files) == 1`. **This one goes red if it is left in place**, so
+    it is not optional cleanup.
+  - line 312, `TestTOCFile_DesignedButUnimplementedLanguage` — writes `main.rs`, calls
+    `TOCFile(path, "")`, asserts a wrapped `ErrLanguageUnsupported`. It would still pass, but only
+    by falling through to the unknown-extension branch that the `readme.md` test at line 304
+    already covers, leaving a test whose name and comment describe a path that no longer exists.
+
+  All three covered the same scenario — "extension is in the table, but no `Strategy` is
+  registered for its language" — which cannot occur once the table is exactly
+  `{go, python, csharp}` and all three register a strategy. Do not replace them with equivalents.
 - `classify_test.go`: delete the TypeScript `TestFile` cases and the Rust `TestFile` /
   `Generated` "unknown" cases (commit 3).
-- `compact_test.go`: repoint or delete the `bad.rs` / `"rust"` fixture rows (commit 3).
+- `compact_test.go`: **repoint**, do not delete, the `bad.rs` fixture row at line 41 and its
+  expected output line at 52 — change them to a still-possible error entry (a Go file whose
+  `Error` comes from the read-failure branch, e.g. `{Name: "broken.go", Language: "go", Error:
+  "..."}` with the matching `want` line). The `"# internal/shed (package shed), 5 files"` header at
+  line 46 then stays correct, and `CompactDir`'s error-line rendering keeps its coverage (commit
+  3). See the `compact-test-row-repointed` decision.
 - `extension_test.go`: arrives from `registry` in commit 2 with its package clause changed to
   `toc`; in commit 3 its `.rs` / `.ts` / `.tsx` expectations go.
 - Everything else — `comments_test.go`, `sentences_test.go`, `golang_test.go`, `python_test.go`,
@@ -379,9 +455,13 @@ except the import fix in commit 2:
   that is a signal the deletion went further than intended.
 
 **`internal/quarryengine/treesitter`** — `treesitter_test.go` loses its TypeScript and Rust table
-rows (commit 3); the `Languages()` and `Supported()` assertions must then read
-`{csharp, go, python}`. The `WithTree` lifecycle tests (the `onRelease` seam) are unaffected and
-must pass unchanged.
+rows at lines 29-30 (commit 3). It contains no call to `Languages()` or `Supported()`, so there is
+no set assertion in this package to update and none should be added. The only assertion anywhere
+that pins the supported set is `toc_test.go:803`'s cross-check of the extension table against
+`treesitter.Supported`, and it needs no edit: with Rust and TypeScript gone from both the grammar
+map and the table, all three sets are `{csharp, go, python}` and both directions of the check hold
+as written. The `WithTree` lifecycle tests (the `onRelease` seam) are unaffected and must pass
+unchanged.
 
 **`internal/quarryengine` (root)** — after `layering_test.go` and `seam_enforcement_test.go` are
 deleted in commit 1, the package has no tests. That is correct: it holds two error sentinels and a
@@ -434,3 +514,10 @@ first.
   **A:** No — a one-off grep at commit 5, recorded as a done-check.
 - **Q:** Is `bench/loomyard-eval/results/**` (the sibling, non-ladder suite) kept? **A:** Yes —
   same category of record as `ladder/results/**`.
+- **Q:** (review r1) Two more `toc` tests depend on Rust through a filename rather than the word
+  "rust", and one of them — `TestTOCDir_UnimplementedLanguageOnlyDirectoryIsNonEmpty` — goes red in
+  commit 3. What is their disposition? **A:** Delete both, along with the `TOCDir(dir, "rust")`
+  test; the scenario all three cover cannot occur once the table is `{go, python, csharp}`.
+- **Q:** (review r1) `buildDirEntry`'s no-strategy branch becomes unreachable. Delete it, keep it,
+  or annotate it? **A:** Keep it unannotated — it is a live guard in a kept package, and T3/T8 put
+  languages back.
