@@ -47,6 +47,8 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 - An internal span lookup (`SpansOf`) sufficient for the round-trip done-criterion, living in the
   `resolve.go` file T4 will grow.
 - Delete the lossy compact view and the doc-sentence trimming option.
+- Fix `README.md`'s stale verb list — it still names the three queries "`map`, `resolve`, `members`",
+  and all of `map` and `members` are dead words (`toc`, `resolve`, `expand`).
 
 **Out:**
 
@@ -225,7 +227,10 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
 
 - Decision: implement gitignore matching in `internal/engine/ignore.go`, supporting comments, blank
   lines, `!` negation, leading-`/` anchoring, trailing-`/` directory-only patterns, `**`, `*` and `?`
-  within a segment, and the "pattern without a slash matches at any depth" rule. Patterns are
+  within a segment, the "a pattern containing a slash anywhere but its trailing position is anchored
+  to its own `.gitignore`'s directory" rule, and the "pattern with no slash matches at any depth"
+  rule. (Loomyard's `plugins/prowler/bin/` is the interior-slash case: anchored by its slash,
+  directory-only by its trailing one.) Patterns are
   collected from `.gitignore` files from the repository root down to the directory being listed,
   later files and later patterns winning. `.git/` is always excluded.
 - Explicitly **not** supported (documented in the file's own comment): `core.excludesFile`,
@@ -384,10 +389,28 @@ the critical path to the measurement: T0 → T1 → **T3** → T5a → T6 → T7
   func (r *Repo) SpansOf(g glyph.Glyph) ([]Span, error)
   ```
 
-  It maps the glyph's unit to a directory (stripping a trailing `_test` and filtering to the external
-  test package when present, per D7), parses that directory's `.go` files, and returns every
-  declaration whose owner chain and name match, ordered by file then start line. It has **no** status
-  vocabulary: zero matches is an empty slice, not `not_found`.
+  It maps the glyph's unit to a directory **literal-first**, parses that directory's `.go` files, and
+  returns every declaration whose owner chain and name match, ordered by file then start line. It has
+  **no** status vocabulary: zero matches is an empty slice, not `not_found`.
+- **Unit → directory, literal-first (the inverse of D7).** Given unit `U`:
+  1. if the directory `U` exists, search it, restricted to files belonging to unit `U` by D7's rule —
+     i.e. excluding any file whose clause is `<dirPackage>_test`, which belongs to `U + "_test"`;
+  2. otherwise, if `U` ends in `_test` and the directory `strings.TrimSuffix(U, "_test")` exists,
+     search that directory restricted to files whose clause is exactly `<dirPackage>_test`;
+  3. otherwise, no directory — an empty slice (T4 turns this into `unit: not_found`).
+  When **both** directories exist, both interpretations are collected and the collision is recorded
+  on the result for T4 to report as `ambiguous`; T3 itself returns the union of spans, so the round
+  trip stays exact either way.
+- Rationale for literal-first: a directory literally named `foo_test/` is legal Go, and D7's walk
+  gives its declarations the unit `…/foo_test`. An unconditional strip would send the lookup into a
+  `foo/` directory that need not exist, so one glyph string would name two different units. Neither
+  quarry nor Loomyard has such a directory today, which means the round-trip criterion would never
+  exercise the case — exactly why the rule has to be right by construction rather than by test, and
+  T4's public `resolve` inherits it unchanged.
+- **Gap recorded:** glyph.md §2 gives the external test unit the pseudo-path `<dir>_test` without
+  saying what happens when a real directory spells the same string. This discussion fixes quarry's
+  behaviour (literal-first, both-exist → `ambiguous`); amending glyph.md is not T3's to do, and the
+  case belongs in T4's status-vocabulary work.
 - Rationale: the task states "an internal span lookup suffices; the public `resolve` verb with its
   status vocabulary is T4". Putting it in `resolve.go` creates the file T4 grows rather than a file
   T4 has to move.
@@ -563,4 +586,5 @@ leaving no diff.
 - **Q:** Do the compact view and `DocSentences` survive? **A:** [auto-pick] Deleted. **Why:** §10 makes compact-by-default a non-goal, §4 requires `doc` complete, and the ladder measured the cost directly (precision 0.96 → 0.82). The lossless text view is a different artefact and is T5a's.
 - **Q:** `Test`/`Generated` as `*bool` or plain `bool`? **A:** [auto-pick] Plain `bool` with `omitempty`. **Why:** §4 forbids emitting `test: false`; the pointer encoded "this language has no rule", a state that cannot arise while Go is the only language.
 - **Q:** What happens when `LADDER_LOOMYARD_REPO` points at the wrong commit? **A:** [auto-pick] Skip when unset, **fail** when set but `HEAD` is not `72c23d9`. **Why:** a skip on drift makes the task's own done-criterion silently unverifiable; a skip on absence is normal on a machine with no checkout.
+- **Q:** How does `SpansOf` map a unit ending in `_test` back to a directory, given a directory may legally be named `foo_test/`? **A:** [auto-pick, discussion-review r1 gap] Literal-first: search the directory named exactly by the unit; only if it does not exist and the unit ends `_test`, strip and filter to the external test package; both existing → collect both and record the collision for T4 to report `ambiguous`. **Why:** an unconditional strip makes one glyph string name two different units, and neither quarry nor Loomyard has such a directory, so the round trip would never catch it — the rule has to be right by construction, and T4 inherits it.
 - **Q:** Does T3 build the JSON envelope? **A:** [auto-pick] No — T3 emits §4's payload objects with their JSON tags and tests them marshalled; the `ok`/`status` envelope, exit codes and the text view are T5a. **Why:** §12 assigns the envelope to T5a but pins its shape with T3's byte-for-byte criterion, so the tags belong here and the wrapper does not.
