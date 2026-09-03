@@ -12,14 +12,17 @@ depends-on: []
 ## Batch Scope
 
 This batch creates the package and everything that does not depend on parsing: the package doc, the
-closed `Reason` vocabulary with its `*ParseError`, the `Language`/`Glyph` types, the total
-`String()` printer, and the printer's own tests. It is one batch because those five files are a
-single readable unit — roughly 250 lines of Go and one test file — and because none of them needs
-the parser to compile or to be tested.
+`Language`/`Glyph` types with the total `String()` printer, the closed `Reason` vocabulary with its
+`*ParseError`, and the printer's own tests. It is one batch because those four files are a single
+readable unit — roughly 250 lines of Go and one test file — and because none of them needs the
+parser to compile or to be tested.
 
-The external interface batch 2 consumes is exactly: the `Reason` constants and `Reasons` slice, the
-`*ParseError` struct and its four fields, the `Language` type with its single `Go` constant, and the
-`Glyph` struct's five fields. Batch 2 adds no field and renames nothing here.
+Card order is chosen so every commit compiles on its own: `glyph/glyph.go` declares `Language`, and
+`glyph/errors.go`'s `ParseError.Lang` field refers to it, so the type lands first.
+
+The external interface batch 2 consumes is exactly: the `Language` type with its single `Go`
+constant, the `Glyph` struct's five fields, the `Reason` constants and `Reasons` slice, and the
+`*ParseError` struct and its four fields. Batch 2 adds no field and renames nothing here.
 
 Batch-local decisions beyond the overview's Shared Decisions:
 
@@ -33,17 +36,16 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
 ## Cards
 
-### Card 1: package doc and the closed Reason vocabulary
+### Card 1: package doc, Language, Glyph and the total String printer
 
 - **Context:**
   - `docs/glyph.md`
-  - `internal/quarryengine/errors.go`
   - `internal/quarryengine/toc/doc.go`
   - `internal/quarryengine/toc/types.go`
 - **Edits:** none
 - **Creates:**
   - `glyph/doc.go`
-  - `glyph/errors.go`
+  - `glyph/glyph.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
@@ -57,63 +59,6 @@ Batch-local decisions beyond the overview's Shared Decisions:
   syntactic check and reads no source; that `String` is a total pure printer that never validates;
   and that `Go` is the only `Language` implemented today. Name `docs/glyph.md` in prose as the
   contract this package implements.
-
-  `glyph/errors.go` declares, in this order:
-
-  1. `type Reason string`, with a doc comment saying it is the closed vocabulary a `ParseError`'s
-     `Reason` field is drawn from and that no value outside the constant block below is ever
-     produced.
-  2. One grouped `const` block with exactly these sixteen constants, in this order, each with its own
-     doc comment naming what it fires on:
-     `ReasonUnsupportedLanguage Reason = "unsupported_language"`,
-     `ReasonInvalidUTF8 = "invalid_utf8"`, `ReasonNoSeparator = "no_separator"`,
-     `ReasonUnitEmpty = "unit_empty"`, `ReasonUnitEmptySegment = "unit_empty_segment"`,
-     `ReasonUnitDotSegment = "unit_dot_segment"`, `ReasonUnitBadRune = "unit_bad_rune"`,
-     `ReasonMemberEmpty = "member_empty"`,
-     `ReasonMemberEmptyComponent = "member_empty_component"`,
-     `ReasonMemberTooDeep = "member_too_deep"`,
-     `ReasonMemberNotIdentifier = "member_not_identifier"`,
-     `ReasonMemberKeyword = "member_keyword"`,
-     `ReasonMemberTypeParams = "member_type_params"`, `ReasonMemberParens = "member_parens"`,
-     `ReasonMemberPointer = "member_pointer"`, `ReasonMemberBadRune = "member_bad_rune"`.
-     No seventeenth constant. Add none for the root-package unit or for whitespace; both are covered
-     by the constants above.
-  3. Immediately below the constant block, `var Reasons = []Reason{...}` listing all sixteen in that
-     same order, with a doc comment saying Go cannot reflect over package-level constants, so this
-     slice is the only way a test or an exhaustive caller can enumerate the vocabulary, and that
-     adding a constant means adding it here in the same edit.
-  4. An unexported `var reasonText = map[Reason]string{...}` giving each of the sixteen a short
-     phrase naming what was wrong, e.g. `ReasonMemberPointer` maps to a phrase saying a receiver's
-     pointer-ness is not part of a glyph, and `ReasonNoSeparator` maps to a phrase saying a glyph
-     needs a `#` and a repository-relative path is not a glyph. All sixteen phrases must differ from
-     one another.
-  5. `type ParseError struct { Lang Language; Input string; Reason Reason; Detail string }` with a
-     doc comment saying callers use `errors.As` and switch on `Reason`, and that `Detail` carries the
-     offending segment, component or rune where one exists and is empty otherwise — a blank `Detail`
-     carries no meaning and is never a discriminator.
-  6. `func (e *ParseError) Error() string`, composing a complete message from `Reason`, `Lang` and
-     `Input` alone, appending `Detail` in parentheses only when it is non-empty, and falling back to
-     the raw `Reason` string when `reasonText` has no entry. The message must be non-empty for every
-     `Reason` in `Reasons`, and the sixteen messages must be pairwise distinct for one fixed `Lang`,
-     `Input` and `Detail`.
-
-  Imports in this file are limited to `fmt`. `Language` is declared in card 2 and this file only
-  refers to it; the package does not compile until card 2 lands, which is expected within this batch.
-
-- **Commit:** `feat(glyph): add package doc and the closed ParseError reason vocabulary`
-
-### Card 2: Language, Glyph and the total String printer
-
-- **Context:**
-  - `docs/glyph.md`
-  - `glyph/errors.go`
-  - `internal/quarryengine/toc/types.go`
-- **Edits:** none
-- **Creates:**
-  - `glyph/glyph.go`
-- **Deletes:** none
-- **Moves:** none
-- **Requirements:**
 
   `glyph/glyph.go` declares, in this order:
 
@@ -140,10 +85,73 @@ Batch-local decisions beyond the overview's Shared Decisions:
      write `append(g.Owner, g.Name)`: that can write into the caller's backing array and corrupt a
      `Glyph` the caller still holds.
 
-  This package exports no `New` function and no `Glyph.Validate` method. Imports in this file are
-  limited to `strings`.
+  This package exports no `New` function and no `Glyph.Validate` method. Imports in `glyph/glyph.go`
+  are limited to `strings`; `glyph/doc.go` imports nothing.
 
-- **Commit:** `feat(glyph): add Language, Glyph and the total String printer`
+- **Commit:** `feat(glyph): add the package doc, Language, Glyph and the String printer`
+
+### Card 2: the closed Reason vocabulary and ParseError
+
+- **Context:**
+  - `docs/glyph.md`
+  - `glyph/glyph.go`
+  - `internal/quarryengine/errors.go`
+  - `internal/quarryengine/toc/types.go`
+- **Edits:** none
+- **Creates:**
+  - `glyph/errors.go`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:**
+
+  `glyph/errors.go` declares `package glyph` and holds, in this order:
+
+  1. `type Reason string`, with a doc comment saying it is the closed vocabulary a `ParseError`'s
+     `Reason` field is drawn from and that no value outside the constant block below is ever
+     produced.
+  2. One grouped `const` block with exactly these sixteen constants, in this order, each carrying the
+     explicit `Reason` type on its own line — as `internal/quarryengine/toc/types.go` does for every
+     `Kind` constant — and each with its own doc comment naming what it fires on:
+     `ReasonUnsupportedLanguage Reason = "unsupported_language"`,
+     `ReasonInvalidUTF8 Reason = "invalid_utf8"`, `ReasonNoSeparator Reason = "no_separator"`,
+     `ReasonUnitEmpty Reason = "unit_empty"`,
+     `ReasonUnitEmptySegment Reason = "unit_empty_segment"`,
+     `ReasonUnitDotSegment Reason = "unit_dot_segment"`,
+     `ReasonUnitBadRune Reason = "unit_bad_rune"`,
+     `ReasonMemberEmpty Reason = "member_empty"`,
+     `ReasonMemberEmptyComponent Reason = "member_empty_component"`,
+     `ReasonMemberTooDeep Reason = "member_too_deep"`,
+     `ReasonMemberNotIdentifier Reason = "member_not_identifier"`,
+     `ReasonMemberKeyword Reason = "member_keyword"`,
+     `ReasonMemberTypeParams Reason = "member_type_params"`,
+     `ReasonMemberParens Reason = "member_parens"`,
+     `ReasonMemberPointer Reason = "member_pointer"`,
+     `ReasonMemberBadRune Reason = "member_bad_rune"`.
+     No seventeenth constant. Add none for the root-package unit or for whitespace; both are covered
+     by the constants above.
+  3. Immediately below the constant block, `var Reasons = []Reason{...}` listing all sixteen in that
+     same order, with a doc comment saying Go cannot reflect over package-level constants, so this
+     slice is the only way a test or an exhaustive caller can enumerate the vocabulary, and that
+     adding a constant means adding it here in the same edit.
+  4. An unexported `var reasonText = map[Reason]string{...}` giving each of the sixteen a short
+     phrase naming what was wrong, e.g. `ReasonMemberPointer` maps to a phrase saying a receiver's
+     pointer-ness is not part of a glyph, and `ReasonNoSeparator` maps to a phrase saying a glyph
+     needs a `#` and a repository-relative path is not a glyph. All sixteen phrases must differ from
+     one another.
+  5. `type ParseError struct { Lang Language; Input string; Reason Reason; Detail string }` with a
+     doc comment saying callers use `errors.As` and switch on `Reason`, and that `Detail` carries the
+     offending segment, component or rune where one exists and is empty otherwise — a blank `Detail`
+     carries no meaning and is never a discriminator.
+  6. `func (e *ParseError) Error() string`, composing a complete message from `Reason`, `Lang` and
+     `Input` alone, appending `Detail` in parentheses only when it is non-empty, and falling back to
+     the raw `Reason` string when `reasonText` has no entry. The message must be non-empty for every
+     `Reason` in `Reasons`, and the sixteen messages must be pairwise distinct for one fixed `Lang`,
+     `Input` and `Detail`.
+
+  Imports in this file are limited to `fmt`. This file must compile against `Language` as card 1
+  declared it; the type is not redeclared here.
+
+- **Commit:** `feat(glyph): add the closed ParseError reason vocabulary`
 
 ### Card 3: printer tests
 
@@ -199,6 +207,6 @@ runs afterwards at the batch boundary and catches vet and lint regressions acros
 including in the new files.
 
 `glyph/errors.go` has no test of its own in this batch; its `Error()` assertions and the `Reasons`
-completeness test live in `glyph/golang_test.go` in batch 2, where the reject table they range over
-is declared. Until then `errors.go` is covered by compilation only, which is deliberate rather than
+completeness test live in `glyph/golang_test.go` in batch 2, where the reject tables they range over
+are declared. Until then `errors.go` is covered by compilation only, which is deliberate rather than
 an omission.
