@@ -336,6 +336,11 @@ in phase 2.
 
 ### 8.2 Mechanical use from Loomyard's Go code, without any LLM
 
+- **The execution DAG.** The plan format already derives its edges (`Uses` ∩ other cards'
+  targets). With glyphs as nodes every edge is checkable by `resolve` before anything runs, so
+  which cards are safe to execute in parallel — disjoint symbol sets, each in its own worktree — is
+  a mechanical answer, not a judgment. Phase 2 tightens it with `impact`: two cards that touch
+  disjoint symbols but share a caller are still not independent.
 - **Plan validation gate.** Every glyph in a plan resolves, unambiguously, before dispatch. Catches
   typos, stale names and ambiguity when they are cheap.
 - **Plan pack generation.** The annex the ladder harness already builds by hand: resolved spans for
@@ -365,8 +370,8 @@ one agent with a settled tool set: `map` to see what exists, and Loomyard's vali
 
 ## 9. Build order on `main`
 
-Each step is one commit that builds and tests green on its own. The harness rewrite (its own
-section, to come) lands before step 8.
+Each step is one commit that builds and tests green on its own. The harness rewrite (§9a) lands
+before step 8.
 
 1. **Delete** (§2). `go build ./... && go test ./...` green on what remains.
 2. **The `glyph` package** — pure Go, no cgo, no dependencies: parser, printer, the Go alphabet,
@@ -383,6 +388,54 @@ section, to come) lands before step 8.
 9. **Python and C#:** their glyph alphabets in `glyph`, the extractor gaps in §6, `members` heads.
    Designed now, coded after 8.
 10. **Phase 2 decision:** the type checker. Then `impact` and the full `assert-no-callers`.
+
+## 9a. The harness is rewritten too
+
+`bench/loomyard-eval/ladder/` is 17 000 lines (9 000 non-test) and is coupled to V1 in three
+places — it requires the seven V1 tool names in its yaml, warms the daemon through
+`workspace_symbol`, and builds `cmd/quarry-mcp` with V1's flags — so it cannot run against the
+rewrite unchanged. Its size is architectural, not incidental: it drives an *interactive* Claude Code
+session in tmux, which runs a skill, which dispatches a subagent, and then reconstructs what
+happened by locating the subagent's transcript under `~/.claude/projects`. Every gate and every
+rule in `HANDOFF.md` §2 exists because the harness does not control the run: the prompt gate, the
+outcome marker, the one-tmux-session rule, the transcript hunt, the static per-cell agent
+definitions, the post-hoc turn ceiling, the unusable `output_tokens`.
+
+**Probe, 2026-09-03, Claude Code 2.1.259, this host:** headless `claude -p` gives the harness
+direct control of everything the old one inferred.
+
+| need | `claude -p` | verified |
+|---|---|---|
+| the exact prompt | positional argument | yes |
+| the MCP server, and only it | `--mcp-config <file> --strict-mcp-config` | connected, listed in the `system` record |
+| the tool allowlist | `--allowedTools mcp__quarry__toc_dir --tools ""` | `toc_dir` ran; `toc_file` was denied and recorded in `permission_denials` |
+| the turn ceiling | `--max-turns N` (accepted, not in `--help`) | `terminal_reason: max_turns` |
+| the transcript | `--output-format stream-json --verbose` on stdout | every assistant and tool record, with usage |
+| usage, including `output_tokens` | per-message `usage` and a final `result` with `num_turns`, `duration_ms`, `total_cost_usd` (a list-price estimate, `costBasis: list`), `modelUsage` | yes — fixes `HANDOFF.md` §2 rule 5 |
+| no session residue | `--no-session-persistence` | yes |
+| stdin | must be `< /dev/null`, or a warning lands in the stream | yes |
+
+The V1 README retired an earlier `claude -p` port for being "a headless subprocess the operator
+cannot see inside". That is `tee` to a log file and `tail -f`. No other reason is recorded.
+
+**The new harness** is one Go program of roughly 1 000–1 500 lines with tests, replacing
+`cmd/ladderbench`, `internal/ladder`, `tools/runmatrix`, `run*.sh`, `launch-session.sh` and
+`.claude/skills/ladder-run`. Per cell and repetition it: restores the task worktree at the pinned
+commit; writes the MCP config for the cell; runs `claude -p` with the task prompt and the flags
+above, tee-ing the stream to `results/<root>/<cell>/<rep>/transcript.jsonl`; computes the metrics
+from the stream (turns, tool calls and bytes, Read bytes, greps, cache and output tokens); runs the
+scorer the same way, Opus against the fasit, JSON out; writes `summary.json`, `provenance.json`
+(quarry commit, dirty flag, server binary hash, `claude --version`, host) and the table. Resumable
+by the existence of a rep's result file. Two gates survive because the CLI cannot enforce them:
+the cell used the tool it was granted (the `none` arm called nothing), and the control cells' blinding
+check. Everything else the CLI now guarantees.
+
+**Kept:** the yaml shape (cells, tasks, pins, fasit, reps, models), the scorer prompt and schemas,
+every results root and conclusion. `HANDOFF.md` §2 rules 1 (do not edit source mid-matrix; the
+binary hash per rep stays) and 6 (cost within a root only) still apply. Rules 2, 3, 4, 5 and 7 are
+retired with the architecture that needed them.
+
+**Order:** the harness lands before §9 step 8, since step 8 is its first run.
 
 ## 10. Non-goals
 
