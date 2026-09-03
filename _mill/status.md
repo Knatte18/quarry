@@ -90,6 +90,8 @@ batches:
     commit_sha: aac9bdf204b2381628bd096d880dede0e6a5a226
     verify_baseline_failures: []
   - name: integration-tests
-    state: pending
+    state: running
+    implementer_session: 4660f20f-0f31-4e20-9fb8-a28e1cc2324f
+    start_sha: 5893b607f877b19963b2fb360bb36fddc0a750ed
     verify_baseline_failures: []
 ```
