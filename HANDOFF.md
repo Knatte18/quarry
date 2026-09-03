@@ -72,9 +72,11 @@ reviewer):
   gitignored `.scratch/ladder.env` with `LADDER_LOOMYARD_REPO=<path to a Loomyard checkout>` —
   recreate that file when resuming on another machine.
 
-After wave 1: T3 engine core, T4 resolve + expand, T5 facade + CLI, T6 thin MCP, T7 the ladder
-run, in that order (plan §12). For mechanical tasks (T5, T6) use `mill-quick`; the review rounds
-were pure overhead on T0.
+After wave 1: T3 engine core alone; then T4 (resolve + expand) in parallel with T5a (facade +
+CLI, `toc` only); then T5b (resolve/expand join the facade and CLI) in parallel with T6 (thin
+MCP); then T7 the ladder run (plan §12, restructured 2026-09-03: the MCP exposes only `toc`, so
+T4 and T5b sit off the critical path to the measurement). For mechanical tasks (T5a, T5b, T6)
+use `mill-quick`; the review rounds were pure overhead on T0.
 
 **The wiki holds only the two active wave-1 tasks.** Groomed 2026-09-03: every `[done]` entry
 removed; `ladder-model-tier-comparison` dropped as obsolete (bound to V1's seven-tool MCP — if
