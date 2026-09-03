@@ -1,10 +1,10 @@
 // toc_integration_test.go runs TOCFile against a real file in this repository —
-// internal/quarryengine/treesitter/treesitter.go — rather than a synthetic fixture, so the
+// internal/engine/treesitter/treesitter.go — rather than a synthetic fixture, so the
 // extraction pipeline is proven against source nobody wrote to satisfy this package's own tests. It
 // is hermetic (reads one file, writes nothing, spawns nothing) and belongs in the default test tier
 // alongside the rest of the package.
 
-package toc
+package engine
 
 import (
 	"path/filepath"
@@ -13,7 +13,7 @@ import (
 )
 
 // TestTOCFile_RepositoryFile_TreesitterPackage runs TOCFile against
-// internal/quarryengine/treesitter/treesitter.go, chosen because it is small, stable, and carries a
+// internal/engine/treesitter/treesitter.go, chosen because it is small, stable, and carries a
 // file header plus three well-documented functions. It asserts the symbol names, kinds, and range
 // ordering loosely enough to survive an ordinary edit to that file — a test that has to be updated
 // every time an unrelated comment is reflowed is a test that gets deleted.
@@ -22,10 +22,10 @@ func TestTOCFile_RepositoryFile_TreesitterPackage(t *testing.T) {
 	if !ok {
 		t.Fatal("could not determine this test file's own source location")
 	}
-	// This file sits at internal/quarryengine/toc/toc_integration_test.go, so the module root is
-	// four levels up.
-	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(thisFile))))
-	targetPath := filepath.Join(moduleRoot, "internal", "quarryengine", "treesitter", "treesitter.go")
+	// This file sits at internal/engine/toc_integration_test.go, so the module root is three
+	// levels up.
+	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	targetPath := filepath.Join(moduleRoot, "internal", "engine", "treesitter", "treesitter.go")
 
 	got, err := TOCFile(targetPath, "", Options{DocSentences: 1})
 	if err != nil {

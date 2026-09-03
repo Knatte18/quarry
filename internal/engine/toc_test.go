@@ -9,7 +9,7 @@
 // langOverride restriction, the Error/Partial mutual-exclusion invariant, and every per-file failure
 // route, over directories built in a t.TempDir().
 
-package toc
+package engine
 
 import (
 	"errors"
@@ -19,8 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/quarry/internal/quarryengine"
-	"github.com/Knatte18/quarry/internal/quarryengine/treesitter"
+	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
 // writeTempFile writes content to name inside a fresh t.TempDir() and returns the file's full path.
@@ -303,7 +302,7 @@ func TestTOCFile_SigEndOrderingInvariant(t *testing.T) {
 func TestTOCFile_UnsupportedExtension(t *testing.T) {
 	path := writeTempFile(t, "readme.md", "# Title\n")
 	_, err := TOCFile(path, "", Options{DocSentences: 1})
-	if !errors.Is(err, quarryengine.ErrLanguageUnsupported) {
+	if !errors.Is(err, ErrLanguageUnsupported) {
 		t.Errorf("TOCFile(%q) error = %v; want errors.Is(err, ErrLanguageUnsupported)", path, err)
 	}
 }

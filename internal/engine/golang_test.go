@@ -3,14 +3,14 @@
 // fixture is an inline string constant parsed through treesitter.WithTree, so the package stays
 // hermetic and parallel-safe.
 
-package toc
+package engine
 
 import (
 	"testing"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
-	"github.com/Knatte18/quarry/internal/quarryengine/treesitter"
+	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
 // goExtraction is every Go Strategy method's output for one parsed fixture, gathered in a single
