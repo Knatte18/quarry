@@ -46,16 +46,20 @@ type RedactionInput struct {
 // applied as case-sensitive composed-string replacements, since word-boundary matching does not apply
 // to a path or a prefix.
 func RedactAnswer(answer string, in RedactionInput) string {
+	// The composed-string replacements run first, so a prefixed tool name (e.g.
+	// "mcp__quarry__toc") is stripped down to its bare suffix ("toc") before the bare-token
+	// alternation runs -- running the bare-token pass first would never see "toc" as a whole word,
+	// since the "_" of "mcp__quarry__" is itself a word character and blocks the match's leading
+	// boundary.
 	redacted := answer
+	redacted = replaceComposedString(redacted, in.MCPPrefix)
+	redacted = replaceComposedString(redacted, in.QuarryRepoRoot)
+	redacted = replaceComposedString(redacted, in.TaskWorktreePath)
 
 	bareTokens := append(append([]string{}, in.QuarryTools...), in.ServerName)
 	if pattern := BareTokenAlternation(bareTokens); pattern != nil {
 		redacted = pattern.ReplaceAllString(redacted, RedactionPlaceholder)
 	}
-
-	redacted = replaceComposedString(redacted, in.MCPPrefix)
-	redacted = replaceComposedString(redacted, in.QuarryRepoRoot)
-	redacted = replaceComposedString(redacted, in.TaskWorktreePath)
 
 	return redacted
 }
