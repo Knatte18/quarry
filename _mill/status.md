@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: plan-review-r5
 slug: glyph-package
 branch: glyph-package
 plan: _mill/plan
@@ -29,4 +29,5 @@ plan-review-r3  '2026-09-03T16:55:34Z'
 plan-fix-r3  '2026-09-03T16:57:13Z'
 plan-review-r4  '2026-09-03T17:01:37Z'
 plan-fix-r4  '2026-09-03T17:02:54Z'
+plan-review-r5  '2026-09-03T17:07:15Z'
 ```
