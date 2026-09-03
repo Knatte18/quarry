@@ -142,7 +142,12 @@ Batch-local decisions live in each batch file._
 
 - **Decision:** no file this task creates or writes at runtime into a tracked location may contain
   an absolute host path. `provenance.json` carries `loomyard_repo_sha256`, never the resolved
-  repository path. `summary.json` and `table.txt` carry cell ids and metrics only. Test fixtures
+  repository path. `summary.json` and `table.txt` carry cell ids, metrics, and — as the only
+  identification of the root they describe — the results root's **base name**, never the path the
+  operator passed: a root invoked by absolute path would otherwise write a machine path into two
+  tracked files. Neither file carries a wall-clock write time; that belongs in `provenance.json`,
+  which is not golden-compared. Those two exclusions together are also what make batch 8's
+  byte-for-byte golden comparison possible at all. Test fixtures
   committed under `testdata/` use relative or clearly synthetic paths.
 - **Rationale:** `HANDOFF.md` section 1 states the rule; it is the reason the raw transcript tree is
   gitignored rather than committed.

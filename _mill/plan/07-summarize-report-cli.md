@@ -44,12 +44,23 @@ accounting fix cost a re-report rather than a re-run.
   ladder letter, the task id, the allowed list, the control flag, a metric-name to statistics map,
   the three counters `max_turns_count`, `unscored_count` and `blinding_failed_count`, and the cell's
   gate-1 finding when present; and `Summary` carrying the cells, the comparisons, an `incomplete`
-  slice, an `invalid` slice and a meta block naming the results root and the write time.
+  slice, an `invalid` slice and a meta block naming the results root's **base name only** and
+  nothing else — no operator-supplied path and no wall-clock write time, per the overview's
+  no-machine-paths-in-tracked-output decision, which is also what lets batch 8 compare this file
+  byte-for-byte against a golden.
   `Summarize(resultsRoot string) (*Summary, error)` walks the raw tree, reads each repetition's
   state file for its cell metadata — the ladder letter, the allowed list, the control flag and the
   MCP prefix all come from there, so no ladder file is consulted — recomputes that repetition's
   cost metrics from its own transcript using the prefix the state file carries, and reads that
-  repetition's recall and precision from its score record. The two inputs are asymmetric on purpose:
+  repetition's recall and precision from its score record under the exact keys `recall` and
+  `precision` — both scoring rules declare those two keys identically in their own fenced examples,
+  which is why the summariser needs no per-schema mapping, and a record lacking either (every
+  unscored stand-in, which carries a false scored flag instead) is excluded from the correctness
+  medians by the exclusion rules below rather than treated as a zero. The remaining score fields are
+  schema-specific — the exploration rule declares one more, the impact rule two — and are left in
+  the score records without being aggregated: they answer questions this task's comparison does not
+  ask, and the discussion fixes recall and precision as the correctness metrics.
+  The two inputs are asymmetric on purpose:
   every cost metric is recomputed, which is what keeping the transcripts buys, while recall and
   precision are the scorer's judgment and exist nowhere else, so the score record is their only
   source. The metrics file is never read — it is diagnostic, and a summariser that trusted it would
@@ -92,7 +103,9 @@ accounting fix cost a re-report rather than a re-run.
 - **Moves:** none
 - **Requirements:** create `package ladder` file `report.go` with `RenderTable(s *Summary, p
   *Provenance) string` and `WriteTable(resultsRoot, table string) error`. The table opens with a
-  header block carrying the results root, the effective repetition count, the CLI version from the
+  header block carrying the results root's **base name only** — never the operator-supplied path,
+  and no wall-clock time anywhere in the file, for the same two reasons the summary carries
+  neither — the effective repetition count, the CLI version from the
   provenance record, and the cache caveat stated in the harness's own words: the first repetition of
   a root pays cache creation while later repetitions read it, so cache-read and cache-creation
   figures are reported separately, never summed, and per-repetition numbers are not interchangeable
@@ -117,21 +130,26 @@ accounting fix cost a re-report rather than a re-run.
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
+  - `bench/loomyard-eval/ladder/ladder-toc.yaml`
 - **Edits:** none
 - **Creates:**
   - `bench/loomyard-eval/ladder/cmd/ladder/main.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** create a thin `package main` with exactly two subcommands and no third.
-  The run subcommand takes a required ladder-file flag, a required results-root flag, an optional
-  comma-separated cell-id list, an optional repetition override and an optional claude-binary flag
-  defaulting to the bare name `claude` resolved on the path. It resolves the quarry repository root
+  The run subcommand's flags are spelled exactly `--config` (required, the ladder file), `--results`
+  (required, the results root), `--cells` (optional, a comma-separated cell-id list), `--reps`
+  (optional, a repetition override) and `--claude-bin` (optional, defaulting to the bare name
+  `claude` resolved on the path). Those spellings are not free: the migrated ladder file's header
+  comment documents the entry point using them, and the hand-run done-criterion invokes it verbatim,
+  so a renamed flag silently breaks the documented command. The report subcommand takes `--results`
+  and nothing else — **no ladder-file flag at all**, because a results root is self-describing:
+  every repetition's state file carries its own cell metadata.
+  The run subcommand resolves the quarry repository root
   by calling `ResolveQuarryRepoRoot` with the process working directory — the single producer of
   that path, created in batch 5 — calls the run entry point, then summarises, writes the summary, and
-  prints and writes the table. The report subcommand takes a required results-root flag and **no
-  ladder-file flag at all** — a results root is self-describing because every repetition's state
-  file carries its own cell metadata — and re-derives the summary and the table from the raw tree
-  without running or scoring anything.
+  prints and writes the table. The report subcommand re-derives the summary and the table from the
+  raw tree without running or scoring anything.
   Exit non-zero when the run entry point reports an incomplete cell or a cell with a blinding
   failure; exit non-zero on any returned error, printing it to standard error. Keep all logic in the
   package the overview's layout decision names: this file parses flags, wires them and exits. Do not

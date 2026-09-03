@@ -143,10 +143,17 @@ is the part `report` depends on and the part a killed run must survive.
   which the cell is recorded incomplete, the run continues with the remaining cells, and the process
   exits non-zero. A max-turns terminal reason is **complete, not a failure**: full cost metrics, no
   answer file, the scorer is not invoked, and the score record is the unscored stand-in carrying the
-  max-turns reason. A fatal gate-2 finding is complete as a failed repetition and is **never**
-  retried — it is deterministic, so three retries buy three identical failures at full price. A
-  scorer failure retries **only the scorer**, up to three attempts, never the measured run, and then
-  writes the unscored stand-in carrying the scorer-failed reason.
+  max-turns reason. A fatal gate-2 finding — check (a) or (b) after the run, exactly like check (d)
+  before it — writes the repetition's state as complete **with the blinding-failed flag set to
+  true**, and is **never** retried: it is deterministic, so three retries buy three identical
+  failures at full price. Setting that flag is what the whole void-repetition mechanism rests on —
+  the completeness predicate returns false for it, so the next invocation re-attempts it once the
+  operator fixes the cause; the summariser excludes it from both medians, does not count it as
+  present, and puts its cell in the invalid list; and the process exits non-zero. A finding written
+  without the flag would satisfy resume and be silently skipped forever. A
+  scorer failure retries **only the scorer**, up to the `MaxAttempts` ceiling card 25 declares —
+  the same constant the invalid-repetition path uses, not a second hand-written three — never the
+  measured run, and then writes the unscored stand-in carrying the scorer-failed reason.
   Return a non-zero exit signal when any cell is incomplete or any cell has a repetition with the
   blinding-failed flag set. Do not retry a max-turns repetition and do not re-execute a measured
   repetition because its scorer failed.
