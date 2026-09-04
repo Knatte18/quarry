@@ -61,10 +61,16 @@ after that is a change to a published contract rather than a choice.
 - MCP — **T6**, and T6 exposes only `toc` regardless.
 - Any change to `internal/engine`'s walk, its `toc` answer, its ignore matcher, its strategies, or
   its `Symbol` key set. T4 consumes T3's engine and adds to it; it does not revise it. The one
-  permitted exceptions are two: the mechanical follow-through T3 itself scheduled (see Technical
-  context), and the single stale sentence in `goUngroupedTypeSymbol`'s doc comment describing
-  `expand`'s behaviour — a comment about *this* task, corrected by this task, with no code touched
-  (D12's last bullet).
+  permitted exceptions are exactly two, both named here and closed:
+  1. **`internal/engine/golang.go`** — the one stale sentence in `goUngroupedTypeSymbol`'s doc
+     comment describing `expand`'s behaviour. A comment about *this* task, corrected by this task,
+     with no code touched (D12's last bullet).
+  2. **`internal/engine/loomyard_test.go`** — widening T3's `loomyardRepo(t *testing.T)` gate helper
+     to `loomyardRepo(tb testing.TB)`, a signature-only change so D16's benchmark can call it. No
+     body change, no behaviour change, and every existing `*testing.T` caller still compiles.
+
+  Nothing else under `internal/engine` is touched. Neither exception changes behaviour, and each is
+  its own card so a reviewer sees it in isolation.
 - Any change to `glyph/`. The engine never re-implements the grammar (glyph.md §6); T4 imports it
   and believes its answers.
 - Any change to `docs/glyph.md` or `docs/rewrite-plan.md`. T4 records two contract gaps it runs into
@@ -189,7 +195,7 @@ asserted about them are now read from code, not from a plan:
 
   **A missing unit directory is not an error and never reaches this rule.** `unitDirs` reports a
   nonexistent directory by returning an empty slice, and `symbolsOfUnit` over zero directories
-  returns an empty slice and a nil error — verified in T3's merged `resolve.go`, where `dirExists`
+  returns an empty slice and a nil error — verified in T3's `resolve.go` on `engine-core`, where `dirExists`
   is a plain `os.Lstat` test and the extraction loop simply does not run. That is what makes D10's
   `unit: not_found` reachable: the §8.1 Create case — a card naming a unit the plan is about to
   create — must answer `not_found` with `unit: not_found`, and it would instead fail the whole call
@@ -404,6 +410,13 @@ asserted about them are now read from code, not from a plan:
   guarantee has something to be asserted against:
 
   ```go
+  // unitDirsResult is one memoised unitDirs answer. unitDirs cannot fail — it is two os.Lstat
+  // tests — so this carries no error.
+  type unitDirsResult struct {
+      dirs      []string
+      collision bool
+  }
+
   // unitMemo answers "the symbols of unit U" at most once per unit, for the lifetime of one call.
   type unitMemo struct {
       repo    *Repo
@@ -415,8 +428,12 @@ asserted about them are now read from code, not from a plan:
 
   func newUnitMemo(r *Repo) (*unitMemo, error)          // builds the ignoreSet, below
   func (m *unitMemo) symbolsOf(unit string) ([]Symbol, error)
-  func (m *unitMemo) dirsOf(unit string) (unitDirsResult, error)
+  func (m *unitMemo) dirsOf(unit string) unitDirsResult
   ```
+
+  `dirsOf` returns no error because `unitDirs` returns none: it is two `dirExists` calls, each an
+  `os.Lstat` whose failure is reported as "not a directory" rather than as an error. `symbolsOf` is
+  the only one of the two that can fail, and its error is D2's call-failing kind.
 
   `Resolve` is a thin shell: it constructs a `unitMemo` and delegates to an unexported
   `func (r *Repo) resolve(targets []string, m *unitMemo) ([]ResolveResult, error)` that does the
@@ -545,7 +562,7 @@ asserted about them are now read from code, not from a plan:
   suffices and "no discontiguous span type is needed"; emitting one contiguous head entry is the
   only reading of that conclusion consistent with §4's closed entry shape. **This is a deliberate
   reading of D4's prose, which also calls `expand` the thing that "renders" the subtraction — the
-  plan revision should confirm nothing in T3's merged code assumed `expand` would emit a line set.**
+  plan revision should confirm nothing in T3's code assumed `expand` would emit a line set.**
 - **The one stale T3 comment, and its disposition.** `internal/engine/golang.go`'s
   `goUngroupedTypeSymbol` doc comment says the head span is set as it is "because the later expand
   verb renders a type's head by omitting the lines its own member symbols cover". Its own second
@@ -660,10 +677,15 @@ asserted about them are now read from code, not from a plan:
 
 ### D16 — The 150 ms criterion is a floor measurement, and the benchmark is kept beside it
 
-- Decision: two artefacts in `internal/engine`, both gated on Loomyard by T3's D17 rule exactly
-  (skip when `LADDER_LOOMYARD_REPO` is unset or names a nonexistent directory; **fail** when it is
-  set but `git -C <repo> rev-parse HEAD` is not `72c23d9`; skip when the `git` binary is missing or
-  errors):
+- Decision: two artefacts in `internal/engine/loomyard_timing_test.go`, both gated on Loomyard by
+  T3's D17 rule exactly (skip when `LADDER_LOOMYARD_REPO` is unset or names a nonexistent directory;
+  **fail** when it is set but `git -C <repo> rev-parse HEAD` is not `72c23d9`; skip when the `git`
+  binary is missing or errors). **The gate is T3's helper, widened, not a copy of it:** T3's
+  `loomyardRepo(t *testing.T)` in `loomyard_test.go` cannot be called from a `*testing.B`, so T4
+  changes its parameter to `testing.TB` — signature only, no body change, every existing caller
+  still compiling. That is Scope's second named exception. Duplicating the pin check into T4's own
+  file was rejected: two implementations of "is this the right Loomyard" is exactly the drift that
+  makes a done-criterion silently unverifiable when one of them is updated and the other is not.
   1. `TestResolve_TwentyGlyphsUnder150ms` — skipped under `-short`. It first asserts that all twenty
      targets resolve `found`, then times one `Resolve` call five times and asserts the **minimum**
      elapsed is under 150 ms.
@@ -678,8 +700,11 @@ asserted about them are now read from code, not from a plan:
 - The twenty glyphs are four each from five Loomyard packages of differing size, pinned as literal
   strings in the test file and chosen at implementation time from the checkout at `72c23d9`. The
   pin is enforced (D17's fail-on-mismatch), so they cannot silently go stale. At least one of the
-  five must be a large package — §5 measures `internal/reedengine` at 67 files and 65 ms for a
-  single glyph — so the grouping of D9 is what the number depends on.
+  five must be a large package: §5's own table measures a single glyph in a **35-file package
+  (317 KB) at 65 ms serial**, so four glyphs in such a package is where an ungrouped implementation
+  would blow the 150 ms budget outright, and D9's grouping is what the number depends on. (§4's
+  67-file figure is `toc internal/reedengine`, a different package and a different measurement —
+  not the source of the 65 ms.)
 - No tracked file carries the Loomyard path; `.scratch/ladder.env` holds `LADDER_LOOMYARD_REPO` per
   machine and is gitignored, exactly as T2 and T3 do.
 - Rejected: a single timed run (flaky); an average or a p95 over runs (measures the machine's load,
@@ -687,38 +712,44 @@ asserted about them are now read from code, not from a plan:
   done-criterion would never be checked); committing a Loomyard fixture (large, and the number is
   meant to be over a real repository).
 
-### D17 — Every status in glyph.md §5 has a committed fixture
+### D17 — The fixture inventory, complete and placed
 
-- Decision: `internal/engine/testdata/` gains the fixtures below, and each maps to one named status
-  case. Fixtures that cannot be committed — a tree whose own `.gitignore` excludes one of its files,
-  and the both-directories collision — are built at run time under `.scratch/`, via the
-  `writeScratchTree` helper T3's `scratchtree_test.go` already provides, and removed in
-  `t.Cleanup`. **Never `t.TempDir()`**: it writes to the system temp directory, which the
-  constraints ban.
-  - `found` — a plain package-level function and a method, in the existing `testdata/tree/pkg`.
-  - `multipart` — three `func init()` in one package (T3's `testdata/glyphs/inits.go` already
-    carries three; if it lives in a package the resolve tests can address, reuse it rather than add).
-  - `ambiguous`, build tags — a new `testdata/tags/` holding two files, `//go:build linux` and
-    `//go:build !linux`, each declaring the same `func Dup()`. `testdata/` is invisible to the go
-    tool, so the pair never reaches a build.
-  - `ambiguous`, unit collision — a run-time `.scratch/` tree with both a `foo/` holding an external
-    test package and a directory literally named `foo_test/`, per T3's plan 05 card 34's own
-    collision fixture. Built at run time for **test isolation**, not because it is inexpressible:
-    T3 already commits `testdata/foo_test/`, and adding the `testdata/foo/` sibling the collision
-    needs would introduce a second package into the tree T3's walk and round-trip tests enumerate.
-  - `not_found` with `unit: found` — an existing unit, a name that is not in it.
-  - `not_found` with `unit: not_found` — a unit whose directory does not exist.
+- Decision: every fixture the Testing section consumes is enumerated below, with where it lives and
+  why. **Committed fixtures go under `internal/engine/testdata/` only when they add no package to a
+  directory T3's own walk and round-trip tests enumerate**; everything else is built at run time
+  under `.scratch/` via the `writeScratchTree` helper T3's `scratchtree_test.go` provides, and
+  removed in `t.Cleanup`. **Never `t.TempDir()`** — it writes to the system temp directory, which
+  the constraints ban outright.
+
+  | fixture | where | consumed by | why there |
+  |---|---|---|---|
+  | `found`, package-level func | `testdata/tree/pkg` (existing: `Alpha`, `Beta`) | Testing 3 | already committed, nothing added |
+  | `found`, method | **`testdata/methods/`** (new) — a type with methods split across **two** files | Testing 3, 12 | `testdata/tree/pkg` has no method at all, and Testing 12's "members across several files" needs two files; a new sibling directory adds no package to `tree/` |
+  | `multipart` | `testdata/glyphs/inits.go` (existing: three `func init()`) | Testing 4, 15 | already committed; `expand` of that glyph is D14's row-four case |
+  | `ambiguous`, build tags | **`testdata/tags/`** (new): `//go:build linux` and `//go:build !linux`, each declaring `func Dup()` plus `type DupType struct{}` | Testing 5, 15 | `testdata/` is invisible to the go tool, so the pair never reaches a build; the type is what Testing 15's type-only ambiguous row needs |
+  | `ambiguous`, mixed kinds | same `testdata/tags/` — one file's `Mixed` a type, the other's a func | Testing 15 | one directory, one build-tag mechanism, two shapes |
+  | `not_found` + `unit: found` | `testdata/tree/pkg`, a name not in it | Testing 7 | no fixture needed |
+  | `not_found` + `unit: not_found` | a unit whose directory does not exist | Testing 7, 15b | no fixture needed |
+  | `ambiguous`, unit collision | `.scratch/` tree: `foo/` with an external test package **and** a literal `foo_test/` | Testing 6, 15c | T3 commits `testdata/foo_test/`; adding the `testdata/foo/` sibling would put a second package into the tree T3's tests enumerate |
+  | path targets | `testdata/tree/` (existing: `README.md`, `config.yaml`, `Makefile`, `notes.rst`, `sub/`) | Testing 10 | already committed, and already covers a code file, several non-code files and a subdirectory |
+  | gitignored path target | `.scratch/` tree with a `.gitignore` | Testing 10 | a committed tree cannot hold a tracked file its own `.gitignore` excludes |
+  | unreadable directory | `.scratch/` tree, chmod'd mid-test | Testing 15a | cannot be committed at all; skipped when the host cannot revoke read permission |
+  | non-lexicographic `os.ReadDir` order | `.scratch/` tree whose files are created in reverse order | Testing 16 | ordering is a property of the directory read, so the fixture must control creation order |
+
+  The ignore-filter case T3 already covers in `TestSpansOf_IgnoreFilter` is **not** rebuilt here:
+  D9's memo passes the same `ignoreSet` down to the same `symbolsOfUnit`, so T4 adds no filtering of
+  its own and testing it again would assert T3's behaviour through a longer path.
 - Rationale: §12's T4 done-when is "glyph.md §5 statuses each have a fixture", so the fixtures are
-  the deliverable, not a by-product. Committing them where possible keeps the tests readable and
-  reviewable. The two run-time exceptions have two different reasons, and neither is "a committed
-  tree cannot express it": the ignore-filter case genuinely cannot be committed (a tree whose own
-  `.gitignore` excludes one of its tracked files), while the collision case is held out of
-  `testdata/` to keep T3's existing walk and round-trip enumerations undisturbed.
+  the deliverable, not a by-product, and an inventory the plan writer can work from directly is what
+  makes that checkable. The placement rule is the one T3's own tests impose: several of them walk
+  `testdata/tree/` and assert on what they find, so a new package dropped in there is a change to
+  T3's tests disguised as a fixture.
 - Rejected: `t.TempDir()` (banned by the constraints); synthesising sources as string literals in
-  the test (a fixture nobody can open and read is a worse fixture); one fixture package covering
-  several statuses at once (a build-tag pair inside the package the other cases query would make
-  every other case's symbol list depend on it); committing the collision's `testdata/foo/` sibling
-  (perturbs T3's tests for a case a `.scratch/` tree covers exactly as well).
+  the test (a fixture nobody can open and read is a worse fixture); putting the new `methods/` and
+  `tags/` packages under `testdata/tree/` (perturbs T3's walk assertions); committing the
+  collision's `testdata/foo/` sibling (same reason, for a case a `.scratch/` tree covers exactly as
+  well); reusing `testdata/glyphs/` for the method-across-files case (its files are one package by
+  design and T3's `glyph_test.go` asserts on the whole symbol list).
 
 ### D18 — Two contract gaps are recorded, neither is closed
 
@@ -745,11 +776,11 @@ asserted about them are now read from code, not from a plan:
 
 ## Technical context
 
-**Everything T4 builds on is unmerged.** See the Provenance section above for the full table and the
-six-item verification list the plan revision must run after `mill-merge-in`. The single most
-important item: `unitDirs`, `symbolsOfUnit` and `SpansOf` are **design only** — T3's batch 5
-(`spans`) had not started when this was written. If that batch shipped a different split, D9's memo
-and D10's unit test are the two decisions to re-derive first.
+**Everything T4 builds on is committed on `engine-core` and unmerged.** Nothing of T3's is on `main`.
+See the Provenance section above for the full table and the eight-item verification list the plan
+revision must run after `mill-merge-in`. `unitDirs`, `symbolsOfUnit` and `SpansOf` were read from
+that worktree's `internal/engine/resolve.go`, not from a plan; if the merge changed their split,
+D9's memo and D10's unit test are the two decisions to re-derive first.
 
 **The pipelined hold.** Do not begin implementation until T3 is merged to `main`. Then merge `main`
 into this branch with the `mill-merge-in` skill and revise the plan against the code T3 actually
@@ -765,8 +796,10 @@ chose, not the layout its discussion assumed.
 | `internal/engine/resolve_test.go` | extend with the status fixtures and the grouping test |
 | `internal/engine/expand_test.go` | new |
 | `internal/engine/loomyard_timing_test.go` | new: the 150 ms test and the benchmark |
-| `internal/engine/testdata/tags/` | new: the build-tag `ambiguous` pair |
+| `internal/engine/testdata/tags/` | new: the build-tag `ambiguous` fixtures (func and type) |
+| `internal/engine/testdata/methods/` | new: a type with methods across two files |
 | `internal/engine/golang.go` | **comment only**: the one stale sentence in `goUngroupedTypeSymbol`'s doc comment (D12's last bullet). Its own card, no code change |
+| `internal/engine/loomyard_test.go` | **signature only**: `loomyardRepo(t *testing.T)` → `(tb testing.TB)`, so D16's benchmark can use the one gate. Its own card |
 
 **Helpers to reuse rather than rewrite** (all T3's, all in `internal/engine`):
 
@@ -837,8 +870,9 @@ chose, not the layout its discussion assumed.
 
 **Fixture-driven unit tests** over `internal/engine/testdata/`, per D17:
 
-3. `found` — a function and a method resolve to exactly one symbol each, with `File`, `Start`,
-   `SigEnd`, `End`, `Signature` and `Doc` as the walk reports them, and `ID` the canonical glyph.
+3. `found` — a function (`testdata/tree/pkg`) and a method (`testdata/methods/`) resolve to
+   exactly one symbol each, with `File`, `Start`, `SigEnd`, `End`, `Signature` and `Doc` as the
+   walk reports them, and `ID` equal to `Target` (D3: no Go input normalises).
 4. `multipart` — the three-`init` package: one result, `status: multipart`, three symbols, in
    file-then-line order.
 5. `ambiguous` by build tags — `testdata/tags/`: one result, `status: ambiguous`, both declarations
@@ -864,9 +898,9 @@ chose, not the layout its discussion assumed.
     (`member_too_deep`, `unit_bad_rune`, `unit_dot_segment`, `member_keyword`), each with `Status`
     empty, `Error` non-empty and `Reason` the grammar's own word; and one call mixing a malformed
     target with valid ones, asserting the valid answers survive.
-12. `expand` on a struct — head is the type entry with span from `HeadStart`/`HeadEnd`, members are
-    its methods from **several files**, sorted by file then line, the type symbol itself absent from
-    `Members`.
+12. `expand` on a struct — over `testdata/methods/`, head is the type entry with span from
+    `HeadStart`/`HeadEnd`, members are its methods from **both files**, sorted by file then line,
+    the type symbol itself absent from `Members`.
 13. `expand` on an interface — head covers the whole declaration, every member span lies inside the
     head range, and the members are the `method_elem`s with the interface as owner. This is D12's
     shape assertion and the reason no discontiguous span is emitted.
@@ -892,8 +926,9 @@ chose, not the layout its discussion assumed.
     naming a **type** with exactly one match answers `ambiguous` with candidates and no head, not
     `found`; asserted alongside `Resolve` on the same glyph in the same test, so the two verbs are
     shown to agree rather than assumed to.
-16. Ordering (D15) — a unit whose files are not in lexicographic `os.ReadDir` order, asserting both
-    verbs' outputs come back file-then-line regardless.
+16. Ordering (D15) — a `.scratch/` tree whose files are created in reverse order, so `os.ReadDir`
+    does not hand them back lexicographically, asserting both verbs' outputs come back file-then-line
+    regardless.
 
 **Loomyard, env-gated per D17's skip/fail rule, skipped under `-short`:**
 
@@ -929,7 +964,7 @@ types to `answer.go`, and changes no walk rule, no `toc` answer and no existing 
 - **Q:** Where does an I/O failure inside a `Resolve` call go — the entry or the call? **A:** [auto-pick, discussion-review r1 gap] The call: every engine error other than `ErrTargetNotFound` and `ErrTargetOutsideRepo` fails the whole call, and D8's per-entry `Error` stays closed to pre-resolution rejections of the target string. **Why:** a per-entry I/O error puts "unspellable target" and "unreadable directory" under one key, and a unit that failed to read would otherwise answer `not_found` for every glyph in it — which a Delete card's done-check reads as success.
 - **Q:** What does `expand` answer when `unitDirs` reports a collision? **A:** [auto-pick, discussion-review r2 gap] `ambiguous`, checked before every kind row of D14's table, with `Expand` reading `collision` from `unitDirs` itself. **Why:** `symbolsOfUnit` returns the union either way, so a single type match under a collision would otherwise answer `found` where `Resolve` answers `ambiguous` — breaking D11's whole reason for sharing D5's and D6's rules.
 - **Q:** How is "each unit parsed once" made observable to a test? **A:** [auto-pick, discussion-review r2 gap] A named unexported `unitMemo` type carrying a `parses` counter, with `Resolve` delegating to `r.resolve(targets, memo)`. **Why:** a plain map's entry count is true by construction and proves nothing, and wall-clock is the very thing the test must be independent of; §12's done-criterion and the 150 ms number both rest on this guarantee.
-- **Q:** Does a missing unit directory fail the call under D2's error boundary? **A:** [auto-pick, discussion-review r2 gap] No — `unitDirs` returns an empty slice and `symbolsOfUnit` a nil error, verified in T3's now-written `resolve.go`; only a genuine read failure fails the call. **Why:** §8.1's Create case must answer `not_found` with `unit: not_found`, which is unreachable if an absent directory is an error.
+- **Q:** Does a missing unit directory fail the call under D2's error boundary? **A:** [auto-pick, discussion-review r2 gap] No — `unitDirs` returns an empty slice and `symbolsOfUnit` a nil error, verified in T3's `resolve.go` on `engine-core`; only a genuine read failure fails the call. **Why:** §8.1's Create case must answer `not_found` with `unit: not_found`, which is unreachable if an absent directory is an error.
 - **Q:** Is `ID` a canonicalisation of the target? **A:** [auto-pick, discussion-review r2 nit] No — for Go it is byte-identical to `Target`; the key earns its place as wire-form parity with `Symbol.ID`. **Why:** `glyph/golang.go` normalises nothing — `Draw (int)` is rejected outright — so §8.1's canonicalisation example is a C# case and Testing 3 must not chase a Go case that cannot exist.
 - **Q:** Who owns T3's stale comment saying `expand` "renders" the head subtraction? **A:** [auto-pick, discussion-review r2 nit] T4 corrects that one sentence, inside Scope's mechanical-follow-through exception, as its own card. **Why:** it is a comment about T4's behaviour written before T4 decided it; leaving it documents an expectation the code will not meet.
 - **Q:** Does T4 amend `docs/glyph.md`? **A:** [auto-pick] No — two gaps are recorded in code comments and neither is closed. **Why:** T3 took the same position for the same reason: a single task changing the shared identifier contract is the coupling §7's ordering avoids, and both gaps should be decided against a repository that needs one.
