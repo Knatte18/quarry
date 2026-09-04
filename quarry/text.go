@@ -157,12 +157,23 @@ func writeSymbolLines(b *strings.Builder, fe FileEntry) {
 	}
 }
 
-// writeSymbolLine writes one symbol's line, identical in both the directory and file forms:
-// "<Start>-<End>", then " (sig <Start>-<SigEnd>)" only when SigEnd != 0 — the engine's documented
-// marker for a symbol with no body, such as a Go type alias, never line zero, since every real line
-// number is 1-based — then " <ID>: " + normalizeProse(Signature). When Doc is non-empty, a following
-// line of exactly four spaces then normalizeProse(Doc); when it is empty, no line at all.
+// writeSymbolLine writes one symbol's line, identical in both the directory and file forms: a
+// leading "<File>:" only when sym.File is non-empty, then "<Start>-<End>", then " (sig
+// <Start>-<SigEnd>)" only when SigEnd != 0 — the engine's documented marker for a symbol with no
+// body, such as a Go type alias, never line zero, since every real line number is 1-based — then
+// " <ID>: " + normalizeProse(Signature). When Doc is non-empty, a following line of exactly four
+// spaces then normalizeProse(Doc); when it is empty, no line at all.
+//
+// The file prefix is invisible to the existing table-of-contents view: inside a toc answer the
+// symbol's File field is always empty, because the symbol already sits in its own file's entry in
+// that view. Resolve and Expand entries span files, so their symbol lines need the prefix to stay
+// self-describing outside that context. This is one grammar with one implementation, not two: the
+// same writeSymbolLine serves both, and File's emptiness is what selects the toc-compatible form.
 func writeSymbolLine(b *strings.Builder, sym Symbol) {
+	if sym.File != "" {
+		b.WriteString(sym.File)
+		b.WriteString(":")
+	}
 	b.WriteString(strconv.Itoa(sym.Start))
 	b.WriteString("-")
 	b.WriteString(strconv.Itoa(sym.End))
