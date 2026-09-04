@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Environment variables the driving test sets to configure this fake's expectations and behaviour.
@@ -31,6 +32,11 @@ const (
 	fakeClaudeScorerEffortEnv = "FAKE_CLAUDE_SCORER_EFFORT"
 	fakeClaudeStreamEnv       = "FAKE_CLAUDE_STREAM"
 	fakeClaudeLeakPrefixEnv   = "FAKE_CLAUDE_LEAK_PREFIX"
+	// fakeClaudeServerStatusOverrideEnv, when set to "<server>=<status>", forces the named MCP
+	// server's advertised status to something other than "connected" in the session-init record this
+	// fake emits -- the offline stand-in for a rung cell whose server was granted but never
+	// connected.
+	fakeClaudeServerStatusOverrideEnv = "FAKE_CLAUDE_SERVER_STATUS_OVERRIDE"
 )
 
 // flagsWithValue names every flag this fake consumes a following argument for.
@@ -187,7 +193,7 @@ func writeCellStream(stream string) {
 	w := bufio.NewWriter(os.Stdout)
 	defer w.Flush()
 
-	writeInit(w, os.Getenv(fakeClaudeToolsEnv))
+	writeInit(w, advertisedTools())
 
 	switch stream {
 	case "normal":
@@ -226,11 +232,109 @@ func writeScorerReply() {
 	writeResult(w, "completed", "end_turn", false)
 }
 
+// advertisedTools returns the full advertised tool list for a measured cell: the fixed built-ins
+// (FAKE_CLAUDE_TOOLS, the "--tools" flag's own value) plus any granted MCP-prefixed tools
+// (FAKE_CLAUDE_ALLOWED, the "--allowedTools" flag's own value), comma-joined -- matching what the
+// real CLI's session-init record advertises for a granted cell, where "tools" carries the granted
+// mcp__<server>__<tool> entries alongside the built-ins. A control cell leaves FAKE_CLAUDE_ALLOWED
+// unset, so this reduces to the built-in list unchanged.
+func advertisedTools() string {
+	builtins := os.Getenv(fakeClaudeToolsEnv)
+	allowed := os.Getenv(fakeClaudeAllowedEnv)
+	switch {
+	case allowed == "":
+		return builtins
+	case builtins == "":
+		return allowed
+	default:
+		return builtins + "," + allowed
+	}
+}
+
 func writeInit(w *bufio.Writer, tools string) {
 	fmt.Fprintf(w,
-		`{"type":"system","subtype":"init","uuid":"fake-init","timestamp":"2026-01-01T00:00:00Z","session_id":"fake-session","model":"fake-model","tools":%s,"mcp_servers":[],"permissionMode":"default","claude_code_version":"0.0.0-fake","memory_paths":{},"skills":[],"slash_commands":[]}`+"\n",
-		toJSONStringArray(tools),
+		`{"type":"system","subtype":"init","uuid":"fake-init","timestamp":"2026-01-01T00:00:00Z","session_id":"fake-session","model":"fake-model","tools":%s,"mcp_servers":%s,"permissionMode":"default","claude_code_version":"0.0.0-fake","memory_paths":{},"skills":[],"slash_commands":[]}`+"\n",
+		toJSONStringArray(tools), mcpServersJSON(tools),
 	)
+}
+
+// mcpServersJSON derives the advertised "mcp_servers" array from tools: for each
+// mcp__<server>__<tool> entry, one deduplicated {"name":<server>,"status":"connected"} object, in
+// first-seen order -- unless FAKE_CLAUDE_SERVER_STATUS_OVERRIDE names that server, in which case its
+// status is the override value instead of "connected". A tools list carrying no prefixed entry
+// produces an empty array, exactly the control-cell shape every existing fixture already relies on.
+// One source of truth: this is the only place testdata/fakeclaude decides what mcp_servers carries.
+func mcpServersJSON(tools string) string {
+	overrideServer, overrideStatus := parseServerStatusOverride(os.Getenv(fakeClaudeServerStatusOverrideEnv))
+
+	seen := map[string]bool{}
+	var names []string
+	for _, name := range splitCommaSeparated(tools) {
+		server, ok := mcpServerName(name)
+		if !ok || seen[server] {
+			continue
+		}
+		seen[server] = true
+		names = append(names, server)
+	}
+
+	if len(names) == 0 {
+		return "[]"
+	}
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, name := range names {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		status := "connected"
+		if name == overrideServer {
+			status = overrideStatus
+		}
+		fmt.Fprintf(&b, `{"name":%q,"status":%q}`, name, status)
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+// mcpServerName extracts the server name from a granted tool's fully-prefixed name
+// "mcp__<server>__<tool>", reporting false for a name that does not carry the "mcp__" prefix -- a
+// built-in tool name, for instance.
+func mcpServerName(toolName string) (string, bool) {
+	const prefix = "mcp__"
+	if !strings.HasPrefix(toolName, prefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(toolName, prefix)
+	idx := strings.Index(rest, "__")
+	if idx < 0 {
+		return "", false
+	}
+	return rest[:idx], true
+}
+
+// splitCommaSeparated splits a comma-separated tool list, returning nil for an empty input rather
+// than a single-element slice holding the empty string.
+func splitCommaSeparated(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
+
+// parseServerStatusOverride decodes FAKE_CLAUDE_SERVER_STATUS_OVERRIDE's "<server>=<status>" value,
+// returning two empty strings when v is empty -- the override is then a no-op, since no real server
+// name is ever the empty string. A non-empty value that does not carry exactly one "=" is a fixture-
+// configuration error and fails loudly, matching this fake's other input-validation failures.
+func parseServerStatusOverride(v string) (server, status string) {
+	if v == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(v, "=", 2)
+	if len(parts) != 2 {
+		fail(fmt.Sprintf("%s = %q; want \"<server>=<status>\"", fakeClaudeServerStatusOverrideEnv, v))
+	}
+	return parts[0], parts[1]
 }
 
 func writeAssistant(w *bufio.Writer, id, text string) {

@@ -81,6 +81,52 @@ func CheckGrantedToolUsed(cfg Config, perRepQuarryToolUses []int) *Finding {
 	}
 }
 
+// CheckServerConnected reports a finding when a granted cell's session-init record does not show
+// expectedServer connected: init is nil (no session-init record reached this call at all), the
+// record's advertised server list omits expectedServer entirely, or it lists expectedServer with a
+// status other than "connected". It is the caller's responsibility to gate this check on a granted
+// cell -- a control cell's allowed list is empty and this check is never its concern, matching how
+// CheckBlinding's checks are gated by IsControl at the call site rather than inside the check. The
+// nil-init and server-absent findings are worded distinctly, so the two are told apart in the reason
+// file this check's caller writes. It returns nil only when init is non-nil and lists expectedServer
+// with status "connected".
+func CheckServerConnected(init *SessionInit, expectedServer string) *Finding {
+	if init == nil {
+		return &Finding{
+			Gate:  "server_connected",
+			Fatal: true,
+			Message: fmt.Sprintf(
+				"!! server_connected: expected server %q but the repetition carries no session-init record at all",
+				expectedServer,
+			),
+		}
+	}
+	for _, s := range init.MCPServers {
+		if s.Name != expectedServer {
+			continue
+		}
+		if s.Status == "connected" {
+			return nil
+		}
+		return &Finding{
+			Gate:  "server_connected",
+			Fatal: true,
+			Message: fmt.Sprintf(
+				"!! server_connected: expected server %q but its advertised status was %q, not \"connected\"",
+				expectedServer, s.Status,
+			),
+		}
+	}
+	return &Finding{
+		Gate:  "server_connected",
+		Fatal: true,
+		Message: fmt.Sprintf(
+			"!! server_connected: expected server %q but the session-init record's mcp_servers list did not include it",
+			expectedServer,
+		),
+	}
+}
+
 // CheckBlinding is gate 2: it applies per rep, only for a control cell (an empty allowed list), and
 // runs checks (a), (b) and (c) in order over the whole transcript re-marshalled to JSON via
 // Transcript.MarshalAll -- every record and every field, the session-init record's working directory
