@@ -52,6 +52,9 @@ batches:
   `MergeProvenance` append to it, so every pre-fix repetition still satisfies `RepIsComplete` and is
   skipped, silently merging two measurement regimes into one root. The abandoned root keeps its
   partial artifacts and gains an `ABANDONED.md` naming the fix, the date and the successor root.
+  **Card 4 owns that file** — it is the only card that knows both the fix and the successor root —
+  and writes it on the restart path only, which is why it appears in that card's `Creates:` as a
+  conditional artifact.
 - **Applies to:** all batches
 
 ### Decision: clean-tree-and-no-edits-mid-matrix
@@ -63,6 +66,16 @@ batches:
 - **Rationale:** this is the harness rule that carried over from V1 verbatim. `provenance.json`
   records `quarry_dirty` and `quarry_dirty_files`; a dirty tree makes the committed record describe
   something that is not in git, which is the exact fault the 2026-09-02 post-mortem fixed.
+- **One carve-out, stated rather than hidden: a resumed invocation records `quarry_dirty` true by
+  construction.** `CollectInvocation` derives the flag from plain `git status --porcelain`, which
+  lists untracked files, and the machine artifacts the first invocation writes into the tracked
+  results root are untracked until card 4 commits them after the run terminates. Invocations 2 and 3
+  therefore see them and record dirty. That is accepted, because committing between invocations
+  would edit the repository mid-matrix, which is the larger of the two faults. What is **not**
+  accepted is a dirty file list naming anything else: before each re-invocation the driver confirms
+  every entry of `git status --porcelain` is a path under the results root, and card 6 reports
+  `quarry_dirty` and `quarry_dirty_files` per invocation entry so a reader sees exactly which files
+  were untracked at each one. A dirty entry outside the results root voids the root.
 - **Applies to:** all batches
 
 ### Decision: matrix-runs-backgrounded-under-env-u
@@ -83,8 +96,15 @@ batches:
 
 - **Decision:** two checks are performed by hand and their values transcribed into the conclusion:
   (1) `quarry_commit` equality across every entry of `provenance.json`'s `invocations` list, and
-  (2) an out-of-band `sha256sum` of the built server binary, taken immediately before each
+  (2) an out-of-band `sha256sum` of the built server binary, taken immediately **after** each
   invocation of the matrix command and appended to the run log.
+- **The reading is taken after, not before, and that ordering is load-bearing.** `run.go` builds
+  `<ladder-worktree-root>/bin/<server-name>` through `BuildServer` *inside* the invocation, so before
+  the first invocation the file is either absent or a stale leftover from an unrelated run — a
+  pre-invocation reading would hash something that is not the binary under test, and the last
+  invocation's binary would never be hashed at all. The guarded live test does not build it either:
+  it passes an empty server-binary path. A pre-existing `bin/quarry` at gate time is therefore stale
+  and is not a baseline.
 - **Rationale:** `WarnOnServerHashDrift` cannot fire after a resume. The harness builds the server
   once per invocation and writes that one hash into `ServerHashes` for every repetition of every
   non-control cell — including repetitions an earlier invocation already completed — and
@@ -144,12 +164,22 @@ batches:
 
 ### Decision: metric-key-spellings
 
-- **Decision:** in the summary JSON the metric keys are the harness's own `costMetricNames` —
-  `turns`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `quarry_tool_uses`,
-  `grep_fallback_total`. The short `cache_read` and `cache_creation` spellings are only the rendered
-  table's column headers. Read a comparison entry out of the JSON by
-  `metric == "cache_read_input_tokens"`; read `cache_read` off the rendered table. Prose in the
-  conclusion may use the short names, provided the artifact it cites is named.
+- **Decision:** in the summary JSON the metric keys are the harness's own `costMetricNames`; the
+  rendered table's `tableColumnNames` renames four of them. The full rename table, and the only four
+  places the two spellings differ:
+
+  | summary JSON key              | rendered table column |
+  | ----------------------------- | --------------------- |
+  | `cache_read_input_tokens`     | `cache_read`          |
+  | `cache_creation_input_tokens` | `cache_creation`      |
+  | `quarry_tool_uses`            | `prefixed_tool_uses`  |
+  | `grep_fallback_total`         | `grep_fallback`       |
+
+  Every other name — `turns`, `duration_ms`, `cost_usd`, `output_tokens`, `input_tokens_total`,
+  `tool_uses`, `tool_result_bytes`, `read_bytes` — is spelled identically on both sides. Read a
+  comparison entry out of the JSON by its JSON key; read the column off the rendered table. The
+  gate 1 tool-use report is exactly where the `quarry_tool_uses` / `prefixed_tool_uses` pair bites.
+  Prose in the conclusion may use the short names, provided the artifact it cites is named.
 - **Rationale:** the two spellings are easy to conflate and a conclusion that quotes the wrong key
   is unverifiable against the artifact committed beside it.
 - **Applies to:** write-up
@@ -183,6 +213,14 @@ batches:
 - **Decision:** the done gate stays `go test ./... && golangci-lint run` with `LADDER_LIVE_TEST`
   unset, so the guarded live test skips. The live test runs once, explicitly, as the first
   pre-matrix gate.
+- **Where the gate is encoded:** in `mill-config.yaml` at the hub root, as `pipeline.done_gate`,
+  already carrying exactly that command. It is run from the repository root before the task is
+  marked done, so no card and no `verify:` field needs to restate it. This decision is a statement
+  of what that key holds and a requirement that it keeps holding it — not a second, parallel gate.
+  The plan deliberately does **not** put the command in the overview's module-wide `verify:` field:
+  that field runs at every batch boundary, and a full `go test ./...` plus a lint pass after each of
+  three batches — two of which change no Go code at all — would pay the gate's cost three times over
+  for one signal the done gate already produces once.
 - **Rationale:** the guard exists so the repeated gate stays free, deterministic and network-free;
   making it spend API budget on every invocation is the thing that guard prevents.
 - **Applies to:** all batches
@@ -211,6 +249,7 @@ batches:
 ## All Files Touched
 
 - `HANDOFF.md`
+- `bench/loomyard-eval/ladder/results/2026-09-04-toc/ABANDONED.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/probe.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/provenance.json`
