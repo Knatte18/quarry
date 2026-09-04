@@ -4,7 +4,7 @@
 // together produce, and in card 18's, the collision row and the cross-verb agreement with Resolve.
 //
 // Fixtures are the same testdata/glyphs/, testdata/methods/ and testdata/tags/ packages
-// resolve_test.go reads, opened through the same openQuarryRoot helper, plus one run-time unit
+// resolve_test.go reads, opened through the same openModuleRepo helper, plus one run-time unit
 // collision tree built through the existing openScratchRepo helper — this file adds no new helper.
 
 package engine
@@ -27,7 +27,7 @@ func isZeroExpandAnswer(got ExpandAnswer) bool {
 // files, and asserts the head span, the member order, and the marshalled shape of a found answer
 // carrying both head and members.
 func TestExpand_Struct(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	target := "internal/engine/testdata/methods#Widget"
 
 	got, err := r.Expand(target)
@@ -104,7 +104,7 @@ func TestExpand_Struct(t *testing.T) {
 // are exactly its own two methods, not the embedded interface's method, and that every member's span
 // lies inside the head's span.
 func TestExpand_Interface(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	target := "internal/engine/testdata/glyphs#Iface"
 
 	got, err := r.Expand(target)
@@ -154,7 +154,7 @@ func TestExpand_Interface(t *testing.T) {
 // else — not an error and not a not_found. It marshals the answer to pin ExpandAnswer's six-key
 // wire shape in the one found case where members is legitimately absent.
 func TestExpand_TypeWithoutMembers(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	target := "internal/engine/testdata/glyphs#Weekday"
 
 	got, err := r.Expand(target)
@@ -208,7 +208,7 @@ func TestExpand_NotAType(t *testing.T) {
 		{"Init", "internal/engine/testdata/glyphs#init", KindFunction},
 	}
 
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := r.Expand(tt.target)
@@ -231,7 +231,7 @@ func TestExpand_NotAType(t *testing.T) {
 // glyph — a type in one file and a function in the other — answers ambiguous too rather than a
 // *NotATypeError, because the set holds a type and choosing between the two would be a silent pick.
 func TestExpand_AmbiguousBuildTags(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 
 	dupTarget := "internal/engine/testdata/tags#DupType"
 	dup, err := r.Expand(dupTarget)
@@ -287,7 +287,7 @@ func TestExpand_MalformedTarget(t *testing.T) {
 		{"NoSeparator", "internal/engine/testdata/tree/pkg", glyph.ReasonNoSeparator},
 	}
 
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := r.Expand(tt.target)
@@ -313,7 +313,7 @@ func TestExpand_MalformedTarget(t *testing.T) {
 // answers not_found with unit: not_found and a nil error — a miss is a legitimate answer with a
 // status, never a failure.
 func TestExpand_NotFound(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 
 	missingName := "internal/engine/testdata/glyphs#NoSuchDeclaration"
 	nameRes, err := r.Expand(missingName)

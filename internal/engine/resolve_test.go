@@ -21,29 +21,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"testing"
 
 	"github.com/Knatte18/quarry/glyph"
 )
 
-// openQuarryRoot opens this module's own root as a Repo, so a test can query the committed
-// testdata/ fixtures by their real repository-relative paths.
-func openQuarryRoot(t *testing.T) *Repo {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("openQuarryRoot: runtime.Caller(0) failed to resolve this file's path")
-	}
-	// thisFile is .../internal/engine/resolve_test.go; the module root is two directories up.
-	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-	return openRepo(t, moduleRoot)
-}
-
 // TestSpansOf_Hit asserts a glyph naming a real declaration in the committed testdata/tree/pkg
 // fixture returns exactly its own span, with File set to the repository-relative path.
 func TestSpansOf_Hit(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: "internal/engine/testdata/tree/pkg", Name: "Alpha"}
 
 	got, err := r.SpansOf(g)
@@ -68,7 +54,7 @@ func TestSpansOf_Hit(t *testing.T) {
 // TestSpansOf_Miss asserts a glyph whose unit exists but whose name does not returns an empty
 // slice and a nil error, never a status value.
 func TestSpansOf_Miss(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: "internal/engine/testdata/tree/pkg", Name: "NoSuchDeclaration"}
 
 	got, err := r.SpansOf(g)
@@ -83,7 +69,7 @@ func TestSpansOf_Miss(t *testing.T) {
 // TestSpansOf_UnitDirectoryMissing asserts a glyph whose unit directory does not exist returns an
 // empty slice and a nil error, the same disposition as a name miss inside an existing unit.
 func TestSpansOf_UnitDirectoryMissing(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: "internal/engine/testdata/does-not-exist", Name: "X"}
 
 	got, err := r.SpansOf(g)
@@ -99,7 +85,7 @@ func TestSpansOf_UnitDirectoryMissing(t *testing.T) {
 // testdata/tree/pkg's own unit finds only its own declarations, and its "_test"-suffixed sibling
 // unit finds only export_test.go's external test declaration.
 func TestSpansOf_ExternalTestUnit(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 
 	ownGlyph := glyph.Glyph{Lang: glyph.Go, Unit: "internal/engine/testdata/tree/pkg", Name: "Alpha"}
 	own, err := r.SpansOf(ownGlyph)
@@ -137,7 +123,7 @@ func TestSpansOf_ExternalTestUnit(t *testing.T) {
 // that directory's own declaration, not one reached by stripping the "_test" suffix and looking in
 // a "foo/" directory this repository does not have.
 func TestSpansOf_LiteralFirst(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: "internal/engine/testdata/foo_test", Name: "LiteralDeclaration"}
 
 	got, err := r.SpansOf(g)
@@ -238,7 +224,7 @@ func TestSpansOf_IgnoreFilter(t *testing.T) {
 // TestSpansOf_LanguageUnsupported asserts a non-Go Lang is rejected with ErrLanguageUnsupported,
 // wrapped so errors.Is still succeeds.
 func TestSpansOf_LanguageUnsupported(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	g := glyph.Glyph{Lang: glyph.Language("python"), Unit: "internal/engine/testdata/tree/pkg", Name: "Alpha"}
 
 	_, err := r.SpansOf(g)
@@ -288,7 +274,7 @@ func TestSpansOf_InvalidGlyphSurfacesParseError(t *testing.T) {
 		},
 	}
 
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := r.SpansOf(tt.g)
@@ -401,7 +387,7 @@ func TestResolve_Found(t *testing.T) {
 		{"Method", "internal/engine/testdata/methods#Widget.Alpha", "internal/engine/testdata/methods/aardvark.go"},
 	}
 
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			results, err := r.Resolve([]string{tt.target})
@@ -451,7 +437,7 @@ func TestResolve_Found(t *testing.T) {
 // TestResolve_Multipart resolves the bare init glyph of the glyphs fixture package, asserting all
 // three func init() declarations come back as one multipart result in file-then-line order.
 func TestResolve_Multipart(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	target := "internal/engine/testdata/glyphs#init"
 
 	results, err := r.Resolve([]string{target})
@@ -484,7 +470,7 @@ func TestResolve_Multipart(t *testing.T) {
 // read regardless of GOOS, and the engine reports both rather than guessing which the toolchain
 // would pick.
 func TestResolve_AmbiguousBuildTags(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	targets := []string{
 		"internal/engine/testdata/tags#Dup",
 		"internal/engine/testdata/tags#DupType",
@@ -518,7 +504,7 @@ func TestResolve_AmbiguousBuildTags(t *testing.T) {
 // a found and an ambiguous result so every one of ResolveResult's keys is observed both present and
 // absent across this test and card 13's.
 func TestResolve_NotFoundBothWays(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 
 	missingName := "internal/engine/testdata/tree/pkg#NoSuchDeclaration"
 	missingUnit := "internal/engine/testdata/does-not-exist#X"
@@ -673,7 +659,7 @@ func TestResolve_CandidatesOrdered(t *testing.T) {
 // the number of distinct units rather than the number of targets. Asserting the memo map's length
 // instead would be true by construction and prove nothing.
 func TestResolve_ParsesEachUnitOnce(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	m, err := newUnitMemo(r)
 	if err != nil {
 		t.Fatalf("newUnitMemo returned error: %v", err)
@@ -701,7 +687,7 @@ func TestResolve_ParsesEachUnitOnce(t *testing.T) {
 // returns a result rather than failing the call — the assertion that stops a future change turning
 // a missing directory into a call failure and making the create-a-new-unit case unanswerable.
 func TestResolve_UnitDirectoryMissingIsNotAnError(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	target := "internal/engine/testdata/does-not-exist#X"
 
 	results, err := r.Resolve([]string{target})
@@ -767,7 +753,7 @@ func TestResolve_ReadFailureFailsTheCall(t *testing.T) {
 // results, each answering its own argument at the same index, with a repeated target answered
 // twice and identically. A nil targets slice returns an empty, non-nil slice and a nil error.
 func TestResolve_ArgumentOrderAndArity(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	glyphTarget := "internal/engine/testdata/tree/pkg#Alpha"
 	pathTarget := "internal/engine/testdata/tree/pkg/alpha.go"
 	malformed := "a/./b#X"
@@ -809,7 +795,7 @@ func TestResolve_ArgumentOrderAndArity(t *testing.T) {
 // Error non-empty and Reason empty; and an explicitly named gitignored file is still answered,
 // because the ignore filter exists so a listing is not noise, not to make a file unaddressable.
 func TestResolve_PathTargets(t *testing.T) {
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 
 	fileTarget := "internal/engine/testdata/tree/pkg/alpha.go"
 	fileResults, err := r.Resolve([]string{fileTarget})
@@ -939,7 +925,7 @@ func TestResolve_MalformedGlyphEntries(t *testing.T) {
 		{"MemberKeyword", "internal/engine/testdata/tree/pkg#func", glyph.ReasonMemberKeyword},
 	}
 
-	r := openQuarryRoot(t)
+	r := openModuleRepo(t)
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			results, err := r.Resolve([]string{tt.target})

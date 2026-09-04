@@ -427,7 +427,7 @@ func dirChainBelowRoot(dirRel string) []string {
 // SpansOf the thin wrapper, rather than the other way round, because a per-glyph lookup re-parses
 // the whole unit directory and nothing is cached: grouping by unit is what keeps a whole-repository
 // check in seconds rather than minutes, and Resolve needs the same grouping for the many glyphs
-// one call can name — the grouping is realised in unitMemo, below.
+// one call can name — the grouping is realised in unitMemo, above.
 //
 // symbolsOfUnit resolves its directories through unitDirs and, when both exist, returns the union.
 // In every directory the .go files are filtered through ig — the same ignore set the walk uses —
