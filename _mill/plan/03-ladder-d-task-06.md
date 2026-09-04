@@ -56,7 +56,8 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   satisfying all three constraints:
 
   (a) the real answer spans at least two packages;
-  (b) none of those package names appears anywhere in the prompt text;
+  (b) none of those package names appears anywhere in the **rendered** prompt — the task-text
+      blockquote and the schema block alike, since `RenderPrompt` assembles both;
   (c) it is answerable entirely from the pinned SHA.
 
   Constraints (a) and (c) are provisional at this point — the pick rests on a reading good enough to
@@ -85,7 +86,19 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
     `01-reed-geometry-exploration.md`, which is already in this card's `Context:`. Copy it from task
     01 specifically, not from task 02: this batch declares `depends-on: []` and can run before batch
     2's card 6 adds that section to `02-shedadapters-exploration.md`, where it does not exist today.
-    It must come **before** the notes section below: `extractSchemaBlock` takes the
+
+    Then make **exactly one** change to the copy, per the overview's
+    `neutral-schema-example-values-in-the-new-task-files` decision: replace the `relevant_files`
+    example value `"internal/reedengine/geometry.go"` with the placeholder `"path/to/file.go"`,
+    matching the placeholder already used in that block's `key_symbols` entry. This is load-bearing
+    for this task specifically, not cosmetic. `RenderPrompt` puts `SchemaBlock` into every rendered
+    prompt, so copying the block unchanged would put a real Loomyard package path into a prompt whose
+    whole shape is "names no package and no file" — breaking constraint (b) outright if the subject
+    picked above lands in `internal/reedengine` or `internal/reedcli`, and anchoring the agent on a
+    real package even when it does not. Card 6 makes the identical change to task 02, so the two new
+    files' blocks stay byte-identical to each other.
+
+    The section must come **before** the notes section below: `extractSchemaBlock` takes the
     first fenced JSON block after the first `## Output schema` line, and a notes section that
     happened to carry a fenced block ahead of the schema would be extracted instead.
   - A `## Notes for whoever prepares C's fasit / scores this` section recording the chosen subject

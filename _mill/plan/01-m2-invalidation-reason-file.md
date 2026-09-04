@@ -166,6 +166,8 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
 
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/run.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
@@ -218,6 +220,8 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
   - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
   - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/fenced.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/config.go`
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`

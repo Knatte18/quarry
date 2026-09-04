@@ -28,9 +28,11 @@ statement — whether toc separates anywhere in this root, or nowhere — which 
 Batch-local decisions that differ from the overview's `## Shared Decisions`:
 
 - **The results root's date is pinned in this plan as `2026-09-04-breadth`.** If the invocation
-  actually begins on a different calendar date, use that date instead and substitute it everywhere in
-  this batch — the root name is a label, and `provenance.json` carries the real timestamps. Do not
-  keep a name that contradicts the day the run started.
+  actually begins on a different calendar date, use that date instead — the root name is a label, and
+  `provenance.json` carries the real timestamps. The substitution scope is **not** limited to this
+  batch: see the overview's `results-root-date-substitution` decision, which extends it to batch 6's
+  cards 17 and 18 and to the overview's own `## All Files Touched`, since those two cards write the
+  path and the root name into two tracked documents.
 - **One root, any number of invocations.** "One results root" is the invariant; "one invocation" is
   not. Re-invoking the same `run` command over the same `--results` root is how the harness resumes
   and is expected. `provenance.json`'s `invocations` list grows one entry per invocation and the
@@ -123,8 +125,12 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   This is a long-running invocation making thirty real `claude -p` calls plus scorer calls. Run it in
   the background and wait for it rather than polling.
 
-  Then run the report path so `summary.json` and `table.txt` exist alongside `provenance.json`, per
-  `cmd/ladder`'s own `report` subcommand — read `main.go` for the exact invocation.
+  No separate report step is needed on a clean run: `cmd/ladder`'s `runCommand` already calls
+  `summarizeAndReport(*resultsRoot)` after `ladder.Run` returns, so `summary.json` and `table.txt`
+  exist alongside `provenance.json` when the invocation exits. Run the `report` subcommand only to
+  **re-derive** them — after a resume, or after an invocation that was killed before it reached its
+  own report call, where a stale or missing `summary.json` would otherwise sit beside the newly
+  written repetitions. Read `main.go` for the exact invocation before using it.
 
   **Shortfalls.** The done-when is every measured cell a real MCP cell completing end to end, `5/5`
   complete non-blinding-failed repetitions per cell, `unscored_count: 0`, and gate 1

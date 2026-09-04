@@ -53,12 +53,21 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   `02-shedadapters-exploration.md`, positioned after the `` ## `<TASK TEXT>` `` section's blockquote
   and before the existing `## Notes for whoever prepares C's fasit / scores this` section.
 
-  Its content mirrors task 01's own section exactly: the same one-line sentence recording that the
-  schema was recovered from the V1 benchmark protocol document after that document was deleted,
-  followed by the same fenced JSON block carrying `relevant_files`, `key_symbols` (an array of one
-  object with `name`, `file`, `role`), `summary`, `confidence` and `open_questions`. Copy that block
-  from `01-reed-geometry-exploration.md` rather than retyping it, so the two files' schema blocks
-  stay identical — `ExplorationRule` scores against the same three keys for both.
+  Its content mirrors task 01's own section: the same one-line sentence recording that the schema was
+  recovered from the V1 benchmark protocol document after that document was deleted, followed by the
+  same fenced JSON block carrying `relevant_files`, `key_symbols` (an array of one object with
+  `name`, `file`, `role`), `summary`, `confidence` and `open_questions`. Copy the block from
+  `01-reed-geometry-exploration.md` rather than retyping it, then make **exactly one** change to the
+  copy, per the overview's `neutral-schema-example-values-in-the-new-task-files` decision: replace
+  the `relevant_files` example value `"internal/reedengine/geometry.go"` with the placeholder
+  `"path/to/file.go"`, matching the placeholder already used in that block's `key_symbols` entry.
+  Change nothing else about the block — every key stays, and `ExplorationRule` scores against the
+  same three keys for task 02 as for task 01.
+
+  The reason for that one change belongs to task 06 rather than to this file: `RenderPrompt` puts the
+  schema block into every rendered prompt, and task 06's prompt must name no package or file at all.
+  Both new task files carry the identical block so the schema is not a variable between the two new
+  shapes.
 
   Change nothing else in the file. The header, the setup section, the scope section, the
   `` `<TASK TEXT>` `` blockquote and the drafting-notes section all stay byte-for-byte as they are.
@@ -74,6 +83,7 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   - `bench/loomyard-eval/tasks/01-reed-geometry-exploration.fasit.json`
   - `bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.fasit.json`
   - `bench/loomyard-eval/ladder/internal/ladder/score.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/config.go`
   - `.scratch/ladder.env`
 - **Edits:**
   - `bench/loomyard-eval/tasks/02-shedadapters-exploration.md`
