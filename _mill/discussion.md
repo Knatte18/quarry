@@ -42,7 +42,8 @@ change, and a harness change cannot land mid-matrix.
   heading), author its fasit, and add cells `c0-none` / `c1-toc-dir`.
 - **Ladder d (new shape, cold-start orientation):** author a new task file, prompt and fasit for a
   whole-repository question that names no package, and add cells `d0-none` / `d1-toc-dir`.
-- **The matrix:** one invocation, six cells × 5 reps, into a single results root
+- **The matrix:** six cells × 5 reps into a single results root — one root, and as many invocations
+  over it as resuming needs (see `matrix-shortfall-disposition`):
   `bench/loomyard-eval/ladder/results/<YYYY-MM-DD>-breadth/`.
 - **The conclusion:** `results/<YYYY-MM-DD>-breadth/conclusion.md`, naming per task shape whether any
   cost or correctness metric separates, or stating plainly that none does anywhere.
@@ -256,7 +257,12 @@ change, and a harness change cannot land mid-matrix.
   than creating a second ladder file, and run all six cells in **one** invocation into **one** results
   root. Amend the file's header comment accordingly: the "two task groups per file" line and the
   "deliberately NOT here" entry for a whole-repo, no-scope-hint task are both superseded by this
-  task and must be rewritten rather than left contradicting the rows below them.
+  task. The amendment is a **whole-header pass**, not a fix to named lines: every statement in that
+  header is re-read against the file as this task leaves it and rewritten where it has become false.
+  At least four are known stale — "Design: four surviving cells" (it becomes eight), the "two task
+  groups per file" line, the "deliberately NOT here" entry for a whole-repo no-scope-hint task
+  (ladder d is exactly that), and "Task 02 (three packages) has no fasit either" (this task authors
+  it) — and the pass is not satisfied by fixing only those four.
 - Rationale: cost numbers compare only within one results root, so putting every cell this task
   measures into one root is what makes the three shapes' results readable side by side under one
   provenance record, one binary hash set, and one host. Nothing in `config.go` limits the number of
@@ -290,6 +296,49 @@ change, and a harness change cannot land mid-matrix.
 - Rejected: raising reps to sharpen the `separated` test (explicitly forbidden by the task's cost
   discipline); a different pin for the new tasks (a second checkout state to reason about, for
   nothing).
+
+### matrix-shortfall-disposition
+
+- Decision: **"one results root" is the invariant; "one invocation" is not.** Re-invoking the same
+  `run` command over the same `--results` root is permitted and expected — it is how the harness
+  resumes — and the root stays a single root for every comparison purpose. `provenance.json`'s
+  `invocations` list grows one entry per invocation and the conclusion reports how many there were,
+  exactly as T7's did. What is forbidden is spreading this task's cells across two roots, or editing
+  the harness or the stimulus between invocations.
+
+  Three concrete shortfalls, each with its remedy:
+
+  1. **A repetition exhausts `MaxAttempts`** and its cell is recorded incomplete. Remedy: read the
+     `invalid_reason.txt` files M2 now writes, fix the named cause, and re-invoke over the same root
+     — a repetition that is not `RepIsComplete` is re-attempted. If a cell still cannot reach `5/5`
+     after a second invocation, it is reported in the conclusion as **incomplete with its causes
+     quoted**, its comparison is not presented as a result, and that task shape is named as
+     unmeasured rather than as flat. A shape reported flat on `3/5` would be the worst possible
+     outcome of this task.
+  2. **The whole invocation aborts** because every attempt of one repetition failed to connect the
+     server (`connectFailures == attempts`). This is an environment or configuration fault by
+     construction, not data: fix it, then re-invoke over the same root. Repetitions already complete
+     are not re-run.
+  3. **A repetition is complete but unscored** (`writeCompleteState(..., scored=false,
+     ScoreSkipReason: "scorer_failed")`). `RepIsComplete` returns true for it, so a re-invocation
+     will never re-attempt it — the only route back to `unscored_count: 0` is to **delete that one
+     repetition directory** under the untracked `raw/` tree and re-invoke, which re-runs and re-scores
+     it. That deletion is permitted, is the only hand-touch of a measured root this task allows, and
+     **must be recorded in the conclusion's coverage section** (which repetition, why, and that it
+     was re-run). If the same repetition fails scoring a second time, stop deleting: accept it,
+     report `unscored_count` non-zero, and read that cell's recall/precision at the reduced `n` while
+     its cost metrics stay at full `n` — the split T7's table already reports per metric.
+- Rationale: the done-when ("every measured cell a real MCP cell completing end to end") is about
+  measurement integrity, not about a single process start, and the harness was built with resume as a
+  first-class path (`RepIsComplete` exists for exactly this). Saying so explicitly stops a plan writer
+  from reading "one invocation" as a prohibition and hand-editing a root to satisfy it. Naming the
+  unscored case matters most: it is the one shortfall the harness cannot self-heal, and without a
+  stated remedy a repetition would sit unscored forever while the done-when demanded otherwise.
+- Rejected: forbidding resume and requiring a fresh root on any shortfall (throws away every completed
+  real run, at direct cost, for no measurement gain); accepting an incomplete cell as a flat result
+  (would report the exact false negative this whole task exists to avoid); deleting repetitions freely
+  to force clean numbers (that is fitting the root to the conclusion, and is why the one permitted
+  deletion is narrow, capped at one retry, and reported).
 
 ### separation-decision-rule
 
@@ -328,7 +377,9 @@ change, and a harness change cannot land mid-matrix.
 - Decision: when the conclusion lands, `docs/roadmap.md`'s "Next wave: measure" table loses both its
   rows — M1 and M2 are then done, and the file's own header says it "only ever says what is ahead",
   so a completed row has no place in it (the build record is git history and `HANDOFF.md`). The
-  section heading goes with them if the table is left empty. The parked-T8 section is rewritten to
+  section heading goes with them, and so does the trailing sentence beneath the table ("M2 is small
+  and independent; it can run as `mill-quick` or fold into M1's pre-matrix work") — it describes a
+  scheduling choice this task has already made, and would be orphaned prose once the table is gone. The parked-T8 section is rewritten to
   state which of its two unpark conditions this root's finding does or does not satisfy, without
   making the unpark decision. The **OSL-1033 host rerun**, which this task declares Out and which the
   M1 row currently carries as a clause, is not silently dropped with that row: it moves to
@@ -369,8 +420,9 @@ there is no nested module. `cmd/ladder` has two subcommands, `run` and `report`.
   `writeServerConnectFailure` (server-connect path only), then `InvalidateRep`, then retries until
   `attempts >= MaxAttempts`. The `connectFailures == attempts` case aborts the whole run and must keep
   working unchanged. The loop currently has no explicit attempt counter of its own — see the
-  `m2-attempt-numbering` decision for how the reason file's `attempt` field is made to agree with the
-  suffix `InvalidateRep` produces.
+  `m2-attempt-numbering` decision for how `attempt` is defined as the loop-local index within the
+  producing invocation, and why it deliberately diverges from the `.invalid-<n>` suffix on a
+  re-entered root. Do not write the reason file after the rename; that alternative is rejected there.
 - `writeServerConnectFailure` (`run.go`, ~line 584) is the function the new writer replaces; its
   current content shape (`cell:`, `repetition:`, `expected_server:`, then the finding message) is the
   precedent for the new file's layout.
@@ -529,7 +581,9 @@ There is no `CONSTRAINTS.md` at the hub root. The binding constraints come from 
 **The matrix itself** is not a test and has no assertions; its acceptance is the task's own done-when
 — every measured cell a real MCP cell completing end to end, `5/5` complete non-blinding-failed
 repetitions per cell, `unscored_count: 0`, and gate 1 (`granted_tool_used`) reported per rung cell so
-the conclusion can say whether a flat rung actually called its tool.
+the conclusion can say whether a flat rung actually called its tool. When any of those falls short,
+`matrix-shortfall-disposition` says what happens instead — resume over the same root, and report the
+shortfall rather than paper over it.
 
 ## Q&A log
 
@@ -541,7 +595,7 @@ the conclusion can say whether a flat rung actually called its tool.
   blockers are a missing `## Output schema` heading and a missing fasit; writing a fresh three-package
   prompt would discard drafted work for no gain.
 - **Q:** One ladder file and one results root, or a second ladder file? **A:** [auto-pick] Extend
-  `ladder-toc.yaml` with ladders c and d, one invocation, one root. **Why:** cost numbers compare only
+  `ladder-toc.yaml` with ladders c and d, one root (resumable across invocations). **Why:** cost numbers compare only
   within a root, so all six cells belong in one; `config.go` imposes no limit on ladder letters, so the
   file header's "two task groups per file" line is a stale comment to amend, not a rule.
 - **Q:** How is each new fasit authored? **A:** [auto-pick] A dedicated reference-agent card,
@@ -585,6 +639,14 @@ the conclusion can say whether a flat rung actually called its tool.
   within the producing invocation; the two are asserted equal only on a fresh root, and a re-entry
   e2e case pins the divergence. **Why:** the file is written before the rename, so the suffix is
   unknowable at write time, and the round-1 wording claimed an invariant the code cannot enforce.
+- **Q:** What happens when the matrix cannot reach `5/5` per cell or `unscored_count: 0`?
+  **A:** [auto-resolve, review r3 BLOCKING] Resume over the same root (the root is the invariant, not
+  the invocation); a cell still short after a second invocation is reported incomplete and its shape
+  named unmeasured, not flat; a permanently unscored repetition is deleted from the untracked `raw/`
+  tree once, re-run, and the deletion recorded — after that it is accepted and reported at reduced n.
+  **Why:** the harness's own resume path exists for this, and the one failure it cannot self-heal
+  (a complete-but-unscored rep, which `RepIsComplete` accepts forever) otherwise makes the done-when
+  unreachable.
 - **Q:** What happens at the discussion-review round cap if findings remain? **A:** [operator]
   Approve and hand off regardless. **Why:** the operator's explicit instruction this session — the
   round cap ends the review loop and proceeds to Handoff rather than blocking the task.
