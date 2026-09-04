@@ -42,11 +42,15 @@ implementing  '2026-09-04T14:15:44Z'
 ```yaml
 batches:
   - name: pre-matrix-gates
-    state: pending
+    state: running
+    implementer_session: 1dfa86ac-104e-403c-a60f-0969997c9fd7
+    start_sha: 2445bdfa0098e29ad1272a8bb16aae4d9580f0d0
   - name: harness-mcp-init-fix
     state: pending
+    verify_baseline_failures: []
   - name: matrix-run
     state: pending
+    verify_baseline_failures: []
   - name: write-up
     state: pending
 ```
