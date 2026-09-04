@@ -71,6 +71,8 @@ batches:
     commit_sha: ff40b59f1c08c036bbcc6e5a9b120696f2e0839a
     verify_baseline_failures: []
   - name: goldens-and-round-trip
-    state: pending
+    state: running
+    implementer_session: be553342-7973-4d99-87a0-21cf5cfe042b
+    start_sha: 130a8211b85b3af87f3671671c5ebac9a0de3d5a
     verify_baseline_failures: []
 ```
