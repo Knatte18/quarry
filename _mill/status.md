@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
@@ -27,4 +27,21 @@ plan-fix-r2  '2026-09-04T06:37:29Z'
 plan-review-r3  '2026-09-04T06:44:09Z'
 plan-fix-r3  '2026-09-04T06:45:39Z'
 planned  '2026-09-04T06:45:49Z'
+implementing  '2026-09-04T06:46:39Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: facade-core
+    state: pending
+  - name: facade-renderers
+    state: pending
+  - name: cli-parsing
+    state: pending
+  - name: cli-pipeline
+    state: pending
+  - name: goldens-and-after
+    state: pending
 ```
