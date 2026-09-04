@@ -1,0 +1,74 @@
+results root: 2026-09-04-breadth
+reps: 5
+claude_code_version: 2.1.236 (Claude Code)
+cache caveat: the first repetition of a root pays cache creation while later repetitions read it -- cache-read and cache-creation figures are reported separately, never summed, and per-repetition numbers are not interchangeable; the median over repetitions is the honest statistic.
+
+cell        ladder  n  turns  duration_ms  cost_usd  cache_read  cache_creation  output_tokens  input_tokens_total  tool_uses  prefixed_tool_uses  grep_fallback  tool_result_bytes  read_bytes  recall  recall_n  precision  precision_n  flags
+b0-none     b       5  8      21761        0.1553    120556      13501           18             133241              7          0                   4              24094              0           1       5         1          5            
+b8-toc-dir  b       5  7      24340        0.1327    119833      11651           17             131494              6          0                   4              23368              13907       1       5         1          5            
+c0-none     c       5  15     48521        0.2786    183475      27822           34             201598              14         0                   3              49997              44629       0.52    5         0.95       5            
+c1-toc-dir  c       5  12     55784        0.3319    231597      30180           30             261620              11         3                   3              68933              14800       0.62    5         0.95       5            
+d0-none     d       5  12     44150        0.3361    216642      36906           13             264531              11         0                   3              81031              61181       0.8     5         0.85       5            
+d1-toc-dir  d       5  10     39595        0.3026    137544      33577           8              165337              9          1                   2              78812              67865       0.75    5         0.86       5            
+
+
+comparison: b8-toc-dir vs b0-none (control) on turns: median 7=8 cell-range=[6, 11] control-range=[6, 8] separated=false
+comparison: b8-toc-dir vs b0-none (control) on duration_ms: median 24340=21761 cell-range=[17088, 30679] control-range=[16548, 29002] separated=false
+comparison: b8-toc-dir vs b0-none (control) on cost_usd: median 0.1327=0.1553 cell-range=[0.1184, 0.2067] control-range=[0.1249, 0.2062] separated=false
+comparison: b8-toc-dir vs b0-none (control) on cache_read_input_tokens: median 119833=120556 cell-range=[91031, 152082] control-range=[87120, 157801] separated=false
+comparison: b8-toc-dir vs b0-none (control) on cache_creation_input_tokens: median 11651=13501 cell-range=[10496, 19065] control-range=[12147, 19415] separated=false
+comparison: b8-toc-dir vs b0-none (control) on output_tokens: median 17=18 cell-range=[15, 34] control-range=[9, 34] separated=false
+comparison: b8-toc-dir vs b0-none (control) on input_tokens_total: median 131494=133241 cell-range=[101535, 171159] control-range=[99275, 177230] separated=false
+comparison: b8-toc-dir vs b0-none (control) on tool_uses: median 6=7 cell-range=[5, 10] control-range=[5, 7] separated=false
+comparison: b8-toc-dir vs b0-none (control) on quarry_tool_uses: median 0=0 cell-range=[0, 1] control-range=[0, 0] separated=false
+comparison: b8-toc-dir vs b0-none (control) on grep_fallback_total: median 4=4 cell-range=[3, 5] control-range=[3, 7] separated=false
+comparison: b8-toc-dir vs b0-none (control) on tool_result_bytes: median 23368=24094 cell-range=[19952, 36823] control-range=[19772, 30775] separated=false
+comparison: b8-toc-dir vs b0-none (control) on read_bytes: median 13907=0 cell-range=[11278, 24922] control-range=[0, 16311] separated=false
+comparison: b8-toc-dir vs b0-none (control) on recall: median 1=1 cell-range=[1, 1] control-range=[1, 1] separated=false
+comparison: b8-toc-dir vs b0-none (control) on precision: median 1=1 cell-range=[1, 1] control-range=[1, 1] separated=false
+comparison: c1-toc-dir vs c0-none (control) on turns: median 12=15 cell-range=[10, 14] control-range=[13, 19] separated=false
+comparison: c1-toc-dir vs c0-none (control) on duration_ms: median 55784=48521 cell-range=[38786, 74916] control-range=[41756, 50445] separated=false
+comparison: c1-toc-dir vs c0-none (control) on cost_usd: median 0.3319=0.2786 cell-range=[0.3168, 0.3769] control-range=[0.2279, 0.3426] separated=false
+comparison: c1-toc-dir vs c0-none (control) on cache_read_input_tokens: median 231597=183475 cell-range=[142966, 285120] control-range=[116344, 222362] separated=false
+comparison: c1-toc-dir vs c0-none (control) on cache_creation_input_tokens: median 30180=27822 cell-range=[29932, 33186] control-range=[18109, 33734] separated=false
+comparison: c1-toc-dir vs c0-none (control) on output_tokens: median 30=34 cell-range=[16, 62] control-range=[28, 45] separated=false
+comparison: c1-toc-dir vs c0-none (control) on input_tokens_total: median 261620=201598 cell-range=[175496, 315068] control-range=[145473, 256110] separated=false
+comparison: c1-toc-dir vs c0-none (control) on tool_uses: median 11=14 cell-range=[9, 13] control-range=[12, 18] separated=false
+comparison: c1-toc-dir vs c0-none (control) on quarry_tool_uses: median 3=0 cell-range=[3, 4] control-range=[0, 0] separated=true
+comparison: c1-toc-dir vs c0-none (control) on grep_fallback_total: median 3=3 cell-range=[3, 6] control-range=[2, 7] separated=false
+comparison: c1-toc-dir vs c0-none (control) on tool_result_bytes: median 68933=49997 cell-range=[58366, 81166] control-range=[40039, 77140] separated=false
+comparison: c1-toc-dir vs c0-none (control) on read_bytes: median 14800=44629 cell-range=[2516, 38926] control-range=[27580, 67755] separated=false
+comparison: c1-toc-dir vs c0-none (control) on recall: median 0.62=0.52 cell-range=[0.42, 0.66] control-range=[0.45, 0.62] separated=false
+comparison: c1-toc-dir vs c0-none (control) on precision: median 0.95=0.95 cell-range=[0.82, 1] control-range=[0.93, 1] separated=false
+comparison: d1-toc-dir vs d0-none (control) on turns: median 10=12 cell-range=[8, 15] control-range=[11, 13] separated=false
+comparison: d1-toc-dir vs d0-none (control) on duration_ms: median 39595=44150 cell-range=[29971, 47391] control-range=[35454, 52193] separated=false
+comparison: d1-toc-dir vs d0-none (control) on cost_usd: median 0.3026=0.3361 cell-range=[0.2089, 0.3617] control-range=[0.3005, 0.4105] separated=false
+comparison: d1-toc-dir vs d0-none (control) on cache_read_input_tokens: median 137544=216642 cell-range=[50213, 251436] control-range=[153034, 262051] separated=false
+comparison: d1-toc-dir vs d0-none (control) on cache_creation_input_tokens: median 33577=36906 cell-range=[22509, 40376] control-range=[27128, 47877] separated=false
+comparison: d1-toc-dir vs d0-none (control) on output_tokens: median 8=13 cell-range=[5, 18] control-range=[6, 60] separated=false
+comparison: d1-toc-dir vs d0-none (control) on input_tokens_total: median 165337=264531 cell-range=[90595, 287293] control-range=[189227, 297419] separated=false
+comparison: d1-toc-dir vs d0-none (control) on tool_uses: median 9=11 cell-range=[7, 14] control-range=[10, 12] separated=false
+comparison: d1-toc-dir vs d0-none (control) on quarry_tool_uses: median 1=0 cell-range=[1, 1] control-range=[0, 0] separated=true
+comparison: d1-toc-dir vs d0-none (control) on grep_fallback_total: median 2=3 cell-range=[1, 5] control-range=[2, 4] separated=false
+comparison: d1-toc-dir vs d0-none (control) on tool_result_bytes: median 78812=81031 cell-range=[51495, 79071] control-range=[59649, 90650] separated=false
+comparison: d1-toc-dir vs d0-none (control) on read_bytes: median 67865=61181 cell-range=[39561, 71316] control-range=[49613, 71316] separated=false
+comparison: d1-toc-dir vs d0-none (control) on recall: median 0.75=0.8 cell-range=[0.62, 0.82] control-range=[0.71, 0.82] separated=false
+comparison: d1-toc-dir vs d0-none (control) on precision: median 0.86=0.85 cell-range=[0.8, 0.93] control-range=[0.8, 0.93] separated=false
+
+incomplete: none
+invalid: none
+session_fingerprint_drift: b8-toc-dir/1 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: b8-toc-dir/2 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: b8-toc-dir/3 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: b8-toc-dir/4 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: b8-toc-dir/5 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: c1-toc-dir/1 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: c1-toc-dir/2 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: c1-toc-dir/3 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: c1-toc-dir/4 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: c1-toc-dir/5 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/1 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/2 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/3 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/4 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/5 differs from b0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
