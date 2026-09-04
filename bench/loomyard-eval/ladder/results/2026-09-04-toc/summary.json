@@ -1,0 +1,429 @@
+{
+  "cells": [
+    {
+      "id": "a0-none",
+      "ladder": "a",
+      "task": "01-reed-geometry-exploration",
+      "allowed": null,
+      "control": true,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 29498,
+          "min": 23536,
+          "max": 32709,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 207207,
+          "min": 194250,
+          "max": 273760,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.31604709999999997,
+          "min": 0.27194300000000005,
+          "max": 0.361147,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 51903,
+          "min": 49024,
+          "max": 66790,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 3,
+          "min": 3,
+          "max": 6,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 236719,
+          "min": 217800,
+          "max": 304673,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 35,
+          "min": 19,
+          "max": 57,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.88,
+          "min": 0.76,
+          "max": 0.93,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 38901,
+          "min": 30793,
+          "max": 55554,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.4,
+          "min": 0.38,
+          "max": 0.46,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 63098,
+          "min": 51976,
+          "max": 69127,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 11,
+          "min": 10,
+          "max": 14,
+          "n": 5
+        },
+        "turns": {
+          "median": 12,
+          "min": 11,
+          "max": 15,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "a2-toc-dir",
+      "ladder": "a",
+      "task": "01-reed-geometry-exploration",
+      "allowed": [
+        "toc"
+      ],
+      "control": false,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 39474,
+          "min": 17412,
+          "max": 44429,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 227014,
+          "min": 168364,
+          "max": 244386,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.37399720000000003,
+          "min": 0.26755059999999997,
+          "max": 0.42742779999999997,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 62668,
+          "min": 48202,
+          "max": 69588,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 3,
+          "min": 1,
+          "max": 6,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 256472,
+          "min": 207848,
+          "max": 288833,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 17,
+          "min": 10,
+          "max": 21,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.93,
+          "min": 0.82,
+          "max": 0.94,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 36999,
+          "min": 32553,
+          "max": 38991,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.43,
+          "min": 0.34,
+          "max": 0.5,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 87883,
+          "min": 53115,
+          "max": 95120,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 11,
+          "min": 11,
+          "max": 16,
+          "n": 5
+        },
+        "turns": {
+          "median": 12,
+          "min": 12,
+          "max": 17,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    }
+  ],
+  "comparisons": [
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "turns",
+      "cell_median": 12,
+      "control_median": 12,
+      "cell_range": [
+        12,
+        17
+      ],
+      "control_range": [
+        11,
+        15
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "duration_ms",
+      "cell_median": 62668,
+      "control_median": 51903,
+      "cell_range": [
+        48202,
+        69588
+      ],
+      "control_range": [
+        49024,
+        66790
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "cost_usd",
+      "cell_median": 0.37399720000000003,
+      "control_median": 0.31604709999999997,
+      "cell_range": [
+        0.26755059999999997,
+        0.42742779999999997
+      ],
+      "control_range": [
+        0.27194300000000005,
+        0.361147
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "cache_read_input_tokens",
+      "cell_median": 227014,
+      "control_median": 207207,
+      "cell_range": [
+        168364,
+        244386
+      ],
+      "control_range": [
+        194250,
+        273760
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "cache_creation_input_tokens",
+      "cell_median": 39474,
+      "control_median": 29498,
+      "cell_range": [
+        17412,
+        44429
+      ],
+      "control_range": [
+        23536,
+        32709
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "output_tokens",
+      "cell_median": 17,
+      "control_median": 35,
+      "cell_range": [
+        10,
+        21
+      ],
+      "control_range": [
+        19,
+        57
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "input_tokens_total",
+      "cell_median": 256472,
+      "control_median": 236719,
+      "cell_range": [
+        207848,
+        288833
+      ],
+      "control_range": [
+        217800,
+        304673
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "tool_uses",
+      "cell_median": 11,
+      "control_median": 11,
+      "cell_range": [
+        11,
+        16
+      ],
+      "control_range": [
+        10,
+        14
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "quarry_tool_uses",
+      "cell_median": 2,
+      "control_median": 0,
+      "cell_range": [
+        2,
+        2
+      ],
+      "control_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "grep_fallback_total",
+      "cell_median": 3,
+      "control_median": 3,
+      "cell_range": [
+        1,
+        6
+      ],
+      "control_range": [
+        3,
+        6
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "tool_result_bytes",
+      "cell_median": 87883,
+      "control_median": 63098,
+      "cell_range": [
+        53115,
+        95120
+      ],
+      "control_range": [
+        51976,
+        69127
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "read_bytes",
+      "cell_median": 36999,
+      "control_median": 38901,
+      "cell_range": [
+        32553,
+        38991
+      ],
+      "control_range": [
+        30793,
+        55554
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "recall",
+      "cell_median": 0.43,
+      "control_median": 0.4,
+      "cell_range": [
+        0.34,
+        0.5
+      ],
+      "control_range": [
+        0.38,
+        0.46
+      ],
+      "separated": false
+    },
+    {
+      "cell": "a2-toc-dir",
+      "control": "a0-none",
+      "metric": "precision",
+      "cell_median": 0.93,
+      "control_median": 0.88,
+      "cell_range": [
+        0.82,
+        0.94
+      ],
+      "control_range": [
+        0.76,
+        0.93
+      ],
+      "separated": false
+    }
+  ],
+  "incomplete": null,
+  "invalid": null,
+  "meta": {
+    "results_root": "2026-09-04-toc"
+  }
+}

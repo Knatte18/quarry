@@ -90,8 +90,14 @@ type SessionFingerprint struct {
 	PermissionMode string `json:"permission_mode"`
 	// Tools is the session-init record's advertised built-in tool list.
 	Tools []string `json:"tools"`
-	// MCPServers is the session-init record's advertised MCP server name list.
+	// MCPServers is the session-init record's advertised MCP server name list, in record order --
+	// names only, so provenance.json's shape stays unchanged from before the session-init record was
+	// retyped to carry per-server status.
 	MCPServers []string `json:"mcp_servers"`
+	// MCPServerStatuses maps each advertised MCP server's name to its connection status for this
+	// session, so a server that stopped connecting between repetitions shows up as fingerprint drift
+	// rather than vanishing.
+	MCPServerStatuses map[string]string `json:"mcp_server_statuses"`
 	// HasMemoryPaths reports whether the session-init record's memory-path map was non-empty.
 	HasMemoryPaths bool `json:"has_memory_paths"`
 	// SkillCount is the session-init record's advertised skill count.
@@ -101,14 +107,22 @@ type SessionFingerprint struct {
 }
 
 // NewSessionFingerprint lifts a SessionFingerprint from one repetition's decoded session-init
-// record.
+// record. MCPServers carries the advertised servers' names, in record order; MCPServerStatuses maps
+// each of those names to its connection status.
 func NewSessionFingerprint(init *SessionInit) SessionFingerprint {
+	names := make([]string, len(init.MCPServers))
+	statuses := make(map[string]string, len(init.MCPServers))
+	for i, s := range init.MCPServers {
+		names[i] = s.Name
+		statuses[s.Name] = s.Status
+	}
 	return SessionFingerprint{
 		ClaudeCodeVersion: init.ClaudeCodeVersion,
 		Model:             init.Model,
 		PermissionMode:    init.PermissionMode,
 		Tools:             append([]string(nil), init.Tools...),
-		MCPServers:        append([]string(nil), init.MCPServers...),
+		MCPServers:        names,
+		MCPServerStatuses: statuses,
 		HasMemoryPaths:    len(init.MemoryPaths) > 0,
 		SkillCount:        len(init.Skills),
 		SlashCommandCount: len(init.SlashCommands),
@@ -579,6 +593,9 @@ func diffSessionFingerprint(a, b SessionFingerprint) string {
 	if !stringSlicesEqual(a.MCPServers, b.MCPServers) {
 		parts = append(parts, fmt.Sprintf("mcp_servers %v vs %v", a.MCPServers, b.MCPServers))
 	}
+	if !stringMapsEqual(a.MCPServerStatuses, b.MCPServerStatuses) {
+		parts = append(parts, fmt.Sprintf("mcp_server_statuses %v vs %v", a.MCPServerStatuses, b.MCPServerStatuses))
+	}
 	if a.HasMemoryPaths != b.HasMemoryPaths {
 		parts = append(parts, fmt.Sprintf("has_memory_paths %v vs %v", a.HasMemoryPaths, b.HasMemoryPaths))
 	}
@@ -598,6 +615,19 @@ func stringSlicesEqual(a, b []string) bool {
 	}
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// stringMapsEqual reports whether a and b carry the same keys mapped to the same values.
+func stringMapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
 			return false
 		}
 	}

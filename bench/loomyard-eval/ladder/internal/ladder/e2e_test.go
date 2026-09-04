@@ -216,6 +216,44 @@ func setFakeClaudeEnv(t *testing.T, l *Ladder, stream string) {
 	t.Setenv("FAKE_CLAUDE_LEAK_PREFIX", l.MCPPrefix())
 }
 
+// setFakeClaudeEnvGranted is setFakeClaudeEnv for a granted (non-control) cell driving cfg: it sets
+// FAKE_CLAUDE_ALLOWED to cfg's MCP-prefixed granted tool list and leaves FAKE_CLAUDE_CONTROL unset,
+// so testdata/fakeclaude asserts the "--allowedTools" flag's value instead of asserting its absence.
+func setFakeClaudeEnvGranted(t *testing.T, l *Ladder, cfg Config, stream string) {
+	t.Helper()
+	t.Setenv("FAKE_CLAUDE_MODEL", l.RunModel)
+	t.Setenv("FAKE_CLAUDE_EFFORT", l.RunEffort)
+	t.Setenv("FAKE_CLAUDE_MAX_TURNS", strconv.Itoa(l.MaxTurns))
+	t.Setenv("FAKE_CLAUDE_TOOLS", strings.Join(BuiltinTools, ","))
+	t.Setenv("FAKE_CLAUDE_SCORER_MODEL", l.Scorer.Model)
+	t.Setenv("FAKE_CLAUDE_SCORER_EFFORT", l.Scorer.Effort)
+	t.Setenv("FAKE_CLAUDE_STREAM", stream)
+	t.Setenv("FAKE_CLAUDE_LEAK_PREFIX", l.MCPPrefix())
+
+	prefixed := make([]string, len(cfg.Allowed))
+	for i, a := range cfg.Allowed {
+		prefixed[i] = l.MCPPrefix() + a
+	}
+	t.Setenv("FAKE_CLAUDE_ALLOWED", strings.Join(prefixed, ","))
+}
+
+// writeStandaloneServerModule writes a minimal, dependency-free Go module under quarryRepoRoot at
+// buildTarget, so BuildServer's real `go build` invocation -- run through the same ExecRunner as
+// production, never mocked -- has something real to build for a granted-cell e2e case.
+func writeStandaloneServerModule(t *testing.T, quarryRepoRoot, buildTarget string) {
+	t.Helper()
+	dir := filepath.Join(quarryRepoRoot, buildTarget)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(quarryRepoRoot, "go.mod"), []byte("module fakeserver\n\ngo 1.21\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+}
+
 // runOpts builds the RunOptions common to this file's subtests.
 func runOpts(env *e2eEnv, ladderFilePath string, cells []string) RunOptions {
 	return RunOptions{
@@ -538,6 +576,59 @@ func TestE2E(t *testing.T) {
 		}
 		if !RepIsComplete(dir) {
 			t.Error("second Run() did not re-attempt the previously blinding-failed repetition")
+		}
+	})
+
+	t.Run("GrantedCellServerNeverConnects", func(t *testing.T) {
+		env, sha := newE2EEnv(t, fakeBinPath)
+		l := baseLadder(env, sha, 1, "task-1")
+		l.QuarryTools = []string{"toc"}
+		l.Server = &ServerSpec{Name: "quarry", Build: "./cmd/fakeserver"}
+		writeStandaloneServerModule(t, env.quarryRepoRoot, "cmd/fakeserver")
+
+		granted := Config{ID: "cell-grant", Ladder: "g", Task: "task-1", Allowed: []string{"toc"}}
+		control := Config{ID: "cell-grant-control", Ladder: "g", Task: "task-1", Allowed: nil}
+		l.Configs = []Config{control, granted}
+		ladderPath := filepath.Join(t.TempDir(), "ladder.yaml")
+		writeSyntheticLadderFile(t, ladderPath, l)
+
+		setFakeClaudeEnvGranted(t, l, granted, "normal")
+		t.Setenv("FAKE_CLAUDE_SERVER_STATUS_OVERRIDE", "quarry=failed")
+
+		// Only the granted cell is selected: the control cell exists solely to satisfy
+		// LoadLadder's one-control-per-letter rule and is never invoked.
+		exitNonZero, err := Run(context.Background(), runOpts(env, ladderPath, []string{granted.ID}))
+		if err != nil {
+			t.Fatalf("Run() = %v; want no error even though the server never connects", err)
+		}
+		if !exitNonZero {
+			t.Error("Run() reported a zero exit for a repetition whose granted server never connected")
+		}
+
+		dir := RepDir(env.resultsRoot, granted.ID, 1)
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("repetition directory %s still exists; want it renamed away after exhausting attempts", dir)
+		}
+		for n := 1; n <= MaxAttempts; n++ {
+			target := dir + ".invalid-" + strconv.Itoa(n)
+			if _, err := os.Stat(target); err != nil {
+				t.Errorf("invalid directory %s was not produced: %v", target, err)
+				continue
+			}
+			reasonPath := filepath.Join(target, ServerConnectFailureFile)
+			data, err := os.ReadFile(reasonPath)
+			if err != nil {
+				t.Errorf("reason file %s was not written: %v", reasonPath, err)
+				continue
+			}
+			if !strings.Contains(string(data), granted.ID) || !strings.Contains(string(data), "quarry") {
+				t.Errorf("reason file %s = %q; want it to name the cell and the server", reasonPath, data)
+			}
+		}
+
+		summary, _, _ := summarizeAndWriteReport(t, env.resultsRoot)
+		if len(summary.Incomplete) != 1 || summary.Incomplete[0] != granted.ID {
+			t.Errorf("summary.Incomplete = %v; want [%q]", summary.Incomplete, granted.ID)
 		}
 	})
 

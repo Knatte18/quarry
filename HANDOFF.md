@@ -8,14 +8,13 @@ contract. Neither is summarised here — read them.
 
 ## 1. Where things stand
 
-Quarry is rewritten around one identifier, the glyph, and three queries: `toc`, `resolve`,
-`expand`. Tree-sitter only, Go only. **Waves 0–4 are merged on `main`** — the entire build is
-done; only the measurement remains. T0 (the V1 deletion), T1 (`glyph/`), T2 (the ladder
-harness), T3 (the engine), T4 (`resolve` + `expand` in the engine), T5a (facade + CLI, `toc`),
-T6 (`cmd/quarry-mcp`, one `toc` tool — merged `e8a4b2d`), T5b (facade + CLI, `resolve` +
-`expand` — merged last, `8326587`, and reconciled the collision with T6's `internal/repopath`
-extraction). Each landed as one squash commit titled by its task; each task branch's full
-history, `_mill/` artifacts included, is under its `archive/<slug>` tag (19 tags on origin).
+`expand`. Tree-sitter only, Go only. **Waves 0–5 are merged on `main`:** T0 (the V1 deletion),
+T1 (`glyph/`), T2 (the ladder harness), T3 (the engine), T4 (`resolve` + `expand` in the engine),
+T5a (facade + CLI, `toc`), T6 (`cmd/quarry-mcp`, one `toc` tool — merged `e8a4b2d`), T5b (facade +
+CLI, `resolve` + `expand` — merged last, `8326587`, and reconciled the collision with T6's
+`internal/repopath` extraction), T7 (the regression-gate rerun of the toc-dir finding against the
+merged rewrite; see §3). Each landed as one squash commit titled by its task; each task branch's
+full history, `_mill/` artifacts included, is under its `archive/<slug>` tag.
 
 The engine is `internal/engine` (grammar seam `internal/engine/treesitter`, `internal/cgoguard`
 for `CGO_ENABLED=0`). The public surface is the `quarry/` facade, mirrored by `cmd/quarry`
@@ -26,8 +25,10 @@ three verbs; the golden tests pin the Loomyard checkout to `72c23d9` (hard-fail 
 skip when `LADDER_LOOMYARD_REPO` is unset — set it in `.scratch/ladder.env`, gitignored, per
 machine).
 
-The full `pipeline.done_gate` (`go test ./... && golangci-lint run`) is green on `main`,
-verified after the last merge. **Uncommitted on `main` right now:** this file only.
+The full `pipeline.done_gate` (`go test ./... && golangci-lint run`) is green on `main`, verified
+after the last merge. Check `git status --porcelain` on `main` before switching machines — this
+line is retired rather than restated, since a fixed "uncommitted right now" claim in a handoff
+document goes stale the moment anything else lands.
 
 ## 2. The decisions the plan rests on
 
@@ -65,13 +66,15 @@ verified after the last merge. **Uncommitted on `main` right now:** this file on
 ## 3. What was measured, and still holds
 
 The numbers the plan cites (its §1 points here). The runs are on branch `v1-final` under
-`bench/loomyard-eval/ladder/results/<root>/conclusion.md`; nothing on `main` reproduces them
-yet — that is exactly what T7 is for. The committed conclusions are the record; the raw run
-data was never committed anywhere.
+`bench/loomyard-eval/ladder/results/<root>/conclusion.md`; T7 reran the toc-dir finding against
+the merged rewrite (`main`'s `cmd/quarry-mcp`) and it did not reproduce cleanly — see the new row
+below and `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` for the full account.
+The committed conclusions are the record; the raw run data was never committed anywhere.
 
 | finding | run |
 |---|---|
 | A directory table of contents halves exploration on unfamiliar code: turns 8→4, cache_read 127k→83k, recall unchanged. The one measured win and the regression gate for the rewrite (T7). | `2026-09-02-toc`, reps 5 |
+| T7's rerun of the same comparison, against the merged rewrite: no cost metric separated from the control at n=5 (turns and cache_read both `separated: false`), and most cost medians ran equal-or-higher for the toc-dir cell rather than lower. Recall/precision stayed consistent with the prior root. The regression gate did not reproduce the prior win on this host/harness/CLI-version pairing. | `2026-09-04-toc`, reps 5 |
 | Every LSP-shaped tool (definition, references, symbol) sat flat with or below the grep control. | `2026-08-30`, 45 runs |
 | A lossy compact view cut bytes 4× and cost precision 0.96→0.82. Views must be complete by default. | `2026-09-02-compact2` |
 | Symbol spans are syntactic: doc p90=12 lines, total span p90=52, max=971. A fixed grep window truncates silently. | 1741 symbols, Loomyard |
@@ -82,15 +85,10 @@ hash per rep in `provenance.json`), and cost numbers compare only within one res
 
 ## 4. Next
 
-**T7 is spawned and its worker is in the discussion phase.** Slug `ladder-toc-rerun`
-("Ladder, toc rerun (T7)"), worktree `wts/ladder-toc-rerun` branched from the T5b tip, with
-`.scratch/ladder.env` written, the 3-round caps in its `config.local.yaml`, and the Loomyard
-checkout verified at pin `72c23d9`. The task: run `ladder-toc.yaml` cells `a0-none` and
-`a2-toc-dir` with the T2 harness against the T6 server, reps 5, and write
-`results/<date>-toc/conclusion.md` — separation on turns and cache_read as in the v1-final run,
-or an honest why-not. The orchestrator session has the `orch-review` discussion.md wait armed;
-a fresh session re-arms it with `/mill:orch-review ladder-toc-rerun`. The finalize PR gets the
-orchestrator PR review before the operator closes it.
+**The critical path is finished.** T0 → T1 → T3 → T5a → T6 → T7 has run end to end; T7 measured
+the regression gate against the merged rewrite and wrote its conclusion (see §3). What remains is
+wave 6's type checker (T8: gopls vs `go/packages`, `impact`, `assert-no-callers`, `verified` per
+entry, the DAG tightening of plan §8.2 — plan §12), plus the cleanup and grooming items below.
 
 **The §9a live probe is DONE** (2026-09-04, this machine, from the Loomyard checkout): connect +
 `toc` call returned the §4 envelope, and the allowlist denial landed in `permission_denials` —
@@ -139,10 +137,13 @@ at the wrong repository until caught.
 ## 5. Open decisions (plan §11)
 
 - The phase-2 type checker: gopls or `go/packages` in-process. Decided when `impact` is built
-  (T8). If `impact` is pursued, the gate is a *task-shaped* ladder cell — an edit task where the
-  agent must find break sites — since reference-shaped tools measured flat in §3.
-- Whether the harness commits `results/**/raw/`. Decided with T7's first results root.
+  (T8). If `impact` is ever pursued, the gate is a *task-shaped* ladder cell — an edit task where
+  the agent must find break sites — since reference-shaped tools measured flat in §3.
 - A C# parameter-list cap, only after a real C# repository is measured — and only when C# is wanted.
+
+The raw-tree decision is settled — see
+`bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` and `docs/rewrite-plan.md`
+§11's updated bullet.
 
 ## Suggested skills
 
