@@ -39,6 +39,22 @@ comfortably read file-by-file.
 >
 > Scope your answer to these three packages.
 
+## Output schema (exploration tasks)
+
+This schema was recovered from the V1 benchmark protocol document after that document was deleted.
+
+```json
+{
+  "relevant_files": ["path/to/file.go", "..."],
+  "key_symbols": [
+    {"name": "FuncOrTypeName", "file": "path/to/file.go", "role": "one sentence"}
+  ],
+  "summary": "3-6 sentences explaining how the mechanism works end to end",
+  "confidence": "high|medium|low",
+  "open_questions": ["anything left uncertain, if any"]
+}
+```
+
 ## Notes for whoever prepares C's fasit / scores this
 
 Not investigated in detail when this task was drafted — genuinely open,
