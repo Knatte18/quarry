@@ -100,10 +100,11 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
 
   Add ladder c and ladder d paragraphs to the per-ladder design list, in the shape ladders a and b
   already use: the task, the scope it exercises, and what a result there would mean. Keep the
-  reading-the-result guidance, the harness-rule reminders and the run command; update the run
-  command's `--results` example to a `-breadth` root and its `--cells` list to the six cells this
-  matrix runs. The T2/T7 sentence naming which cells those tasks ran is history and stays accurate
-  as it is — extend it rather than replacing it.
+  reading-the-result guidance, the harness-rule reminders and the run command. Update the run
+  command's `--results` example to a `-breadth` root, and **add** a `--cells` line naming the six
+  cells this matrix runs — that command carries `--config` and `--results` only today, so this is a
+  new line rather than an edit to an existing one. The T2/T7 sentence naming which cells those tasks
+  ran is history and stays accurate as it is — extend it rather than replacing it.
 
   Read `config.go` to confirm `validate`'s rules before writing: `source_repo` exactly
   `env:LADDER_LOOMYARD_REPO`; non-zero `run_model`, `run_effort`, `max_turns`, `reps`,

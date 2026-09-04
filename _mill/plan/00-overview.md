@@ -91,10 +91,10 @@ Batch-local decisions live in each batch file._
 - **Rationale:** One tree state under all three shapes means a difference between shapes is the shape, not the tree.
 - **Applies to:** ladder-c-task-02, ladder-d-task-06, ladder-file-and-pre-matrix-gates
 
-### Decision: reference-agent-cards-read-the-pinned-checkout-freely
+### Decision: cards-that-read-the-pinned-checkout-freely
 
-- **Decision:** A card's `Context:` allowlist governs files **inside this repository**. The two fasit-authoring cards (7 and 9) additionally read the pinned Loomyard worktree exhaustively with no turn or token discipline, and that reading is deliberately unbounded — it is the arm-C protocol, not a plan defect. Neither card writes anything into that checkout.
-- **Rationale:** `fasit-authored-by-a-reference-agent-card` in `_mill/discussion.md` requires an exhaustive read cross-checked by a second independent method; an allowlist over a foreign repository cannot express that and would defeat the protocol.
+- **Decision:** A card's `Context:` allowlist governs files **inside this repository**. Three cards additionally read the pinned Loomyard worktree with no turn or token discipline, and that reading is deliberately unbounded rather than a plan defect: the two fasit-authoring cards (7 and 9), whose exhaustive read is the arm-C protocol itself, and card 8, whose subject survey must range over the whole tree precisely because the shape it is picking for is one where no package is named in advance. None of the three writes anything into that checkout, and each removes the worktree it added when done.
+- **Rationale:** `fasit-authored-by-a-reference-agent-card` in `_mill/discussion.md` requires an exhaustive read cross-checked by a second independent method; an allowlist over a foreign repository cannot express that and would defeat the protocol. Card 8 is on the same footing for the same reason — `ladder-d-cold-start-orientation` requires a subject whose real answer spans at least two packages and whose package names appear nowhere in the prompt, and no bounded read can establish either.
 - **Applies to:** ladder-c-task-02, ladder-d-task-06
 
 ### Decision: results-raw-tree-stays-untracked
