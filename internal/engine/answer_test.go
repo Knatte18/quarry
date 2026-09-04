@@ -92,8 +92,9 @@ func TestAnswerJSON_SymbolsThreeStates(t *testing.T) {
 	})
 
 	t.Run("PresentEmptyForFileWithNoDeclaration", func(t *testing.T) {
-		r := openScratchRepo(t, "answer-json-symbols-empty", map[string]string{"foo.go": "package p\n"})
-		got, err := r.TOC("foo.go", TOCOptions{})
+		// Under "pkg/", not the scratch root: the root's own unit ("") is never spellable.
+		r := openScratchRepo(t, "answer-json-symbols-empty", map[string]string{"pkg/foo.go": "package p\n"})
+		got, err := r.TOC("pkg/foo.go", TOCOptions{})
 		if err != nil {
 			t.Fatalf("TOC returned error: %v", err)
 		}
@@ -109,8 +110,9 @@ func TestAnswerJSON_SymbolsThreeStates(t *testing.T) {
 	})
 
 	t.Run("PresentAndPopulated", func(t *testing.T) {
-		r := openScratchRepo(t, "answer-json-symbols-populated", map[string]string{"foo.go": "package p\n\nfunc F() {}\n"})
-		got, err := r.TOC("foo.go", TOCOptions{})
+		// Under "pkg/", not the scratch root: the root's own unit ("") is never spellable.
+		r := openScratchRepo(t, "answer-json-symbols-populated", map[string]string{"pkg/foo.go": "package p\n\nfunc F() {}\n"})
+		got, err := r.TOC("pkg/foo.go", TOCOptions{})
 		if err != nil {
 			t.Fatalf("TOC returned error: %v", err)
 		}
@@ -197,11 +199,13 @@ func TestAnswerKnobs_Depth(t *testing.T) {
 // TestAnswerKnobs_SymbolsDefaultsAndOverrides covers Symbols defaulting per target kind and both
 // explicit overrides winning.
 func TestAnswerKnobs_SymbolsDefaultsAndOverrides(t *testing.T) {
-	files := map[string]string{"foo.go": "package p\n\nfunc F() {}\n"}
+	// Under "pkg/", not the scratch root: the root's own unit ("") is never spellable, and the
+	// "true" cases below need a spellable unit to prove Symbols becomes non-nil.
+	files := map[string]string{"pkg/foo.go": "package p\n\nfunc F() {}\n"}
 
 	t.Run("FileTargetDefaultsTrue", func(t *testing.T) {
 		r := openScratchRepo(t, "answer-symbols-file-default", files)
-		got, err := r.TOC("foo.go", TOCOptions{})
+		got, err := r.TOC("pkg/foo.go", TOCOptions{})
 		if err != nil {
 			t.Fatalf("TOC returned error: %v", err)
 		}
@@ -212,7 +216,7 @@ func TestAnswerKnobs_SymbolsDefaultsAndOverrides(t *testing.T) {
 
 	t.Run("DirectoryTargetDefaultsFalse", func(t *testing.T) {
 		r := openScratchRepo(t, "answer-symbols-dir-default", files)
-		got, err := r.TOC(".", TOCOptions{})
+		got, err := r.TOC("pkg", TOCOptions{})
 		if err != nil {
 			t.Fatalf("TOC returned error: %v", err)
 		}
@@ -223,7 +227,7 @@ func TestAnswerKnobs_SymbolsDefaultsAndOverrides(t *testing.T) {
 
 	t.Run("DirectoryTargetExplicitTrueWins", func(t *testing.T) {
 		r := openScratchRepo(t, "answer-symbols-dir-override-true", files)
-		got, err := r.TOC(".", TOCOptions{Symbols: boolPtr(true)})
+		got, err := r.TOC("pkg", TOCOptions{Symbols: boolPtr(true)})
 		if err != nil {
 			t.Fatalf("TOC returned error: %v", err)
 		}
@@ -234,7 +238,7 @@ func TestAnswerKnobs_SymbolsDefaultsAndOverrides(t *testing.T) {
 
 	t.Run("FileTargetExplicitFalseWins", func(t *testing.T) {
 		r := openScratchRepo(t, "answer-symbols-file-override-false", files)
-		got, err := r.TOC("foo.go", TOCOptions{Symbols: boolPtr(false)})
+		got, err := r.TOC("pkg/foo.go", TOCOptions{Symbols: boolPtr(false)})
 		if err != nil {
 			t.Fatalf("TOC returned error: %v", err)
 		}

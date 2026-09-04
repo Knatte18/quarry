@@ -128,9 +128,12 @@ func TestWalk_TieBreakPicksLexicographicallySmallerClauseDeterministically(t *te
 // resorted.
 func TestWalk_OrderingAndSymbolSourceOrder(t *testing.T) {
 	root := writeScratchTree(t, "walk-ordering", map[string]string{
-		"zebra.go":         "package p\n\nfunc Zeta() {}\n\nfunc Alpha() {}\n",
-		"apple.go":         "package p\n",
-		"middle/nested.go": "package p\n",
+		"zebra.go": "package p\n",
+		"apple.go": "package p\n",
+		// nested.go, not the scratch root, carries the two functions this test's symbol-order
+		// assertion needs: the scratch root's own glyph unit is "" (dirRel == "."), which is never
+		// spellable, so a root-level file could never carry Symbols at all.
+		"middle/nested.go": "package p\n\nfunc Zeta() {}\n\nfunc Alpha() {}\n",
 		"alsomid/n.go":     "package p\n",
 	})
 	r := openRepo(t, root)
@@ -158,10 +161,14 @@ func TestWalk_OrderingAndSymbolSourceOrder(t *testing.T) {
 		}
 	}
 
-	zebra := entryByName(t, got.Files, "zebra.go")
-	symbols := *zebra.Symbols
-	if len(symbols) != 2 || symbols[0].Name != "Zeta" || symbols[1].Name != "Alpha" {
-		t.Errorf("zebra.go Symbols = %+v; want [Zeta, Alpha] in source order", symbols)
+	middle, err := r.TOC("middle", TOCOptions{Symbols: boolPtr(true)})
+	if err != nil {
+		t.Fatalf("TOC returned error: %v", err)
+	}
+	nested := entryByName(t, middle.Files, "nested.go")
+	symbols := *nested.Symbols
+	if len(symbols) != 2 || symbols[0].ID != "middle#Zeta" || symbols[1].ID != "middle#Alpha" {
+		t.Errorf("nested.go Symbols = %+v; want [middle#Zeta, middle#Alpha] in source order", symbols)
 	}
 }
 

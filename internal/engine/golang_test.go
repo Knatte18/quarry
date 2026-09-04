@@ -6,12 +6,20 @@
 package engine
 
 import (
+	"reflect"
 	"testing"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
+
+// testUnit is the fixed glyph unit every fixture in this file is extracted under. Its own
+// spellability is never in question here — this file calls Strategy.Symbols directly, bypassing
+// the walk's unitFor/unitSpellable gate entirely, so a fixture's expected id is always
+// testUnit + "#" + member.
+const testUnit = "u"
 
 // goExtraction is every Go Strategy method's output for one parsed fixture, gathered in a single
 // treesitter.WithTree call so each table row stays one fixture plus its expectation.
@@ -35,7 +43,7 @@ func extractGo(t *testing.T, src string) goExtraction {
 	var got goExtraction
 	b := []byte(src)
 	err := treesitter.WithTree("go", b, func(root *ts.Node, partial bool) error {
-		got.Symbols = strategy.Symbols(root, b)
+		got.Symbols = strategy.Symbols(testUnit, root, b)
 		got.Header = strategy.Header(root, b)
 		got.Package = strategy.Package(root, b)
 		got.Partial = partial
@@ -46,6 +54,17 @@ func extractGo(t *testing.T, src string) goExtraction {
 		t.Fatalf("treesitter.WithTree(\"go\", ...) returned error: %v", err)
 	}
 	return got
+}
+
+// id builds the expected glyph id for a package-level name under testUnit.
+func id(name string) string {
+	return testUnit + "#" + name
+}
+
+// methodID builds the expected glyph id for a method or interface method under testUnit.
+func methodID(owner, name string) string {
+	g := glyph.Glyph{Lang: glyph.Go, Unit: testUnit, Owner: []string{owner}, Name: name}
+	return g.String()
 }
 
 // TestGoStrategy_Symbols covers Symbols across every declaration shape the Go strategy handles:
@@ -64,7 +83,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"// Foo does a thing.\n" +
 				"func Foo() {}\n",
 			want: []Symbol{
-				{Kind: KindFunction, Name: "Foo", Signature: "func Foo()", Docstring: "Foo does a thing.", Start: 3, SigEnd: 4, End: 4},
+				{Kind: KindFunction, ID: id("Foo"), Signature: "func Foo()", Doc: "Foo does a thing.", Start: 3, SigEnd: 4, End: 4},
 			},
 		},
 		{
@@ -73,7 +92,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\n" +
 				"func Bar() {}\n",
 			want: []Symbol{
-				{Kind: KindFunction, Name: "Bar", Signature: "func Bar()", Start: 3, SigEnd: 3, End: 3},
+				{Kind: KindFunction, ID: id("Bar"), Signature: "func Bar()", Start: 3, SigEnd: 3, End: 3},
 			},
 		},
 		{
@@ -85,8 +104,8 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\n" +
 				"func B() {}\n",
 			want: []Symbol{
-				{Kind: KindFunction, Name: "A", Signature: "func A()", Start: 3, SigEnd: 3, End: 3},
-				{Kind: KindFunction, Name: "B", Signature: "func B()", Start: 6, SigEnd: 6, End: 6},
+				{Kind: KindFunction, ID: id("A"), Signature: "func A()", Start: 3, SigEnd: 3, End: 3},
+				{Kind: KindFunction, ID: id("B"), Signature: "func B()", Start: 6, SigEnd: 6, End: 6},
 			},
 		},
 		{
@@ -97,7 +116,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\n" +
 				"func C() {}\n",
 			want: []Symbol{
-				{Kind: KindFunction, Name: "C", Signature: "func C()", Start: 5, SigEnd: 5, End: 5},
+				{Kind: KindFunction, ID: id("C"), Signature: "func C()", Start: 5, SigEnd: 5, End: 5},
 			},
 		},
 		{
@@ -110,9 +129,24 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\n" +
 				"func (t T) Val() {}\n",
 			want: []Symbol{
-				{Kind: KindType, Name: "T", Signature: "type T struct", SigEnd: 3, Start: 3, End: 3},
-				{Kind: KindMethod, Name: "Ptr", Owner: "T", Signature: "func (t *T) Ptr()", Start: 5, SigEnd: 5, End: 5},
-				{Kind: KindMethod, Name: "Val", Owner: "T", Signature: "func (t T) Val()", Start: 7, SigEnd: 7, End: 7},
+				{Kind: KindType, ID: id("T"), Signature: "type T struct", SigEnd: 3, Start: 3, End: 3, HeadStart: 3, HeadEnd: 3},
+				{Kind: KindMethod, ID: methodID("T", "Ptr"), Signature: "func (t *T) Ptr()", Start: 5, SigEnd: 5, End: 5},
+				{Kind: KindMethod, ID: methodID("T", "Val"), Signature: "func (t T) Val()", Start: 7, SigEnd: 7, End: 7},
+			},
+		},
+		{
+			name: "GenericReceiverOwnerStripsTypeParameters",
+			src: "package p\n" +
+				"\n" +
+				"type Box[T any] struct{ v T }\n" +
+				"\n" +
+				"func (b *Box[T]) Ptr() {}\n" +
+				"\n" +
+				"func (b Box[T]) Val() {}\n",
+			want: []Symbol{
+				{Kind: KindType, ID: id("Box"), Signature: "type Box[T any] struct", SigEnd: 3, Start: 3, End: 3, HeadStart: 3, HeadEnd: 3},
+				{Kind: KindMethod, ID: methodID("Box", "Ptr"), Signature: "func (b *Box[T]) Ptr()", Start: 5, SigEnd: 5, End: 5},
+				{Kind: KindMethod, ID: methodID("Box", "Val"), Signature: "func (b Box[T]) Val()", Start: 7, SigEnd: 7, End: 7},
 			},
 		},
 		{
@@ -124,7 +158,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\tfunc() {}()\n" +
 				"}\n",
 			want: []Symbol{
-				{Kind: KindFunction, Name: "Outer", Signature: "func Outer()", Start: 3, SigEnd: 3, End: 6},
+				{Kind: KindFunction, ID: id("Outer"), Signature: "func Outer()", Start: 3, SigEnd: 3, End: 6},
 			},
 		},
 		{
@@ -139,7 +173,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"}\n",
 			want: []Symbol{
 				{
-					Kind: KindFunction, Name: "Multi",
+					Kind: KindFunction, ID: id("Multi"),
 					Signature: "func Multi(\n\ta int,\n\tb string,\n) error",
 					Start:     3, SigEnd: 6, End: 8,
 				},
@@ -153,7 +187,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\tpath string\n" +
 				"}\n",
 			want: []Symbol{
-				{Kind: KindType, Name: "FileLock", Signature: "type FileLock struct", Start: 3, SigEnd: 3, End: 5},
+				{Kind: KindType, ID: id("FileLock"), Signature: "type FileLock struct", Start: 3, SigEnd: 3, End: 5, HeadStart: 3, HeadEnd: 5},
 			},
 		},
 		{
@@ -162,7 +196,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\n" +
 				"type ID string\n",
 			want: []Symbol{
-				{Kind: KindType, Name: "ID", Signature: "type ID string", Start: 3, End: 3},
+				{Kind: KindType, ID: id("ID"), Signature: "type ID string", Start: 3, End: 3, HeadStart: 3, HeadEnd: 3},
 			},
 		},
 		{
@@ -171,7 +205,7 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\n" +
 				"type Alias = int\n",
 			want: []Symbol{
-				{Kind: KindType, Name: "Alias", Signature: "type Alias = int", Start: 3, End: 3},
+				{Kind: KindType, ID: id("Alias"), Signature: "type Alias = int", Start: 3, End: 3, HeadStart: 3, HeadEnd: 3},
 			},
 		},
 		{
@@ -182,7 +216,25 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\tRead() (int, error)\n" +
 				"}\n",
 			want: []Symbol{
-				{Kind: KindType, Name: "Reader", Signature: "type Reader interface", Start: 3, SigEnd: 3, End: 5},
+				{Kind: KindType, ID: id("Reader"), Signature: "type Reader interface", Start: 3, SigEnd: 3, End: 5, HeadStart: 3, HeadEnd: 5},
+				{Kind: KindMethod, ID: methodID("Reader", "Read"), Signature: "Read() (int, error)", Start: 4, End: 4},
+			},
+		},
+		{
+			name: "InterfaceMethodDocstringAndAnonymousEmbeddedContributeNoExtraSymbol",
+			src: "package p\n" +
+				"\n" +
+				"type Iface interface {\n" +
+				"\t// M1 has a doc.\n" +
+				"\tM1(x int) error\n" +
+				"\tM2()\n" +
+				"\tEmbedded\n" +
+				"\tinterface{ Anon() }\n" +
+				"}\n",
+			want: []Symbol{
+				{Kind: KindType, ID: id("Iface"), Signature: "type Iface interface", Start: 3, SigEnd: 3, End: 9, HeadStart: 3, HeadEnd: 9},
+				{Kind: KindMethod, ID: methodID("Iface", "M1"), Signature: "M1(x int) error", Doc: "M1 has a doc.", Start: 4, End: 5},
+				{Kind: KindMethod, ID: methodID("Iface", "M2"), Signature: "M2()", Start: 6, End: 6},
 			},
 		},
 		{
@@ -199,8 +251,8 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\t}\n" +
 				")\n",
 			want: []Symbol{
-				{Kind: KindType, Name: "X", Signature: "type X int", Docstring: "X is a thing.", Start: 5, End: 6},
-				{Kind: KindType, Name: "Y", Signature: "type Y struct", Docstring: "Y is another.", Start: 7, SigEnd: 8, End: 10},
+				{Kind: KindType, ID: id("X"), Signature: "type X int", Doc: "X is a thing.", Start: 5, End: 6, HeadStart: 5, HeadEnd: 6},
+				{Kind: KindType, ID: id("Y"), Signature: "type Y struct", Doc: "Y is another.", Start: 7, SigEnd: 8, End: 10, HeadStart: 7, HeadEnd: 10},
 			},
 		},
 		{
@@ -211,7 +263,22 @@ func TestGoStrategy_Symbols(t *testing.T) {
 				"\tW int\n" +
 				")\n",
 			want: []Symbol{
-				{Kind: KindType, Name: "W", Signature: "type W int", Start: 4, End: 4},
+				{Kind: KindType, ID: id("W"), Signature: "type W int", Start: 4, End: 4, HeadStart: 4, HeadEnd: 4},
+			},
+		},
+		{
+			name: "BlankIdentifierNeverListed",
+			src: "package p\n" +
+				"\n" +
+				"func _() {}\n" +
+				"\n" +
+				"func (t T) _() {}\n" +
+				"\n" +
+				"type _ struct{}\n" +
+				"\n" +
+				"type T struct{}\n",
+			want: []Symbol{
+				{Kind: KindType, ID: id("T"), Signature: "type T struct", SigEnd: 9, Start: 9, End: 9, HeadStart: 9, HeadEnd: 9},
 			},
 		},
 	}
@@ -225,13 +292,20 @@ func TestGoStrategy_Symbols(t *testing.T) {
 
 // assertSymbolsEqual compares got against want element-by-element, reporting the full mismatched
 // Symbol value rather than one field, per the plan's "assert the full Symbol value" requirement.
+//
+// Comparison uses reflect.DeepEqual, never ==: Symbol carries a Glyph field whose Owner is a
+// slice, which makes Symbol itself non-comparable with ==. The Glyph field is zeroed on a copy of
+// got before comparing, since it is redundant with ID (which every "want" table asserts directly)
+// and spelling out a full glyph.Glyph literal per table row would add no coverage over asserting ID.
 func assertSymbolsEqual(t *testing.T, got, want []Symbol) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("Symbols() returned %d symbols %+v; want %d symbols %+v", len(got), got, len(want), want)
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		gotCompare := got[i]
+		gotCompare.Glyph = glyph.Glyph{}
+		if !reflect.DeepEqual(gotCompare, want[i]) {
 			t.Errorf("Symbols()[%d] = %+v; want %+v", i, got[i], want[i])
 		}
 	}
@@ -256,10 +330,10 @@ func TestGoStrategy_SymbolsAscendingByStart(t *testing.T) {
 			t.Errorf("Symbols()[%d].Start = %d >= Symbols()[%d].Start = %d; want ascending order", i-1, got[i-1].Start, i, got[i].Start)
 		}
 	}
-	wantNames := []string{"First", "Second", "Third"}
-	for i, name := range wantNames {
-		if got[i].Name != name {
-			t.Errorf("Symbols()[%d].Name = %q; want %q", i, got[i].Name, name)
+	wantIDs := []string{id("First"), id("Second"), id("Third")}
+	for i, want := range wantIDs {
+		if got[i].ID != want {
+			t.Errorf("Symbols()[%d].ID = %q; want %q", i, got[i].ID, want)
 		}
 	}
 }
