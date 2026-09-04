@@ -1,0 +1,37 @@
+{
+  "written_at": "2026-01-01T00:00:00Z",
+  "ladder_file": "ladder-toc.yaml",
+  "quarry_commit": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "quarry_dirty": false,
+  "quarry_dirty_files": [],
+  "loomyard_commit": "cafebabecafebabecafebabecafebabecafebabe",
+  "loomyard_repo_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85",
+  "hostname": "fixture-host",
+  "go_version": "go1.26",
+  "claude_version": "2.1.236-fixture",
+  "server_hashes": {},
+  "selected_cells": ["a0-none"],
+  "reps_effective": 2,
+  "memory_path_hashes": [],
+  "server_name": "quarry",
+  "session_fingerprints": {},
+  "invocations": [
+    {
+      "written_at": "2026-01-01T00:00:00Z",
+      "ladder_file": "ladder-toc.yaml",
+      "selected_cells": ["a0-none"],
+      "reps_effective": 2,
+      "quarry_commit": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      "quarry_dirty": false,
+      "quarry_dirty_files": [],
+      "loomyard_commit": "cafebabecafebabecafebabecafebabecafebabe",
+      "loomyard_repo_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85",
+      "claude_version": "2.1.236-fixture",
+      "go_version": "go1.26",
+      "hostname": "fixture-host",
+      "server_name": "quarry",
+      "memory_path_hashes": [],
+      "server_hashes": {}
+    }
+  ]
+}
