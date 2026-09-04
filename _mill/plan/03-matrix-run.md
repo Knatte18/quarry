@@ -53,7 +53,9 @@ readings and the invocation count.
   value matching what the ladder env file under .scratch/ holds — `ResolveLoomyardRepo` reads the
   process environment **first** and only falls back to that file, so an inherited stale value would
   silently win and never be noticed; the file resolves the Loomyard checkout; that checkout's HEAD
-  is at the required pin and the ladder file's own
+  is at `72c23d9` — the pin the golden test hard-fails on, and a different thing from the
+  `pinned_sha` the ladder file names, which is the task worktree commit the harness checks out per
+  cell — and the ladder file's own
   `pinned_sha` is a commit reachable in it; `LADDER_WORKTREE_ROOT` is either unset — so
   `ResolveWorktreeRoot` falls back to the cache directory — or set to a path that is not the quarry
   repository root, not under it, and does not contain the substring `quarry`, which
@@ -88,6 +90,7 @@ readings and the invocation count.
 - **Context:**
   - `bench/loomyard-eval/ladder/ladder-toc.yaml`
   - `bench/loomyard-eval/ladder/cmd/ladder/main.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/mcp.go`
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`

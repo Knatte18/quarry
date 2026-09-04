@@ -231,8 +231,11 @@ batches:
 ### Decision: the-done-gate-runs-offline
 
 - **Decision:** the done gate stays `go test ./... && golangci-lint run` with `LADDER_LIVE_TEST`
-  unset, so the guarded live test skips. The live test runs once, explicitly, as the first
-  pre-matrix gate.
+  unset, so the guarded live test skips. The live test runs once, explicitly, as step (4) of the
+  matrix batch's gate card — after the offline suite, the clean-tree check and the environment
+  preconditions, which are all free and would be wasteful to run after a gate that costs a
+  repetition. It is deliberately not in the batch named `pre-matrix-gates`: that batch is offline
+  and cheap, and the live test belongs immediately before the matrix it gates.
 - **Where the gate is encoded:** in `mill-config.yaml` at the hub root, as `pipeline.done_gate`,
   already carrying exactly that command. It is run from the repository root before the task is
   marked done, so no card and no `verify:` field needs to restate it. This decision is a statement
@@ -279,9 +282,11 @@ batches:
 - `bench/loomyard-eval/ladder/internal/ladder/gates_test.go`
 - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
 - `bench/loomyard-eval/ladder/internal/ladder/run.go`
+- `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
 - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
 - `bench/loomyard-eval/ladder/internal/ladder/stream_test.go`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/session-init-mcp-connected.jsonl`
+- `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/tool-bytes.jsonl`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/ABANDONED.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/probe.md`

@@ -97,10 +97,15 @@ from the same place; the table is the artifact a reader is pointed at.
   **Where each reported fact comes from, since several are not in the machine artifacts.** The
   per-invocation server-hash readings, the invocation count and the per-invocation dirty-file lists
   are in the matrix run log; the live test's outcome is in its own log; card 8's result is in its
-  scratch note; and the per-repetition gate-2 reason — *which* check invalidated *which* repetition
-  and why — is in that repetition's own state file under the cell directories listed in `Context:`,
-  because the summary carries only the invalid cell ids and a blinding-failed count, never a reason.
-  All six sources are in this card's `Context:`; do not report a fact none of them states.
+  scratch note; and the per-repetition reason — *which* check discarded *which* repetition and why —
+  is under the cell directories listed in `Context:`, because the summary carries only the invalid
+  cell ids and a blinding-failed count, never a reason. **Two kinds of reason live in two different
+  places, and conflating them will lose one.** A gate-2 blinding failure is written *complete* with
+  the flag set, so its finding is in that repetition's own state file at `<cell>/<rep>/`. A
+  server-not-connected failure is invalidated instead, so its finding is in the reason file inside
+  the renamed attempt directory at `<cell>/<rep>.invalid-<k>/` — look there too, and report a
+  discarded-for-no-server repetition as such rather than as an unexplained invalidation. All six
+  sources are in this card's `Context:`; do not report a fact none of them states.
   **The headline claim** — does `a2-toc-dir` separate from `a0-none` on turns and cache-read — is
   taken from the summary's comparison entries and their `separated` field, quoted alongside
   `median [min–max]` for each metric. Read the comparison whose metric is
