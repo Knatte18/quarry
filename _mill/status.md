@@ -70,6 +70,8 @@ batches:
     commit_sha: 66a18a8a1e9e88efbc5b01874415c3c8c9cbab32
     verify_baseline_failures: []
   - name: loomyard-timing
-    state: pending
+    state: running
+    implementer_session: 06d27e19-5729-4041-8761-25fc1afeb728
+    start_sha: 05d83f61717ddff0934489c4e3fb6fe34e1509b1
     verify_baseline_failures: []
 ```
