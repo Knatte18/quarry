@@ -45,7 +45,8 @@ narrowing the gate.
   before implementation, `mill-merge-in` then plan against real code.
 - **Capped review rounds + an orchestrator PR review is the speed pattern** (established with
   T5a, 2026-09-04). A gitignored `.millhouse/config.local.yaml` in the *worker's* worktree caps
-  `roles.discussion-review.holistic.rounds` and `roles.plan-review.holistic.rounds` at 3; the
+  `roles.discussion-review.holistic.rounds` and `roles.plan-review.holistic.rounds` — the
+  standard cap is 5, with 3 for genuinely small tasks (T5a ran at 3; T5b runs at 5, T6 at 3); the
   compensating independent gate is a thorough orchestrator review of the finalize PR against
   plan §4 before the operator closes it. T5a ran visibly faster this way and the PR review found
   zero blocking defects — the §4 examples matched byte-for-byte.
@@ -81,7 +82,7 @@ per rep in `provenance.json`), and cost numbers compare only within one results 
 **Wave 4 is spawned, workers not yet started.** T5b (`facade-cli-resolve-expand`, deps T4+T5a,
 both merged) and T6 (`mcp-thin`, dep T5a) each have a worktree branched from the T5a tip, with
 `.scratch/ladder.env` already written. Start each worker in its worktree: **T5b** runs
-`/mill-start --orch` — its `config.local.yaml` already carries the 3-round caps, and the
+`/mill-start --orch` — its `config.local.yaml` carries 5-round caps (T6 keeps 3), and the
 orchestrator session arms the `orch-review` wait when told the worker is running; **T6** runs
 `/mill-quick` (§9a's harness probe is its independent gate). Both finalize PRs get the
 orchestrator PR review before the operator closes them. T7 (the measurement, the regression

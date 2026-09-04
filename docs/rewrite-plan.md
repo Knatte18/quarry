@@ -262,9 +262,12 @@ internal/reedengine/render/layout.go (package render, go): layout.go is the layo
 Phase 1 is `resolve`, `expand` and `toc`: the same tree-sitter parse with three entry points. None
 needs a type checker, a daemon, or an index. Phase 1 says nothing about callers.
 
-**`resolve <glyph|path>...`** — where is this, right now. Per glyph: location(s) and status. Called by an
-implementer immediately before every read and every edit, because lines have moved since the last
-time. Many glyphs in one call are grouped by unit and each unit is parsed once.
+**`resolve <glyph|path>`** — where is this, right now: location(s) and status. One target per call
+on the command line, as `toc` settled (T5b's discussion: one invocation, one answer, one exit
+code); the facade's `Resolve(targets []string)` keeps the engine's multi-target form, so a Go
+caller — the validator (§8.1) — batches many glyphs in one call, grouped by unit, each unit parsed
+once. Called by an implementer immediately before every read and every edit, because lines have
+moved since the last time.
 Three details of the answer exist for the validator (§8.1):
 
 - A `not_found` says whether the *unit* exists: `unit: found` when the directory, module or namespace is there and only the member is missing, `unit: not_found` otherwise.

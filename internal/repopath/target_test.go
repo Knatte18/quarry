@@ -1,8 +1,8 @@
-// target_test.go pins repoRelTarget's conversion, rebasing, and escape-rejection rules. Only the
+// target_test.go pins RepoRelTarget's conversion, rebasing, and escape-rejection rules. Only the
 // symlink case needs a fixture — built with writeScratchTree — everything else is pure string
 // inputs. Never calls t.TempDir().
 
-package cli
+package repopath
 
 import (
 	"errors"
@@ -17,14 +17,14 @@ func TestRepoRelTarget_CwdRelativeAndAbsoluteAgree(t *testing.T) {
 	root := "/repo"
 	base := "/repo/internal/logger"
 
-	relGot, err := repoRelTarget(root, base, "file.go")
+	relGot, err := RepoRelTarget(root, base, "file.go")
 	if err != nil {
-		t.Fatalf("repoRelTarget(cwd-relative) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(cwd-relative) = _, %v; want nil error", err)
 	}
 
-	absGot, err := repoRelTarget(root, base, "/repo/internal/logger/file.go")
+	absGot, err := RepoRelTarget(root, base, "/repo/internal/logger/file.go")
 	if err != nil {
-		t.Fatalf("repoRelTarget(absolute) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(absolute) = _, %v; want nil error", err)
 	}
 
 	if relGot != absGot {
@@ -32,27 +32,27 @@ func TestRepoRelTarget_CwdRelativeAndAbsoluteAgree(t *testing.T) {
 	}
 	want := "internal/logger/file.go"
 	if relGot != want {
-		t.Errorf("repoRelTarget(cwd-relative) = %q; want %q", relGot, want)
+		t.Errorf("RepoRelTarget(cwd-relative) = %q; want %q", relGot, want)
 	}
 }
 
 func TestRepoRelTarget_RootItself(t *testing.T) {
-	got, err := repoRelTarget("/repo", "/repo", ".")
+	got, err := RepoRelTarget("/repo", "/repo", ".")
 	if err != nil {
-		t.Fatalf("repoRelTarget(root itself) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(root itself) = _, %v; want nil error", err)
 	}
 	if got != "." {
-		t.Errorf("repoRelTarget(root itself) = %q; want %q", got, ".")
+		t.Errorf("RepoRelTarget(root itself) = %q; want %q", got, ".")
 	}
 }
 
 func TestRepoRelTarget_NestedNoLeadingDotSlash(t *testing.T) {
-	got, err := repoRelTarget("/repo", "/repo", "a/b/c.go")
+	got, err := RepoRelTarget("/repo", "/repo", "a/b/c.go")
 	if err != nil {
-		t.Fatalf("repoRelTarget(nested) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(nested) = _, %v; want nil error", err)
 	}
 	if got != "a/b/c.go" {
-		t.Errorf("repoRelTarget(nested) = %q; want %q", got, "a/b/c.go")
+		t.Errorf("RepoRelTarget(nested) = %q; want %q", got, "a/b/c.go")
 	}
 }
 
@@ -63,20 +63,20 @@ func TestRepoRelTarget_NestedNoLeadingDotSlash(t *testing.T) {
 func TestRepoRelTarget_Rebasing(t *testing.T) {
 	root := "/repo"
 
-	gotAtRoot, err := repoRelTarget(root, root, "sub/file.go")
+	gotAtRoot, err := RepoRelTarget(root, root, "sub/file.go")
 	if err != nil {
-		t.Fatalf("repoRelTarget(base=root) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(base=root) = _, %v; want nil error", err)
 	}
 	if want := "sub/file.go"; gotAtRoot != want {
-		t.Errorf("repoRelTarget(base=root) = %q; want %q", gotAtRoot, want)
+		t.Errorf("RepoRelTarget(base=root) = %q; want %q", gotAtRoot, want)
 	}
 
-	gotAtSubdir, err := repoRelTarget(root, "/repo/sub", "file.go")
+	gotAtSubdir, err := RepoRelTarget(root, "/repo/sub", "file.go")
 	if err != nil {
-		t.Fatalf("repoRelTarget(base=subdir) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(base=subdir) = _, %v; want nil error", err)
 	}
 	if want := "sub/file.go"; gotAtSubdir != want {
-		t.Errorf("repoRelTarget(base=subdir) = %q; want %q", gotAtSubdir, want)
+		t.Errorf("RepoRelTarget(base=subdir) = %q; want %q", gotAtSubdir, want)
 	}
 }
 
@@ -92,9 +92,9 @@ func TestRepoRelTarget_EscapesRoot(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := repoRelTarget(tt.root, tt.base, tt.target)
+			_, err := RepoRelTarget(tt.root, tt.base, tt.target)
 			if !errors.Is(err, quarry.ErrTargetOutsideRepo) {
-				t.Errorf("repoRelTarget(%q) error = %v; want errors.Is(_, quarry.ErrTargetOutsideRepo)", tt.target, err)
+				t.Errorf("RepoRelTarget(%q) error = %v; want errors.Is(_, quarry.ErrTargetOutsideRepo)", tt.target, err)
 			}
 		})
 	}
@@ -105,12 +105,12 @@ func TestRepoRelTarget_NativeSeparatorsToForwardSlash(t *testing.T) {
 	base := root
 	target := filepath.Join("a", "b", "c.go")
 
-	got, err := repoRelTarget(root, base, target)
+	got, err := RepoRelTarget(root, base, target)
 	if err != nil {
-		t.Fatalf("repoRelTarget(native separators) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(native separators) = _, %v; want nil error", err)
 	}
 	if want := "a/b/c.go"; got != want {
-		t.Errorf("repoRelTarget(native separators) = %q; want %q", got, want)
+		t.Errorf("RepoRelTarget(native separators) = %q; want %q", got, want)
 	}
 }
 
@@ -178,11 +178,11 @@ func TestRepoRelTarget_SymlinkNotResolvedThrough(t *testing.T) {
 		t.Fatalf("os.Symlink: %v", err)
 	}
 
-	got, err := repoRelTarget(root, root, "link")
+	got, err := RepoRelTarget(root, root, "link")
 	if err != nil {
-		t.Fatalf("repoRelTarget(symlink) = _, %v; want nil error", err)
+		t.Fatalf("RepoRelTarget(symlink) = _, %v; want nil error", err)
 	}
 	if got != "link" {
-		t.Errorf("repoRelTarget(symlink) = %q; want %q (the symlink's own path, not the directory it points at)", got, "link")
+		t.Errorf("RepoRelTarget(symlink) = %q; want %q (the symlink's own path, not the directory it points at)", got, "link")
 	}
 }
