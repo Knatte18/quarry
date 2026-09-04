@@ -128,6 +128,7 @@ stays exactly where it is and only its header sentence naming its callers is cor
 - **Context:**
   - `internal/repopath/root.go`
   - `internal/repopath/target.go`
+  - `internal/cli/cli_test.go`
 - **Edits:**
   - `internal/cli/scratchtree_test.go`
 - **Creates:**
