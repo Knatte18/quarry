@@ -172,6 +172,142 @@ func TestRenderJSON_SymbolsPointerVsNil(t *testing.T) {
 	}
 }
 
+// TestRenderResolveJSON covers the byte contract and key order for every payload shape a resolve
+// query produces: found, multipart, ambiguous with candidates, not-found with each unit value, a
+// pre-resolution rejection carrying error and reason, and a path result carrying a directory answer.
+func TestRenderResolveJSON(t *testing.T) {
+	sym := Symbol{ID: "pkg#Sym", Kind: KindFunction, Start: 1, End: 2, Signature: "func Sym()"}
+	tests := []struct {
+		name string
+		r    ResolveResult
+	}{
+		{"Found", ResolveResult{Target: "pkg#Sym", ID: "pkg#Sym", Status: StatusFound, Symbols: []Symbol{sym}}},
+		{"Multipart", ResolveResult{Target: "pkg#init", ID: "pkg#init", Status: StatusMultipart, Symbols: []Symbol{sym, sym}}},
+		{"AmbiguousWithCandidates", ResolveResult{Target: "pkg#Sym", ID: "pkg#Sym", Status: StatusAmbiguous, Candidates: []Symbol{sym, sym}}},
+		{"NotFoundUnitFound", ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusFound}},
+		{"NotFoundUnitNotFound", ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusNotFound}},
+		{"PreResolutionRejection", ResolveResult{Target: "#bad", Error: "engine: bad glyph", Reason: "no_unit"}},
+		{"PathResult", ResolveResult{Target: "pkg", Status: StatusFound, Dir: &DirAnswer{Dir: "pkg"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderResolveJSON(tt.r)
+			if err != nil {
+				t.Fatalf("RenderResolveJSON() error = %v", err)
+			}
+			s := string(got)
+			assertKeyOrder(t, s, []string{`"target"`})
+			if !strings.Contains(s, "\n  \"target\"") {
+				t.Errorf("RenderResolveJSON() = %q; want two-space indentation before \"target\"", s)
+			}
+			if !strings.HasSuffix(s, "\n") || strings.HasSuffix(s, "\n\n") {
+				t.Errorf("RenderResolveJSON() = %q; want exactly one trailing newline", s)
+			}
+			if strings.Contains(s, `"ok"`) {
+				t.Errorf("RenderResolveJSON() = %s; want no \"ok\" key", s)
+			}
+		})
+	}
+}
+
+// TestRenderResolveJSON_KeyOrder pins the found result's key order to ResolveResult's own field
+// declaration order.
+func TestRenderResolveJSON_KeyOrder(t *testing.T) {
+	sym := Symbol{ID: "pkg#Sym", Kind: KindFunction, Start: 1, End: 2, Signature: "func Sym()"}
+	r := ResolveResult{
+		Target: "pkg#Sym", ID: "pkg#Sym", Status: StatusFound,
+		Symbols: []Symbol{sym}, Dir: &DirAnswer{Dir: "pkg"},
+	}
+	got, err := RenderResolveJSON(r)
+	if err != nil {
+		t.Fatalf("RenderResolveJSON() error = %v", err)
+	}
+	assertKeyOrder(t, string(got), []string{
+		`"target"`, `"id"`, `"status"`, `"symbols"`, `"dir"`,
+	})
+}
+
+// TestRenderResolveJSON_NotFoundOmitsSymbolsAndCandidates covers that a not-found result's absent
+// symbols and candidates fields are dropped entirely, not emitted as null or as an empty array.
+func TestRenderResolveJSON_NotFoundOmitsSymbolsAndCandidates(t *testing.T) {
+	r := ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusFound}
+	got, err := RenderResolveJSON(r)
+	if err != nil {
+		t.Fatalf("RenderResolveJSON() error = %v", err)
+	}
+	s := string(got)
+	for _, absent := range []string{`"symbols"`, `"candidates"`} {
+		if strings.Contains(s, absent) {
+			t.Errorf("RenderResolveJSON() = %s; want no %s key", s, absent)
+		}
+	}
+}
+
+// TestRenderExpandJSON covers the byte contract for every payload shape an expand query produces: a
+// found answer with head and members, a found answer with a head and no members, a not-found answer,
+// and an ambiguous answer.
+func TestRenderExpandJSON(t *testing.T) {
+	head := Symbol{ID: "pkg#Thing", Kind: KindType, Start: 1, End: 3, Signature: "type Thing struct{}"}
+	member := Symbol{ID: "pkg#Thing.Method", Kind: KindMethod, Start: 5, End: 5, Signature: "func (t Thing) Method()"}
+	tests := []struct {
+		name string
+		a    ExpandAnswer
+	}{
+		{"FoundWithMembers", ExpandAnswer{ID: "pkg#Thing", Status: StatusFound, Head: &head, Members: []Symbol{member}}},
+		{"FoundNoMembers", ExpandAnswer{ID: "pkg#Thing", Status: StatusFound, Head: &head}},
+		{"NotFound", ExpandAnswer{ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusNotFound}},
+		{"Ambiguous", ExpandAnswer{ID: "pkg#Thing", Status: StatusAmbiguous, Candidates: []Symbol{head, head}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RenderExpandJSON(tt.a)
+			if err != nil {
+				t.Fatalf("RenderExpandJSON() error = %v", err)
+			}
+			s := string(got)
+			assertKeyOrder(t, s, []string{`"id"`, `"status"`})
+			if !strings.Contains(s, "\n  \"id\"") {
+				t.Errorf("RenderExpandJSON() = %q; want two-space indentation before \"id\"", s)
+			}
+			if !strings.HasSuffix(s, "\n") || strings.HasSuffix(s, "\n\n") {
+				t.Errorf("RenderExpandJSON() = %q; want exactly one trailing newline", s)
+			}
+			if strings.Contains(s, `"ok"`) {
+				t.Errorf("RenderExpandJSON() = %s; want no \"ok\" key", s)
+			}
+		})
+	}
+}
+
+// TestRenderExpandJSON_KeyOrder pins the found-with-members answer's key order to ExpandAnswer's own
+// field declaration order.
+func TestRenderExpandJSON_KeyOrder(t *testing.T) {
+	head := Symbol{ID: "pkg#Thing", Kind: KindType, Start: 1, End: 3, Signature: "type Thing struct{}"}
+	member := Symbol{ID: "pkg#Thing.Method", Kind: KindMethod, Start: 5, End: 5, Signature: "func (t Thing) Method()"}
+	a := ExpandAnswer{ID: "pkg#Thing", Status: StatusFound, Head: &head, Members: []Symbol{member}}
+	got, err := RenderExpandJSON(a)
+	if err != nil {
+		t.Fatalf("RenderExpandJSON() error = %v", err)
+	}
+	assertKeyOrder(t, string(got), []string{`"id"`, `"status"`, `"head"`, `"members"`})
+}
+
+// TestRenderExpandJSON_NotFoundOmitsHeadAndMembers covers that a not-found answer's absent head and
+// members fields are dropped entirely, not emitted as null or as an empty array.
+func TestRenderExpandJSON_NotFoundOmitsHeadAndMembers(t *testing.T) {
+	a := ExpandAnswer{ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusNotFound}
+	got, err := RenderExpandJSON(a)
+	if err != nil {
+		t.Fatalf("RenderExpandJSON() error = %v", err)
+	}
+	s := string(got)
+	for _, absent := range []string{`"head"`, `"members"`, `"candidates"`} {
+		if strings.Contains(s, absent) {
+			t.Errorf("RenderExpandJSON() = %s; want no %s key", s, absent)
+		}
+	}
+}
+
 // TestRenderErrorJSON covers the exact bytes RenderErrorJSON emits: a plain message, one with '<'
 // and '&' left unescaped, and one with a double quote escaped normally.
 func TestRenderErrorJSON(t *testing.T) {
