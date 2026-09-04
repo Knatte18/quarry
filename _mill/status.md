@@ -62,5 +62,7 @@ batches:
     commit_sha: 14b9f91a763e3748197151ba3fafa4524cefb935
     verify_baseline_failures: []
   - name: write-up
-    state: pending
+    state: running
+    implementer_session: c96c7544-75a0-4a51-bd90-6aa55ce92617
+    start_sha: 695c001e08f7d17ca9cbe45ba018822f2c5859af
 ```
