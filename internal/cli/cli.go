@@ -192,6 +192,27 @@ func codeForExpandError(err error) int {
 //     rather than replaced by the failure envelope.
 //  6. Return codeForResolveResult of that result.
 //
+// runExpand's own pipeline, continuing from step 4 above, takes no base directory and performs
+// neither path conversion nor a stat: this verb accepts a glyph only, and the parser has already
+// guaranteed the target contains a "#".
+//
+//  1. Open the repository. A failure is exit 3.
+//  2. Call the facade's Expand method with the target verbatim.
+//  3. On a non-nil error, branch by type through errors.As, never by parsing the error's message:
+//     a *quarry.NotATypeError is exit 1 with usage suppressed, named "expand " followed by the
+//     value's identifier field, ": not a type, kind " and the value's kind field — quarry's own
+//     sentence, spelled from the value's fields rather than the error's own text, so the engine's
+//     package-name prefix never leaks through; a *glyph.ParseError is exit 1 with usage suppressed,
+//     named "expand " followed by the target as given, ": " and the value's reason word — the same
+//     word the resolve verb puts in its payload's reason key; anything else is exit 3 with the
+//     internal-error prefix, which is where the missing-head-span invariant failure lands. All
+//     three route through codeForExpandError for the code, so the mapping stays the single
+//     table-tested source.
+//  4. On a nil error, render the answer: quarry.RenderExpandText under --text,
+//     quarry.RenderExpandJSON otherwise. A render error, or a failed write of its bytes to stdout,
+//     is exit 3.
+//  5. Return codeForExpandAnswer of the answer.
+//
 // The error value returned to a caller never carries the engine's wrapped chain for exit 1 or
 // exit 2: those name conditions quarry itself defines, so quarry spells them, and passing
 // something like `engine: resolve target "x": engine: target not found` through would leak an
@@ -240,9 +261,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runTOC(req, root, base, stdout, stderr)
 	case "resolve":
 		return runResolve(req, root, base, stdout, stderr)
+	case "expand":
+		return runExpand(req, root, stdout, stderr)
 	default:
-		// Unreachable for every word other than the three verbs parseArgs accepts; "expand" reaches
-		// this arm until its own pipeline lands.
+		// Unreachable for every word other than the three verbs parseArgs accepts: the parser
+		// already rejects any other verb as a usage error before Run ever sees it.
 		return fail(stdout, stderr, exitInternal, "internal error: unknown verb: "+req.verb, false)
 	}
 }
@@ -347,4 +370,45 @@ func runResolve(req request, root, base string, stdout, stderr io.Writer) int {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 	return codeForResolveResult(result)
+}
+
+// runExpand is the expand verb's own pipeline, continuing from Run's shared four steps. It takes
+// no base directory, because this verb accepts a glyph only and performs no path work at all. See
+// Run's doc comment for the numbered steps this function executes in fixed order.
+func runExpand(req request, root string, stdout, stderr io.Writer) int {
+	repo, err := quarry.Open(root)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+
+	answer, err := repo.Expand(req.target)
+	if err != nil {
+		var notType *quarry.NotATypeError
+		if errors.As(err, &notType) {
+			msg := "expand " + notType.ID + ": not a type, kind " + string(notType.Kind)
+			return fail(stdout, stderr, codeForExpandError(err), msg, false)
+		}
+		var parseErr *glyph.ParseError
+		if errors.As(err, &parseErr) {
+			msg := "expand " + req.target + ": " + string(parseErr.Reason)
+			return fail(stdout, stderr, codeForExpandError(err), msg, false)
+		}
+		return fail(stdout, stderr, codeForExpandError(err), "internal error: "+err.Error(), false)
+	}
+
+	if req.text {
+		if _, err := io.WriteString(stdout, quarry.RenderExpandText(answer)); err != nil {
+			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+		}
+		return codeForExpandAnswer(answer)
+	}
+
+	out, err := quarry.RenderExpandJSON(answer)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	if _, err := stdout.Write(out); err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	return codeForExpandAnswer(answer)
 }
