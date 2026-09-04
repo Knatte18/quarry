@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
@@ -42,6 +42,7 @@ holistic-fixing  '2026-09-04T10:08:56Z'
 nits-fixed-holistic  '2026-09-04T10:10:26Z'
 holistic-approved  '2026-09-04T10:10:32Z'
 done  '2026-09-04T10:11:02Z'
+pr-pending  '2026-09-04T10:12:24Z'
 ```
 
 ## Batches
