@@ -80,7 +80,12 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
   Extend `parseArgs`'s doc comment to state the three-verb gate and the per-verb flag-validity rule, and to state that the missing-separator rejection for the new glyph-only verb lives here rather than after the engine has run.
 
-  In `internal/cli/flags_test.go`, extend the existing pure table with: the three-verb gate, including the new no-verb message and the unchanged unknown-verb message; every per-verb flag-validity rejection, one case per flag per new verb; both new arity messages, for zero targets and for two; the missing-separator rejection and its exact message; a `#`-bearing target accepted by the parser for the glyph-only verb, since the grammar's own rejection of it belongs to a later stage; and `--help` and `-h` still winning from any position for each of the three verbs. Assert exact message strings. Every case stays fixture-free.
+  In `internal/cli/flags_test.go`, three existing rows of `TestParseArgs_UsageErrors` are invalidated by this card and must be updated in it, not merely added to:
+
+  - the `missing-verb` row and the `first-arg-is-flag` row both assert the old no-verb message and must assert the new one;
+  - the `unknown-verb` row uses `resolve` as its unknown verb, which this card makes valid — `parseArgs` then returns a nil error and the row fails on its own guard. Replace that argument with a word that is none of the three verbs, and update the expected message to match.
+
+  Then extend the existing pure table with: the three-verb gate, including the new no-verb message and the unchanged unknown-verb message; every per-verb flag-validity rejection, one case per flag per new verb; both new arity messages, for zero targets and for two; the missing-separator rejection and its exact message; a `#`-bearing target accepted by the parser for the glyph-only verb, since the grammar's own rejection of it belongs to a later stage; and `--help` and `-h` still winning from any position for each of the three verbs. Assert exact message strings. Every case stays fixture-free.
 - **Commit:** `feat(cli): gate three verbs with per-verb flag validity and arity`
 
 ### Card 9: rewrite the help text for three verbs

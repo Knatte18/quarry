@@ -217,7 +217,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   Update the package doc comment in `quarry/doc.go` so it describes the surface as it now stands rather than the table-of-contents-only surface it describes today. It must state:
 
   - that the package now exposes three query methods, not one, and that the two new ones delegate to the engine unchanged exactly as the existing one does;
-  - that the package owns five renderers: the two existing JSON ones, the two new JSON ones, and the three text ones, with the three JSON success renderers sharing one encoder configuration;
+  - that the package owns seven renderers: the two existing JSON ones, the two new JSON ones, and the three text ones, with the three JSON success renderers sharing one encoder configuration;
   - that the `ok` key in the failure envelope marks that quarry could not answer, and never that the answer is negative — a negative resolution outcome is a payload with a status word, rendered by the ordinary renderer.
 
   Leave the existing statement about the phase-1 non-goals — no cache, no parser pool, no state beyond the repository root — in place and unchanged.
