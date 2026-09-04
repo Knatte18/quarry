@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-facade-renderers
+phase: approved-cli-parsing
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-09-04T06:45:49Z'
 implementing  '2026-09-04T06:46:39Z'
 approved-facade-core  '2026-09-04T06:51:25Z'
 approved-facade-renderers  '2026-09-04T07:01:24Z'
+approved-cli-parsing  '2026-09-04T07:09:52Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     commit_sha: 1875d2862e77a461d43a54bda5183e4002491c1a
     verify_baseline_failures: ["FAIL\t./quarry/... [setup failed]"]
   - name: cli-parsing
-    state: running
+    state: approved
     implementer_session: 519ecd10-5815-46a9-8869-710d26d1a5f2
     start_sha: cbe52b295163bfe8ceaea0a8cfdc2eebbee3b658
+    commit_sha: 1bc814bc75a9c407200e0073c9f8ba1cb3db54dd
     verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]"]
   - name: cli-pipeline
     state: pending
