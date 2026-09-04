@@ -1,0 +1,241 @@
+{
+  "written_at": "2026-09-04T14:32:04Z",
+  "ladder_file": "bench/loomyard-eval/ladder/ladder-toc.yaml",
+  "quarry_commit": "8804728f3c5a658c1687588cbb216b2c0070765e",
+  "quarry_dirty": true,
+  "quarry_dirty_files": [
+    "_mill/briefs/implement-matrix-run-r1.md"
+  ],
+  "loomyard_commit": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+  "loomyard_repo_sha256": "21051e3d290c1dab1ab0d53cafc099faa133917eb17e0c5f7e3c6b2d9601ed41",
+  "hostname": "Neve",
+  "go_version": "go1.26.0",
+  "claude_version": "2.1.236 (Claude Code)",
+  "server_hashes": {
+    "a2-toc-dir/1": "f76e76f619cc76444cc57733389fc1c99fcfadd7875b4271b5da7406228917bd",
+    "a2-toc-dir/2": "f76e76f619cc76444cc57733389fc1c99fcfadd7875b4271b5da7406228917bd",
+    "a2-toc-dir/3": "f76e76f619cc76444cc57733389fc1c99fcfadd7875b4271b5da7406228917bd",
+    "a2-toc-dir/4": "f76e76f619cc76444cc57733389fc1c99fcfadd7875b4271b5da7406228917bd",
+    "a2-toc-dir/5": "f76e76f619cc76444cc57733389fc1c99fcfadd7875b4271b5da7406228917bd"
+  },
+  "selected_cells": [
+    "a0-none",
+    "a2-toc-dir"
+  ],
+  "reps_effective": 5,
+  "memory_path_hashes": [
+    "29c9e9952659337ee8bbce95fb1ec6ecabd5b2d03afcc048d634e0fe38fb7be8"
+  ],
+  "server_name": "quarry",
+  "session_fingerprints": {
+    "a0-none/1": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a0-none/2": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a0-none/3": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a0-none/4": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a0-none/5": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a2-toc-dir/1": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a2-toc-dir/2": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a2-toc-dir/3": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a2-toc-dir/4": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "a2-toc-dir/5": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    }
+  },
+  "invocations": [
+    {
+      "written_at": "2026-09-04T14:32:04Z",
+      "ladder_file": "bench/loomyard-eval/ladder/ladder-toc.yaml",
+      "selected_cells": [
+        "a0-none",
+        "a2-toc-dir"
+      ],
+      "reps_effective": 5,
+      "quarry_commit": "8804728f3c5a658c1687588cbb216b2c0070765e",
+      "quarry_dirty": true,
+      "quarry_dirty_files": [
+        "_mill/briefs/implement-matrix-run-r1.md"
+      ],
+      "loomyard_commit": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+      "loomyard_repo_sha256": "21051e3d290c1dab1ab0d53cafc099faa133917eb17e0c5f7e3c6b2d9601ed41",
+      "claude_version": "2.1.236 (Claude Code)",
+      "go_version": "go1.26.0",
+      "hostname": "Neve",
+      "server_name": "quarry",
+      "memory_path_hashes": null,
+      "server_hashes": null
+    }
+  ]
+}
