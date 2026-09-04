@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'verify/logic: unresolved after retry (holistic round 1 -- reviewer finding factually inaccurate, verified independently)'
+phase: holistic-reviewing
 slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
@@ -38,6 +37,7 @@ holistic-fixing  '2026-09-04T09:45:59Z'
 self-resolved-verify-logic  '2026-09-04T09:48:03Z'
 holistic-fixing  '2026-09-04T09:48:08Z'
 blocked  '2026-09-04T09:49:13Z'
+holistic-reviewing  '2026-09-04T10:06:16Z'
 ```
 
 ## Batches
