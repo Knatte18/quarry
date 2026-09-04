@@ -61,7 +61,10 @@ after that is a change to a published contract rather than a choice.
 - MCP — **T6**, and T6 exposes only `toc` regardless.
 - Any change to `internal/engine`'s walk, its `toc` answer, its ignore matcher, its strategies, or
   its `Symbol` key set. T4 consumes T3's engine and adds to it; it does not revise it. The one
-  permitted exception is the mechanical follow-through T3 itself scheduled (see Technical context).
+  permitted exceptions are two: the mechanical follow-through T3 itself scheduled (see Technical
+  context), and the single stale sentence in `goUngroupedTypeSymbol`'s doc comment describing
+  `expand`'s behaviour — a comment about *this* task, corrected by this task, with no code touched
+  (D12's last bullet).
 - Any change to `glyph/`. The engine never re-implements the grammar (glyph.md §6); T4 imports it
   and believes its answers.
 - Any change to `docs/glyph.md` or `docs/rewrite-plan.md`. T4 records two contract gaps it runs into
@@ -96,14 +99,20 @@ not change them):
 | `Strategy.Symbols(unit string, root, src) []Symbol`; the Go walk over func/method/type/const/var/interface-method; generic receiver owner stripped; `_` skipped | D5, plan 04 cards 24–28 | `strategy.go`, `golang.go` |
 | `ErrLanguageUnsupported` exists (its doc comment is rewritten by T3's own card 33) | D21, plan 05 card 33 | `errors.go` |
 
-**Inherited as design only — not implemented anywhere at the time of writing.** T3's batch 5
-(`spans`) was still `pending` when this discussion was written; batch 4 was `running`. Everything
-T4 stands on most directly is in that batch:
+**Batch 5 (`spans`) landed while this discussion was under review** — it was `pending` when the
+first draft was written and its three functions were design-only then; they are now written and
+committed on `engine-core` (`internal/engine/resolve.go` holds `unitDirs`, `dirExists`,
+`dirChainBelowRoot`, `symbolsOfUnit`, `symbolsOfDir`, `sameOwner`, `SpansOf`). They are still
+**unmerged**, so they stay on this list and the verification below still runs — but the facts
+asserted about them are now read from code, not from a plan:
 
 - `func (r *Repo) unitDirs(unit string) (dirs []string, collision bool)` — the unit→directory
   inverse, **literal-first**: the directory named exactly by the unit wins; only if it does not
   exist and the unit ends `_test` is the suffix stripped; both existing returns both with
-  `collision == true`. (D16, plan 05 card 31.)
+  `collision == true`, which the code expresses as `len(dirs) == 2`. A nonexistent directory yields
+  an **empty slice, never an error** — `dirExists` is an `os.Lstat` test (deliberately not
+  `os.Stat`, so a symlinked directory is not a hit and the inverse agrees with the walk it inverts).
+  (D16, plan 05 card 31; read from `resolve.go`.)
 - `func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet) ([]Symbol, error)` — parses each of the
   unit's `.go` files once, returns every symbol with `File` set to the repository-relative path,
   ordered by file then start line, filtered through the same ignore set the walk uses, and returns
@@ -121,9 +130,10 @@ T4 stands on most directly is in that batch:
 
 **The plan revision's verification list**, to be run after `main` is merged in (`mill-merge-in`):
 
-1. Do `unitDirs`, `symbolsOfUnit` and `SpansOf` exist with those signatures, in
-   `internal/engine/resolve.go`? If batch 5 shipped a different split, D9 and D5 below are the
-   decisions to re-derive.
+1. Do `unitDirs`, `symbolsOfUnit` and `SpansOf` still carry those signatures in
+   `internal/engine/resolve.go` after the merge, and did T3's batch 6 change any of them? They were
+   read from the `engine-core` worktree before merge; if the merge altered the split, D9 and D5 are
+   the decisions to re-derive.
 2. Is `collision` still the second return of `unitDirs`, and is it still unexported? D6 promotes it.
 3. Are `HeadStart`/`HeadEnd` actually set to the type symbol's own `Start`/`End` (with the doc block)
    for interfaces as well as structs? D12 reads them.
@@ -132,6 +142,13 @@ T4 stands on most directly is in that batch:
 5. Does `Symbol.File` come back set from `symbolsOfUnit`, and is the order file-then-line? D15 rests
    on it.
 6. Did T3's batch 6 add anything to `Symbol`'s key set? D3's result types embed `Symbol` verbatim.
+7. Does a unit whose directory does not exist still come back as `(empty slice, nil error)` from
+   `symbolsOfUnit`, and does `symbolsOfUnit` still return an error **only** for a genuine read
+   failure (`ig.extend`, file read)? D2's error boundary and D10's reachable `unit: not_found` both
+   depend on the absence being an empty result rather than an error, and on no `TOC` sentinel ever
+   surfacing on the glyph branch.
+8. Is the stale `goUngroupedTypeSymbol` comment (D12's last bullet) still present and still worded
+   the way D12 quotes it? If T3's batch 6 already corrected it, T4's card drops.
 
 ## Decisions
 
@@ -169,6 +186,16 @@ T4 stands on most directly is in that batch:
   **fails the whole call**: `Resolve` returns a nil slice and that error, wrapped with the target
   or unit it was reading. This covers a `symbolsOfUnit` or `unitDirs` read failure, an
   `ignoreSet.extend` failure, and anything a future engine change adds.
+
+  **A missing unit directory is not an error and never reaches this rule.** `unitDirs` reports a
+  nonexistent directory by returning an empty slice, and `symbolsOfUnit` over zero directories
+  returns an empty slice and a nil error — verified in T3's merged `resolve.go`, where `dirExists`
+  is a plain `os.Lstat` test and the extraction loop simply does not run. That is what makes D10's
+  `unit: not_found` reachable: the §8.1 Create case — a card naming a unit the plan is about to
+  create — must answer `not_found` with `unit: not_found`, and it would instead fail the whole call
+  if a missing directory were an error. The two sentinels D2 carves out are `TOC`'s and belong to
+  the path branch (D7); neither `unitDirs` nor `symbolsOfUnit` returns them, so the glyph branch has
+  exactly one error disposition — fail the call — and one non-error absence, the empty result.
 - Rationale: §8.1 is explicit that "All glyphs of a draft go in one `resolve` call", and the
   validator that makes the call has to map each answer back to the card that asked for it. A
   positional 1:1 slice makes that mapping total and free, and it is the only shape where a duplicate
@@ -218,9 +245,14 @@ T4 stands on most directly is in that batch:
 
   - `Target` is the argument verbatim, always present — it is what makes D2's mapping readable in
     JSON as well as in Go.
-  - `ID` is the **canonical** glyph spelling `glyph.Parse` returned, present only for a glyph target.
-    §8.1 layer 1 says Parse "returns the canonical spelling, so `Draw (int)` comes back as
-    `Draw(int)`"; emitting it is how a caller learns the canonical form of what it asked for.
+  - `ID` is `parsed.String()`, present only for a glyph target — the same wire form `Symbol.ID`
+    carries, so a caller can match a result to a `toc` listing or an `expand` member by string
+    equality without re-parsing either side. **For Go it is byte-identical to `Target` on every
+    non-error result**, and deliberately so: `glyph/golang.go` normalises nothing — `Draw (int)` is
+    rejected outright (`ReasonMemberParens`, with the space caught by `ReasonMemberBadRune`), so
+    §8.1's canonicalisation example is a C# case and no Go input can round-trip to a different
+    string. The key earns its place as parity with `Symbol.ID`, not as normalisation, and Testing 3
+    must not chase a Go normalisation case that cannot exist.
   - `Status` carries §4's per-entry status. It is absent only in D8's case, where the target never
     reached resolution.
   - `Unit` reuses `Status` and is set **only** on a glyph `not_found`, to `StatusFound` or
@@ -296,9 +328,14 @@ T4 stands on most directly is in that batch:
   is precisely the "one glyph string names two different units" failure the literal-first rule exists
   to prevent. The `not_found` case is honest for the opposite reason: both directories exist, so the
   unit is there and only the member is missing, which is exactly §5's `unit: found`.
-- Neither quarry nor Loomyard has a directory literally named `<something>_test`, so this case is
-  reachable only from a fixture. That is why it is decided by construction and tested with a
-  purpose-built tree, not left to be discovered.
+- Neither quarry's own tree nor Loomyard has a *production* directory literally named
+  `<something>_test`, so no round trip over either repository exercises this case — which is why it
+  is decided by construction rather than left to be discovered. T3 does commit
+  `internal/engine/testdata/foo_test/`, so the literal-first branch itself has a committed fixture;
+  what it deliberately does not commit is a `testdata/foo/` sibling, because adding one would put a
+  second package under `testdata/` and perturb the existing walk and round-trip assertions that
+  enumerate that tree. The collision fixture is therefore built under `.scratch/` for that reason —
+  test isolation — and not because a committed tree could not express it. See D17.
 - Rejected: reporting `found` on a single match under a collision (a glyph that names two units
   answering as if it named one); reporting `ambiguous` with zero matches (there is nothing to be
   ambiguous between, and it would hide the `unit: found` a Create card needs).
@@ -363,16 +400,38 @@ T4 stands on most directly is in that batch:
 
 ### D9 — One unit parsed once per call: the memo lives in the call and dies with it
 
-- Decision: `Resolve` builds, per call:
-  1. one `ignoreSet` — `newIgnoreSet(root)` followed by a single `extend(".")`, which is exactly
-     what T3's plan 05 card 32 specifies `symbolsOfUnit`'s caller must hand it;
-  2. a `map[string][]Symbol` memo keyed by unit, plus a `map[string]unitDirsResult` memo for
-     `unitDirs`.
+- Decision: the memo is a **named unexported type**, not a pair of anonymous maps, so that the
+  guarantee has something to be asserted against:
 
-  Every glyph target is parsed first; the distinct units among them are then resolved through
-  `symbolsOfUnit` **once each**, and each target's matches are filtered out of its unit's slice.
-  Both memos are local variables and are discarded when `Resolve` returns. Nothing is stored on
-  `Repo`.
+  ```go
+  // unitMemo answers "the symbols of unit U" at most once per unit, for the lifetime of one call.
+  type unitMemo struct {
+      repo    *Repo
+      ig      *ignoreSet
+      symbols map[string][]Symbol
+      dirs    map[string]unitDirsResult
+      parses  int // symbolsOfUnit calls made; read by tests, never by production code
+  }
+
+  func newUnitMemo(r *Repo) (*unitMemo, error)          // builds the ignoreSet, below
+  func (m *unitMemo) symbolsOf(unit string) ([]Symbol, error)
+  func (m *unitMemo) dirsOf(unit string) (unitDirsResult, error)
+  ```
+
+  `Resolve` is a thin shell: it constructs a `unitMemo` and delegates to an unexported
+  `func (r *Repo) resolve(targets []string, m *unitMemo) ([]ResolveResult, error)` that does the
+  whole job through `m`. `Expand` does the same. The memo's `ignoreSet` is built once per call —
+  `newIgnoreSet(root)` followed by a single `extend(".")`, exactly what T3's `symbolsOfUnit` doc
+  comment requires of its caller — and `symbolsOf` is the **only** site in either verb that calls
+  `symbolsOfUnit`. The memo is a local of the exported entry point and dies with it; nothing is
+  stored on `Repo`.
+- Rationale for the named type: Testing 8 has to prove that a twenty-glyph call over five units made
+  five parses, and neither of the two things a plain map allows is that proof — "the map has five
+  entries" is true by construction, and wall-clock is the criterion the test is supposed to be
+  independent of. A `parses` counter on a type the test constructs and passes to `r.resolve` makes
+  the guarantee directly observable without a package-level global, without an injected function
+  type, and without any production caller ever reading the field. §12's done-criterion and D16's
+  150 ms number both rest on this one guarantee, so it gets a seam rather than an argument.
 - Rationale: this is §5's own requirement — "Many glyphs in one call are grouped by unit and each
   unit is parsed once" — and it is the difference between the done-criterion passing and failing.
   §5's measurements are 65 ms for one glyph in a 35-file package and 109 ms for twenty glyphs across
@@ -391,7 +450,9 @@ T4 stands on most directly is in that batch:
 - Rejected: calling `SpansOf` per target (four parses per unit in the criterion's own call — the
   precise failure T3's D16 spells out for the round trip); memoising on `Repo` (D22, and stale under
   T6); sharing one memo across calls behind an mtime check (the phase-1 cache §10 forbids, under
-  another name).
+  another name); two plain local maps (nothing for Testing 8 to assert on); an injected
+  `parse func(string) ([]Symbol, error)` (a seam the production path never varies, and it would let
+  a test pass against a stub that never touches `symbolsOfUnit` at all).
 
 ### D10 — `unit: found|not_found` is `unitDirs`'s answer, restated nowhere
 
@@ -440,11 +501,15 @@ T4 stands on most directly is in that batch:
   about what a glyph resolves to. Taking a `string` rather than a `glyph.Glyph` matches `Resolve`
   and matches what T5b will have in hand — argv — and it lets `expand` report a malformed glyph the
   same way, through the error return (below) rather than by making the caller pre-parse.
-- A target `glyph.Parse` rejects, or one with no `#`, returns the wrapped `*glyph.ParseError` (or a
-  plain error naming the missing `#`) as `Expand`'s `error`. Unlike `Resolve`, `Expand` answers one
-  target, so there is no other answer to protect and no reason to move the failure into the payload;
-  D8's whole argument is about not losing thirty-nine good answers, and it does not apply here.
-  `toc` never takes a glyph and `expand` never takes a path — plan §5 states both.
+- A malformed target returns the wrapped `*glyph.ParseError` from `glyph.Parse` as `Expand`'s
+  `error` — **including a target with no `#`**, which the grammar already rejects as
+  `ReasonNoSeparator`. `Expand` writes no separator check of its own: the constraint is that every
+  alphabet question is one `glyph.Parse` call, and a hand-rolled "missing `#`" error would be a
+  second implementation of a rule the grammar owns, returning a different error type for one
+  rejection reason than for the other fourteen. Unlike `Resolve`, `Expand` answers one target, so
+  there is no other answer to protect and no reason to move the failure into the payload; D8's
+  argument is about not losing thirty-nine good answers and does not apply here. `toc` never takes a
+  glyph and `expand` never takes a path — plan §5 states both.
 - `multipart` is unreachable in `ExpandAnswer` **by construction, not by luck**: D14's table sends
   every match set with no type in it to `*NotATypeError`, which is where `<unit>#init` — the one Go
   glyph D5 calls `multipart` — lands, however many declarations it has. §5's "a Go type never splits
@@ -481,6 +546,16 @@ T4 stands on most directly is in that batch:
   only reading of that conclusion consistent with §4's closed entry shape. **This is a deliberate
   reading of D4's prose, which also calls `expand` the thing that "renders" the subtraction — the
   plan revision should confirm nothing in T3's merged code assumed `expand` would emit a line set.**
+- **The one stale T3 comment, and its disposition.** `internal/engine/golang.go`'s
+  `goUngroupedTypeSymbol` doc comment says the head span is set as it is "because the later expand
+  verb renders a type's head by omitting the lines its own member symbols cover". Its own second
+  half already agrees with this decision — "subtracting those spans from the head range is that
+  consumer's job, not this extractor's" — and `answer.go`'s `HeadStart` comment states it cleanly;
+  only the word "renders" describes a T4 that will not exist. **Correcting that one sentence is
+  inside Scope's mechanical-follow-through exception, and T4 does it**: it is a comment about T4's
+  behaviour written before T4 had decided it, and leaving it would hand a future reader a documented
+  expectation the code does not meet. No code changes, no other comment in that file is touched, and
+  it is one card so a reviewer sees it in isolation.
 - Rejected: emitting a discontiguous head (`[]span`) — a symbol shape §4 does not have, in the one
   place §4 says there is only one shape; emitting rendered head *text* (that is T5a's lossless text
   view, over this payload, not a payload of its own); falling back to `Start`/`End` when `HeadStart`
@@ -530,10 +605,20 @@ T4 stands on most directly is in that batch:
   | matches | disposition |
   |---|---|
   | none | `not_found`, with `Unit` per D10 |
+  | **any count, `unitDirs` reported `collision`** | `ambiguous`, `Candidates` set, no head — **D6 applies to both verbs**, checked before every row below |
   | one, `KindType` | `found`: `Head` and `Members` per D12/D13 |
   | several, all `KindType` | `ambiguous`, `Candidates` set, no head — §5 says a Go type never splits, so several type declarations under one glyph are build-tag duplicates |
   | one **or several**, none `KindType` | `*NotATypeError`, naming the kind of the first match in file-then-line order |
   | several, mixed kinds | `ambiguous`, `Candidates` set — the glyph names a type *and* something else, and choosing between them is the silent pick §3 forbids |
+
+  The collision row is second on purpose: it is tested **before** the kind rows, so a single type
+  match under a collision answers `ambiguous` here exactly as it does in `Resolve`. Without it
+  `Expand` would answer `found` where `Resolve` answers `ambiguous` for the same glyph, breaking
+  D11's whole reason for sharing the rules — "the two verbs can never disagree about what a glyph
+  resolves to". `Expand` therefore calls `unitDirs` itself and reads `collision`; it does not infer
+  it from the match set, which cannot show it (`symbolsOfUnit` returns the union either way).
+  `*NotATypeError` is never returned under a collision: the glyph does not unambiguously name
+  anything, so naming a kind would be a claim the answer cannot support.
 
   Row four is the one that needs saying out loud: `expand <unit>#init` is a reachable call, and its
   several declarations are exactly what a naive "unique `found` non-type match" gate would miss,
@@ -618,17 +703,22 @@ T4 stands on most directly is in that batch:
     tool, so the pair never reaches a build.
   - `ambiguous`, unit collision — a run-time `.scratch/` tree with both a `foo/` holding an external
     test package and a directory literally named `foo_test/`, per T3's plan 05 card 34's own
-    collision fixture.
+    collision fixture. Built at run time for **test isolation**, not because it is inexpressible:
+    T3 already commits `testdata/foo_test/`, and adding the `testdata/foo/` sibling the collision
+    needs would introduce a second package into the tree T3's walk and round-trip tests enumerate.
   - `not_found` with `unit: found` — an existing unit, a name that is not in it.
   - `not_found` with `unit: not_found` — a unit whose directory does not exist.
 - Rationale: §12's T4 done-when is "glyph.md §5 statuses each have a fixture", so the fixtures are
   the deliverable, not a by-product. Committing them where possible keeps the tests readable and
-  reviewable; the two exceptions are the two shapes a committed tree provably cannot express, and
-  T3 already established both the reason and the mechanism.
+  reviewable. The two run-time exceptions have two different reasons, and neither is "a committed
+  tree cannot express it": the ignore-filter case genuinely cannot be committed (a tree whose own
+  `.gitignore` excludes one of its tracked files), while the collision case is held out of
+  `testdata/` to keep T3's existing walk and round-trip enumerations undisturbed.
 - Rejected: `t.TempDir()` (banned by the constraints); synthesising sources as string literals in
   the test (a fixture nobody can open and read is a worse fixture); one fixture package covering
   several statuses at once (a build-tag pair inside the package the other cases query would make
-  every other case's symbol list depend on it).
+  every other case's symbol list depend on it); committing the collision's `testdata/foo/` sibling
+  (perturbs T3's tests for a case a `.scratch/` tree covers exactly as well).
 
 ### D18 — Two contract gaps are recorded, neither is closed
 
@@ -676,6 +766,7 @@ chose, not the layout its discussion assumed.
 | `internal/engine/expand_test.go` | new |
 | `internal/engine/loomyard_timing_test.go` | new: the 150 ms test and the benchmark |
 | `internal/engine/testdata/tags/` | new: the build-tag `ambiguous` pair |
+| `internal/engine/golang.go` | **comment only**: the one stale sentence in `goUngroupedTypeSymbol`'s doc comment (D12's last bullet). Its own card, no code change |
 
 **Helpers to reuse rather than rewrite** (all T3's, all in `internal/engine`):
 
@@ -758,10 +849,11 @@ chose, not the layout its discussion assumed.
 7. `not_found` both ways — an existing unit with a missing name gives `unit: found`; a unit whose
    directory does not exist gives `unit: not_found`. Assert the *marshalled JSON* on at least one of
    each, so §5's `"unit": "found"` spelling and the `omitempty` on every absent key are pinned.
-8. The grouping guarantee (D9) — a call naming several glyphs across several units parses each unit
-   exactly once. Assert on a counter the test can read directly rather than on a package-level
-   global: the memo is an explicit type the test constructs and drives, so production code carries no
-   test-only variable.
+8. The grouping guarantee (D9) — the test constructs a `unitMemo`, calls the unexported
+   `r.resolve(targets, memo)` with several glyphs spread across several units (at least two glyphs
+   per unit, and one unit named four times), and asserts `memo.parses` equals the number of
+   **distinct** units, not the number of targets. Asserting the map's length instead would be true
+   by construction and prove nothing.
 9. Argument order and 1:1 (D2) — a call mixing glyphs and paths, valid and invalid, returns exactly
    `len(targets)` results in order, with a repeated target answered twice.
 10. Path targets (D7) — an existing file (a one-entry `DirAnswer` carrying the enclosing directory's
@@ -792,6 +884,14 @@ chose, not the layout its discussion assumed.
     `not_found` entries, and that the error is neither `ErrTargetNotFound` nor
     `ErrTargetOutsideRepo`. If the host cannot make a directory unreadable (running as root, or a
     filesystem without the permission bit), skip with the reason rather than weaken the assertion.
+15b. The absence-is-not-an-error boundary (D2/D10) — a glyph whose unit directory simply does not
+    exist returns a **result**, `not_found` with `unit: not_found`, and a nil call error. This is
+    the §8.1 Create case and the assertion that stops a future change from turning a missing
+    directory into a call failure.
+15c. `expand` under a collision (D14 row 2) — over the same `.scratch/` collision tree, a glyph
+    naming a **type** with exactly one match answers `ambiguous` with candidates and no head, not
+    `found`; asserted alongside `Resolve` on the same glyph in the same test, so the two verbs are
+    shown to agree rather than assumed to.
 16. Ordering (D15) — a unit whose files are not in lexicographic `os.ReadDir` order, asserting both
     verbs' outputs come back file-then-line regardless.
 
@@ -827,4 +927,9 @@ types to `answer.go`, and changes no walk rule, no `toc` answer and no existing 
 - **Q:** Which fixtures cover glyph.md §5? **A:** [auto-pick] Committed fixtures for `found`, `multipart`, build-tag `ambiguous` and both `not_found` shapes; run-time `.scratch/` trees for the collision `ambiguous` and the ignore-filter case. **Why:** §12's done-when makes the fixtures the deliverable, and the two exceptions are the shapes a committed tree provably cannot express — the same split T3 made, with the same helper.
 - **Q:** What does `expand <unit>#init`, with several `init` declarations, answer? **A:** [auto-pick, discussion-review r1 gap] `*NotATypeError` with `Kind: function`. D14's gate keys on *no match being a type*, not on the match count, and now carries the full five-row disposition table. **Why:** `init` is the one Go glyph D5 calls `multipart`, and `ExpandAnswer` does not admit that status; a unique-match gate would leave the case with no defined answer at all. Keying on kinds needs no `init` special case.
 - **Q:** Where does an I/O failure inside a `Resolve` call go — the entry or the call? **A:** [auto-pick, discussion-review r1 gap] The call: every engine error other than `ErrTargetNotFound` and `ErrTargetOutsideRepo` fails the whole call, and D8's per-entry `Error` stays closed to pre-resolution rejections of the target string. **Why:** a per-entry I/O error puts "unspellable target" and "unreadable directory" under one key, and a unit that failed to read would otherwise answer `not_found` for every glyph in it — which a Delete card's done-check reads as success.
+- **Q:** What does `expand` answer when `unitDirs` reports a collision? **A:** [auto-pick, discussion-review r2 gap] `ambiguous`, checked before every kind row of D14's table, with `Expand` reading `collision` from `unitDirs` itself. **Why:** `symbolsOfUnit` returns the union either way, so a single type match under a collision would otherwise answer `found` where `Resolve` answers `ambiguous` — breaking D11's whole reason for sharing D5's and D6's rules.
+- **Q:** How is "each unit parsed once" made observable to a test? **A:** [auto-pick, discussion-review r2 gap] A named unexported `unitMemo` type carrying a `parses` counter, with `Resolve` delegating to `r.resolve(targets, memo)`. **Why:** a plain map's entry count is true by construction and proves nothing, and wall-clock is the very thing the test must be independent of; §12's done-criterion and the 150 ms number both rest on this guarantee.
+- **Q:** Does a missing unit directory fail the call under D2's error boundary? **A:** [auto-pick, discussion-review r2 gap] No — `unitDirs` returns an empty slice and `symbolsOfUnit` a nil error, verified in T3's now-written `resolve.go`; only a genuine read failure fails the call. **Why:** §8.1's Create case must answer `not_found` with `unit: not_found`, which is unreachable if an absent directory is an error.
+- **Q:** Is `ID` a canonicalisation of the target? **A:** [auto-pick, discussion-review r2 nit] No — for Go it is byte-identical to `Target`; the key earns its place as wire-form parity with `Symbol.ID`. **Why:** `glyph/golang.go` normalises nothing — `Draw (int)` is rejected outright — so §8.1's canonicalisation example is a C# case and Testing 3 must not chase a Go case that cannot exist.
+- **Q:** Who owns T3's stale comment saying `expand` "renders" the head subtraction? **A:** [auto-pick, discussion-review r2 nit] T4 corrects that one sentence, inside Scope's mechanical-follow-through exception, as its own card. **Why:** it is a comment about T4's behaviour written before T4 decided it; leaving it documents an expectation the code will not meet.
 - **Q:** Does T4 amend `docs/glyph.md`? **A:** [auto-pick] No — two gaps are recorded in code comments and neither is closed. **Why:** T3 took the same position for the same reason: a single task changing the shared identifier contract is the coupling §7's ordering avoids, and both gaps should be decided against a repository that needs one.
