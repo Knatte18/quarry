@@ -6,6 +6,7 @@ slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: MCP, thin (T6)
 task_description: |
   MCP, thin (T6)
@@ -34,11 +35,17 @@ implementing  '2026-09-04T09:19:55Z'
 ```yaml
 batches:
   - name: repopath-extraction
-    state: pending
+    state: running
+    implementer_session: e4741755-1d56-4be4-a80d-1d36bd6a386f
+    start_sha: b6b9072b2d96340c8ea21dce64cc465a16caeb94
+    verify_baseline_failures: ["FAIL\t./internal/repopath/... [setup failed]"]
   - name: mcp-server
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: mcp-server-tests
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: docs-and-config
     state: pending
+    verify_baseline_failures: []
 ```
