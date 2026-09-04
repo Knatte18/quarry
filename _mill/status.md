@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-facade-surface
 slug: facade-cli-resolve-expand
 branch: facade-cli-resolve-expand
 plan: _mill/plan
@@ -33,6 +33,7 @@ plan-review-r5  '2026-09-04T09:42:50Z'
 plan-fix-r5  '2026-09-04T09:44:17Z'
 planned  '2026-09-04T09:44:27Z'
 implementing  '2026-09-04T09:44:59Z'
+approved-facade-surface  '2026-09-04T09:52:27Z'
 ```
 
 ## Batches
@@ -40,9 +41,10 @@ implementing  '2026-09-04T09:44:59Z'
 ```yaml
 batches:
   - name: facade-surface
-    state: running
+    state: approved
     implementer_session: 86254a28-ec70-4590-9671-2489aa3140f6
     start_sha: 031783dbec3e63845ea6dd7fc7587980c653cc99
+    commit_sha: 78528f6bebc607baced1d096dc0c34748daec8f3
     verify_baseline_failures: []
   - name: cli-argument-layer
     state: pending
