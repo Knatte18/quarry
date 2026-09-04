@@ -1,8 +1,0 @@
-{"status":"success","commit_sha":"c50b81d2954550417206a4bc855babe6e1a3debd","session_id":"06177a27-2a99-47b6-8b2c-7962d5c07143","cards_done":[17,18]}
-
-Summary: Both cards of batch 06-doc-propagation were completed and committed — 2 of 2 cards done, no partial completion.
-
-- Card 17 (`docs(roadmap): propagate the breadth conclusion and retire the measure wave`, commit `0cadea5`): edited `/home/knatte/Code/quarry/wts/ladder-breadth/docs/roadmap.md` — removed the completed "Next wave: measure" section (table, heading, trailing sentence), moved the OSL-1033 host rerun item to "Small and independent, any time" as its own bullet, rewrote the Parked T8 paragraph to state the breadth conclusion does not satisfy the "measured win" unpark condition (citing `bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md` by path, without deciding unpark), and updated the header's standing-rule paragraph and date line to point at this root instead of T7's.
-- Card 18 (`docs(handoff): record the breadth matrix in the measured table`, commit `c50b81d`): edited `/home/knatte/Code/quarry/wts/ladder-breadth/HANDOFF.md` — added a new §3 table row for `2026-09-04-breadth, reps 5` immediately after T7's row (stating no shape separated on any cost metric at n=5, correctness held), and extended the prose above the table to name this root alongside T7's without replacing the T7 account.
-
-`verify: null` for this batch, so no test/verify command was run. `git status --porcelain --untracked-files=no` was clean before reporting. Both commits' subjects exactly match the range-scan (`git log 04c8023..HEAD --oneline`), confirming 2/2 cards genuinely landed.
