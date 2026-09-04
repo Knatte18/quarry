@@ -3,7 +3,7 @@
 ```yaml
 task: "Ladder, toc rerun (T7)"
 slug: "ladder-toc-rerun"
-approved: true
+approved: false
 started: "20260904-112745"
 parent: "main"
 root: ""
