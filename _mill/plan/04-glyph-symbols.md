@@ -275,10 +275,19 @@ never modified — it is the one implementation of the grammar.
   - `internal/engine/answer_test.go`
   - `internal/engine/toc_integration_test.go`
   - `internal/engine/classify_test.go`
+  - `internal/engine/walk_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Every existing assertion on a symbol's `Name` or `Owner` becomes an assertion on
+- **Requirements:** `internal/engine/walk_test.go`'s `TestWalk_OrderingAndSymbolSourceOrder` asserts
+  `Symbol.Name` directly and its fixture file sits at the scratch tree's own root, whose glyph unit
+  is now always unspellable — that combination stops the package from compiling and, once fixed to
+  compile, would dereference a nil `*[]Symbol`. Move that one fixture file into a subdirectory (a
+  spellable unit) and assert on `ID` instead of `Name`; every other test in this file is unaffected
+  and stays as-is, since none of them touches `Symbol` at all — the "must pass untouched" language in
+  Batch Tests describes those other files' actual own tests, not this one incidental line.
+
+  Every existing assertion on a symbol's `Name` or `Owner` becomes an assertion on
   its `ID`, and every assertion on `Docstring` becomes one on `Doc`. `TestGoStrategy_Symbols`,
   `TestGoStrategy_SymbolsAscendingByStart` and `TestGoStrategy_SigEnd` all call `Symbols` with an
   explicit unit argument. Keep the cases' existing coverage — a package-level `func`, a method with a
@@ -351,11 +360,15 @@ never modified — it is the one implementation of the grammar.
 `verify:` is the same build-then-test pair the earlier batches use.
 
 The batch's own new coverage is `glyph_test.go` over the `testdata/glyphs/` and `testdata/units/`
-fixtures. `golang_test.go`, `toc_test.go`, `answer_test.go` and `toc_integration_test.go` are ported
-onto the new symbol in card 29 and must keep passing; `repo_test.go`, `walk_test.go`,
-`ignore_test.go`, `headers_test.go`, `text_test.go`, `extension_test.go`, `classify_test.go` and
+fixtures. `golang_test.go`, `toc_test.go`, `answer_test.go`, `toc_integration_test.go` and
+`classify_test.go` are ported onto the new symbol in card 29 and must keep passing; `repo_test.go`,
+`ignore_test.go`, `headers_test.go`, `text_test.go`, `extension_test.go` and
 `treesitter/treesitter_test.go` must pass untouched, which is what proves this batch changed symbol
-identity and nothing about the walk's structure.
+identity and nothing about the walk's structure. `walk_test.go` is the one exception: card 29 gives
+it a one-line, one-fixture touch-up (its single `Symbol.Name` assertion, and that fixture's own
+scratch-root placement) for the same reason `classify_test.go`'s `fakeStrategy` needs one — the
+`Strategy` interface and `Symbol` struct both changed shape underneath it — not because its own
+subject, the walk's directory recursion, changed.
 
 Note that `testdata/units/test data/pkg/spaced.go` sits under a directory whose name contains a
 space on purpose — that is the fixture, and it must survive as a committed path.
