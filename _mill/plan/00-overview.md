@@ -10,6 +10,11 @@ root: ""
 verify: null
 ```
 
+## Prior failure
+
+- Holistic review round 1: plan conflict: Matrix's one invocation violated the unconditional
+  clean-tree rule, and the root was not voided
+
 ## Batch Index
 
 _The fenced yaml block below is the authoritative DAG mill-go reads to schedule batches.
@@ -95,7 +100,22 @@ batches:
   accepted is a dirty file list naming anything else: before each re-invocation the driver confirms
   every entry of `git status --porcelain` is a path under the results root, and card 9 reports
   `quarry_dirty` and `quarry_dirty_files` per invocation entry so a reader sees exactly which files
-  were untracked at each one. A dirty entry outside the results root voids the root.
+  were untracked at each one. A dirty entry outside the results root voids the root — with the one
+  further exception below.
+- **A second carve-out, added at holistic review round 1 after the actual invocation surfaced the
+  gap: mill's own untracked implementer brief for the batch presently executing is not a dirty-tree
+  violation.** `_mill/briefs/<currently-executing-batch>*.md` is written to disk by the mill-go
+  orchestrator's prepare stage before the implementer session (and therefore card 7) ever starts, and
+  under mill's dispatch architecture no card has the standing or a `Commit:` line to commit it — the
+  "who discharges the obligation" bullet above already assigns that file class to "the per-phase
+  commits the orchestrator makes around every batch," and the orchestrator's own next commit point
+  after prepare is the approve-batch commit, which fires only *after* the whole batch — gate and
+  invocation both — has finished. Requiring it committed *before* the invocation, as card 6 step (2)
+  and card 2 both literally read, is therefore unsatisfiable by any card in this plan; both the
+  pre-matrix-gates and matrix-run batches independently treated it as out of scope when they hit it,
+  which is the right call but was never written down until now. The carve-out is narrow: only
+  `_mill/briefs/<currently-executing-batch>*.md` is exempt. Any other file outside the results root —
+  a stray edit, a different batch's brief, anything else — still voids the root exactly as before.
 - **Applies to:** all batches
 
 ### Decision: matrix-runs-backgrounded-under-env-u

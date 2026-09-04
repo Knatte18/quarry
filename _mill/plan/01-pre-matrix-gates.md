@@ -83,8 +83,10 @@ report; it does not generate fresh evidence and must not claim to.
   `git check-ignore -v bench/loomyard-eval/ladder/results/2026-09-04-toc/raw/a0-none/1/transcript.jsonl`
   and confirm it reports the `results/*/raw/` pattern from the ladder directory's own ignore file as
   the matching rule. Then run `git status --porcelain` and confirm the tree is clean after card 1's
-  commit — this is the clean-tree gate the matrix batch depends on, checked here while it is still
-  cheap to fix. If either check fails, stop and report: an unignored raw tree would put resolved
+  commit — modulo the one carve-out in `## Shared Decisions`' `clean-tree-and-no-edits-mid-matrix`
+  for this batch's own untracked `_mill/briefs/implement-pre-matrix-gates-*.md` — this is the
+  clean-tree gate the matrix batch depends on, checked here while it is still cheap to fix. If either
+  check fails, stop and report: an unignored raw tree would put resolved
   auto-memory machine paths on the branch, which the repository forbids, and the fix is a
   `.gitignore` change that must land before any measurement runs. Record both command outputs in the
   batch's report so the write-up batch can cite the rule that was verified. Make no file change in
