@@ -112,6 +112,7 @@ never modified — it is the one implementation of the grammar.
   - `internal/engine/answer.go`
 - **Edits:**
   - `internal/engine/walk.go`
+  - `internal/engine/toc.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -142,6 +143,9 @@ never modified — it is the one implementation of the grammar.
 
   Thread both through `fileEntry`: it takes the file's unit and passes it to `Strategy.Symbols`, and
   it leaves `Symbols` nil when the directory's unit is unspellable, whatever `wantSymbols` says.
+  `fileEntry` is also called from `toc.go`'s `fileTargetAnswer`, a file-target answer's own walk of
+  its enclosing directory; that call site's signature update belongs to this card too, not a later
+  one, since it is the same function whose signature this card changes.
 - **Commit:** `feat(engine): derive each file's glyph unit in the walk`
 
 ### Card 26: Glyphs for functions, methods and types
