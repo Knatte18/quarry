@@ -3,7 +3,9 @@ package ladder
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // writeRawFile writes contents verbatim to path, failing the test on error.
@@ -224,4 +226,133 @@ func TestInvalidateRep(t *testing.T) {
 		t.Errorf("InvalidateRep() attempts = %d; want 3", attempts)
 	}
 	assertDirExists(t, dir+".invalid-3")
+}
+
+// detailValue extracts the value of rendered's "detail: " line, failing the test if no such line
+// exists.
+func detailValue(t *testing.T, rendered string) string {
+	t.Helper()
+	for _, line := range strings.Split(rendered, "\n") {
+		if v, ok := strings.CutPrefix(line, "detail: "); ok {
+			return v
+		}
+	}
+	t.Fatalf("rendered = %q; want a line beginning \"detail: \"", rendered)
+	return ""
+}
+
+// TestRenderInvalidReason covers RenderInvalidReason as a pure function: key order, the optional
+// exit_code line, that a multi-line detail does not break the one-pair-per-line shape, and the
+// byte-bounded, rune-safe truncation sanitizeDetail applies.
+func TestRenderInvalidReason(t *testing.T) {
+	t.Run("RecoverableExitCode", func(t *testing.T) {
+		exitCode := 1
+		rendered := RenderInvalidReason(InvalidReason{
+			Cell:       "cell-a",
+			Repetition: 2,
+			Attempt:    1,
+			Cause:      CauseRunnerError,
+			Detail:     "the measured claude process failed",
+			ExitCode:   &exitCode,
+		})
+
+		if !strings.Contains(rendered, "exit_code: 1\n") {
+			t.Errorf("rendered = %q; want an \"exit_code: 1\" line", rendered)
+		}
+
+		wantOrder := []string{"cell: ", "repetition: ", "attempt: ", "cause: ", "exit_code: ", "detail: "}
+		lastIdx := -1
+		for _, prefix := range wantOrder {
+			idx := strings.Index(rendered, prefix)
+			if idx < 0 {
+				t.Fatalf("rendered = %q; want it to contain a line beginning %q", rendered, prefix)
+			}
+			if idx < lastIdx {
+				t.Errorf("rendered = %q; key %q appears out of the documented order", rendered, prefix)
+			}
+			lastIdx = idx
+		}
+	})
+
+	t.Run("NilExitCode", func(t *testing.T) {
+		rendered := RenderInvalidReason(InvalidReason{
+			Cell:       "cell-a",
+			Repetition: 1,
+			Attempt:    1,
+			Cause:      CauseUnparseableAnswer,
+			Detail:     "no fenced json block in the final assistant text",
+		})
+
+		for _, line := range strings.Split(rendered, "\n") {
+			if strings.HasPrefix(line, "exit_code:") {
+				t.Errorf("rendered = %q; want no \"exit_code:\" line when ExitCode is nil", rendered)
+			}
+		}
+
+		wantOrder := []string{"cell: ", "repetition: ", "attempt: ", "cause: ", "detail: "}
+		lastIdx := -1
+		for _, prefix := range wantOrder {
+			idx := strings.Index(rendered, prefix)
+			if idx < 0 {
+				t.Fatalf("rendered = %q; want it to contain a line beginning %q", rendered, prefix)
+			}
+			if idx < lastIdx {
+				t.Errorf("rendered = %q; key %q appears out of the documented order", rendered, prefix)
+			}
+			lastIdx = idx
+		}
+	})
+
+	t.Run("MultiLineDetail", func(t *testing.T) {
+		rendered := RenderInvalidReason(InvalidReason{
+			Cell:       "cell-a",
+			Repetition: 1,
+			Attempt:    1,
+			Cause:      CauseResultError,
+			Detail:     "line one\nline two\r\nline three",
+		})
+
+		lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
+		if len(lines) != 5 {
+			t.Errorf("rendered has %d lines = %q; want exactly 5, one per emitted key", len(lines), rendered)
+		}
+	})
+
+	t.Run("OverLengthDetail", func(t *testing.T) {
+		detail := strings.Repeat("x", invalidReasonDetailMaxLen*2)
+		rendered := RenderInvalidReason(InvalidReason{
+			Cell:       "cell-a",
+			Repetition: 1,
+			Attempt:    1,
+			Cause:      CauseResultError,
+			Detail:     detail,
+		})
+
+		got := detailValue(t, rendered)
+		if len(got) > invalidReasonDetailMaxLen {
+			t.Errorf("len(detail) = %d; want at most %d", len(got), invalidReasonDetailMaxLen)
+		}
+		if !strings.HasSuffix(got, "...") {
+			t.Errorf("detail = %q; want it to end with the ASCII ellipsis \"...\"", got)
+		}
+	})
+
+	t.Run("OverLengthDetailMultiByteRunes", func(t *testing.T) {
+		detail := strings.Repeat("日本語", invalidReasonDetailMaxLen)
+		rendered := RenderInvalidReason(InvalidReason{
+			Cell:       "cell-a",
+			Repetition: 1,
+			Attempt:    1,
+			Cause:      CauseResultError,
+			Detail:     detail,
+		})
+
+		got := detailValue(t, rendered)
+		if len(got) > invalidReasonDetailMaxLen {
+			t.Errorf("len(detail) = %d; want at most %d", len(got), invalidReasonDetailMaxLen)
+		}
+		if !utf8.ValidString(got) {
+			t.Errorf("detail = %q; want valid UTF-8, not a rune split mid-sequence", got)
+		}
+	})
 }
