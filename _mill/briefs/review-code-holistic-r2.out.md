@@ -1,0 +1,44 @@
+MILL_REVIEW_BEGIN
+# Review: resolve + expand (T4) — holistic
+
+```yaml
+verdict: APPROVE
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-04
+```
+
+## Notes
+
+Read all five batch files and the overview, then all 30 non-plan source files in the manifest.
+Cross-checked every Shared Decision against the code: the closed `Status`/`Kind` vocabularies, the
+single `statusForMatches` decision function shared verbatim by `resolveGlyphTarget` (resolve.go)
+and `expand` (expand.go), the per-call `unitMemo`/`newUnitMemo`/`symbolsOf`/`dirsOf` seam with its
+`parses` counter, the two named scope exceptions (loomyard_test.go's `testing.TB` widening in
+card 19, golang.go's re-tensed sentence in card 23) each isolated to its own commit-sized change,
+and the fixture-placement rule (methods/, tags/ committed; the two collision trees and the
+permissions case built under `.scratch/` via `openScratchRepo`).
+
+Verified the `ResolveResult`/`ExpandAnswer` JSON tag sets and doc comments against answer.go
+exactly as card 2 specifies, including the three re-tensed comments in resolve.go (card 9) and the
+one in golang.go (card 23). Verified test coverage: every disposition row of `statusForMatches` and
+of `expand`'s kind gate has a fixture-backed test, every `omitempty` key of both new types is
+observed present and absent across the marshalled assertions spread over cards 11, 13, 16 and 17,
+the collision/ordering/parse-once/error-boundary guarantees are asserted in cards 12/13/18, and the
+Loomyard timing/benchmark/spot-check trio (cards 20–22) is environment-gated consistently with the
+existing `loomyard_test.go` pattern. All files touched match the plan's "All Files Touched" list
+one-to-one; no out-of-plan files found. The deliberate `matchesFor`/`SpansOf` filter duplication is
+documented in place exactly as card 7 requires, with `SpansOf` itself left byte-for-byte unchanged.
+
+The prior round's non-blocking finding ("grouping is realised in unitMemo, below" points the wrong
+direction, resolve.go:429-430) is resolved: the sentence now reads "...realised in unitMemo,
+above" (line 430), and `unitMemo` is in fact declared above `symbolsOfUnit` in the file (line 86 vs
+424). No new information contradicts this, so it is not escalated and needs no further action.
+
+No findings.
+
+## Verdict
+
+APPROVE
+Implementation matches the plan end-to-end; no blocking issues found; prior non-blocking item is resolved.
+MILL_REVIEW_END
