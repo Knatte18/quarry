@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-mcp-server
+phase: approved-mcp-server-tests
 slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-09-04T09:19:32Z'
 implementing  '2026-09-04T09:19:55Z'
 approved-repopath-extraction  '2026-09-04T09:26:15Z'
 approved-mcp-server  '2026-09-04T09:31:50Z'
+approved-mcp-server-tests  '2026-09-04T09:40:48Z'
 ```
 
 ## Batches
@@ -49,9 +50,10 @@ batches:
     commit_sha: 411ff9a56ea1ed675fff5c5a64e7eb0fa97579c2
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: mcp-server-tests
-    state: running
+    state: approved
     implementer_session: 5bb7ce02-a688-4a1c-af33-e7946e8ac098
     start_sha: 82d359f34b573b053e69b1265b534769da793ae1
+    commit_sha: 2534c3e1ef7661ea78650b82f6fdc62a347a3ff4
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: docs-and-config
     state: pending
