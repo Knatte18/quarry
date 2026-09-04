@@ -1,7 +1,7 @@
 # quarry
 
 Quarry is being rewritten around one identifier — the glyph — and three
-queries: `map`, `resolve`, `members`. Extraction is tree-sitter only, and
+queries: `toc`, `resolve`, `expand`. Extraction is tree-sitter only, and
 Go only.
 
 The rewrite is specified in two documents:
