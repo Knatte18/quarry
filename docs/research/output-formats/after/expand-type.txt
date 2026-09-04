@@ -1,0 +1,68 @@
+$ quarry expand internal/logger#dualHandler
+
+{
+  "id": "internal/logger#dualHandler",
+  "status": "found",
+  "head": {
+    "id": "internal/logger#dualHandler",
+    "kind": "type",
+    "file": "internal/logger/logger.go",
+    "start": 173,
+    "sigend": 184,
+    "end": 195,
+    "signature": "type dualHandler struct",
+    "doc": "dualHandler is the composite slog.Handler discussion.md's\ndual-handler-fan-out decision requires: Enabled is the OR of the stderr\nand durable halves' own Enabled, so an Info record is accepted by the\ncomposite even when the stderr half alone would reject it at the default\nWarn threshold (this is what lets an Info record reach the durable sink\nregardless of -v/-vv). Handle independently re-checks each half's own\nEnabled before delegating to it -- it never forwards to one half just\nbecause the composite's own Enabled, or the other half's Enabled, already\nreturned true. Getting that independent re-check wrong would leak an Info\nrecord to stderr at the default Warn threshold, even though stderr's own\nEnabled(Info) is false there."
+  },
+  "members": [
+    {
+      "id": "internal/logger#dualHandler.stderr",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 203,
+      "sigend": 206,
+      "end": 208,
+      "signature": "func (d dualHandler) stderr() slog.Handler",
+      "doc": "stderr resolves this dualHandler's stderr-half handler by reading the\ncurrent package-level inner handler and applying this handler's\naccumulated WithAttrs/WithGroup transform on top of it."
+    },
+    {
+      "id": "internal/logger#dualHandler.Enabled",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 210,
+      "sigend": 212,
+      "end": 214,
+      "signature": "func (d dualHandler) Enabled(ctx context.Context, level slog.Level) bool",
+      "doc": "Enabled implements slog.Handler as the OR of the stderr and durable halves' own Enabled -- see\nthe dualHandler doc comment for why this must be OR, not stderr's gate alone."
+    },
+    {
+      "id": "internal/logger#dualHandler.Handle",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 216,
+      "sigend": 222,
+      "end": 239,
+      "signature": "func (d dualHandler) Handle(ctx context.Context, record slog.Record) error",
+      "doc": "Handle implements slog.Handler by independently re-checking each half's own Enabled and\ndelegating only to the halves that pass -- see the dualHandler doc comment for why this\nindependent re-check, rather than a single shared gate, is load-bearing.\nrecord.Clone() is used for all but the last delegate because slog.Record documents that a Record\npassed to more than one Handler must be cloned for each use beyond the first, since its internal\nsmall-attrs storage may otherwise be shared."
+    },
+    {
+      "id": "internal/logger#dualHandler.WithAttrs",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 241,
+      "sigend": 244,
+      "end": 250,
+      "signature": "func (d dualHandler) WithAttrs(attrs []slog.Attr) slog.Handler",
+      "doc": "WithAttrs implements slog.Handler by extending both halves' accumulated transform with the same\nattrs, so a logger built via slog.Logger.With keeps fanning out to both halves rather than\ncollapsing to one."
+    },
+    {
+      "id": "internal/logger#dualHandler.WithGroup",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 252,
+      "sigend": 254,
+      "end": 260,
+      "signature": "func (d dualHandler) WithGroup(name string) slog.Handler",
+      "doc": "WithGroup implements slog.Handler by extending both halves' accumulated transform with the same\ngroup, mirroring WithAttrs."
+    }
+  ]
+}
