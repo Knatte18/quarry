@@ -71,7 +71,12 @@ half-applied.
      is reserved for the case where the caller got the invocation wrong.
   3. `os.Getwd()`. On error return `fail(..., exitInternal, "internal error: "+err.Error(), false)`.
      This is the one place in the package that reads the working directory.
-  4. `resolveRoot(req.root, cwd)`. On a `usageError` return `fail(..., exitUsage, ..., true)`.
+  4. `resolveRoot(req.root, cwd)`. On a `usageError` return `fail(..., exitUsage, ..., true)`;
+     on any other non-nil error return `fail(..., exitInternal, "internal error: "+err.Error(), false)`.
+     Card 11 gives `resolveRoot` and `discoverRoot` a contract of returning only `usageError`, so
+     the second branch is unreachable today — state it anyway, so every step of this pipeline
+     spells both dispositions and a later change to card 11's contract cannot silently fall
+     through to a zero exit code.
   5. Compute the base for a relative target: the resolved root when `req.root` was given, the
      working directory otherwise. Call `repoRelTarget(root, base, req.target)`. When the error
      satisfies `errors.Is(err, quarry.ErrTargetOutsideRepo)`, return

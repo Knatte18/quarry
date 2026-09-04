@@ -3,7 +3,7 @@
 ```yaml
 task: "Facade + CLI, toc (T5a)"
 slug: "facade-cli-toc"
-approved: false
+approved: true
 started: "20260904-061252"
 parent: "main"
 root: ""
@@ -103,7 +103,12 @@ batches:
 - **Decision:** every new exported identifier in `quarry/` and every new declaration in
   `internal/cli` carries a doc comment saying **why** it is shaped as it is, not what it is —
   the standard `internal/engine/answer.go` sets. Each new file opens with a file-level comment
-  naming what the file holds, as every existing file in this repository does.
+  naming what the file holds, as every existing file in this repository does — and that comment is
+  separated from its `package` clause by a **blank line**, exactly as `answer.go`, `repo.go` and
+  `toc.go` do it. Without the blank line Go reads the comment as a package doc, so a package with
+  more than one file would acquire a second, competing package doc beside its `doc.go`. The one
+  comment that deliberately abuts its `package` clause is the package doc itself, in each package's
+  `doc.go`.
 - **Rationale:** `discussion.md`'s Technical context names `answer.go`'s comment discipline as the
   bar new public types are held to. Stating it once here keeps five batches from drifting apart.
 - **Applies to:** all batches
@@ -197,8 +202,14 @@ batches:
 - **Decision:** no batch adds a `//go:build cgo` tag, or any build tag, to `quarry/`,
   `cmd/quarry/`, or `internal/cli`. `CGO_ENABLED=0 go build ./...` is expected to fail through
   `internal/cgoguard`'s `!cgo` file, and that failure is the guard working.
+  The paired positive check — that `CGO_ENABLED=0 go build ./glyph/...` stays **green**, because
+  `glyph/` is cgo-free and must remain importable without the engine — is not left implicit either:
+  batch 5 card 24 runs it once, as a zero-diff verification card, at the end of the task.
 - **Rationale:** `discussion.md`'s Constraints say so explicitly; a tag added to make a
-  `CGO_ENABLED=0` build pass would hide the guard T1 exists to provide.
+  `CGO_ENABLED=0` build pass would hide the guard T1 exists to provide. `discussion.md`'s Testing
+  block lists the green `./glyph/...` build among its "Build checks", and a check no card runs is a
+  check that does not happen — hence the explicit card rather than an assumption that T1's own
+  assertion covers it.
 - **Applies to:** all batches
 
 ## All Files Touched

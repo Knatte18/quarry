@@ -4,7 +4,7 @@
 task: "Facade + CLI, toc (T5a)"
 batch: "goldens-and-after"
 number: 5
-cards: 5
+cards: 6
 verify: go test ./internal/cli/...
 depends-on: [4]
 ```
@@ -243,6 +243,34 @@ this batch does not depend on any engine change.
   bottom of each file": that claim is untrue of the four before-side `toc` files.
 - **Commit:** `docs(research): add after/INDEX.md mapping the before side to the after side`
 
+### Card 24: confirm the cgo-free `glyph/` build check
+
+- **Context:**
+  - `glyph/doc.go`
+  - `internal/cgoguard/cgoguard_nocgo.go`
+  - `internal/cgoguard/cgoguard.go`
+  - `docs/rewrite-plan.md`
+- **Edits:** none
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** A zero-diff verification card: run the build checks `discussion.md`'s Testing
+  block names and confirm each behaves as the task requires. Change no file.
+  1. `CGO_ENABLED=0 go build ./glyph/...` must exit **0**. `glyph/` is cgo-free and importable
+     without the engine — `docs/rewrite-plan.md` §7 makes it surface 1 for exactly that reason — and
+     nothing this task adds may drag a cgo dependency into it.
+  2. `CGO_ENABLED=0 go build ./...` must still **fail**, through
+     `internal/cgoguard/cgoguard_nocgo.go`'s deliberate undefined identifier, naming
+     `quarry_requires_CGO_ENABLED_1_with_a_C_toolchain`. This is the guard working, not a
+     regression: `quarry/` and `cmd/quarry` both pull in the engine and therefore cgo.
+  3. `go build ./... && go test ./...` with cgo enabled must be green.
+  If check 1 fails, report it rather than "fixing" it by adding a build tag to `quarry/`,
+  `cmd/quarry`, or `internal/cli` — the overview's `cgo-stays-required-and-unguarded` forbids that,
+  because a tag added to make a `CGO_ENABLED=0` build pass would hide the guard.
+  If check 2 passes (that is, the build unexpectedly succeeds), the guard has been weakened and that
+  is equally a reportable failure.
+- **Commit:** none
+
 ## Batch Tests
 
 `verify: go test ./internal/cli/...` runs every test in the package: batches 3 and 4's Loomyard-free
@@ -255,3 +283,7 @@ skip with a reason and the rest still run, which is the intended asymmetry — a
 its own requirements say to stop and report rather than invent fixtures if none is present.
 The scope stays `./internal/cli/...` because that is the only Go package this batch touches; the
 `docs/research/output-formats/after/` files are data the tests in that package read.
+Card 24 sits outside that `verify:` on purpose: it is a zero-diff card running three build checks
+whose whole point is the environment they run under (`CGO_ENABLED=0`, and a cgo-enabled whole-module
+build), which a single `go test` invocation cannot express. Its checks are run and reported by the
+implementer, and it produces no commit.
