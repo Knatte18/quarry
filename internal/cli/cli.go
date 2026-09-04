@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -63,6 +64,70 @@ func codeForTOCError(err error) int {
 		return exitOK
 	}
 	if errors.Is(err, quarry.ErrTargetNotFound) || errors.Is(err, quarry.ErrTargetOutsideRepo) {
+		return exitNegative
+	}
+	return exitInternal
+}
+
+// codeForResolveResult is the pure mapping runResolve's pipeline uses to turn a resolve result
+// into an exit code. It is declared as a named function, rather than inlined at the call site, so
+// a table test can be written directly against it, mirroring codeForTOCError's own rationale.
+//
+// It returns exitOK for quarry.StatusFound and quarry.StatusMultipart, and exitNegative for
+// quarry.StatusNotFound and quarry.StatusAmbiguous. The empty status also returns exitNegative,
+// because an empty status means a pre-resolution rejection carried by the result's Error field,
+// not an engine failure. The default returns exitInternal: the status vocabulary is closed, so
+// this branch is unreachable, and it exists only so a value the engine never produces cannot
+// silently route to a zero exit code.
+func codeForResolveResult(r quarry.ResolveResult) int {
+	switch r.Status {
+	case quarry.StatusFound, quarry.StatusMultipart:
+		return exitOK
+	case quarry.StatusNotFound, quarry.StatusAmbiguous:
+		return exitNegative
+	case "":
+		return exitNegative
+	default:
+		return exitInternal
+	}
+}
+
+// codeForExpandAnswer is codeForResolveResult's counterpart for the expand verb's narrower status
+// vocabulary, which admits only found, not_found, and ambiguous.
+//
+// It returns exitOK for quarry.StatusFound and exitNegative for quarry.StatusNotFound and
+// quarry.StatusAmbiguous. The default returns exitInternal, unreachable for the same reason
+// codeForResolveResult's default is.
+func codeForExpandAnswer(a quarry.ExpandAnswer) int {
+	switch a.Status {
+	case quarry.StatusFound:
+		return exitOK
+	case quarry.StatusNotFound, quarry.StatusAmbiguous:
+		return exitNegative
+	default:
+		return exitInternal
+	}
+}
+
+// codeForExpandError maps the error the facade's Expand method returns into an exit code, so
+// runExpand's error-branch classification and its exit code stay one table-tested source rather
+// than two things that can drift apart.
+//
+// It returns exitOK for a nil error. When errors.As reaches a *quarry.NotATypeError or a
+// *glyph.ParseError, it returns exitNegative — checked by type, never by parsing the error's own
+// message. Anything else returns exitInternal, which is what routes the missing-head-span
+// invariant failure, returned by the engine as a plain formatted error naming an invariant
+// violation in the walk, to exit 3 with no message parsing anywhere.
+func codeForExpandError(err error) int {
+	if err == nil {
+		return exitOK
+	}
+	var notType *quarry.NotATypeError
+	if errors.As(err, &notType) {
+		return exitNegative
+	}
+	var parseErr *glyph.ParseError
+	if errors.As(err, &parseErr) {
 		return exitNegative
 	}
 	return exitInternal

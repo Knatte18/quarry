@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -404,6 +405,76 @@ func TestCodeForTOCError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := codeForTOCError(tt.err); got != tt.want {
 				t.Errorf("codeForTOCError(%v) = %d; want %d", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCodeForResolveResult(t *testing.T) {
+	tests := []struct {
+		name string
+		r    quarry.ResolveResult
+		want int
+	}{
+		{"found", quarry.ResolveResult{Status: quarry.StatusFound}, exitOK},
+		{"multipart", quarry.ResolveResult{Status: quarry.StatusMultipart}, exitOK},
+		{"not-found", quarry.ResolveResult{Status: quarry.StatusNotFound}, exitNegative},
+		{"ambiguous", quarry.ResolveResult{Status: quarry.StatusAmbiguous}, exitNegative},
+		{"empty-status-pre-resolution-rejection", quarry.ResolveResult{Status: "", Error: "boom"}, exitNegative},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := codeForResolveResult(tt.r); got != tt.want {
+				t.Errorf("codeForResolveResult(%+v) = %d; want %d", tt.r, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCodeForExpandAnswer(t *testing.T) {
+	tests := []struct {
+		name string
+		a    quarry.ExpandAnswer
+		want int
+	}{
+		{"found", quarry.ExpandAnswer{Status: quarry.StatusFound}, exitOK},
+		{"not-found", quarry.ExpandAnswer{Status: quarry.StatusNotFound}, exitNegative},
+		{"ambiguous", quarry.ExpandAnswer{Status: quarry.StatusAmbiguous}, exitNegative},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := codeForExpandAnswer(tt.a); got != tt.want {
+				t.Errorf("codeForExpandAnswer(%+v) = %d; want %d", tt.a, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCodeForExpandError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"nil", nil, exitOK},
+		{"not-a-type", &quarry.NotATypeError{ID: "x#Y", Kind: quarry.KindFunction}, exitNegative},
+		{
+			"wrapped-not-a-type",
+			fmt.Errorf("wrap: %w", &quarry.NotATypeError{ID: "x#Y", Kind: quarry.KindFunction}),
+			exitNegative,
+		},
+		{"parse-error", &glyph.ParseError{Reason: glyph.ReasonNoSeparator}, exitNegative},
+		{
+			"wrapped-parse-error",
+			fmt.Errorf("wrap: %w", &glyph.ParseError{Reason: glyph.ReasonNoSeparator}),
+			exitNegative,
+		},
+		{"plain-formatted-error-stands-in-for-invariant-failure", errors.New("engine: expand x#Y: type symbol carries no head span"), exitInternal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := codeForExpandError(tt.err); got != tt.want {
+				t.Errorf("codeForExpandError(%v) = %d; want %d", tt.err, got, tt.want)
 			}
 		})
 	}
