@@ -75,6 +75,7 @@ rung cell's transcript at all.
   - `bench/loomyard-eval/ladder/ladder-toc.yaml`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/stream_test.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/tool-bytes.jsonl`
 - **Creates:**
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/session-init-mcp-connected.jsonl`
 - **Deletes:** none
@@ -89,7 +90,11 @@ rung cell's transcript at all.
   single trivial `claude -p` turn under that config with stream-json output, keeping the first
   record. That is one cheap turn, not a measured repetition — do not use the pre-matrix live test for
   this, which costs a full 60-turn repetition and runs after this batch anyway. Whichever route is
-  taken, record in the test's comment which one it was and the CLI version the line came from.
+  taken, record in the test's comment which one it was and the CLI version the line came from. Route
+  (b)'s capture turn carries the same `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT` prefix every
+  other `claude -p` invocation in this task carries: the fixture is supposed to pin the init record
+  the matrix's own children emit, and a capture run under markers the matrix strips could differ in
+  exactly the session-configuration fields the record reports.
   The line must have a **non-empty** `mcp_servers` array carrying at least one object with `name` and
   `status` — an empty array reproduces exactly the control-cell case that already passed and would
   leave the defect uncovered. Assert that `ParseTranscript` succeeds on it, that the decoded
@@ -98,6 +103,15 @@ rung cell's transcript at all.
   one.
   Keep any existing case that exercises the empty-array shape, or add one if none exists: both shapes
   are real, and the control cells depend on the empty one continuing to work.
+  **Card 3's retype breaks one existing fixture, and this card owns repairing it.**
+  `testdata/transcripts/tool-bytes.jsonl` carries `"mcp_servers":["quarry"]` on its init line — the
+  old string-array shape — so after the retype `ParseTranscript` errors on it and takes down the
+  cases in `stream_test.go` and `metrics_test.go` that load it. Convert that line's array to the
+  object shape, changing nothing else about the fixture: it exists to exercise tool-result byte
+  accounting, not the init record, so its other fields and every later line stay byte-identical. It
+  is the only fixture with the string-array shape — `fakeclaude/main.go` hardcodes an empty array and
+  every other transcript fixture carries `[]` — but re-check before assuming that still holds, and
+  convert any other non-empty string-array init line the same way.
 - **Commit:** `test(ladder): pin the real session-init mcp_servers shape from a captured transcript`
 
 ### Card 5: Invalidate a granted repetition whose server did not connect
@@ -105,9 +119,11 @@ rung cell's transcript at all.
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
   - `bench/loomyard-eval/ladder/internal/ladder/gates_test.go`
 - **Creates:** none
 - **Deletes:** none
@@ -132,7 +148,17 @@ rung cell's transcript at all.
   existing ceiling bounds the retries for free, whereas the `writeCompleteState` blinding-failed path
   increments no counter at all and would re-attempt without limit. A server that failed to connect is
   also genuinely transient in a way a blinding failure is not — the next attempt may well succeed.
-  Record the finding in the repetition's observations so the write-up can report it.
+  **Persist the finding as a file, because there is nowhere else for it to go.** `run.go` has no
+  logger and writes nothing to standard error, and this path never reaches `writeCompleteState`, so
+  the repetition's `observations` slice — assembled after the attempt loop — is out of reach: an
+  attempt-exhausted repetition returns with no state file at all. What the path does have is the
+  attempt's own directory, which `InvalidateRep` **renames rather than deletes**, so anything written
+  into it before the rename survives at `<root>/raw/<cell>/<rep>.invalid-<k>/` — the directories the
+  matrix card already lists to decide whether a repetition is attempt-exhausted, and the write-up
+  card already reads. Add a file-name constant to `runstate.go` alongside the existing per-repetition
+  names, and write the finding into the attempt directory as that file immediately before calling
+  `InvalidateRep`. Name the cell, the repetition, the expected server and the observed status, or its
+  absence.
   Add table cases to `gates_test.go` covering: a granted cell whose server is `connected` (no
   finding), one whose server reports another status (a finding naming that status), one whose init
   record omits the server entirely (a finding), and a control cell, which the caller-side predicate
@@ -153,3 +179,13 @@ a real connected-server init record, and it is what stops this defect from retur
 the CLI's wire format shifts. The one thing offline tests cannot prove is that the captured line
 still matches what the CLI emits today — that is what the pre-matrix live test in card 6 checks,
 before ten repetitions depend on it.
+
+**One coverage limit, stated rather than left to be discovered.** Card 5's *check* is covered by
+`gates_test.go`, but its *wiring* in `run.go` is not reachable from the offline end-to-end tests:
+`testdata/fakeclaude/main.go` hardcodes `"mcp_servers":[]` on every init line it emits, so a granted
+cell driven by the fake runner can never present a non-connected server and never trips the new
+path. Parameterising the fake to emit a server would widen this batch beyond the defect it exists to
+fix, so the wiring's first real exercise is the pre-matrix live test and then the matrix's own first
+granted repetition. That is an accepted gap, not an oversight — if the wiring is wrong, it surfaces
+as a rung cell invalidating on a connected server, which the matrix card's `.invalid-*` accounting
+makes visible within one invocation rather than silently.
