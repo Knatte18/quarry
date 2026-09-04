@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -34,4 +34,19 @@ plan-fix-r5  '2026-09-04T12:19:18Z'
 planned  '2026-09-04T12:19:28Z'
 planning  '2026-09-04T12:32:41Z'
 planned  '2026-09-04T12:34:58Z'
+implementing  '2026-09-04T14:15:44Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: pre-matrix-gates
+    state: pending
+  - name: harness-mcp-init-fix
+    state: pending
+  - name: matrix-run
+    state: pending
+  - name: write-up
+    state: pending
 ```
