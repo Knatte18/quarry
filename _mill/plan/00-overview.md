@@ -55,6 +55,14 @@ batches:
   **Card 4 owns that file** — it is the only card that knows both the fix and the successor root —
   and writes it on the restart path only, which is why it appears in that card's `Creates:` as a
   conditional artifact.
+- **One substitution rule covers both renames.** Every `results/2026-09-04-toc/` path this plan
+  spells is read as *the root card 4 actually terminated in* — the original on the ordinary path, the
+  `-r2` (or `-r3`) root after a restart, and a later-dated root if the first successful invocation
+  falls on another day. That applies to batch 3's `Context:` and `Creates:` paths as written, not
+  only to the prose. Two consequences the restart path needs stated: card 4 copies `probe.md` into
+  the fresh root unchanged, so the successor root satisfies the five-file list in
+  `committed-artifacts` on its own; and `ABANDONED.md` is the one file that stays in the abandoned
+  root rather than following the substitution.
 - **Applies to:** all batches
 
 ### Decision: clean-tree-and-no-edits-mid-matrix

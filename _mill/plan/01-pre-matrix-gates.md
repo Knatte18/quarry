@@ -45,11 +45,11 @@ report; it does not generate fresh evidence and must not claim to.
   merged quarry MCP server built from the parent branch; (c) the three §9a properties and their
   outcomes, **written strictly to what the quoted source states and no further**: the server
   connected, an `mcp__quarry__toc` call returned the §4 envelope, and a call outside the allowlist
-  was refused and appeared in `permission_denials`. The third §9a property — that the server was
-  listed in the measured session's `system` record — is **not** stated by the operator's report, so
-  the file records it as not covered by that report rather than asserting it. Claiming it would be
-  the card generating evidence, which this batch forbids; (d) the flags that made the denial half
-  meaningful,
+  was refused and appeared in `permission_denials`. The `system`-record half of the first property —
+  that the connected server was listed in the measured session's `system` record — is **not** stated
+  by the operator's report, so the file records that half as not covered rather than asserting it.
+  Claiming it would be the card generating evidence, which this batch forbids; (d) the flags that
+  made the denial half meaningful,
   in particular `--setting-sources ""`, without which the operator's global `defaultMode: "auto"`
   auto-approves read-only MCP calls and the denial half silently tests nothing — note that the
   harness passes the same flag for every measured repetition, which is what makes the hand probe

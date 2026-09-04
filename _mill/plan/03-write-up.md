@@ -46,14 +46,22 @@ from the same place; the table is the artifact a reader is pointed at.
   complete repetition at all — an outcome the termination rule explicitly permits — skip the check
   and report that it could not be performed and why; card 6 then records the same, rather than
   quoting a verification that never happened. From its transcript, count the turns,
-  count the calls to the granted `toc` tool, and read the cache-read figure; compare all three
-  against the same repetition's recorded usage and against that cell's entry in the summary. Report
-  agreement or the exact disagreement — a mismatch is a finding the conclusion must carry, and it
-  would invalidate the numbers every other card quotes. Read `metrics.go` to confirm which record
+  count the calls to the granted `toc` tool, and read the cache-read figure.
+  **Two comparands, two different tests, and the difference matters.** The repetition's own recorded
+  usage is the only value-for-value comparand: the three transcript-derived counts must equal the
+  figures recorded for that same repetition, exactly. The summary is **not** a value-for-value
+  comparand — its per-cell entries hold a median, a minimum and a maximum over every counted
+  repetition, so a single repetition disagreeing with a cell median is the ordinary case, not a
+  finding, and a check written that way would manufacture one. Against the summary, test only
+  **range containment**: each value lies inside that metric's recorded minimum-to-maximum span for
+  the cell. Report agreement or the exact disagreement — a value-for-value mismatch against the
+  repetition's own usage, or a value outside the cell's own range, is a finding the conclusion must
+  carry, and it would invalidate the numbers every other card quotes. Read `metrics.go` to confirm which record
   the harness derives each figure from, in particular that metrics come from the assistant records
   rather than from the final result record's `modelUsage`, which includes the tool's own overhead;
-  do not re-derive any number from `modelUsage`. Write the findings to a scratch note under
-  .scratch/ so card 6 can quote them. Make no file change in this card.
+  do not re-derive any number from `modelUsage`. Write the findings — including the n=0 outcome, if
+  that is what happened — to the fixed path .scratch/hand-verify.md, which is card 6's only source
+  for them. Make no file change under version control in this card.
 - **Commit:** none
 
 ### Card 6: Write the conclusion
@@ -63,6 +71,11 @@ from the same place; the table is the artifact a reader is pointed at.
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/provenance.json`
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/table.txt`
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/probe.md`
+  - `bench/loomyard-eval/ladder/results/2026-09-04-toc/raw/a0-none`
+  - `bench/loomyard-eval/ladder/results/2026-09-04-toc/raw/a2-toc-dir`
+  - `.scratch/ladder-toc-run.log`
+  - `.scratch/ladder-live-test.log`
+  - `.scratch/hand-verify.md`
   - `bench/loomyard-eval/ladder/ladder-toc.yaml`
   - `bench/loomyard-eval/ladder/.gitignore`
   - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
@@ -81,6 +94,13 @@ from the same place; the table is the artifact a reader is pointed at.
   `git show origin/v1-final:bench/loomyard-eval/ladder/results/2026-09-02-toc/conclusion.md` — that
   git object is an explicitly permitted read for this card, both as the shape to follow and as the
   source of the prior figures.
+  **Where each reported fact comes from, since several are not in the machine artifacts.** The
+  per-invocation server-hash readings, the invocation count and the per-invocation dirty-file lists
+  are in the matrix run log; the live test's outcome is in its own log; card 5's result is in its
+  scratch note; and the per-repetition gate-2 reason — *which* check invalidated *which* repetition
+  and why — is in that repetition's own state file under the cell directories listed in `Context:`,
+  because the summary carries only the invalid cell ids and a blinding-failed count, never a reason.
+  All six sources are in this card's `Context:`; do not report a fact none of them states.
   **The headline claim** — does `a2-toc-dir` separate from `a0-none` on turns and cache-read — is
   taken from the summary's comparison entries and their `separated` field, quoted alongside
   `median [min–max]` for each metric. Read the comparison whose metric is
@@ -171,13 +191,21 @@ from the same place; the table is the artifact a reader is pointed at.
   disagree with itself.
   (1) **§3, "What was measured, and still holds".** The prose above the table says the runs are on
   the `v1-final` branch and that nothing on the parent branch reproduces them, "(the T7 rerun will)".
-  Replace that parenthetical with what T7 found, and update the table's first row — the directory
-  table of contents row — so it cites this results root and this run's own figures alongside the
-  prior ones, keeping the two clearly separated as the conclusion keeps them. If the rerun did not
-  reproduce the separation, say that in the same place rather than leaving the old claim standing.
+  Replace that parenthetical with what T7 found. **Leave the existing directory-table-of-contents
+  row exactly as it is** — it is the prior record and its figures belong to the prior root — and add
+  a **second, separate row** whose "run" cell names this results root and this run's reps, stating
+  in its "finding" cell whether the separation reproduced. Do not put this run's figures into the
+  prior row: the discussion rejected a single merged table with a version column, "which reads as
+  commensurable no matter how many footnotes it carries", and one row offers no mechanism for the
+  separation two roots require. If the rerun did not reproduce the separation, the new row says so
+  plainly rather than leaving the old claim to stand for both.
   (2) **§4, "Next".** T7 is no longer pending: the critical path is finished. Rewrite the sentence
   that describes T7 as needing T2 and T6 into a statement of what it ran and what remains — wave 6's
-  type checker, and the cleanup and grooming items already listed, which stay as they are.
+  type checker, and the cleanup and grooming items already listed, which stay as they are. The
+  section's opening sentence, "Wave 4 is spawned, workers not yet started", and the instructions
+  that follow it for starting those workers, are stale by the same argument and are retired in the
+  same edit — leaving them would put a "not yet started" claim two lines above a "critical path
+  finished" one, which is the self-contradiction step (0) exists to prevent in §2.
   (3) **§5, "Open decisions (plan §11)".** Remove the raw-tree bullet, which is now decided, and
   point the reader at the conclusion and at the plan document's own updated bullet. The other two
   bullets stay.
