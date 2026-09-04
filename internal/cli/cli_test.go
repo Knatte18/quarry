@@ -27,9 +27,9 @@ import (
 // newPipelineFixture builds the tree every Run test in this file shares: a directory (pkg) with a
 // Go file carrying a package clause and a doc comment, a nested subdirectory (pkg/sub) whose own
 // Go file gives --symbols something spellable to populate, a sibling subdirectory (pkg/other)
-// declaring one free function and one type with a method so the resolve verb has something
-// spellable to answer about, and a symlink (pkg-link) at the root pointing at pkg. It returns the
-// fixture's absolute root.
+// declaring one free function, one type with a method, and one type with no members — so the
+// resolve and expand verbs have something spellable to answer about — and a symlink (pkg-link) at
+// the root pointing at pkg. It returns the fixture's absolute root.
 //
 // pkg/other sits beside pkg/sub rather than inside it or at the fixture root: adding a file inside
 // pkg/sub would break TestRun_FlagPassThrough's assertion that that directory holds exactly one
@@ -47,15 +47,18 @@ func newPipelineFixture(t *testing.T) string {
 			"package sub\n\n" +
 			"// Greet returns a fixture greeting.\n" +
 			"func Greet() string { return \"hello\" }\n",
-		"pkg/other/other.go": "// Package other holds one free function and one type with a method,\n" +
-			"// so the resolve verb has something spellable to answer about.\n" +
+		"pkg/other/other.go": "// Package other holds one free function, one type with a method, and\n" +
+			"// one type with no members, so the resolve and expand verbs have something\n" +
+			"// spellable to answer about.\n" +
 			"package other\n\n" +
 			"// Make returns a new fixture Widget.\n" +
 			"func Make() Widget { return Widget{} }\n\n" +
 			"// Widget is a fixture type carrying one method.\n" +
 			"type Widget struct{}\n\n" +
 			"// Value returns the fixture value.\n" +
-			"func (w Widget) Value() int { return 42 }\n",
+			"func (w Widget) Value() int { return 42 }\n\n" +
+			"// Empty is a fixture type with no members.\n" +
+			"type Empty struct{}\n",
 	})
 
 	if err := os.Symlink(filepath.Join(root, "pkg"), filepath.Join(root, "pkg-link")); err != nil {
@@ -581,6 +584,150 @@ func TestRun_Resolve(t *testing.T) {
 		}
 		if glyphResult.Target != "pkg/other#Make" {
 			t.Errorf("target = %q; want it to echo the argument verbatim", glyphResult.Target)
+		}
+	})
+}
+
+// TestRun_Expand pins the expand verb's own pipeline: the errors.As-based error classification and
+// its exact quarry-authored sentences, the found/not-found dispositions, and the failure envelope
+// discipline that holds even under --text.
+func TestRun_Expand(t *testing.T) {
+	root := newPipelineFixture(t)
+
+	t.Run("type-with-members", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "pkg/other#Widget", "--root", root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stdout = %q, stderr = %q; want %d", code, stdout, stderr, exitOK)
+		}
+		if stderr != "" {
+			t.Errorf("stderr = %q; want empty", stderr)
+		}
+		var answer quarry.ExpandAnswer
+		if err := json.Unmarshal([]byte(stdout), &answer); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if answer.Status != quarry.StatusFound {
+			t.Errorf("status = %q; want %q", answer.Status, quarry.StatusFound)
+		}
+		if answer.Head == nil {
+			t.Errorf("head = nil; want a head symbol")
+		}
+		if len(answer.Members) == 0 {
+			t.Errorf("members = %+v; want at least one member", answer.Members)
+		}
+	})
+
+	t.Run("type-with-no-members", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "pkg/other#Empty", "--root", root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stdout = %q, stderr = %q; want %d", code, stdout, stderr, exitOK)
+		}
+		var raw map[string]any
+		if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if raw["status"] != "found" {
+			t.Errorf(`payload["status"] = %v; want "found"`, raw["status"])
+		}
+		if _, ok := raw["members"]; ok {
+			t.Errorf("payload = %v; want no %q key for a type with no members", raw, "members")
+		}
+	})
+
+	t.Run("unit-found-member-missing", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "pkg/other#Nope", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		if stderr != "" {
+			t.Errorf("stderr = %q; want empty", stderr)
+		}
+		var answer quarry.ExpandAnswer
+		if err := json.Unmarshal([]byte(stdout), &answer); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if answer.Status != quarry.StatusNotFound {
+			t.Errorf("status = %q; want %q", answer.Status, quarry.StatusNotFound)
+		}
+		if answer.Unit != quarry.StatusFound {
+			t.Errorf("unit = %q; want %q", answer.Unit, quarry.StatusFound)
+		}
+	})
+
+	t.Run("not-a-type", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "pkg/other#Make", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		envErr := failureEnvelope(t, stdout)
+		want := "expand pkg/other#Make: not a type, kind function"
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if stderr != want+"\n" {
+			t.Errorf("stderr = %q; want %q", stderr, want+"\n")
+		}
+		if strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; must not carry usage text", stderr)
+		}
+	})
+
+	t.Run("grammar-rejection-with-separator", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "pkg/other#1bad", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		envErr := failureEnvelope(t, stdout)
+		if !strings.HasSuffix(envErr, string(glyph.ReasonMemberNotIdentifier)) {
+			t.Errorf("error = %q; want it to end in the reason word %q", envErr, glyph.ReasonMemberNotIdentifier)
+		}
+		if strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; must not carry usage text", stderr)
+		}
+	})
+
+	t.Run("no-separator", func(t *testing.T) {
+		// The parser rejects this before any repository is opened, so no --root is given.
+		code, stdout, stderr := runCLI([]string{"expand", "no-separator"})
+		if code != exitUsage {
+			t.Fatalf("code = %d; want %d", code, exitUsage)
+		}
+		envErr := failureEnvelope(t, stdout)
+		wantStderr := envErr + "\n" + usageText
+		if stderr != wantStderr {
+			t.Errorf("stderr = %q; want %q", stderr, wantStderr)
+		}
+	})
+
+	t.Run("text-flag-over-found", func(t *testing.T) {
+		_, jsonOut, _ := runCLI([]string{"expand", "pkg/other#Widget", "--root", root})
+		var answer quarry.ExpandAnswer
+		if err := json.Unmarshal([]byte(jsonOut), &answer); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", jsonOut, err)
+		}
+		want := quarry.RenderExpandText(answer)
+
+		code, stdout, stderr := runCLI([]string{"expand", "pkg/other#Widget", "--text", "--root", root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+		}
+		if stdout != want {
+			t.Errorf("stdout = %q; want %q", stdout, want)
+		}
+		if !strings.Contains(stdout, "\n\n") {
+			t.Errorf("stdout = %q; want a blank line between the head and the members", stdout)
+		}
+	})
+
+	t.Run("text-flag-over-failure", func(t *testing.T) {
+		code, stdout, _ := runCLI([]string{"expand", "pkg/other#Make", "--text", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		envErr := failureEnvelope(t, stdout)
+		want := fmt.Sprintf(`{"ok":false,"error":%q}`+"\n", envErr)
+		if stdout != want {
+			t.Errorf("stdout = %q; want %q (the JSON failure envelope, even under --text)", stdout, want)
 		}
 	})
 }
