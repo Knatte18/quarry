@@ -43,9 +43,13 @@ report; it does not generate fresh evidence and must not claim to.
   sentence — it is not a transcript this task captured, and no such transcript exists in the tree to
   copy. The file must contain, at minimum: (a) the date, 2026-09-04; (b) what was probed — the
   merged quarry MCP server built from the parent branch; (c) the three §9a properties and their
-  outcomes, namely that the server connected and was listed in the session's `system` record, that
-  an `mcp__quarry__toc` call returned the §4 envelope, and that a call outside the allowlist was
-  refused and appeared in `permission_denials`; (d) the flags that made the denial half meaningful,
+  outcomes, **written strictly to what the quoted source states and no further**: the server
+  connected, an `mcp__quarry__toc` call returned the §4 envelope, and a call outside the allowlist
+  was refused and appeared in `permission_denials`. The third §9a property — that the server was
+  listed in the measured session's `system` record — is **not** stated by the operator's report, so
+  the file records it as not covered by that report rather than asserting it. Claiming it would be
+  the card generating evidence, which this batch forbids; (d) the flags that made the denial half
+  meaningful,
   in particular `--setting-sources ""`, without which the operator's global `defaultMode: "auto"`
   auto-approves read-only MCP calls and the denial half silently tests nothing — note that the
   harness passes the same flag for every measured repetition, which is what makes the hand probe
@@ -90,8 +94,10 @@ report; it does not generate fresh evidence and must not claim to.
 ## Batch Tests
 
 `verify: null`. Nothing in this batch has a runnable surface: card 1 writes one markdown file and
-card 2 runs two read-only git queries whose output is the test. The repository-wide gate
-(`go test ./... && golangci-lint run`, with the live-test guard unset) still runs at the end of the
-task and covers this batch as it covers every other; running it per implementer round here would
+card 2 runs two read-only git queries whose output is the test. The repository-wide gate is encoded
+as `pipeline.done_gate` in the hub's mill configuration, holding
+`go test ./... && golangci-lint run` with the live-test guard unset; it runs from the repository root
+before the task is marked done and covers this batch as it covers every other. Running it per
+implementer round here would
 verify Go code no card in the batch touches. Card 2 is itself the batch's real gate — it proves the
 ignore rule holds and the tree is clean, which is the precondition batch 2 is entitled to assume.

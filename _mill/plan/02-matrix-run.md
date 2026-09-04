@@ -49,8 +49,11 @@ readings and the invocation count.
   (2) **The clean tree.** `git status --porcelain` must be empty. A non-empty tree means the matrix
   would record `quarry_dirty` true and describe something that is not in git.
   (3) **The environment preconditions**, each read and reported, none of them written into a
-  committed file: the ladder env file under .scratch/ resolves the Loomyard checkout for
-  `ResolveLoomyardRepo`; that checkout's HEAD is at the required pin and the ladder file's own
+  committed file: `LADDER_LOOMYARD_REPO` is either unset in the invoking environment, or set to a
+  value matching what the ladder env file under .scratch/ holds — `ResolveLoomyardRepo` reads the
+  process environment **first** and only falls back to that file, so an inherited stale value would
+  silently win and never be noticed; the file resolves the Loomyard checkout; that checkout's HEAD
+  is at the required pin and the ladder file's own
   `pinned_sha` is a commit reachable in it; `LADDER_WORKTREE_ROOT` is either unset — so
   `ResolveWorktreeRoot` falls back to the cache directory — or set to a path that is not the quarry
   repository root, not under it, and does not contain the substring `quarry`, which
@@ -71,10 +74,13 @@ readings and the invocation count.
   expensive, run it in the background with its output tee'd to a log under .scratch/ and poll that
   log, rather than blocking a foreground call on it. A failure blocks the matrix — do not proceed to
   card 4.
-  (5) **The baseline server hash.** Record `sha256sum` of the built server binary at
-  `<ladder-worktree-root>/bin/quarry` — the harness's own build target, per `run.go`'s
-  `serverBinary` — into the run log, and report it. This is the first of the per-invocation readings
-  the write-up batch transcribes. Make no file change in this card.
+  (5) **No baseline server hash is taken here, and any binary already present is stale.** `run.go`
+  builds `<ladder-worktree-root>/bin/<server-name>` through `BuildServer` *inside* each invocation,
+  and the guarded live test passes an empty server-binary path and never builds it, so at this point
+  the file is either absent or a leftover from an unrelated run. Report whether one is present and
+  say plainly that it is stale, then leave it alone: the out-of-band readings the write-up
+  transcribes are taken by card 4 immediately **after** each invocation, when the binary the
+  invocation actually measured is the one on disk. Make no file change in this card.
 - **Commit:** none
 
 ### Card 4: Run the toc matrix and commit its machine artifacts
@@ -94,6 +100,7 @@ readings and the invocation count.
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/summary.json`
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/provenance.json`
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/table.txt`
+  - `bench/loomyard-eval/ladder/results/2026-09-04-toc/ABANDONED.md`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Drive the matrix to a terminal state, then commit the three artifacts it wrote.
@@ -111,9 +118,18 @@ readings and the invocation count.
   No `--reps` override, so the ladder file's own `reps: 5` applies; no other flag is passed, so the
   file's run model, run effort, 60-turn ceiling, scorer model and scorer effort all come from the
   file. Ten measured repetitions plus ten scorer invocations is the whole matrix.
-  **Before every invocation**, including the first: take `sha256sum` of the built server binary at
-  `<ladder-worktree-root>/bin/quarry` and append the reading to the run log, and confirm
-  `git status --porcelain` is still empty apart from the untracked results root.
+  **After every invocation**, including the last: take `sha256sum` of the built server binary at
+  `<ladder-worktree-root>/bin/<server-name>` and append the reading to the run log. The reading comes
+  after because the harness builds that binary inside the invocation — before the first one the file
+  is absent or stale, and a before-only rule would leave the final invocation's binary unhashed
+  entirely. Two readings that differ mean what a differing commit means: the root mixed two versions
+  of the code under test and is void.
+  **Before every re-invocation**, confirm `git status --porcelain` lists nothing outside the results
+  root. It will not be empty: the first invocation's machine artifacts sit untracked under a tracked
+  directory until this card commits them, so `CollectInvocation` records `quarry_dirty` true for
+  invocations 2 and 3 by construction. That carve-out is accepted and reported rather than worked
+  around — committing between invocations would edit the repository mid-matrix. An entry outside the
+  results root is a different matter and voids the root: stop and report it.
   **The termination rule** is the driver's own, not the harness's, and it has three arms. Stop when
   every selected cell reports 5 complete repetitions; or when three invocations of the command have
   been made, the third being the last; or when every still-missing repetition is attempt-exhausted.
@@ -143,11 +159,23 @@ readings and the invocation count.
   `scored: false` and `score_skip_reason` set to `scorer_failed`, counted in `UnscoredCount` and
   dropped from recall and precision only; and a max-turns completion, which is complete by design and
   counted in `MaxTurnsCount`. Do not re-run either one's measured process.
+  **The restart path, and the one conditional artifact this card owns.** If a harness defect blocks
+  the run, fix it under the ladder tree with a failing table test written first, commit that, and
+  restart the matrix in a fresh `-r2` root — never against this one, per `## Shared Decisions`. This
+  card is then also the card that writes `ABANDONED.md` into the abandoned root, naming the fix, the
+  date and the successor root, following the precedent of the V1 tree's own abandoned compact root.
+  It is the only card that knows all three facts. That file is listed in `Creates:` as a
+  **conditional** artifact: on the ordinary path, where no restart happens, it is never written and
+  the card creates three files rather than four. The `Creates:` paths above name this root; on the
+  restart path the three machine artifacts land in the `-r2` root instead, and `ABANDONED.md` is the
+  one that stays here.
   **When the run terminates**, record in the run log: the number of invocations made, every
-  server-hash reading, the final incomplete and invalid lists, and the per-cell repetition counts.
-  Then `git add` exactly the three artifacts named in `Creates:` and commit. Add nothing under the
-  results root's raw tree. Do not edit any other file in the repository between the first repetition
-  and this commit.
+  server-hash reading, the final incomplete and invalid lists, the per-invocation `quarry_dirty`
+  file lists, and the per-cell repetition counts. Then `git add` exactly the artifacts named in
+  `Creates:` that were actually produced, and commit. Add nothing under the results root's raw tree.
+  Do not edit any other file in the repository between the first repetition and this commit, the
+  harness fix on the restart path excepted — that fix precedes the fresh root's first repetition,
+  not the run it interrupts.
 - **Commit:** `bench(ladder): T7 toc matrix results, cells a0-none and a2-toc-dir at reps 5`
 
 ## Batch Tests
@@ -158,8 +186,8 @@ one tree this batch is permitted to change. It runs against the fake-runner laye
 `LADDER_LIVE_TEST` is unset in the verify environment. The scope is deliberate: this batch's only
 possible code change is a harness fix (see `## Batch Scope`), and if one lands its failing table
 test goes in the same package tree the command covers. The repository-wide gate
-(`go test ./... && golangci-lint run`) still runs once as card 3's first step and again as the task's
-done gate.
+(`go test ./... && golangci-lint run`) still runs once as card 3's first step and again from
+`pipeline.done_gate` in the hub's mill configuration before the task is marked done.
 
 The batch's real tests, though, are the run's own gates, and the write-up batch reports all of them:
 gate 1 tells the conclusion whether `a2-toc-dir` ever called the tool it was granted — a cell that
