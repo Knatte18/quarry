@@ -43,7 +43,9 @@ batches:
     commit_sha: 7ab2727a3877abd088d0a70b67fd3f95c96e0c5f
     verify_baseline_failures: ["FAIL\t./quarry/... [setup failed]"]
   - name: facade-renderers
-    state: pending
+    state: running
+    implementer_session: 881ac749-a050-4b17-92a6-10c29eb84180
+    start_sha: 3bf697114b8bedb0ab6d69792f17f27f35a6e02c
     verify_baseline_failures: ["FAIL\t./quarry/... [setup failed]"]
   - name: cli-parsing
     state: pending
