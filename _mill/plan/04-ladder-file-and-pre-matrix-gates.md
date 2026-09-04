@@ -173,10 +173,17 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
 
   For each new case, add package-level string constants alongside the existing `task01TaskText` /
   `task01SchemaBlock` / `task04TaskText` / `task04SchemaBlock` constants, holding the expected task
-  text and schema block verbatim. Both new files carry the identical exploration schema block, so
-  their two `wantSchemaBlock` constants must be byte-identical to each other and to `task01SchemaBlock`
-  — if they are not, card 6 or card 8 did not copy the block as required and that is the finding this
-  assertion exists to surface.
+  text and schema block verbatim.
+
+  Both new files carry the identical exploration schema block, so their two `wantSchemaBlock`
+  constants must be byte-identical **to each other**. They must **not** be byte-identical to
+  `task01SchemaBlock`: per the overview's `neutral-schema-example-values-in-the-new-task-files`
+  decision, cards 6 and 8 replace that block's one real example path with a placeholder, because
+  `RenderPrompt` puts the schema block into every rendered prompt and task 06's prompt must name no
+  package or file. Assert both halves — that the two new constants are equal to each other, and that
+  neither contains the substring `internal/`. The second assertion is the cheap standing guard that
+  no real Loomyard package path re-enters either new prompt through the schema block, whether by a
+  later edit or by a subject swap.
 
   Each case's `droppedSubstrings` names at least one substring drawn from the setup section, one from
   the scope section, and one from the notes section of that file, so the test proves the

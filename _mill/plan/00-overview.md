@@ -109,9 +109,21 @@ Batch-local decisions live in each batch file._
 - **Rationale:** `separated` is a strict no-overlap test on min–max ranges that can miss a real effect at n=5, and a cost win bought with degraded correctness is not a win for a tool whose stated purpose is complete extraction. Naming the rule before the numbers exist is what keeps it from being fitted to them.
 - **Applies to:** matrix-and-conclusion, doc-propagation
 
+### Decision: neutral-schema-example-values-in-the-new-task-files
+
+- **Decision:** The exploration schema block tasks 02 and 06 carry keeps task 01's keys, structure and prose byte-for-byte, with exactly one change: the `relevant_files` example value `"internal/reedengine/geometry.go"` becomes the placeholder `"path/to/file.go"`, matching the placeholder `key_symbols` entry already in that block. The two new files' blocks are byte-identical to each other and are deliberately **not** byte-identical to task 01's.
+- **Rationale:** `RenderPrompt` puts `SchemaBlock` into every rendered prompt, so task 01's example path would appear verbatim in task 06's prompt — a prompt whose entire shape is "names no package and no file". That silently breaks card 8's constraint (b) outright if the chosen subject lands in `internal/reedengine` or `internal/reedcli`, and even when it does not, a real package path shown as an example is an anchor for an agent whose whole task is deciding where to look. Task 02's prompt names its own three packages, so the stray path is only noise there, but both new files use the same block so the two shapes' schema is not a variable between them. Only the example *values* change; `ExplorationRule` scores `relevant_files`, `key_symbols` and `summary`, and those keys are untouched, so scoring is unaffected. Per-task schema variation is already the norm — task 04 carries the impact schema — so this is not a new kind of difference.
+- **Applies to:** ladder-c-task-02, ladder-d-task-06, ladder-file-and-pre-matrix-gates
+
+### Decision: results-root-date-substitution
+
+- **Decision:** This plan pins the results root as `bench/loomyard-eval/ladder/results/2026-09-04-breadth/`. If the matrix invocation begins on a different calendar date, that date replaces `2026-09-04` **everywhere the path appears in this plan and in every file the plan produces** — batch 5's cards 15 and 16, batch 6's cards 17 and 18, and the overview's `## All Files Touched`.
+- **Rationale:** The root name is a label; `provenance.json` carries the real timestamps. But cards 17 and 18 write the path and the root name into two tracked documents, so a substitution scoped to batch 5 alone would leave `docs/roadmap.md` and `HANDOFF.md` citing a root that does not exist. A name contradicting the day the run started is worse than the drift, and a tracked doc citing a nonexistent path is worse than both.
+- **Applies to:** matrix-and-conclusion, doc-propagation
+
 ### Decision: conventional-commit-prefixes
 
-- **Decision:** Every card's `Commit:` uses a conventional-commit prefix with a scope drawn from the area it touches: `feat(ladder)`, `test(ladder)`, `bench(tasks)`, `bench(ladder)`, `docs(roadmap)`, `docs(handoff)`.
+- **Decision:** Every card that produces a diff uses a conventional-commit prefix with a scope drawn from the area it touches: `feat(ladder)`, `test(ladder)`, `bench(tasks)`, `bench(ladder)`, `docs(roadmap)`, `docs(handoff)`. A verification-only card whose `Edits:`/`Creates:`/`Deletes:`/`Moves:` are all `none` carries `Commit: none` instead, per the plan-card convention; batch 5's card 14 is the one such card in this plan.
 - **Rationale:** Matches the prefixes already in this repository's history and keeps one commit per card legible in `git log --oneline`.
 - **Applies to:** all batches
 
