@@ -18,12 +18,15 @@ type Strategy interface {
 	Language() string
 
 	// Symbols returns every listable declaration under root, in source order ascending by Start.
-	// It never descends into a function or method body — only container nodes (types, namespaces,
-	// classes) are walked for nested declarations. Each returned Symbol's Docstring is the full,
-	// untrimmed docstring; sentence trimming is the entry point's job, not the strategy's. SigEnd is
-	// set per the language-specific derivation, or left zero for a symbol with no body. Symbols
+	// unit is the glyph unit every symbol in this file belongs to — the Go package directory, or its
+	// "_test"-suffixed external-test counterpart — and the strategy builds each symbol's Glyph and
+	// ID from it. A strategy never derives the unit itself: the unit is a directory-level fact,
+	// established once by the walk over every file in a directory, not a file-level one a single
+	// file's own content could establish. Symbols never descends into a function or method body —
+	// only container nodes (types, namespaces, classes) are walked for nested declarations. SigEnd
+	// is set per the language-specific derivation, or left zero for a symbol with no body. Symbols
 	// returns an empty, non-nil slice when the file has no listable declaration.
-	Symbols(root *ts.Node, src []byte) []Symbol
+	Symbols(unit string, root *ts.Node, src []byte) []Symbol
 
 	// Header returns the untruncated, delimiter-stripped prose of the file's first non-directive
 	// comment block, or "" when the file has none. First-paragraph truncation is the entry point's
