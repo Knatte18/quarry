@@ -160,13 +160,15 @@ root; different host, harness, CLI version and cache behaviour make a numeric me
   untracked machine artifacts, and every listed path being inside the results root is what makes it
   benign. This matrix took exactly one invocation (no resume occurred), and the one dirty file named is
   outside the results root — it is this task's own in-flight mill orchestrator brief for the
-  matrix-run batch. Per the implementer's own summary in `.scratch/ladder-toc-run.log`, this was
-  "accepted per pre-matrix-gates precedent, not a results-root artifact" rather than caught and blocked
-  by the clean-tree-before-first-invocation check. That is stated here plainly as a deviation from the
-  narrow carve-out the plan names, not folded into it: the file carries no machine path and was later
-  committed by the pipeline's own per-batch commits, but the pre-matrix clean-tree check did not, in
-  fact, catch it before the first invocation as the plan's `clean-tree-and-no-edits-mid-matrix`
-  decision otherwise requires.
+  matrix-run batch, `_mill/briefs/implement-matrix-run-r1.md`. It falls under the plan's *second*
+  `clean-tree-and-no-edits-mid-matrix` carve-out, added at holistic review round 1:
+  `_mill/briefs/<currently-executing-batch>*.md` is written by the mill-go orchestrator's prepare
+  stage before the implementer session (and therefore card 7) ever starts, no card in this plan has
+  the standing or a `Commit:` line to commit it, and the orchestrator's own next commit point after
+  prepare fires only after the whole batch has finished — so requiring it committed before the
+  invocation is unsatisfiable by any card here. The file carries no machine path and was later
+  committed by the pipeline's own per-batch commits. This is not a deviation; it is the narrow,
+  named exception the plan states for exactly this file, and no other dirty entry appeared.
 - **Session-fingerprint drift.** `table.txt` records session-fingerprint drift between every
   `a2-toc-dir` repetition and `a0-none/1`: `a2-toc-dir` sessions carry the extra tool
   `mcp__quarry__toc`, list `mcp_servers: [quarry]`, and show `mcp_server_statuses: {quarry: connected}`,
@@ -222,11 +224,13 @@ the five files this root commits: `conclusion.md` (this file), `summary.json`, `
   across two repetitions were silently retried and succeeded, and nothing on disk says why the first
   attempts were rejected. This is a harness observability gap, not a defect in the code under test, and
   fixing it is a separate task.
-- **The pre-matrix clean-tree check did not catch the `_mill/` brief file** named above under
-  `quarry_dirty_files`. Whether that is an accepted precedent (as `.scratch/ladder-toc-run.log`'s
-  implementer summary states) or a gap in the `clean-tree-and-no-edits-mid-matrix` gate's own file-scope
-  check is not resolved by this card — it is named here so a reader of this results root sees it,
-  rather than reading `quarry_dirty: true` with no explanation.
+- **The pre-matrix clean-tree check reported `quarry_dirty: true` against the `_mill/` brief file**
+  named above under `quarry_dirty_files`. This is resolved, not open: the plan's
+  `clean-tree-and-no-edits-mid-matrix` decision now names a second, narrow carve-out (added at
+  holistic review round 1) for exactly `_mill/briefs/<currently-executing-batch>*.md`, on the grounds
+  that no card in this plan has the standing or a `Commit:` line to commit that file before the
+  invocation it precedes. It is named here only so a reader of this results root sees which file
+  tripped the flag and why the flag is benign, not as an unresolved gap.
 - **The headline separation this task set out to reproduce did not reproduce, cleanly, at n=5.** This
   is the finding, not a fault: it means the rewrite's `HANDOFF.md` and `docs/rewrite-plan.md` records
   should stop citing the August `a2-toc-dir` cost win as an established, cross-host result and instead
