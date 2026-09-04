@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-goldens-and-round-trip
+phase: holistic-reviewing
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-answer-and-walk  '2026-09-03T20:00:49Z'
 approved-glyph-symbols  '2026-09-04T04:21:00Z'
 approved-spans  '2026-09-04T04:29:51Z'
 approved-goldens-and-round-trip  '2026-09-04T04:41:24Z'
+holistic-reviewing  '2026-09-04T04:41:53Z'
 ```
 
 ## Batches
