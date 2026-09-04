@@ -238,6 +238,56 @@ func TestRenderText_Symbols(t *testing.T) {
 	}
 }
 
+// TestRenderText_SymbolLine_EmptyFileRegressionGolden is a regression golden: it asserts that
+// rendering a directory answer whose symbols carry an empty file field — the toc view's own shape —
+// produces a byte-identical string to the one the pre-file-prefix implementation produced. The
+// expected string is written as a fixed literal, not as a comparison against a stored file, so the
+// card 4 file-prefix change cannot silently alter the toc view's own output.
+func TestRenderText_SymbolLine_EmptyFileRegressionGolden(t *testing.T) {
+	symbols := []Symbol{
+		{ID: "pkg#Fn", Start: 1, End: 5, SigEnd: 2, Signature: "func Fn()", Doc: "Fn does a thing."},
+		{ID: "pkg#Alias", Start: 7, End: 7, Signature: "type Alias = int"},
+	}
+	a := DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go", Symbols: &symbols}}}
+	want := "pkg, 1 file\na.go\n1-5 (sig 1-2) pkg#Fn: func Fn()\n    Fn does a thing.\n7-7 pkg#Alias: type Alias = int\n"
+	got := RenderText(a, false)
+	if got != want {
+		t.Errorf("RenderText() = %q; want %q", got, want)
+	}
+	assertNoTrailingWhitespaceAndOneNewline(t, got)
+}
+
+// TestRenderText_SymbolLine_FilePrefix asserts a symbol carrying a non-empty file field renders with
+// the "<file>:" prefix, covering both the with-signature-end and without-signature-end forms.
+func TestRenderText_SymbolLine_FilePrefix(t *testing.T) {
+	tests := []struct {
+		name string
+		sym  Symbol
+		want string
+	}{
+		{
+			"WithSigEnd",
+			Symbol{ID: "pkg#Fn", File: "pkg/a.go", Start: 1, End: 5, SigEnd: 2, Signature: "func Fn()"},
+			"pkg/a.go:1-5 (sig 1-2) pkg#Fn: func Fn()\n",
+		},
+		{
+			"WithoutSigEnd",
+			Symbol{ID: "pkg#Alias", File: "pkg/a.go", Start: 7, End: 7, Signature: "type Alias = int"},
+			"pkg/a.go:7-7 pkg#Alias: type Alias = int\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b strings.Builder
+			writeSymbolLine(&b, tt.sym)
+			got := b.String()
+			if got != tt.want {
+				t.Errorf("writeSymbolLine() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestRenderText_ProseNormalisation uses docs/rewrite-plan.md §4's own "placement" example as the
 // fixture: the one case the plan shows both sides of.
 func TestRenderText_ProseNormalisation(t *testing.T) {
