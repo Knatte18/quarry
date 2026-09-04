@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-09-04T11:09:48Z'
 discussion-fix-r3  '2026-09-04T11:23:09Z'
 discussed  '2026-09-04T11:23:09Z'
 planning  '2026-09-04T11:32:04Z'
+plan-review-r1  '2026-09-04T11:38:17Z'
 ```
