@@ -5,36 +5,48 @@
 
 package engine
 
+import "github.com/Knatte18/quarry/glyph"
+
 // Kind is the closed vocabulary a Symbol's Kind field is drawn from.
 type Kind string
 
-// The three Kind values toc file ever emits. No other value is valid.
+// The five Kind values toc file ever emits. No other value is valid.
 const (
 	// KindFunction marks a free function: a func with no receiver.
 	KindFunction Kind = "function"
-	// KindMethod marks a function bound to a receiver (see Symbol.Owner).
+	// KindMethod marks a function bound to a receiver, including an interface method.
 	KindMethod Kind = "method"
 	// KindType marks a type-level declaration.
 	KindType Kind = "type"
+	// KindConst marks a package-level const declaration.
+	KindConst Kind = "const"
+	// KindVar marks a package-level var declaration.
+	KindVar Kind = "var"
 )
 
-// Symbol is one listable declaration extracted from a file: a function, method, or type, in source
-// order.
+// Symbol is one listable declaration extracted from a file: a function, method, type, const, or
+// var, in source order.
+//
+// Symbol carries its own Glyph rather than the bare Name/Owner pair V1 used, because a caller
+// reading Glyph.Name and Glyph.Owner and a caller reading the emitted ID string were two parallel
+// spellings of one identity — exactly the drift docs/glyph.md's one-implementation-of-the-grammar
+// rule exists to prevent. ID is computed and stored once, at build time, rather than derived on
+// demand by a custom MarshalJSON: the emitted key set stays a plain struct with plain tags, and
+// there is no second place that could compute it differently.
 type Symbol struct {
-	Kind Kind   `json:"kind"`
-	Name string `json:"name"`
-	// Owner is the enclosing type's bare name for a method, and empty for a free function or a
-	// type-level declaration. Name deliberately stays bare — it gains no Owner or Package
-	// qualification — because refs, definition, and symbol accept only a bare name or a
-	// file:line:col position; a caller composes the qualified form itself from Package, Owner, and
-	// Name when it needs one for display.
-	Owner string `json:"owner,omitempty"`
-	// Signature is the verbatim source text from the declaration's first byte to the start of its
-	// body-bearing child, trimmed — never reformatted, never truncated.
-	Signature string `json:"signature"`
-	// Docstring is the symbol's complete, untrimmed, delimiter-stripped docstring. An empty
-	// docstring is never emitted as "" — its absence is always signalled by omitting this key.
-	Docstring string `json:"docstring,omitempty"`
+	// Glyph is this symbol's parsed identity: unit, owner chain, and name. It is never emitted —
+	// ID, computed from it once at build time, is the wire form.
+	Glyph glyph.Glyph `json:"-"`
+	// ID is Glyph.String(), stored rather than recomputed so the JSON encoding stays a plain
+	// struct-tag marshal with no custom MarshalJSON.
+	ID string `json:"id"`
+	// Kind is the symbol's declaration kind.
+	Kind Kind `json:"kind"`
+	// File is the repository-relative path of the file this symbol was extracted from, empty and
+	// therefore omitted inside a toc answer, where the symbol already sits in its file's own entry.
+	// The span lookup batch 5 adds, and the later resolve and expand verbs, fill File because their
+	// entries span files.
+	File string `json:"file,omitempty"`
 	// Start is the first line of the docstring when the docstring is a sibling of the declaration,
 	// and the first line of the declaration otherwise. 1-based, inclusive.
 	Start int `json:"start"`
@@ -45,6 +57,20 @@ type Symbol struct {
 	SigEnd int `json:"sigend,omitempty"`
 	// End is the last line of the declaration. 1-based, inclusive.
 	End int `json:"end"`
+	// Signature is the verbatim source text from the declaration's first byte to the start of its
+	// body-bearing child, trimmed — never reformatted, never truncated.
+	Signature string `json:"signature"`
+	// Doc is the symbol's complete, untrimmed, delimiter-stripped docstring. An empty docstring is
+	// never emitted as "" — its absence is always signalled by omitting this key.
+	Doc string `json:"doc,omitempty"`
+	// HeadStart and HeadEnd are populated only for KindType, and are JSON-hidden: they are consumed
+	// by the later expand verb, never emitted directly. For Go they equal this same symbol's own
+	// Start and End — doc block included when one is attached, never the bare declaration node's
+	// line range — for every Go type, interfaces included. Subtracting a type's member spans from
+	// its head range to render just the head is the consumer's job, not the extractor's, which is
+	// why one span pair suffices here and no discontiguous span type is needed.
+	HeadStart int `json:"-"`
+	HeadEnd   int `json:"-"`
 }
 
 // DirAnswer is the recursive answer to a table-of-contents query, per the rewrite plan's §4: one
