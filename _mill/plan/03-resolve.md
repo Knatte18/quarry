@@ -201,10 +201,15 @@ and every card in this batch leaves the package building and the existing suite 
   directory resolves here while the walk never descends that directory and so never lists those
   declarations. The behaviour is inherited unchanged and deliberately not narrowed — changing
   `dirExists` would be a change to the walk's inverse, and whether a unit may be reached through a
-  link at all is a statement docs/glyph.md does not make. Record the first gap where the collision is
-  read: docs/glyph.md §2 gives the external test unit its pseudo-path without saying what happens
-  when a real directory spells it, so promoting the collision to `ambiguous` is quarry's choice, not
-  the contract's.
+  link at all is a statement docs/glyph.md does not make.
+
+  Do not restate the first gap here. `unitDirs`'s own doc comment already records it, almost verbatim —
+  that docs/glyph.md §2 gives the external test unit its pseudo-path without saying what happens when a
+  real directory spells the same string, and that checking both and reporting the collision is quarry's
+  chosen behaviour rather than the contract's. Card 9 re-tenses that comment and keeps that statement;
+  it is the surviving copy. At the collision read, write one sentence pointing to it and adding only
+  what is new here: that this verb promotes the reported collision to `ambiguous`, which is the half of
+  the gap `unitDirs` could not state because the status type did not exist when it was written.
 - **Commit:** `feat(engine): add resolve's glyph branch and its status disposition`
 
 ### Card 8: the path branch
@@ -317,7 +322,10 @@ and every card in this batch leaves the package building and the existing suite 
      `ambiguous` status when it builds the status vocabulary, and that the flag lives on an unexported
      return so the task records the fact without inventing a status type that is not its to design.
      Re-tense both clauses: `Resolve` in this same file now reads the flag and promotes it, and the
-     status type now exists in `internal/engine/answer.go`.
+     status type now exists in `internal/engine/answer.go`. Keep this comment's statement of the
+     identifier-contract gap — that docs/glyph.md §2 gives the external test unit its pseudo-path
+     without saying what happens when a real directory spells it — exactly as it stands. This is the
+     surviving copy of that gap in this file; card 7 points at it rather than repeating it.
   5. `SpansOf`'s doc comment, which contrasts its own empty-slice-no-status result with "the later
      resolve verb's" four statuses. Re-tense that one clause only. Card 7's instruction not to change
      `SpansOf` is about its code and its behaviour, not its doc comment: the function keeps its inline
@@ -412,8 +420,16 @@ and every card in this batch leaves the package building and the existing suite 
   `not_found`; `target`, `id` and `status` must all be present, `id` carrying the glyph's own string
   form; and `symbols`, `candidates`, `dir`, `error` and `reason` must all be absent. `id` is present on
   every successfully parsed glyph target, a miss included — card 7 sets it the moment the parse
-  succeeds, and its `omitempty` exists for the path branch, which has no glyph, not for the miss. That
-  marshalled assertion is what pins docs/glyph.md §5's spelling and every `omitempty` at once.
+  succeeds, and its `omitempty` exists for the path branch, which has no glyph, not for the miss.
+
+  Marshal two more results in this same test, so `ResolveResult`'s keys are observed present and not
+  only absent: a `found` result over the same fixture `TestResolve_Found` uses, asserting `symbols`
+  present under exactly that spelling with one entry and `candidates` absent; and an `ambiguous` result
+  over the tags fixture, asserting `candidates` present with two entries and `symbols` absent. A key
+  observed only in its absent state is a key whose spelling nothing checks — `go vet` reads tag syntax
+  and never a tag's name, so `symbol` for `symbols` would pass every struct-level assertion in this
+  plan. That leaves `dir`, `error` and `reason` unobserved in their present state; card 13 marshals
+  those, and between the two cards every one of `ResolveResult`'s nine keys is seen both ways.
 
   Write each test's doc comment in this file's established register, naming what it asserts and why
   that assertion is the one that matters.
@@ -519,10 +535,17 @@ and every card in this batch leaves the package building and the existing suite 
   excludes a file that exists, assert the excluded file is still answered when named explicitly — the
   ignore filter exists so a listing is not noise, not to make a file unaddressable.
 
+  Marshal the existing-file result with `encoding/json` and assert `dir` present under exactly that
+  spelling, carrying the directory answer's own keys, with `id` and `unit` absent — the path branch is
+  the reason both carry `omitempty`, and this is the only marshal that observes `dir` present.
+
   `TestResolve_MalformedGlyphEntries` asserts one entry per distinct grammar rejection the engine can
   reach, choosing target strings that produce `ReasonMemberTooDeep`, `ReasonUnitBadRune`,
   `ReasonUnitDotSegment` and `ReasonMemberKeyword`. Each answers with `Status` empty, `Error`
-  non-empty, and `Reason` equal to the grammar's own word for that rejection. Assert in the same test
+  non-empty, and `Reason` equal to the grammar's own word for that rejection. Marshal one of those
+  entries with `encoding/json` and assert `error` and `reason` present under exactly those spellings
+  and `status` absent — the only marshal that observes those three keys in that state, and the one that
+  pins that a rejected target emits no status word at all. Assert in the same test
   that a call mixing one malformed target with two valid ones still answers the two valid ones
   normally and returns a nil call error, which is the whole reason the rejection is carried per entry
   rather than raised as the call's error.

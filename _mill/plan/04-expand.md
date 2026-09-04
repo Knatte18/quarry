@@ -215,7 +215,10 @@ invite branching on a condition that must never occur.
   `SpansOf` lookup of the same glyph in the test itself rather than hard-coding line numbers, so the
   assertion survives an edit to the fixture's comments. Assert `Members` holds all three methods, from
   both files, ordered by file then start line, with the sibling file's two methods first, and that no
-  member's `ID` equals the head's.
+  member's `ID` equals the head's. Marshal this answer with `encoding/json` and assert `head` and
+  `members` are both present under exactly those spellings, with `members` holding three entries: this
+  is the only marshal in the plan that observes `members` in its present state, so a tag typo there
+  passes every other assertion.
 
   `TestExpand_Interface` expands the named interface of the glyphs fixture package. Assert `Status`
   equal to `StatusFound`, that `Members` are exactly that interface's own two methods and not the
@@ -273,7 +276,9 @@ invite branching on a condition that must never occur.
   answers `StatusAmbiguous` with both declarations in `Candidates` and no head and no members, and
   that the mixed glyph — a type in one file and a function in the other — answers `StatusAmbiguous`
   too rather than a `*NotATypeError`, because the set holds a type and choosing between the two would
-  be a silent pick.
+  be a silent pick. Marshal the duplicated-type answer with `encoding/json` and assert `candidates` is
+  present under exactly that spelling with two entries, and `head` and `members` absent: this is the
+  only marshal in the plan that observes `candidates` in its present state.
 
   `TestExpand_MalformedTarget` asserts that a target the grammar rejects and a target with no `#` each
   return a non-nil error and the zero answer, that `errors.As` reaches a `*glyph.ParseError` in both
@@ -286,8 +291,11 @@ invite branching on a condition that must never occur.
   error. A miss is a legitimate answer with a status, never a failure. Marshal one of the two with
   `encoding/json` and assert on the emitted JSON: `id`, `status` and `unit` present, `status` spelled
   `not_found` and `unit` spelled with its own value, and `head`, `members` and `candidates` all
-  absent. Together with card 16's marshal of a member-less `found` answer, that covers every one of
-  `ExpandAnswer`'s six keys in both its present and its omitted state.
+  absent. Four marshals across cards 16 and 17 cover every one of `ExpandAnswer`'s six keys in both
+  its present and its omitted state: `TestExpand_Struct` observes `head` and `members` present,
+  `TestExpand_AmbiguousBuildTags` observes `candidates` present, `TestExpand_TypeWithoutMembers`
+  observes `members` and `candidates` absent, and this one observes `unit` present and `head` absent.
+  `id` and `status` carry no `omitempty` and are present in all four.
 - **Commit:** `test(engine): assert expand's not-a-type, ambiguous and miss rows`
 
 ### Card 18: expand under a collision, and the two verbs agreeing

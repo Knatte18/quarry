@@ -107,7 +107,8 @@ four `Status` constants.
 
   Change no existing declaration and no existing JSON tag in this file. Three existing comments do
   change, for the same reason card 23 corrects one stale sentence in the Go extractor and card 9
-  re-tenses three in the resolve file: leaving a comment that describes its own file wrongly is worse
+  corrects five clauses across four comments in the resolve file: leaving a comment that describes its
+  own file wrongly is worse
   than the churn of fixing it, and this file is one the task edits as its own work rather than under a
   scope exception. All three are re-tensings with no change of substance:
 
@@ -119,17 +120,27 @@ four `Status` constants.
   3. `Symbol.File`'s "The span lookup batch 5 adds, and the later resolve and expand verbs, fill File
      because their entries span files" — the same forward reference, in the same file, and left
      standing it would be the one stale "later verb" phrasing in a file whose other two were fixed.
+     Rewrite the whole sentence, not just its "later verb" half: the "batch 5 adds" clause names a
+     batch of T3's plan, which no reader of this file can resolve and which now collides with this
+     plan's own batch 5. Name the function instead — `symbolsOfUnit` is what fills `File` — and say
+     that `Resolve` and `Expand` emit it because their entries span files. A comment that dates itself
+     by someone else's batch number is worse than one that names the code.
 - **Commit:** `feat(engine): add ResolveResult and ExpandAnswer payload types`
 
 ## Batch Tests
 
 `verify:` is a build plus a vet of the engine package, not a test run: this batch adds type
 declarations and doc comments only, and has no behaviour of its own to assert. The types are
-exercised by every test in batches 3, 4 and 5. The JSON tags specifically are pinned by three
-marshalled assertions, one per new type's shape: batch 3's card 11 marshals a `not_found`
-`ResolveResult`, pinning docs/glyph.md §5's `"unit": "found"` spelling and the `omitempty` on every
-absent key; batch 4's card 16 marshals a member-less `found` `ExpandAnswer` and card 17 a `not_found`
-one, which between them cover all six of that type's keys in both their present and their omitted
-state. `go vet` is a gate here but not the whole one — it catches struct-tag syntax errors the
-compiler does not, and nothing else: a key spelled wrongly or an `omitempty` left off is valid
-syntax, which is why the marshalled assertions exist rather than resting on vet.
+exercised by every test in batches 3, 4 and 5. The JSON tags specifically are pinned by marshalled
+assertions spread across the batches that build each shape, sized so every key of both new types is
+observed in both its present and its omitted state. For `ResolveResult`: batch 3's card 11 marshals a
+`not_found` result of each `unit` value — pinning docs/glyph.md §5's `"unit": "found"` spelling — plus
+a `found` and an `ambiguous` result for `symbols` and `candidates` present, and card 13 marshals a
+path result for `dir` and a rejected-target result for `error` and `reason`. For `ExpandAnswer`: batch
+4's card 16 marshals a struct answer for `head` and `members` present, an ambiguous answer for
+`candidates` present, and a member-less `found` answer for both absent; card 17 marshals a `not_found`
+answer for `unit` present and `head` absent. `go vet` is a gate here but not the whole one — it catches
+struct-tag syntax errors the compiler does not, and nothing else: a key spelled wrongly or an
+`omitempty` left off is valid syntax, and a key only ever observed absent is a key whose spelling
+nothing checks. That is why the assertions are spread this way rather than resting on vet or on one
+marshal per type.
