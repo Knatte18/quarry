@@ -67,10 +67,13 @@ the V1 surface and kept the README as a stub; a one-tool server needs a section,
   Write a configuration declaring exactly one server, named `quarry`, invoked as `go run` against the
   command's repository-relative package path, with an empty argument list beyond that.
   The invocation is deliberately `go run` rather than a built binary path: it is what makes the file
-  committable under the no-machine-paths constraint — repository-relative, no prior build step — and a
-  client that spawns a project-scope server does so with the project root as its working directory,
-  which is the same root-discovery path the ladder harness relies on. So the committed configuration
-  exercises the rooting the measurement depends on.
+  committable under the no-machine-paths constraint — repository-relative, and needing no prior build
+  step — and plan §2 assigns the new configuration to this task.
+  Do not claim this file exercises the rooting the measurement depends on. It does not: a client
+  spawning a project-scope server from this repository gives the server this repository's own root as
+  its working directory, where discovery succeeds whether or not the working-directory inheritance the
+  harness relies on holds. Only a probe run from a different repository tests that, which is why
+  discussion D13 puts one there.
   Declare no other server, no environment block, and no arguments. In particular do not pass a root
   override: the whole point of the discovery path is that it needs none.
   This file has no effect on a measured ladder run. The harness passes a strict-configuration flag, so
