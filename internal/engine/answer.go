@@ -1,7 +1,8 @@
 // answer.go declares the engine package's answer shape: the closed Kind vocabulary, Symbol, the
-// recursive DirAnswer, FileEntry, and TOCOptions. Every JSON tag here is the exact emitted key set
-// the plan's "the emitted key set is plan §4's and is closed" Shared Decision fixes — no field is
-// added or renamed without a corresponding Shared Decision change.
+// recursive DirAnswer, FileEntry, TOCOptions, the closed Status vocabulary, ResolveResult, and
+// ExpandAnswer. Every JSON tag here is the exact emitted key set the plan's "the emitted key set is
+// plan §4's and is closed" Shared Decision fixes — no field is added or renamed without a
+// corresponding Shared Decision change.
 
 package engine
 
@@ -24,6 +25,26 @@ const (
 	KindVar Kind = "var"
 )
 
+// Status is the closed per-entry vocabulary of docs/glyph.md §5, shared by ResolveResult's Status
+// and Unit keys and by ExpandAnswer's. The Unit key of both result types draws from this same type
+// but only ever carries StatusFound or StatusNotFound, so the package holds one vocabulary rather
+// than two overlapping ones.
+type Status string
+
+// The four Status values docs/glyph.md §5 defines. No other value is valid.
+const (
+	// StatusFound marks exactly one matching declaration.
+	StatusFound Status = "found"
+	// StatusNotFound marks no matching declaration.
+	StatusNotFound Status = "not_found"
+	// StatusAmbiguous marks several different declarations matching, with nothing chosen between
+	// them.
+	StatusAmbiguous Status = "ambiguous"
+	// StatusMultipart marks one symbol the language lets be declared in several places, with every
+	// part returned.
+	StatusMultipart Status = "multipart"
+)
+
 // Symbol is one listable declaration extracted from a file: a function, method, type, const, or
 // var, in source order.
 //
@@ -44,8 +65,8 @@ type Symbol struct {
 	Kind Kind `json:"kind"`
 	// File is the repository-relative path of the file this symbol was extracted from, empty and
 	// therefore omitted inside a toc answer, where the symbol already sits in its file's own entry.
-	// The span lookup batch 5 adds, and the later resolve and expand verbs, fill File because their
-	// entries span files.
+	// symbolsOfUnit fills File, and Resolve and Expand emit it, because their entries span
+	// files.
 	File string `json:"file,omitempty"`
 	// Start is the first line of the docstring when the docstring is a sibling of the declaration,
 	// and the first line of the declaration otherwise. 1-based, inclusive.
@@ -64,7 +85,7 @@ type Symbol struct {
 	// never emitted as "" — its absence is always signalled by omitting this key.
 	Doc string `json:"doc,omitempty"`
 	// HeadStart and HeadEnd are populated only for KindType, and are JSON-hidden: they are consumed
-	// by the later expand verb, never emitted directly. For Go they equal this same symbol's own
+	// by the expand verb, never emitted directly. For Go they equal this same symbol's own
 	// Start and End — doc block included when one is attached, never the bare declaration node's
 	// line range — for every Go type, interfaces included. Subtracting a type's member spans from
 	// its head range to render just the head is the consumer's job, not the extractor's, which is
@@ -133,6 +154,83 @@ type FileEntry struct {
 	// cannot make that distinction, which is why this field is the exception to every other slice
 	// in this file staying a plain, non-pointer type.
 	Symbols *[]Symbol `json:"symbols,omitempty"`
+}
+
+// ResolveResult is the answer to one target passed to Resolve: a glyph or a repository-relative
+// path. It expresses either a resolution outcome (Status set) or a pre-resolution rejection of the
+// target string itself (Error set), and never an engine failure — an engine failure fails the whole
+// Resolve call instead. Status and Error are never both set.
+type ResolveResult struct {
+	// Target is the caller's argument, verbatim. Always present.
+	Target string `json:"target"`
+	// ID is the parsed glyph's Glyph.String() form, the same wire form Symbol.ID carries. Present
+	// only for a glyph target. For Go it is byte-identical to Target on every non-error result,
+	// because the Go alphabet normalises nothing — the key earns its place as parity with Symbol.ID,
+	// not as canonicalisation.
+	ID string `json:"id,omitempty"`
+	// Status is the resolution outcome: found, not_found, ambiguous, or multipart. It is absent only
+	// when the target never reached resolution — a pre-resolution rejection, carried by Error and
+	// Reason instead.
+	Status Status `json:"status,omitempty"`
+	// Unit is set only on a glyph not_found, and carries only StatusFound or StatusNotFound: found
+	// when the directory, module or namespace is there and only the member is missing, not_found
+	// otherwise. It is never set on a path result, because a path belongs to no unit.
+	//
+	// Contract gap: docs/glyph.md §2's external test unit and a real directory spelling the same
+	// string can both exist; unitDirs reports the collision as a bare bool with no notion of "unit
+	// directories", so which of the two this key promotes from is decided where the flag is read, not
+	// here.
+	Unit Status `json:"unit,omitempty"`
+	// Symbols carries the matches for found (exactly one) and for multipart (every declaration).
+	Symbols []Symbol `json:"symbols,omitempty"`
+	// Candidates carries the matches for ambiguous. The separate key is the signal that nothing was
+	// chosen.
+	//
+	// Contract gap: docs/glyph.md §5 says candidates in a multi-language repository are marked by
+	// language, while Symbol's key set has no language key. With Go the only alphabet the case is
+	// unreachable, so no key is added here — a second language's task adds the marker against a real
+	// case.
+	Candidates []Symbol `json:"candidates,omitempty"`
+	// Dir is the directory answer for a path target that names a directory. It is a pointer so an
+	// absent answer is dropped by omitempty; a non-pointer struct would always marshal.
+	Dir *DirAnswer `json:"dir,omitempty"`
+	// Error carries a pre-resolution rejection of the target string itself — a glyph.Parse rejection,
+	// or a path target rejected as outside the repository — and never an engine read failure. Status
+	// is empty whenever Error is set.
+	Error string `json:"error,omitempty"`
+	// Reason is the plain-word form of the rejection Error names, for a grammar rejection. It is
+	// deliberately a plain string, not glyph.Reason: the emitted JSON is a plain word and answer.go
+	// needs no exported alias for the grammar's own type.
+	Reason string `json:"reason,omitempty"`
+}
+
+// ExpandAnswer is the answer to one glyph passed to Expand: the target type's head plus every
+// member whose owner chain begins with it. Status is found, not_found or ambiguous, and never
+// multipart, because the kind gate sends every match set holding no type to NotATypeError — where a
+// several-declaration init glyph lands, however many declarations it has — and docs/rewrite-plan.md's
+// three-queries section's rule that a Go type never splits, only init does, closes the remaining
+// type-only cases. A language with partial types adds its row then, not now.
+type ExpandAnswer struct {
+	// ID is the parsed glyph's Glyph.String() form, the same wire form Symbol.ID carries.
+	ID string `json:"id"`
+	// Status is the resolution outcome: found, not_found, or ambiguous.
+	Status Status `json:"status"`
+	// Unit is set only on a not_found, and carries only StatusFound or StatusNotFound, exactly as
+	// ResolveResult.Unit does.
+	Unit Status `json:"unit,omitempty"`
+	// Head is the type's own symbol entry, with Start and End substituted from HeadStart and
+	// HeadEnd, present only for found. It is a pointer so an absent answer is dropped by omitempty; a
+	// non-pointer struct would always marshal.
+	//
+	// Contract gap: substituting HeadStart/HeadEnd for Start/End means the type's full declaration
+	// span is not recoverable from an ExpandAnswer for a language whose head is a strict subset of
+	// its declaration. With Go the only alphabet the case is unreachable today.
+	Head *Symbol `json:"head,omitempty"`
+	// Members is every symbol whose owner chain begins with the target type, sorted by file and
+	// line, present only for found.
+	Members []Symbol `json:"members,omitempty"`
+	// Candidates carries the matches for ambiguous, exactly as ResolveResult.Candidates does.
+	Candidates []Symbol `json:"candidates,omitempty"`
 }
 
 // DepthAll requests a TOC query recurse to the bottom of the tree, rather than stopping after a
