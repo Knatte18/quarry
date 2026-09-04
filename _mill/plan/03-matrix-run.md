@@ -3,20 +3,20 @@
 ```yaml
 task: "Ladder, toc rerun (T7)"
 batch: "matrix-run"
-number: 2
+number: 3
 cards: 2
 verify: go test ./bench/loomyard-eval/ladder/...
-depends-on: [1]
+depends-on: [2]
 ```
 
 ## Batch Scope
 
-This batch spends the task's whole API budget and produces its three machine artifacts. Card 3 is
+This batch spends the task's whole API budget and produces its three machine artifacts. Card 6 is
 the gate — the offline suite, the clean tree, the environment preconditions and the harness's own
-guarded live test, in that order — and card 4 drives the matrix to a terminal state and commits what
+guarded live test, in that order — and card 7 drives the matrix to a terminal state and commits what
 it produced. The two are one batch because they share the same context (the harness's failure
 taxonomy, its gates, its resume contract) and because nothing may come between them: the clean-tree
-check card 3 ends on is only meaningful if the next thing that happens is the matrix.
+check card 6 ends on is only meaningful if the next thing that happens is the matrix.
 
 The batch is also the only place a harness defect may be fixed. If one blocks the run, it is fixed
 under `bench/loomyard-eval/ladder/` with a failing table test written first, committed, and the
@@ -29,7 +29,7 @@ readings and the invocation count.
 
 ## Cards
 
-### Card 3: Pre-matrix gates and the guarded live test
+### Card 6: Pre-matrix gates and the guarded live test
 
 - **Context:**
   - `bench/loomyard-eval/ladder/ladder-toc.yaml`
@@ -73,17 +73,17 @@ readings and the invocation count.
   the very markers the matrix strips would test something else. Because this test is slow and
   expensive, run it in the background with its output tee'd to the fixed path
   .scratch/ladder-live-test.log and poll that file, rather than blocking a foreground call on it. A
-  failure blocks the matrix — do not proceed to card 4.
+  failure blocks the matrix — do not proceed to card 7.
   (5) **No baseline server hash is taken here, and any binary already present is stale.** `run.go`
   builds `<ladder-worktree-root>/bin/<server-name>` through `BuildServer` *inside* each invocation,
   and the guarded live test passes an empty server-binary path and never builds it, so at this point
   the file is either absent or a leftover from an unrelated run. Report whether one is present and
   say plainly that it is stale, then leave it alone: the out-of-band readings the write-up
-  transcribes are taken by card 4 immediately **after** each invocation, when the binary the
+  transcribes are taken by card 7 immediately **after** each invocation, when the binary the
   invocation actually measured is the one on disk. Make no file change in this card.
 - **Commit:** none
 
-### Card 4: Run the toc matrix and commit its machine artifacts
+### Card 7: Run the toc matrix and commit its machine artifacts
 
 - **Context:**
   - `bench/loomyard-eval/ladder/ladder-toc.yaml`
@@ -207,12 +207,12 @@ one tree this batch is permitted to change. It runs against the fake-runner laye
 `LADDER_LIVE_TEST` is unset in the verify environment. The scope is deliberate: this batch's only
 possible code change is a harness fix (see `## Batch Scope`), and if one lands its failing table
 test goes in the same package tree the command covers. The repository-wide gate
-(`go test ./... && golangci-lint run`) still runs once as card 3's first step and again from
+(`go test ./... && golangci-lint run`) still runs once as card 6's first step and again from
 `pipeline.done_gate` in the hub's mill configuration before the task is marked done.
 
 The batch's real tests, though, are the run's own gates, and the write-up batch reports all of them:
 gate 1 tells the conclusion whether `a2-toc-dir` ever called the tool it was granted — a cell that
 never did measured prompt cost only; gate 2 tells it whether any control repetition was
 contaminated; and the summary's incomplete and invalid lists, plus the non-zero exit, are the machine
-check that the matrix finished. The pre-matrix live test in card 3 is the seam check that no offline
+check that the matrix finished. The pre-matrix live test in card 6 is the seam check that no offline
 test can stand in for.

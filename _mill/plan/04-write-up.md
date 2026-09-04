@@ -3,10 +3,10 @@
 ```yaml
 task: "Ladder, toc rerun (T7)"
 batch: "write-up"
-number: 3
+number: 4
 cards: 4
 verify: null
-depends-on: [2]
+depends-on: [3]
 ```
 
 ## Batch Scope
@@ -16,8 +16,8 @@ needed from T7: a conclusion that either reproduces the toc separation or says h
 a repository whose standing documents agree with it. It is one batch because all four cards read the
 same small artifact set — the summary, the provenance record and the rendered table from this
 results root — and because the two document edits are three short paragraphs each that would be
-meaningless without the conclusion's own numbers in front of them. Card 5 runs first and is the only
-defence against a summariser that is confidently wrong; card 6 writes the conclusion; cards 7 and 8
+meaningless without the conclusion's own numbers in front of them. Card 8 runs first and is the only
+defence against a summariser that is confidently wrong; card 9 writes the conclusion; cards 10 and 11
 propagate it.
 
 Batch-local decision: nothing in this batch re-derives a verdict the harness already computed. The
@@ -26,7 +26,7 @@ from the same place; the table is the artifact a reader is pointed at.
 
 ## Cards
 
-### Card 5: Hand-verify one `a2-toc-dir` repetition against its transcript
+### Card 8: Hand-verify one `a2-toc-dir` repetition against its transcript
 
 - **Context:**
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/raw/a2-toc-dir/1/transcript.jsonl`
@@ -44,7 +44,7 @@ from the same place; the table is the artifact a reader is pointed at.
   non-blinding-failed `a2-toc-dir` repetition — repetition 1 if it is complete, otherwise the lowest
   numbered one that is, adjusting the paths above accordingly. If the cell finished with **no**
   complete repetition at all — an outcome the termination rule explicitly permits — skip the check
-  and report that it could not be performed and why; card 6 then records the same, rather than
+  and report that it could not be performed and why; card 9 then records the same, rather than
   quoting a verification that never happened. From its transcript, count the turns,
   count the calls to the granted `toc` tool, and read the cache-read figure.
   **Two comparands, two different tests, and the difference matters.** The repetition's own recorded
@@ -60,11 +60,11 @@ from the same place; the table is the artifact a reader is pointed at.
   the harness derives each figure from, in particular that metrics come from the assistant records
   rather than from the final result record's `modelUsage`, which includes the tool's own overhead;
   do not re-derive any number from `modelUsage`. Write the findings — including the n=0 outcome, if
-  that is what happened — to the fixed path .scratch/hand-verify.md, which is card 6's only source
+  that is what happened — to the fixed path .scratch/hand-verify.md, which is card 9's only source
   for them. Make no file change under version control in this card.
 - **Commit:** none
 
-### Card 6: Write the conclusion
+### Card 9: Write the conclusion
 
 - **Context:**
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/summary.json`
@@ -96,7 +96,7 @@ from the same place; the table is the artifact a reader is pointed at.
   source of the prior figures.
   **Where each reported fact comes from, since several are not in the machine artifacts.** The
   per-invocation server-hash readings, the invocation count and the per-invocation dirty-file lists
-  are in the matrix run log; the live test's outcome is in its own log; card 5's result is in its
+  are in the matrix run log; the live test's outcome is in its own log; card 8's result is in its
   scratch note; and the per-repetition gate-2 reason — *which* check invalidated *which* repetition
   and why — is in that repetition's own state file under the cell directories listed in `Context:`,
   because the summary carries only the invalid cell ids and a blinding-failed count, never a reason.
@@ -132,7 +132,7 @@ from the same place; the table is the artifact a reader is pointed at.
   invocation's own machine artifacts are untracked under the results root until they are committed
   after the run, and every listed path being inside that root is what makes the flag benign; any
   session-fingerprint drift; the number of invocations the matrix took and whether any repetition
-  was attempt-exhausted; the result of card 5's hand verification, or that it could not be performed
+  was attempt-exhausted; the result of card 8's hand verification, or that it could not be performed
   because the cell finished with no complete repetition; and whether `output_tokens` is usable on
   this host, since it was unusable on the V1 host.
   **State the two negative-coverage caveats plainly.** `WarnOnServerHashDrift` cannot fire after a
@@ -145,12 +145,12 @@ from the same place; the table is the artifact a reader is pointed at.
   auto-memory paths that no tracked file may hold, and the size of ten 60-turn transcripts that the
   committed artifacts already summarise. Name the five files this root commits.
   If the matrix restarted into a `-r2` root, name the harness fix and the abandoned root, and
-  confirm the abandoned directory carries the marker card 4 wrote there naming the fix, the date and
+  confirm the abandoned directory carries the marker card 7 wrote there naming the fix, the date and
   this root as its successor. If the run stopped on a defect in the code
   under test, record the finding and say that fixing it is a separate task.
 - **Commit:** `bench(ladder): T7 toc conclusion for the 2026-09-04-toc results root`
 
-### Card 7: Update the rewrite plan's open decision on the raw tree
+### Card 10: Update the rewrite plan's open decision on the raw tree
 
 - **Context:**
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`
@@ -171,7 +171,7 @@ from the same place; the table is the artifact a reader is pointed at.
   not §12's task table.
 - **Commit:** `docs(plan): settle the open decision on the harness raw tree`
 
-### Card 8: Bring the handoff document up to date with what T7 measured
+### Card 11: Bring the handoff document up to date with what T7 measured
 
 - **Context:**
   - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`
@@ -224,9 +224,9 @@ from the same place; the table is the artifact a reader is pointed at.
 
 `verify: null`. Every card in this batch either reads artifacts or writes markdown; there is no
 runnable surface a per-round command could exercise, and a Go test command here would verify code
-none of the four cards touches. The batch's checks are card 5 — the hand verification, which is the
+none of the four cards touches. The batch's checks are card 8 — the hand verification, which is the
 only thing standing between a confidently wrong summariser and a conclusion that quotes it — and the
-internal consistency requirement on card 6, that every number it prints be quotable from the
+internal consistency requirement on card 9, that every number it prints be quotable from the
 summary, the provenance record or the rendered table committed beside it. The repository-wide gate
 is encoded as `pipeline.done_gate` in the hub's mill configuration, holding
 `go test ./... && golangci-lint run` with the live-test guard unset; it runs from the repository root

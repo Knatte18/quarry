@@ -23,14 +23,19 @@ batches:
     depends-on: []
     verify: null
   - number: 2
-    name: matrix-run
-    file: 02-matrix-run.md
+    name: harness-mcp-init-fix
+    file: 02-harness-mcp-init-fix.md
     depends-on: [1]
     verify: go test ./bench/loomyard-eval/ladder/...
   - number: 3
-    name: write-up
-    file: 03-write-up.md
+    name: matrix-run
+    file: 03-matrix-run.md
     depends-on: [2]
+    verify: go test ./bench/loomyard-eval/ladder/...
+  - number: 4
+    name: write-up
+    file: 04-write-up.md
+    depends-on: [3]
     verify: null
 ```
 
@@ -52,14 +57,14 @@ batches:
   `MergeProvenance` append to it, so every pre-fix repetition still satisfies `RepIsComplete` and is
   skipped, silently merging two measurement regimes into one root. The abandoned root keeps its
   partial artifacts and gains an `ABANDONED.md` naming the fix, the date and the successor root.
-  **Card 4 owns that file** — it is the only card that knows both the fix and the successor root —
+  **Card 7 owns that file** — it is the only card that knows both the fix and the successor root —
   and writes it on the restart path only, which is why it appears in that card's `Creates:` as a
   conditional artifact.
 - **One substitution rule covers both renames.** Every `results/2026-09-04-toc/` path this plan
-  spells is read as *the root card 4 actually terminated in* — the original on the ordinary path, the
+  spells is read as *the root card 7 actually terminated in* — the original on the ordinary path, the
   `-r2` (or `-r3`) root after a restart, and a later-dated root if the first successful invocation
-  falls on another day. That applies to batch 3's `Context:` and `Creates:` paths as written, not
-  only to the prose. Two consequences the restart path needs stated: card 4 copies `probe.md` into
+  falls on another day. That applies to batch 4's `Context:` and `Creates:` paths as written, not
+  only to the prose. Two consequences the restart path needs stated: card 7 copies `probe.md` into
   the fresh root unchanged, so the successor root satisfies the five-file list in
   `committed-artifacts` on its own; and `ABANDONED.md` is the one file that stays in the abandoned
   root rather than following the substitution.
@@ -77,18 +82,18 @@ batches:
 - **Who discharges the obligation, since both cards that check it are zero-diff.** The `_mill/`
   artifacts are committed by the pipeline's own commits — each card's own `Commit:` line, plus the
   per-phase commits the orchestrator makes around every batch — not by the two gate cards. Card 2
-  and card 3 step (2) are gates confirming that already happened, and a gate card must not sweep
+  and card 6 step (2) are gates confirming that already happened, and a gate card must not sweep
   another card's diff into an unrelated commit. So when either finds an uncommitted file, the remedy
   is to stop and name it: it belongs to whichever card should have committed it, and that card
   commits it before the matrix starts.
 - **One carve-out, stated rather than hidden: a resumed invocation records `quarry_dirty` true by
   construction.** `CollectInvocation` derives the flag from plain `git status --porcelain`, which
   lists untracked files, and the machine artifacts the first invocation writes into the tracked
-  results root are untracked until card 4 commits them after the run terminates. Invocations 2 and 3
+  results root are untracked until card 7 commits them after the run terminates. Invocations 2 and 3
   therefore see them and record dirty. That is accepted, because committing between invocations
   would edit the repository mid-matrix, which is the larger of the two faults. What is **not**
   accepted is a dirty file list naming anything else: before each re-invocation the driver confirms
-  every entry of `git status --porcelain` is a path under the results root, and card 6 reports
+  every entry of `git status --porcelain` is a path under the results root, and card 9 reports
   `quarry_dirty` and `quarry_dirty_files` per invocation entry so a reader sees exactly which files
   were untracked at each one. A dirty entry outside the results root voids the root.
 - **Applies to:** all batches
@@ -247,6 +252,12 @@ batches:
   Repetitions measured by the pre-fix harness are never mixed with post-fix ones in the same root,
   and the conclusion names the fix and the abandoned root. If the defect is in the code under test
   instead, the run stops and the conclusion records it; fixing it is a separate task.
+- **One defect is already known and is fixed pre-emptively, in batch 2, before the matrix ever
+  starts.** `SessionInit.MCPServers` is typed as a name list while Claude Code 2.1.236 emits objects,
+  so transcript parsing fails for every cell that actually loads an MCP server — the operator's
+  informal run of this matrix had `a2-toc-dir` go 0-for-6 on it. Fixing it before repetition 1 costs
+  a batch; discovering it during the matrix would cost an abandoned root under the rule above. A
+  known defect is never carried into a run to see whether it bites.
 - **Rationale:** the harness is not the code under test, so fixing it breaks no rule — but it changes
   how a repetition is measured, and the per-repetition server hash covers the server binary, not the
   harness. A fresh root is the only honest boundary.
@@ -264,6 +275,13 @@ batches:
 ## All Files Touched
 
 - `HANDOFF.md`
+- `bench/loomyard-eval/ladder/internal/ladder/gates.go`
+- `bench/loomyard-eval/ladder/internal/ladder/gates_test.go`
+- `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+- `bench/loomyard-eval/ladder/internal/ladder/run.go`
+- `bench/loomyard-eval/ladder/internal/ladder/stream.go`
+- `bench/loomyard-eval/ladder/internal/ladder/stream_test.go`
+- `bench/loomyard-eval/ladder/internal/ladder/testdata/session-init-mcp-connected.jsonl`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/ABANDONED.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/probe.md`
