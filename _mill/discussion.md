@@ -156,9 +156,15 @@ have to redo.
   | 2 | usage error: unknown flag, missing or extra argument, unparseable `--depth`, `--root` that is not a directory, no repository root discoverable | `{"ok": false, "error": …}` |
   | 3 | internal error: an I/O failure the engine reported that is neither of the above | `{"ok": false, "error": …}` |
 
-  The JSON envelope always goes to **stdout**, including on failure. A human-readable message
-  (and, for exit 2, the usage text) goes to **stderr**. The failure payload carries `ok` and
-  `error` only — no `kind`, no `status`.
+  The JSON envelope always goes to **stdout**, including on failure, **and including under
+  `--text`** — there is no text rendering of a failure. A human-readable message (and, for exit 2,
+  the usage text) goes to **stderr**. The failure payload carries `ok` and `error` only — no `kind`,
+  no `status`.
+
+  `--text` selects a view of an *answer*; a failure has no answer to view, and its payload is two
+  fields with no prose in it, so a text spelling of the same two fields would be a second envelope
+  for zero gain. A `--text` caller that must distinguish success from failure reads the exit code,
+  which is what the exit code is for.
 - **Rationale:** a scripting contract that puts machine output on stdout unconditionally lets
   `quarry toc x | jq` work on both paths; a caller that wants the human message reads stderr or the
   exit code. Splitting `not found` (1) from `usage` (2) matters to a gate: exit 1 is quarry
@@ -235,12 +241,18 @@ have to redo.
   path is made absolute and must be an existing directory. If discovery finds nothing and `--root`
   was not given, that is a usage error (exit 2) with a message naming both fixes.
 
-  The target argument is interpreted **relative to the working directory** (or taken as absolute),
-  resolved to an absolute path, then converted to a clean, forward-slash, repository-relative path
-  before it reaches the engine. A target that resolves outside the root is reported as
-  `ErrTargetOutsideRepo` (exit 1) by the CLI itself, without calling the engine. Native path
-  separators are accepted on input; every path in the output is forward-slash and repository-root
-  relative, which is what the engine already produces.
+  The **base directory for a relative target is `--root` when `--root` was given, and the process's
+  working directory otherwise.** One rule, one sentence: `--root` says "answer as if run at this
+  root", so it rebases target interpretation along with discovery — the alternative would make
+  `quarry toc --root <repo> internal/logger` fail from anywhere outside that repo, which is the only
+  way `--root` is ever used from a script or a test. An absolute target is accepted in both modes
+  and needs no base.
+
+  The target is resolved against that base to an absolute path, then converted to a clean,
+  forward-slash, repository-relative path before it reaches the engine. A target that resolves
+  outside the root is reported as `ErrTargetOutsideRepo` (exit 1) by the CLI itself, without calling
+  the engine. Native path separators are accepted on input; every path in the output is
+  forward-slash and repository-root relative, which is what the engine already produces.
 - **Rationale:** the engine deliberately does "no git discovery … and no cwd resolution", and its
   doc says so; that work has to happen somewhere, and the CLI is the only layer that has a cwd. Doing
   it this way means `quarry toc .` inside `internal/logger` answers for `internal/logger`, which is
@@ -268,6 +280,11 @@ have to redo.
   - `--text` selects the lossless text view; absent means JSON. There is no `--json` flag — JSON is
     the default and naming it would imply a third format exists.
   - `--root <path>` per `root-discovery-and-target-interpretation`.
+  - `--help` and `-h`, at any position and with or without a verb, print the usage text to **stdout**
+    and exit **0**. They are stated explicitly because the flag set is otherwise closed and would
+    silently route the one flag every user tries first into "unknown flag → exit 2". An explicit
+    request for help is a successful query about the CLI, not a usage error; usage text on *stderr*
+    with exit 2 is reserved for the case where the caller got the invocation wrong.
 - **Rationale:** `TOCOptions.Symbols` is a `*bool` precisely so "not asked" is distinguishable from
   "asked for false", and the CLI is the layer that must express three states with flags. A bare
   `--symbols` bool cannot say "false explicitly", and `-symbols=false` (what Go's `flag` package
@@ -303,8 +320,11 @@ have to redo.
   in full. `RenderText` emits, with no trailing whitespace on any line and exactly one trailing
   newline:
 
-  **Prose normalisation, everywhere.** Every `doc`, `header` and `signature` value has its internal
-  newlines and runs of whitespace collapsed to single spaces before it is printed. This is not an
+  **Prose normalisation, everywhere.** Every `doc`, `header`, `signature` and `error` value has its
+  internal newlines and runs of whitespace collapsed to single spaces before it is printed. `error`
+  is in the list because `FileEntry.Error` is an arbitrary error string — an `os` or UTF-8 message
+  quarry does not author — and it is emitted inside a bracketed tag, so a multi-line value would
+  break the one-record-per-line property the whole format rests on. This is not an
   invention: §4's own text example prints
   `placement is one resolved pane: its tmux pane id and the row height it has been assigned.` for a
   `doc` whose JSON value contains `it\nhas been assigned.` "Prose intact" means nothing is
@@ -344,9 +364,14 @@ have to redo.
   full repository-relative path and the enclosing directory's package facts, then the symbol lines:
 
   ```
-  <dir>/<name> (package <pkg>, <lang>)[ <tags>]: <header>
+  <path> (package <pkg>, <lang>)[ <tags>]: <header>
   <symbol lines>
   ```
+
+  `<path>` is the engine's own repository-relative join of the answer's `dir` and the entry's
+  `name` — `walk.go`'s `joinRel`, which returns the bare name when `dir` is `"."`. A file target at
+  the repository root therefore emits `README.md`, never `./README.md`; the naive `<dir>/<name>`
+  template would emit the latter and contradict this grammar's own "full repository-relative path".
 
   The directory's `doc` is not printed in this form (§4's example omits it), and the block is not
   headed by a directory line. This form is selected by `RenderText`'s `targetIsFile` argument, never
@@ -433,8 +458,15 @@ have to redo.
   | `after/toc-file-text.txt` | `quarry toc --text internal/logger/logger.go` |
   | `after/INDEX.md` | the before→after mapping and what changed |
 
-  Each `.txt` mirrors the before side's own layout: the invocation line `$ quarry toc …`, a blank
-  line, the output verbatim, a blank line, and `(exit code: 0)`. `after/INDEX.md` states the
+  Each `.txt` is exactly: the invocation line `$ quarry toc …`, a blank line, and the output
+  verbatim. **No exit-code trailer.** This matches the four before-side files these are paired with
+  — `toc-dir.txt` ends at its closing `}`, `toc-file.txt` likewise, and both `toc-*-compact.txt` end
+  at their last text line. The before side's `INDEX.md` claims "the exit code is at the bottom of
+  each file", but that is true only of `impact*`, `definition*` and `assert-no-callers`, never of
+  the `toc` files; do not propagate the claim. Since these files are byte-compared goldens, the
+  trailer decides their bytes, so it is decided on its own merits here: all four commands exit 0,
+  a constant line saying so adds nothing a reader needs, and the exit code is asserted by the test
+  rather than by a line in the fixture. `after/INDEX.md` states the
   Loomyard checkout and pin the outputs were taken at (no absolute path), maps each before file to
   its successor, and records that `toc-dir-compact.txt` and `toc-file-compact.txt` have **no**
   successor by design: the compact view was the lossy one-sentence-per-file view whose
@@ -453,14 +485,19 @@ have to redo.
 
 ### golden-tests-run-the-cli-in-process
 
-- **Decision:** the golden test calls `cli.Run([]string{"toc", …}, &stdout, &stderr)` with `--root`
-  pointed at the Loomyard checkout and the target given repository-relative, captures stdout, and
-  compares. No `go build`, no `os/exec`, no `t.Chdir`.
+- **Decision:** the golden test calls `cli.Run([]string{"toc", "--root", <loomyard>, <target>, …},
+  &stdout, &stderr)` with the target given **repository-relative**, captures stdout, asserts the
+  returned exit code is 0, and compares the assembled file. No `go build`, no `os/exec`, no
+  `t.Chdir`.
 - **Rationale:** `Run` is the whole CLI below `os.Exit`, so this exercises flag parsing, the engine
   call, rendering, and the exit code in one assertion, at unit-test speed and with no build step in
   the test. Passing `--root` explicitly rather than changing directory keeps the test free of
   process-global state, which matters because Go tests in a package share a process and the root
-  discovery walk reads the working directory.
+  discovery walk reads the working directory. A repository-relative target is correct here *because*
+  `--root` rebases target interpretation (see `root-discovery-and-target-interpretation`); without
+  that rule the target would resolve against the quarry test process's own cwd, land outside the
+  Loomyard root, and return exit 1 instead of a golden. The two decisions are load-bearing on each
+  other and must not be changed independently.
 - **Rejected:** *(a)* build the binary and exec it — slow, needs a writable temp dir and a working
   toolchain inside the test, and adds nothing since `main` is one line. *(b)* `t.Chdir` into the
   Loomyard checkout to exercise discovery — process-global, and discovery gets its own dedicated
@@ -566,14 +603,18 @@ the answer.
   wrapped `ErrTargetOutsideRepo` → 1, an arbitrary error → 3, a pre-engine validation failure → 2,
   `nil` → 0. This is where the `errors.Is`-through-wrapping behaviour is pinned.
 - *Failure envelope.* For each non-zero code: stdout is exactly `{"ok": false, "error": …}` plus a
-  newline, stderr is non-empty, and the two never swap.
+  newline, stderr is non-empty, and the two never swap. The same assertion is repeated **with
+  `--text`** to pin that the failure envelope stays JSON regardless of the view flag.
 - *Root discovery.* On a synthesised `t.TempDir()` tree: `.git` as a directory found from a nested
   subdirectory; `.git` as a *file* (the worktree case) also found; nothing found walking to the
   filesystem root → exit 2 naming `--root`; `--root` short-circuiting the walk; `--root` at a
   non-directory → exit 2.
 - *Target conversion.* cwd-relative and absolute inputs converted to the same repository-relative
-  path; `..` escaping the root → exit 1; native separators accepted; a symlinked target not resolved
-  through.
+  path; **a relative target rebased against `--root` when `--root` is given, and against cwd when it
+  is not** — the case the round-2 review caught, so it gets its own explicit test; `..` escaping the
+  root → exit 1; native separators accepted; a symlinked target not resolved through.
+- *`--help`.* `--help` and `-h`, with and without a verb and at any argument position, write usage to
+  stdout and return 0 — never stderr, never 2.
 
 **`quarry` — the renderers, over hand-built `DirAnswer` values, no filesystem at all.** The second
 TDD block:
@@ -582,7 +623,10 @@ TDD block:
   `1 file` vs `N files`; a depth-cut subdirectory carrying only identity and doc; nested blocks in
   depth-first order with exactly one blank line between them.
 - *Text view, tags.* Each of `test`, `generated`, `package`, `language`, `lossy`, `error` alone, and
-  all of them together in the fixed order.
+  all of them together in the fixed order; plus a multi-line `error` value collapsing to one line,
+  so the one-record-per-line property is pinned against the one field quarry does not author.
+- *Text view, file form at the repository root.* A file target whose answer's `dir` is `"."` emits
+  the bare name, not `./name`.
 - *Text view, symbols.* A symbol with and without a doc; one with `sigend` zero (no `(sig …)`
   group); a file entry with a nil `Symbols` and one with an empty non-nil `Symbols` — both must
   render identically, since the distinction is a Go-caller concern.
@@ -597,8 +641,9 @@ TDD block:
 
 **Golden tests — the `after/` files.** Gated on `LADDER_LOOMYARD_REPO` at `72c23d9`, skipping when
 the checkout is absent and failing loudly when it is present at the wrong commit. Four cases, one
-per `after/*.txt`, each running `cli.Run` in-process with `--root` and comparing the assembled file
-(invocation line, output, exit-code line) byte for byte; `-update` rewrites. These are *not* TDD
+per `after/*.txt`, each running `cli.Run` in-process with `--root` and a repository-relative target,
+asserting exit 0, and comparing the assembled file (invocation line, blank line, output) byte for
+byte; `-update` rewrites. These are *not* TDD
 candidates — a golden can only be produced by running the code against the pinned checkout, never
 hand-written, exactly as `golden_test.go` already says.
 
