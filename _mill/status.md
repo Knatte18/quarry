@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: ladder-breadth
 branch: ladder-breadth
 plan: _mill/plan
@@ -28,4 +28,23 @@ plan-fix-r3  '2026-09-04T17:28:52Z'
 plan-review-r4  '2026-09-04T17:34:19Z'
 plan-fix-r4  '2026-09-04T17:35:19Z'
 planned  '2026-09-04T17:35:48Z'
+implementing  '2026-09-04T17:36:22Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: m2-invalidation-reason-file
+    state: pending
+  - name: ladder-c-task-02
+    state: pending
+  - name: ladder-d-task-06
+    state: pending
+  - name: ladder-file-and-pre-matrix-gates
+    state: pending
+  - name: matrix-and-conclusion
+    state: pending
+  - name: doc-propagation
+    state: pending
 ```
