@@ -64,7 +64,9 @@ batches:
     commit_sha: d6b52365a36f99dd514c2baa76cfa13584a26c1b
     verify_baseline_failures: []
   - name: spans
-    state: pending
+    state: running
+    implementer_session: 91fee318-329b-4fdc-be4e-64c1930c0045
+    start_sha: c37530e41924fa444ecd45dd9caf0f0d7970503e
     verify_baseline_failures: []
   - name: goldens-and-round-trip
     state: pending
