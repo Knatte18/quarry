@@ -49,7 +49,9 @@ batches:
     commit_sha: 3f63fe3a25de1b28abf6e8a077e441fbcad64038
     verify_baseline_failures: []
   - name: fixtures
-    state: pending
+    state: running
+    implementer_session: a9c80192-d126-40cb-9db8-e5d5b401220d
+    start_sha: f15fb3404462f0a5b32fe665a646615ce000e56e
     verify_baseline_failures: []
   - name: resolve
     state: pending
