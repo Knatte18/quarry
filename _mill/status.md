@@ -43,7 +43,9 @@ batches:
     commit_sha: abe60714701c8cbccd0fe082fd268cb7c784dd9e
     verify_baseline_failures: []
   - name: ladder-c-task-02
-    state: pending
+    state: running
+    implementer_session: 14c90015-ed0c-46fe-a743-e8d8eddf2a33
+    start_sha: f32cd597d9d26ca4a08bd8ee6f8b2dd093abed2b
     verify_baseline_failures: []
   - name: ladder-d-task-06
     state: pending
