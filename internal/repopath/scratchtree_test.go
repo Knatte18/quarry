@@ -25,7 +25,7 @@ import (
 //
 // It never calls t.TempDir(): the system temp directory is banned for this repository's tests,
 // and .scratch/ is the sanctioned location instead. This is a deliberate per-package copy of
-// internal/engine/scratchtree_test.go's helper of the same name, because Go test helpers are not
+// internal/cli/scratchtree_test.go's helper of the same name, because Go test helpers are not
 // importable across packages. internal/repopath/ sits two directories below the module root — the
 // same depth as internal/cli/ — so the runtime.Caller(0) walk here takes the same three
 // filepath.Dir steps that file uses; quarry/'s own copy sits one directory down and needs only
