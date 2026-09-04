@@ -1,0 +1,61 @@
+{
+  "dir": "internal/reedengine/render",
+  "package": "render",
+  "language": "go",
+  "doc": "Package render owns the closed display vocabulary and the deterministic Rules(strands, box,\nparams) -\u003e (layout, focus) function that turns a set of strands into a tmux window_layout string.\nIt is a pure leaf: no I/O, no tmux, no engine import.",
+  "files": [
+    {
+      "name": "checksum.go",
+      "header": "checksum.go computes tmux's window_layout checksum: a 16-bit rotate-right-1 accumulator over the\nlayout body bytes.\nThis is the psmux-verified half of layout mechanics;\nit must stay byte-for-byte identical to the tmux/psmux checksum algorithm so a rendered layout\ncontinues to be accepted by tmux's select-layout."
+    },
+    {
+      "name": "checksum_test.go",
+      "header": "checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, asserting that\nthe tmux/psmux layout-checksum algorithm stays correct, and also asserts the general\nfour-lowercase-hex-digit shape every checksum must have.",
+      "test": true
+    },
+    {
+      "name": "focus.go",
+      "header": "focus.go resolves which pane receives tmux input focus,\nand detects whether a strand has a descendant present in the ordered stack — the isAncestor test\nthe height policy (height.go) uses to decide whether a shrink:true strand collapses to a compact\nstrip."
+    },
+    {
+      "name": "height.go",
+      "header": "height.go implements the derived height policy: within the below-parent stack, a shrink:true\nancestor collapses to a compact strip once it has a present descendant, and the active/bottom\npane plus every shrink:false strand split the remaining rows equally (remainder to the active\npane).\nWhen the window is too short to satisfy that natural policy, a strict-priority clamp reclaims\nrows so every pane still gets a positive height."
+    },
+    {
+      "name": "height_test.go",
+      "header": "height_test.go exercises the derived height policy in height.go: the heights-fill-the-box\ninvariant, the collapsed-strip height, the active pane's remainder rule, the too-short-window\nclamp order, and the header-vs-window height clamp (clampHeaderHeight).\nIt also exercises layout.go's buildStackBody/wrapLayout and focus.go's isAncestor, since cards 5\nand 7 ship no standalone test file.",
+      "test": true
+    },
+    {
+      "name": "layout.go",
+      "header": "layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements\nwithin a Box into a tmux/psmux window_layout body and its checksum-prefixed full string.\nIt is region-relative — offsets are anchored to box.X/box.Y rather than the whole window — so the\nstack region can be rendered independently of the Box it is placed within.\nThis file makes no placement or height decisions;\nthose live in policy.go and height.go.\nIt only renders the string from the placements it is given."
+    },
+    {
+      "name": "pins_test.go",
+      "header": "pins_test.go pins FixedHeightPins against the heights Rules places for the same inputs, so the two\ncan never drift apart. Every case calls both entry points on the identical (strands, box, params)\ntriple: the expected pin list is asserted directly, and each returned pin's height is additionally\nre-parsed out of Rules' own layout string rather than restated from the expectation — the second\ncheck is what makes this a drift guard rather than a second copy of the policy.",
+      "test": true
+    },
+    {
+      "name": "policy.go",
+      "header": "policy.go implements the anchor-to-placement dispatch: filtering strands down to the below-parent\nstack (or excluding them entirely), ordering the stack deterministically by parent-chain depth,\nand repairing a corrupt cyclic parent table so ordering always terminates.\nThis is the legible half of the policy layer — adding a new anchor means adding a case here, not\ntouching the mechanics layer in layout.go/checksum.go."
+    },
+    {
+      "name": "policy_test.go",
+      "header": "policy_test.go tests the anchor dispatch, deterministic stack ordering, and cycle-safe traversal\nin policy.go.",
+      "test": true
+    },
+    {
+      "name": "rules.go",
+      "header": "rules.go composes the policy layer (policy.go, height.go, focus.go) and the mechanics layer\n(layout.go, checksum.go) into Rules, the package's single public entry point: a pure, total\nfunction from a strand set and a window Box to a tmux window_layout string and a focus target."
+    },
+    {
+      "name": "rules_test.go",
+      "header": "rules_test.go golden-tests the composed Rules entry point: the below-parent stack ordered by\nparent chain, hidden-strand exclusion, empty/single-strand/parent-child edges, the\nchecksum-prefix invariant, the own-window rejection error, pane-order resequencing to physical\npane position, and the header top-band enumeration (Params.Header).\nIt also pins the two layout regimes a real (as opposed to config-pinned) terminal box makes\nreachable: a budget-satisfying box where height.go's clamps never fire, and a too-short box where\nthey must — the latter with a companion assertion that no clamped cell height is ever non-positive.",
+      "test": true
+    },
+    {
+      "name": "types.go",
+      "header": "types.go defines the closed display vocabulary render exposes to its caller: the Anchor kinds a\nstrand may declare, the per-strand Display settings, and the plain Strand/Box/Params value types.\nThis file carries no logic — it is the vocabulary the policy layer (policy.go, height.go,\nfocus.go) and the mechanics layer (layout.go, checksum.go) are built from."
+    }
+  ]
+}

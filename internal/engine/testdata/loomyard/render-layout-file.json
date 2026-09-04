@@ -1,0 +1,50 @@
+{
+  "dir": "internal/reedengine/render",
+  "package": "render",
+  "language": "go",
+  "doc": "Package render owns the closed display vocabulary and the deterministic Rules(strands, box,\nparams) -\u003e (layout, focus) function that turns a set of strands into a tmux window_layout string.\nIt is a pure leaf: no I/O, no tmux, no engine import.",
+  "files": [
+    {
+      "name": "layout.go",
+      "header": "layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements\nwithin a Box into a tmux/psmux window_layout body and its checksum-prefixed full string.\nIt is region-relative — offsets are anchored to box.X/box.Y rather than the whole window — so the\nstack region can be rendered independently of the Box it is placed within.\nThis file makes no placement or height decisions;\nthose live in policy.go and height.go.\nIt only renders the string from the placements it is given.",
+      "symbols": [
+        {
+          "id": "internal/reedengine/render#placement",
+          "kind": "type",
+          "start": 16,
+          "sigend": 20,
+          "end": 29,
+          "signature": "type placement struct",
+          "doc": "placement is one resolved pane: its tmux pane id and the row height it\nhas been assigned. It is the internal handoff between the height policy\n(height.go) and the mechanics that render it (buildStackBody); callers of\nRules never see it."
+        },
+        {
+          "id": "internal/reedengine/render#buildStackBody",
+          "kind": "function",
+          "start": 31,
+          "sigend": 34,
+          "end": 50,
+          "signature": "func buildStackBody(box Box, panes []placement) string",
+          "doc": "buildStackBody renders panes into a tmux window_layout body positioned\nwithin box: \"\u003cbox.W\u003ex\u003cbox.H\u003e,\u003cbox.X\u003e,\u003cbox.Y\u003e[\u003cw\u003ex\u003ch\u003e,\u003cx\u003e,\u003cy\u003e,\u003cpaneNum\u003e,...]}\".\nEach pane spans box.W, stacking vertically with a one-row divider."
+        },
+        {
+          "id": "internal/reedengine/render#wrapLayout",
+          "kind": "function",
+          "start": 52,
+          "sigend": 54,
+          "end": 56,
+          "signature": "func wrapLayout(body string) string",
+          "doc": "wrapLayout prefixes body with its tmux layout checksum, producing the full\nwindow_layout string tmux's select-layout accepts."
+        },
+        {
+          "id": "internal/reedengine/render#bandHeader",
+          "kind": "function",
+          "start": 58,
+          "sigend": 63,
+          "end": 76,
+          "signature": "func bandHeader(fullBox Box, headerPaneID string, headerHeight int, stackBody string) string",
+          "doc": "bandHeader prepends a fixed-height header cell to stackBody's pane group,\nproducing the full window_layout body when a header pane is present.\nstackBody must be a region-relative body string from buildStackBody, not\nchecksum-wrapped; this function only splices the header in front and\nre-wraps at fullBox's dimensions."
+        }
+      ]
+    }
+  ]
+}
