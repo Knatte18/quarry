@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: facade-cli-resolve-expand
 branch: facade-cli-resolve-expand
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-cli-pipelines  '2026-09-04T10:05:29Z'
 approved-evidence-and-status-gate  '2026-09-04T10:12:00Z'
 holistic-reviewing  '2026-09-04T10:12:33Z'
 holistic-approved  '2026-09-04T10:14:54Z'
+done  '2026-09-04T10:15:28Z'
 ```
 
 ## Batches
