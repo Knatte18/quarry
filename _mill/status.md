@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: resolve-expand
 branch: resolve-expand
 plan: _mill/plan
@@ -33,4 +33,21 @@ plan-fix-r5  '2026-09-04T06:10:59Z'
 plan-review-r6  '2026-09-04T06:16:34Z'
 plan-fix-r6  '2026-09-04T06:18:50Z'
 planned  '2026-09-04T06:19:00Z'
+implementing  '2026-09-04T06:19:21Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: answer-types
+    state: pending
+  - name: fixtures
+    state: pending
+  - name: resolve
+    state: pending
+  - name: expand
+    state: pending
+  - name: loomyard-timing
+    state: pending
 ```
