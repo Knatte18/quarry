@@ -47,7 +47,9 @@ batches:
     commit_sha: 78528f6bebc607baced1d096dc0c34748daec8f3
     verify_baseline_failures: []
   - name: cli-argument-layer
-    state: pending
+    state: running
+    implementer_session: 2ca8a589-360b-45c3-b635-d852c003d066
+    start_sha: d14161eb08ffc0b094646a4acd965c185dacd452
     verify_baseline_failures: []
   - name: cli-pipelines
     state: pending
