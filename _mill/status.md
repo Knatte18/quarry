@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-glyph-symbols
+phase: approved-spans
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-layout  '2026-09-03T19:31:47Z'
 approved-text-rules  '2026-09-03T19:38:53Z'
 approved-answer-and-walk  '2026-09-03T20:00:49Z'
 approved-glyph-symbols  '2026-09-04T04:21:00Z'
+approved-spans  '2026-09-04T04:29:51Z'
 ```
 
 ## Batches
@@ -64,9 +65,10 @@ batches:
     commit_sha: d6b52365a36f99dd514c2baa76cfa13584a26c1b
     verify_baseline_failures: []
   - name: spans
-    state: running
+    state: approved
     implementer_session: 91fee318-329b-4fdc-be4e-64c1930c0045
     start_sha: c37530e41924fa444ecd45dd9caf0f0d7970503e
+    commit_sha: ff40b59f1c08c036bbcc6e5a9b120696f2e0839a
     verify_baseline_failures: []
   - name: goldens-and-round-trip
     state: pending
