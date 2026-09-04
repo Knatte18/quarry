@@ -135,8 +135,12 @@ exit codes:
     `usageError("--symbols and --no-symbols cannot both be given")`, whatever their order and even
     when one is repeated.
   - `--text` sets `text`. `--root` takes the following token verbatim into `root`.
-  - Every remaining token after the verb — that is, every token not beginning with `-` — is a
-    target. Zero targets returns
+  - A target is every remaining token after the verb that neither begins with `-` **nor was
+    consumed as a preceding flag's value**. The value tokens of `--depth` and `--root` in their
+    space-separated form do not begin with `-`, so a rule phrased on the leading dash alone would
+    count `3` in `--depth 3` as a second target and reject a valid invocation with
+    "toc takes exactly one target, got 2". Consume a value-taking flag's value as part of handling
+    that flag, and never revisit it as a positional. Zero targets returns
     `usageError("toc takes exactly one target, got 0")`; two or more returns the same sentence with
     the actual count. Exactly one sets `target`.
   Do not resolve any path, stat anything, or read the working directory here — this function is pure
@@ -264,7 +268,11 @@ exit codes:
   `internal/engine/scratchtree_test.go`'s helper of the same name: resolve the module root from
   `runtime.Caller(0)`, build the tree under `.scratch/cli-tests/<name>/`, `os.RemoveAll` any stale
   tree first, create parent directories as needed, register a `t.Cleanup` that removes the tree,
-  and return its absolute path. It writes regular files only — a test needing a symlink, an empty
+  and return its absolute path. `internal/cli/` sits two directories below the module root, the
+  same depth as `internal/engine/`, so the `runtime.Caller(0)` walk takes the same **three**
+  `filepath.Dir` steps that file uses — unlike `quarry/`'s copy, which needs two. State the step
+  count and its reason in the helper's doc comment.
+  It writes regular files only — a test needing a symlink, an empty
   directory, or a `.git` entry creates it itself on the returned path. Its doc comment states that
   it never calls `t.TempDir()` because the system temp directory is banned for this repository's
   tests and `.scratch/` is the sanctioned location, and that it is a deliberate per-package copy

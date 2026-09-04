@@ -85,17 +85,25 @@ half-applied.
      target is treated as a file and not followed, which is the rule `engine.resolveTarget` already
      follows for the same reason.
   7. `quarry.Open(root)`. On error, `exitInternal`.
-  8. `repo.TOC(rel, quarry.TOCOptions{Depth: req.depth, Symbols: req.symbols})`. When the error
-     satisfies `errors.Is(err, quarry.ErrTargetNotFound)` return
-     `fail(..., exitNegative, "target not found: "+rel, false)`; when it satisfies
-     `errors.Is(err, quarry.ErrTargetOutsideRepo)` return the outside-repository sentence at
-     `exitNegative`; any other error is `exitInternal`. Steps 5 and 6 have already excluded both in
-     the common case — these branches exist because the target can be removed between the stat and
-     the walk, and the CLI must not report that race as success. Say so in a comment.
+  8. `repo.TOC(rel, quarry.TOCOptions{Depth: req.depth, Symbols: req.symbols})`. Map its error
+     through the pure helper declared below rather than with inline `errors.Is` chains, so the
+     mapping is table-testable without provoking a race. Steps 5 and 6 have already excluded both
+     sentinels in the common case — these branches exist because the target can be removed between
+     the stat and the walk, and the CLI must not report that race as success. Say so in a comment.
   9. Render. Under `--text`, write `quarry.RenderText(answer, targetIsFile)` to stdout. Otherwise
      call `quarry.RenderJSON(answer)`; on its error return `exitInternal` with the
      `internal error: ` prefix, and otherwise write the bytes. A write failure on stdout is
      `exitInternal` — that is an I/O failure, which is what 3 already means. Return `exitOK`.
+
+  Declare `func codeForTOCError(err error) int` — the pure mapping step 8 uses. It returns `exitOK`
+  for a nil error, `exitNegative` when `errors.Is(err, quarry.ErrTargetNotFound)` or
+  `errors.Is(err, quarry.ErrTargetOutsideRepo)`, and `exitInternal` for anything else. It exists as
+  a named function precisely so `discussion.md`'s "Exit-code mapping" test — a table from a returned
+  `error` to the code, including the `errors.Is`-through-wrapping behaviour — can be written
+  directly against it. Step 8 then chooses the message for the code the helper returned:
+  `target not found: <rel>` and `target outside repository: <target as given>` for `exitNegative`
+  (discriminated by a second `errors.Is` on the sentinel), and `internal error: <err.Error()>` for
+  `exitInternal`.
 
   The `error` value never carries the engine's wrapped chain for exit 1 or exit 2: those name
   conditions quarry itself defines, so quarry spells them, and passing
@@ -191,7 +199,20 @@ half-applied.
   nothing to stderr.
   *Flag pass-through* — `--depth all` and `--symbols` reach the engine, asserted by observing that
   the answer for a nested tree carries the deeper `dirs` entries and that file entries carry
-  `symbols`, rather than by mocking `TOC`.
+  `symbols`, rather than by mocking `TOC`. The `--symbols` case **must query a named subdirectory**
+  of the fixture root, never the fixture root itself: a Go file directly under the root has the
+  empty unit, which the Go alphabet cannot spell, so its `Symbols` stays nil even with `--symbols`
+  and the assertion would fail for an engine-side reason that is not a defect. See the overview's
+  `a-symbols-key-is-never-guaranteed-by---symbols`.
+  *Exit-code mapping, as a pure table* — table-test `codeForTOCError` directly, per
+  `discussion.md`'s "Exit-code mapping" list: a `fmt.Errorf("...: %w", quarry.ErrTargetNotFound)`
+  maps to 1, a wrapped `quarry.ErrTargetOutsideRepo` maps to 1, an arbitrary `errors.New` error maps
+  to 3, and `nil` maps to 0. This is where the `errors.Is`-through-wrapping behaviour is pinned, and
+  it is the reason step 8's branches are reachable in a test at all.
+  Record in the file-level comment that step 8's two sentinel branches are otherwise race-only —
+  they fire when the target is removed between step 6's stat and the engine's walk — so they are
+  covered through `codeForTOCError` rather than by provoking the race, which no test can do
+  deterministically.
 - **Commit:** `test(cli): pin the request pipeline, exit codes, and the failure envelope`
 
 ## Batch Tests

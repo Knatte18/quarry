@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
@@ -23,4 +23,5 @@ planning  '2026-09-04T06:20:05Z'
 plan-review-r1  '2026-09-04T06:25:38Z'
 plan-fix-r1  '2026-09-04T06:29:29Z'
 plan-review-r2  '2026-09-04T06:34:52Z'
+plan-fix-r2  '2026-09-04T06:37:29Z'
 ```

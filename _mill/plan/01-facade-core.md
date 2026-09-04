@@ -137,11 +137,17 @@ Batch-local decision: `quarry/` is split across three source files by role (`doc
   `internal/engine/scratchtree_test.go`'s helper of the same name: resolve the module root from
   `runtime.Caller(0)`, build the tree under `.scratch/quarry-tests/<name>/`, `os.RemoveAll` any
   stale tree first, create parent directories as needed, register a `t.Cleanup` that removes the
-  tree, and return its absolute path. It writes regular files only. Its doc comment states that it
-  never calls `t.TempDir()` because the system temp directory is banned for this repository's tests
-  and `.scratch/` — gitignored at the repository root — is the sanctioned location, and that the
-  helper is a deliberate per-package copy because Go test helpers are not importable across
-  packages.
+  tree, and return its absolute path. It writes regular files only.
+  `quarry/` sits **one** directory below the module root, so the `runtime.Caller(0)` walk takes
+  **two** `filepath.Dir` steps — one fewer than `internal/engine/scratchtree_test.go`'s three, which
+  that file needs because it sits two directories down. Copying the engine's three steps here would
+  resolve the module root to the repository's parent and write the fixture tree outside the
+  repository, where the tests still pass and the breach is invisible; state the step count and its
+  reason in the helper's doc comment.
+  Its doc comment also states that it never calls `t.TempDir()` because the system temp directory is
+  banned for this repository's tests and `.scratch/` — gitignored at the repository root — is the
+  sanctioned location, and that the helper is a deliberate per-package copy because Go test helpers
+  are not importable across packages.
 
   Create `quarry/repo_test.go` in `package quarry`, table-driven where a table fits, building every
   filesystem fixture with `writeScratchTree` — do not read `internal/engine/testdata/`, which

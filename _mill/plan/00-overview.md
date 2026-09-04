@@ -135,6 +135,26 @@ batches:
   every batch verifies against.
 - **Applies to:** all batches
 
+### Decision: a-symbols-key-is-never-guaranteed-by---symbols
+
+- **Decision:** no card, test, fixture, or renderer may assume that passing `--symbols` (or
+  `TOCOptions.Symbols` set to true) makes a `symbols` key appear on a file entry. Both views emit
+  nothing at all for a file whose `Symbols` is nil, and that is a correct answer, never a defect to
+  chase. Concretely, three engine behaviours produce a nil `Symbols` despite the flag:
+  1. **A file directly under the repository root.** `internal/engine/walk.go`'s `unitFor` returns
+     the empty string when `dirRel` is `"."`, and `unitSpellable("")` is false — its doc names "the
+     repository root's empty unit" as a rejection — so a root-level Go file never carries symbols.
+  2. **A file whose unit the Go alphabet cannot spell**, e.g. a path segment holding a space, a `.`
+     or `..` segment, a backslash, or an ASCII control rune.
+  3. **A file with no language**, which never gets symbols whatever the flag says.
+  Any test asserting that `--symbols` populated something must therefore query a **named
+  subdirectory** of its fixture root whose unit is spellable, never the fixture root itself.
+- **Rationale:** `_mill/discussion.md`'s Technical context lists this as gotcha 1 of the seven "all
+  of which the plan must account for". A fixture that puts its Go file at the fixture root and then
+  asserts a `symbols` key would fail for a reason that looks like a facade or CLI bug and is
+  neither — and "fixing" it would mean editing the engine, which is forbidden.
+- **Applies to:** batch 1, batch 2, batch 4
+
 ### Decision: fixture-trees-live-under-scratch-never-t-tempdir
 
 - **Decision:** every on-disk fixture tree in this task is built under `.scratch/<pkg>-tests/<name>/`
@@ -145,6 +165,13 @@ batches:
   module root from `runtime.Caller(0)`, `os.RemoveAll` any stale tree, write each entry, and
   register a `t.Cleanup` that removes it — and both write regular files only, leaving symlinks and
   other special entries for the calling test to create on the returned path.
+  The `runtime.Caller(0)` walk is **not** copied verbatim: the number of `filepath.Dir` steps is a
+  function of the copy's own depth below the module root. `internal/engine/` and `internal/cli/` are
+  two directories down and need three `filepath.Dir` calls (file to package dir to `internal` to
+  module root); `quarry/` is one directory down and needs two. Copying the engine's three steps into
+  `quarry/` would resolve the module root to the repository's **parent** and silently write
+  `.scratch/quarry-tests/` outside the repository, where the tests still pass and this decision is
+  violated invisibly.
 - **Rationale:** `internal/engine/scratchtree_test.go`'s helper doc states the convention verbatim
   ("It never calls `t.TempDir()`: the system temp directory is banned … `.scratch/` — gitignored at
   the repository root — is the sanctioned location instead"), and every engine test follows it. The
