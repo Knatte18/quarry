@@ -4,8 +4,8 @@
 // together produce, and in card 18's, the collision row and the cross-verb agreement with Resolve.
 //
 // Fixtures are the same testdata/glyphs/, testdata/methods/ and testdata/tags/ packages
-// resolve_test.go reads, opened through the same openQuarryRoot helper — this file adds no new
-// helper.
+// resolve_test.go reads, opened through the same openQuarryRoot helper, plus one run-time unit
+// collision tree built through the existing openScratchRepo helper — this file adds no new helper.
 
 package engine
 
@@ -352,5 +352,105 @@ func TestExpand_NotFound(t *testing.T) {
 		if _, ok := m[key]; ok {
 			t.Errorf("marshalled: unexpected key %q present in %v", key, m)
 		}
+	}
+}
+
+// TestExpand_Collision builds a run-time unit collision tree, the same shape batch 3's own collision
+// tests use — a "foo/" directory whose external test file and a literally-named "foo_test/" sibling
+// directory both belong to the "foo_test" unit — declaring a Thing type in both files' external test
+// package and a second type, Second, in the literal directory's file only.
+//
+// It asserts three things about Expand: the doubly-declared Thing glyph answers ambiguous with both
+// declarations in Candidates and no head or members; the singly-declared Second glyph — one match,
+// and a type — answers ambiguous too rather than found, which is the row that keeps Expand and
+// Resolve from disagreeing; and Candidates come back ordered by file then start line even though the
+// literal foo_test directory's symbols were appended first.
+//
+// It then calls Resolve on the same two glyphs and asserts both verbs report the same status and the
+// same candidate ids in the same order, so the agreement is shown rather than assumed, and asserts a
+// name declared in neither directory answers not_found with unit: found — the zero-match row, which
+// statusForMatches evaluates before its collision row.
+func TestExpand_Collision(t *testing.T) {
+	r := openScratchRepo(t, "expand-unit-collision", map[string]string{
+		"foo/own.go":      "package foo\n\nfunc FooOwn() {}\n",
+		"foo/own_test.go": "package foo_test\n\ntype Thing struct{}\n",
+		"foo_test/lit.go": "package foo_test\n\ntype Thing struct{}\n\ntype Second struct{}\n",
+	})
+
+	dupTarget := "foo_test#Thing"
+	dupExpand, err := r.Expand(dupTarget)
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", dupTarget, err)
+	}
+	if dupExpand.Status != StatusAmbiguous {
+		t.Fatalf("Expand(%q) Status = %q; want %q", dupTarget, dupExpand.Status, StatusAmbiguous)
+	}
+	if len(dupExpand.Candidates) != 2 {
+		t.Fatalf("Expand(%q) Candidates = %d entries; want 2", dupTarget, len(dupExpand.Candidates))
+	}
+	if dupExpand.Head != nil {
+		t.Errorf("Expand(%q) Head = %+v; want absent", dupTarget, dupExpand.Head)
+	}
+	if dupExpand.Members != nil {
+		t.Errorf("Expand(%q) Members = %v; want absent", dupTarget, dupExpand.Members)
+	}
+	// Candidates ordered by file then start line: "foo/own_test.go" sorts before "foo_test/lit.go"
+	// even though unitDirs returns the literal foo_test directory first.
+	if dupExpand.Candidates[0].File != "foo/own_test.go" {
+		t.Errorf("Expand(%q) Candidates[0].File = %q; want %q", dupTarget, dupExpand.Candidates[0].File, "foo/own_test.go")
+	}
+	if dupExpand.Candidates[1].File != "foo_test/lit.go" {
+		t.Errorf("Expand(%q) Candidates[1].File = %q; want %q", dupTarget, dupExpand.Candidates[1].File, "foo_test/lit.go")
+	}
+
+	secondTarget := "foo_test#Second"
+	secondExpand, err := r.Expand(secondTarget)
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", secondTarget, err)
+	}
+	if secondExpand.Status != StatusAmbiguous {
+		t.Errorf("Expand(%q) Status = %q; want %q — a single match under a unit collision is still ambiguous", secondTarget, secondExpand.Status, StatusAmbiguous)
+	}
+	if len(secondExpand.Candidates) != 1 {
+		t.Errorf("Expand(%q) Candidates = %d entries; want 1", secondTarget, len(secondExpand.Candidates))
+	}
+
+	// The two verbs must agree: same status, same candidate ids, in the same order.
+	dupResolveResults, err := r.Resolve([]string{dupTarget})
+	if err != nil {
+		t.Fatalf("Resolve(%q) returned error: %v", dupTarget, err)
+	}
+	dupResolve := dupResolveResults[0]
+	if dupResolve.Status != dupExpand.Status {
+		t.Errorf("Resolve(%q) Status = %q; Expand Status = %q; want equal", dupTarget, dupResolve.Status, dupExpand.Status)
+	}
+	if len(dupResolve.Candidates) != len(dupExpand.Candidates) {
+		t.Fatalf("Resolve(%q) Candidates = %d entries; Expand Candidates = %d; want equal", dupTarget, len(dupResolve.Candidates), len(dupExpand.Candidates))
+	}
+	for i := range dupResolve.Candidates {
+		if dupResolve.Candidates[i].ID != dupExpand.Candidates[i].ID {
+			t.Errorf("Candidates[%d].ID = %q (Resolve) vs %q (Expand); want equal", i, dupResolve.Candidates[i].ID, dupExpand.Candidates[i].ID)
+		}
+	}
+
+	secondResolveResults, err := r.Resolve([]string{secondTarget})
+	if err != nil {
+		t.Fatalf("Resolve(%q) returned error: %v", secondTarget, err)
+	}
+	secondResolve := secondResolveResults[0]
+	if secondResolve.Status != secondExpand.Status {
+		t.Errorf("Resolve(%q) Status = %q; Expand Status = %q; want equal", secondTarget, secondResolve.Status, secondExpand.Status)
+	}
+	if len(secondResolve.Candidates) != len(secondExpand.Candidates) || secondResolve.Candidates[0].ID != secondExpand.Candidates[0].ID {
+		t.Errorf("Resolve(%q) Candidates = %+v; Expand Candidates = %+v; want equal", secondTarget, secondResolve.Candidates, secondExpand.Candidates)
+	}
+
+	missingTarget := "foo_test#NoSuchName"
+	missing, err := r.Expand(missingTarget)
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", missingTarget, err)
+	}
+	if missing.Status != StatusNotFound || missing.Unit != StatusFound {
+		t.Errorf("Expand(%q) = %+v; want not_found with unit: found", missingTarget, missing)
 	}
 }
