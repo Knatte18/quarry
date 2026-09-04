@@ -48,6 +48,55 @@ func TestGolden_LoomyardRenderLayoutFile(t *testing.T) {
 	compareGolden(t, "render-layout-file.json", got)
 }
 
+// TestGolden_LoomyardParentDirDepthZero asserts the shape of a subdirectory entry at depth zero,
+// rather than comparing against a committed golden: the point here is a shape, not prose, per the
+// rewrite plan's second §4 example. It queries the render directory's own parent,
+// "internal/reedengine", at TOCOptions{} default depth (0), finds the "render" entry in the
+// result's Dirs, and asserts on that one entry's own marshalled JSON that it carries "dir",
+// "package" and "doc" and no other key — so an accidentally-populated "files" or "language" fails
+// the test rather than silently passing.
+func TestGolden_LoomyardParentDirDepthZero(t *testing.T) {
+	repoRoot := loomyardRepo(t)
+	r := openRepo(t, repoRoot)
+
+	got, err := r.TOC("internal/reedengine", TOCOptions{})
+	if err != nil {
+		t.Fatalf(`TOC("internal/reedengine", TOCOptions{}) failed: %v`, err)
+	}
+
+	var renderEntry *DirAnswer
+	for i := range got.Dirs {
+		if got.Dirs[i].Dir == "internal/reedengine/render" {
+			renderEntry = &got.Dirs[i]
+			break
+		}
+	}
+	if renderEntry == nil {
+		t.Fatalf(`no "internal/reedengine/render" entry in Dirs; want one at depth 0`)
+	}
+
+	entryJSON, err := json.Marshal(renderEntry)
+	if err != nil {
+		t.Fatalf("marshal render subdirectory entry: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(entryJSON, &raw); err != nil {
+		t.Fatalf("unmarshal render subdirectory entry: %v", err)
+	}
+
+	wantKeys := map[string]bool{"dir": true, "package": true, "doc": true}
+	for key := range raw {
+		if !wantKeys[key] {
+			t.Errorf("render subdirectory entry carries unexpected key %q: %s", key, entryJSON)
+		}
+	}
+	for key := range wantKeys {
+		if _, ok := raw[key]; !ok {
+			t.Errorf("render subdirectory entry is missing key %q: %s", key, entryJSON)
+		}
+	}
+}
+
 // compareGolden marshals got to indented JSON and either compares it byte for byte against the
 // committed golden testdata/loomyard/name, or — under "-update" — rewrites that golden from got.
 // The indentation and trailing newline are fixed here once, so a golden produced by one run of

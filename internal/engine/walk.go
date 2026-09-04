@@ -307,7 +307,9 @@ func (r *Repo) fileEntry(dirRel, base string, dirPkg, dirLang string, clause str
 //
 // The answer's Dir is the repository-relative path with forward slashes, "." for the root.
 // Language on the directory answer is the language of its package, present only when there is
-// one.
+// one — and, per the identityOnly rule above, never on an identity-only answer: the plan's own
+// example shows a depth-zero subdirectory carrying Dir, Package and Doc alone, so Language is set
+// only on the non-identityOnly path, after the early return below.
 func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool, identityOnly bool) (DirAnswer, error) {
 	n, err := ig.extend(dirRel)
 	if err != nil {
@@ -350,7 +352,6 @@ func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool
 	answer := DirAnswer{Dir: dirRel}
 	if dirPkg != "" {
 		answer.Package = dirPkg
-		answer.Language = dirLang
 	}
 
 	docs := make(map[string]string)
@@ -373,6 +374,9 @@ func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool
 
 	if identityOnly {
 		return answer, nil
+	}
+	if dirPkg != "" {
+		answer.Language = dirLang
 	}
 	answer.Files = files
 
