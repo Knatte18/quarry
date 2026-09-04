@@ -69,8 +69,11 @@ after that is a change to a published contract rather than a choice.
      to `loomyardRepo(tb testing.TB)`, a signature-only change so D16's benchmark can call it. No
      body change, no behaviour change, and every existing `*testing.T` caller still compiles.
 
-  Nothing else under `internal/engine` is touched. Neither exception changes behaviour, and each is
-  its own card so a reviewer sees it in isolation.
+  **Nothing else under `internal/engine` changes behaviour.** Adding `Resolve`, `Expand` and their
+  types to `answer.go`, `resolve.go` and `expand.go`, and extending `resolve_test.go`, is the task
+  itself, not an exception to it — the exception list above covers only edits to code T3 wrote for
+  its own purposes. Neither exception changes behaviour, and each is its own card so a reviewer sees
+  it in isolation.
 - Any change to `glyph/`. The engine never re-implements the grammar (glyph.md §6); T4 imports it
   and believes its answers.
 - Any change to `docs/glyph.md` or `docs/rewrite-plan.md`. T4 records two contract gaps it runs into
@@ -117,8 +120,11 @@ asserted about them are now read from code, not from a plan:
   exist and the unit ends `_test` is the suffix stripped; both existing returns both with
   `collision == true`, which the code expresses as `len(dirs) == 2`. A nonexistent directory yields
   an **empty slice, never an error** — `dirExists` is an `os.Lstat` test (deliberately not
-  `os.Stat`, so a symlinked directory is not a hit and the inverse agrees with the walk it inverts).
-  (D16, plan 05 card 31; read from `resolve.go`.)
+  `os.Stat`, so a directory reached by a symlink **in the unit's final component** is not a hit).
+  The agreement with the walk is therefore partial, and T4 inherits it unchanged rather than
+  narrowing it: `Lstat` still resolves *intermediate* components, so a unit `link/pkg` under a
+  symlinked `link/` is a hit here while `walkDir` never descends `link/` and so never lists those
+  declarations. See D18's third gap. (D16, plan 05 card 31; read from `resolve.go`.)
 - `func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet) ([]Symbol, error)` — parses each of the
   unit's `.go` files once, returns every symbol with `File` set to the repository-relative path,
   ordered by file then start line, filtered through the same ignore set the walk uses, and returns
@@ -155,6 +161,9 @@ asserted about them are now read from code, not from a plan:
    surfacing on the glyph branch.
 8. Is the stale `goUngroupedTypeSymbol` comment (D12's last bullet) still present and still worded
    the way D12 quotes it? If T3's batch 6 already corrected it, T4's card drops.
+9. Does `dirExists` still use `os.Lstat`, so D18's third gap (a unit reached through an intermediate
+   symlink resolves but is never listed) still reads as written? If batch 6 changed it, D10's note
+   and that gap both need re-deriving.
 
 ## Decisions
 
@@ -544,8 +553,13 @@ asserted about them are now read from code, not from a plan:
 - Decision: `Head` is the matched type's `Symbol`, emitted as §4's ordinary symbol entry — `id`,
   `kind`, `file`, `start`, `sigend`, `end`, `signature`, `doc` — with two substitutions:
   `Start = sym.HeadStart` and `End = sym.HeadEnd`. Every other field is the symbol's own. If a
-  `KindType` symbol comes back with `HeadStart == 0`, `Expand` returns an error naming the id: that
-  is a T3 invariant violation, and a silent fallback to `Start`/`End` would hide it.
+  `KindType` symbol comes back with `HeadStart == 0`, `Expand` returns a plain `fmt.Errorf` naming
+  the id: that is a T3 invariant violation, and a silent fallback to `Start`/`End` would hide it.
+  **Deliberately untyped**, unlike D14's `*NotATypeError`: that error is a caller-actionable answer
+  about the caller's own glyph, which T5b maps to a status word and an exit code, whereas this one
+  says the engine is internally inconsistent. There is no status for that, nothing a caller can do
+  differently, and T5b maps it to the generic failure exit code — giving it a struct would invite a
+  consumer to branch on a condition that should never occur.
 - Rationale: §4's rule is absolute — "One symbol entry everywhere ... `resolve`, `expand` and `toc`
   all return this entry and nothing else for a symbol" — so `expand` emits entries, never source
   text and never a shape of its own. Reading the span from `HeadStart`/`HeadEnd` rather than from
@@ -621,14 +635,21 @@ asserted about them are now read from code, not from a plan:
 
   | matches | disposition |
   |---|---|
-  | none | `not_found`, with `Unit` per D10 |
-  | **any count, `unitDirs` reported `collision`** | `ambiguous`, `Candidates` set, no head — **D6 applies to both verbs**, checked before every row below |
+  | none | `not_found`, with `Unit` per D10 — **evaluated first, before the collision row** |
+  | **at least one match, `unitDirs` reported `collision`** | `ambiguous`, `Candidates` set, no head — **D6 applies to both verbs**, checked before every row below |
   | one, `KindType` | `found`: `Head` and `Members` per D12/D13 |
   | several, all `KindType` | `ambiguous`, `Candidates` set, no head — §5 says a Go type never splits, so several type declarations under one glyph are build-tag duplicates |
   | one **or several**, none `KindType` | `*NotATypeError`, naming the kind of the first match in file-then-line order |
   | several, mixed kinds | `ambiguous`, `Candidates` set — the glyph names a type *and* something else, and choosing between them is the silent pick §3 forbids |
 
-  The collision row is second on purpose: it is tested **before** the kind rows, so a single type
+  **Row order is the rule, and the zero-match row is tested first.** A collision with no match in
+  either directory is `not_found` with `unit: found` — exactly D6's disposition, and the §8.1 Create
+  case: both directories exist, so the unit is there and only the member is missing. Answering
+  `ambiguous` with an empty `Candidates` there would be D6's own rejected alternative ("there is
+  nothing to be ambiguous between, and it would hide the `unit: found` a Create card needs"), which
+  is why the collision row is guarded by "at least one match" and is reached only after the zero row.
+
+  The collision row then precedes every kind row, so a single type
   match under a collision answers `ambiguous` here exactly as it does in `Resolve`. Without it
   `Expand` would answer `found` where `Resolve` answers `ambiguous` for the same glyph, breaking
   D11's whole reason for sharing the rules — "the two verbs can never disagree about what a glyph
@@ -734,7 +755,8 @@ asserted about them are now read from code, not from a plan:
   | path targets | `testdata/tree/` (existing: `README.md`, `config.yaml`, `Makefile`, `notes.rst`, `sub/`) | Testing 10 | already committed, and already covers a code file, several non-code files and a subdirectory |
   | gitignored path target | `.scratch/` tree with a `.gitignore` | Testing 10 | a committed tree cannot hold a tracked file its own `.gitignore` excludes |
   | unreadable directory | `.scratch/` tree, chmod'd mid-test | Testing 15a | cannot be committed at all; skipped when the host cannot revoke read permission |
-  | non-lexicographic `os.ReadDir` order | `.scratch/` tree whose files are created in reverse order | Testing 16 | ordering is a property of the directory read, so the fixture must control creation order |
+  | ordering, collision union | the same `.scratch/` collision tree | Testing 16 | the one place the engine's sort is load-bearing: `symbolsOfUnit` appends the two directories in `unitDirs` order and only its final sort restores file order. `os.ReadDir` is already sorted, so a read-order fixture would assert nothing |
+  | ordering, members across files | `testdata/methods/` — two files whose names sort opposite to declaration order | Testing 16 | exercises `Expand`'s member sort independently of the collision |
 
   The ignore-filter case T3 already covers in `TestSpansOf_IgnoreFilter` is **not** rebuilt here:
   D9's memo passes the same `ignoreSet` down to the same `symbolsOfUnit`, so T4 adds no filtering of
@@ -751,9 +773,9 @@ asserted about them are now read from code, not from a plan:
   well); reusing `testdata/glyphs/` for the method-across-files case (its files are one package by
   design and T3's `glyph_test.go` asserts on the whole symbol list).
 
-### D18 — Two contract gaps are recorded, neither is closed
+### D18 — Three contract gaps are recorded, none is closed
 
-- Decision: T4 changes no line of `docs/glyph.md` or `docs/rewrite-plan.md`. Two gaps it runs into
+- Decision: T4 changes no line of `docs/glyph.md` or `docs/rewrite-plan.md`. Three gaps it runs into
   are written down in code comments, where the rule they affect lives:
   1. **The external test unit versus a real directory of the same name.** glyph.md §2 gives the
      external test unit the pseudo-path `<dir>_test` without saying what happens when a real
@@ -765,6 +787,17 @@ asserted about them are now read from code, not from a plan:
      `language` key. With Go the only alphabet the case is unreachable, so no key is added; the
      comment on `Candidates` records that a second language adds the marker, against a real case, in
      that language's task.
+  3. **A unit reached through an intermediate symlink resolves, but is never listed.** `dirExists`
+     uses `os.Lstat`, which refuses a symlink only in the path's *final* component; intermediate
+     components are still resolved. So the unit `link/pkg` under a symlinked `link/` is a hit for
+     `unitDirs`, and `resolve` can answer `found` for a declaration `toc` never lists, because
+     `walkDir` never descends `link/` at all (T3's D19: the walk never follows a symlink, and not
+     following is what makes it finite by construction). **T4 inherits the behaviour unchanged and
+     does not narrow it**: changing `dirExists` would be a change to T3's walk-inverse, in a task
+     whose Scope excludes exactly that, and the correct fix — whether a unit may be reached through
+     a link at all — is a statement glyph.md does not make, alongside its silence on the repository
+     root. Recorded in a comment where D10 reads `unitDirs`, and named in the plan-revision
+     verification list so the merge cannot quietly change it.
 - Rationale: T3 took the same position on the repository-root unit and gave the reason: a
   single-file task changing the shared identifier contract is exactly the coupling §7's ordering
   avoids, and both candidate answers for a gap should be decided against a repository that needs
@@ -772,12 +805,14 @@ asserted about them are now read from code, not from a plan:
   only in a discussion file would lose it.
 - Rejected: amending glyph.md here (out of scope, and it would put two authors on one contract in
   one wave); adding a `language` field to `Symbol` now (changes a key set §4 pins and T3's goldens
-  assert, for a case no test can reach); leaving the gaps unrecorded.
+  assert, for a case no test can reach); "fixing" `dirExists` to walk its components (a change to
+  T3's inverse, outside Scope, and a guess at a rule the contract does not state); leaving any of
+  the gaps unrecorded.
 
 ## Technical context
 
 **Everything T4 builds on is committed on `engine-core` and unmerged.** Nothing of T3's is on `main`.
-See the Provenance section above for the full table and the eight-item verification list the plan
+See the Provenance section above for the full table and the nine-item verification list the plan
 revision must run after `mill-merge-in`. `unitDirs`, `symbolsOfUnit` and `SpansOf` were read from
 that worktree's `internal/engine/resolve.go`, not from a plan; if the merge changed their split,
 D9's memo and D10's unit test are the two decisions to re-derive first.
@@ -926,9 +961,16 @@ chose, not the layout its discussion assumed.
     naming a **type** with exactly one match answers `ambiguous` with candidates and no head, not
     `found`; asserted alongside `Resolve` on the same glyph in the same test, so the two verbs are
     shown to agree rather than assumed to.
-16. Ordering (D15) — a `.scratch/` tree whose files are created in reverse order, so `os.ReadDir`
-    does not hand them back lexicographically, asserting both verbs' outputs come back file-then-line
-    regardless.
+16. Ordering (D15) — asserted where the engine's sort is genuinely load-bearing, **not** over a
+    directory read: `os.ReadDir` is documented to return entries already sorted by filename, so a
+    fixture built to perturb read order cannot fail and would assert nothing. The real case is the
+    collision union — `symbolsOfUnit` appends the literal `foo_test/` directory's symbols before the
+    stripped `foo/` directory's, in `unitDirs` order rather than file order, and only its closing
+    `sort.SliceStable` restores file-then-line. Over the `.scratch/` collision tree, assert that
+    `Resolve`'s `Candidates` and `Expand`'s `Members` come back file-then-line even though the two
+    directories were read in the other order, and that the two verbs agree. Add a second unit whose
+    members span two files with names that sort opposite to their declaration order, so `Expand`'s
+    member sort is exercised independently of the collision.
 
 **Loomyard, env-gated per D17's skip/fail rule, skipped under `-short`:**
 
@@ -967,4 +1009,8 @@ types to `answer.go`, and changes no walk rule, no `toc` answer and no existing 
 - **Q:** Does a missing unit directory fail the call under D2's error boundary? **A:** [auto-pick, discussion-review r2 gap] No — `unitDirs` returns an empty slice and `symbolsOfUnit` a nil error, verified in T3's `resolve.go` on `engine-core`; only a genuine read failure fails the call. **Why:** §8.1's Create case must answer `not_found` with `unit: not_found`, which is unreachable if an absent directory is an error.
 - **Q:** Is `ID` a canonicalisation of the target? **A:** [auto-pick, discussion-review r2 nit] No — for Go it is byte-identical to `Target`; the key earns its place as wire-form parity with `Symbol.ID`. **Why:** `glyph/golang.go` normalises nothing — `Draw (int)` is rejected outright — so §8.1's canonicalisation example is a C# case and Testing 3 must not chase a Go case that cannot exist.
 - **Q:** Who owns T3's stale comment saying `expand` "renders" the head subtraction? **A:** [auto-pick, discussion-review r2 nit] T4 corrects that one sentence, inside Scope's mechanical-follow-through exception, as its own card. **Why:** it is a comment about T4's behaviour written before T4 decided it; leaving it documents an expectation the code will not meet.
+- **Q:** What does `expand` answer for a collision with no match at all? **A:** [auto-pick, discussion-review r4 gap] `not_found` with `unit: found` — D14's zero-match row is tested before the collision row. **Why:** `ambiguous` with an empty `Candidates` is D6's own rejected alternative, and it would hide the `unit: found` the §8.1 Create case needs.
+- **Q:** How is the ordering guarantee tested, given `os.ReadDir` already returns sorted entries? **A:** [auto-pick, discussion-review r4 gap] Over the collision union, where `symbolsOfUnit` appends the two directories in `unitDirs` order and only its closing sort restores file-then-line; plus a two-file member set whose filenames sort opposite to declaration order. **Why:** a fixture built to perturb read order cannot fail — `os.ReadDir` is documented sorted — so it would assert a property that holds by construction.
+- **Q:** Is the `HeadStart == 0` invariant failure a typed error? **A:** [auto-pick, discussion-review r4 nit] No — a plain `fmt.Errorf`, unlike D14's `*NotATypeError`. **Why:** it says the engine is internally inconsistent, not something about the caller's glyph; there is no status for that and nothing a caller can do differently, so a struct would invite branching on a condition that should never occur.
+- **Q:** Does a unit reached through an intermediate symlink resolve? **A:** [auto-pick, discussion-review r4 nit] Yes, and it is never listed by `toc` — `os.Lstat` refuses only the final component. T4 inherits it unchanged and records it as D18's third gap. **Why:** changing `dirExists` is a change to T3's walk-inverse in a task whose Scope excludes it, and whether a unit may be reached through a link is a statement glyph.md does not make.
 - **Q:** Does T4 amend `docs/glyph.md`? **A:** [auto-pick] No — two gaps are recorded in code comments and neither is closed. **Why:** T3 took the same position for the same reason: a single task changing the shared identifier contract is the coupling §7's ordering avoids, and both gaps should be decided against a repository that needs one.
