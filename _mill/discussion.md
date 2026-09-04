@@ -138,8 +138,13 @@ ladder cell measures them. The temptation this task must resist is building the 
   `--allowedTools mcp__quarry__toc`. Any other spelling means the granted cell's tool is never
   allowed and T7 measures nothing. Plan §7 also fixes the shape of the name: tool names are verbs,
   never protocol methods, so `toc` — not `tools/toc`, not `table_of_contents`, not `toc_dir`.
-- **Rejected:** nothing seriously. Recorded because it is a hard external contract that a plan must
-  not paraphrase.
+- **Version:** `mcp.Implementation{Name: "quarry", Version: "0.1.0"}`. Unlike the name and the tool
+  name, this is **not** part of any contract: it is sent on `initialize` and nothing in the harness
+  reads it (`ladder-toc.yaml` and `mcp.go` never mention it). V1 used the same value for the same
+  reason. It is fixed here only so the implementer does not have to invent one, and it tracks this
+  package's own development rather than the module version.
+- **Rejected:** nothing seriously on the name and tool name. Recorded because they are hard external
+  contracts that a plan must not paraphrase.
 
 ### D5 — Input schema: `target`, `depth`, `symbols` — the CLI verb, mirrored
 
@@ -187,6 +192,13 @@ ladder cell measures them. The temptation this task must resist is building the 
   tool's prompt cost only", which is a wasted cell. D6 already cites the V1 evidence that schema
   wording changed agent behaviour in 5 of 6 sessions. Leaving the wording to the implementer would
   put the measurement's independent variable outside the reviewed artefact.
+- **No payload cap on `depth: -1`, deliberately.** The description advertises whole-tree recursion
+  on the one surface whose token cost T7 measures, and the answer comes back whole: no cap, no
+  truncation, no warning. That matches the CLI, matches plan §10's "compact-by-default" non-goal and
+  §4's completeness rule, and matches V1's `toc_dir`, which had the same reach — so the baseline
+  comparison is unaffected. Stated explicitly because "we simply did not consider it" and "we
+  considered it and chose none" are different artefacts, and a reviewer of T7's numbers should be
+  able to tell which this is.
 - **A test pins all four strings** as exact-string assertions in the `tools/list` test, so a reword
   is a deliberate, reviewed change rather than drift. If T7's results ever suggest the description is
   the problem, changing it is a ladder question — a new cell — not a quiet edit, for the same reason
@@ -313,15 +325,29 @@ ladder cell measures them. The temptation this task must resist is building the 
 - **Decision:** move `discoverRoot`, `resolveRoot`, and `repoRelTarget` out of `internal/cli`
   (`root.go`, `target.go`) into a new `internal/repopath` package with exported names.
 - **Error shape (one choice, not two):** `repopath` declares two exported **sentinels**,
-  `ErrRootNotDirectory` and `ErrNoRepositoryRoot`, and returns them wrapped with `fmt.Errorf("%w: …")`
-  carrying the same detail text the CLI prints today. Sentinels, not a custom error type: the only
-  thing either caller needs to ask is "which condition is this", `errors.Is` answers it, and the
-  facade already established sentinels as this repo's idiom for exactly that question
-  (`quarry/quarry.go`'s three). `repoRelTarget`'s escape condition keeps returning
-  `quarry.ErrTargetOutsideRepo` unchanged — it already does, and the CLI already matches on it with
-  `errors.Is`. `internal/cli` maps the two new sentinels back into its own unexported `usageError`
-  at its call sites, preserving its exit-code mapping and its message bytes exactly.
-  `internal/mcpserver` maps them into startup failures (D3/D12) instead.
+  `ErrRootNotDirectory` and `ErrNoRepositoryRoot`, and returns them wrapped with `fmt.Errorf` to
+  carry the offending path. Sentinels, not a custom error type: the only thing either caller needs
+  to ask is "which condition is this", `errors.Is` answers it, and the facade already established
+  sentinels as this repo's idiom for exactly that question (`quarry/quarry.go`'s three).
+  `repoRelTarget`'s escape condition keeps returning `quarry.ErrTargetOutsideRepo` unchanged — it
+  already does, and the CLI already matches on it with `errors.Is`.
+- **Message bytes: `internal/cli` owns its own literals, and never propagates `repopath`'s.** This
+  is the one detail that decides whether the refactor is byte-safe, so it is stated rather than
+  left to the wrapping format. `repopath`'s own error strings are never user-visible through the
+  CLI. `internal/cli` matches with `errors.Is` on the two sentinels and **re-formats its own two
+  sentences from values it already holds**:
+  - `no repository root found above <cwd>; pass --root` (today `internal/cli/root.go:28`)
+  - `--root is not a directory: <flagRoot as given>` (today `root.go:55`)
+
+  Wrapping `%w` with a `": "` separator could not reproduce the first sentence at all — the
+  sentinel text would land mid-sentence — so passing `err.Error()` through to `usageError` is
+  specifically forbidden. `internal/mcpserver` likewise formats its own startup-failure wording
+  (D3/D12) from the sentinel, rather than echoing `repopath`'s.
+- **Pinned by assertion, because nothing pins it today.** `internal/cli/root_test.go` asserts these
+  messages only by substring, and `docs/research/output-formats/` carries no error golden, so a
+  drift here would be silent. The refactor therefore adds a small table test in `internal/cli`
+  asserting both sentences as **exact strings**. That test is what makes the Constraints line "same
+  messages" checkable rather than aspirational.
 - **Rationale:** the MCP server needs both behaviours — resolve a root from a flag or cwd, and turn
   a caller's target into a clean repository-relative path while rejecting escapes — and they are
   ~60 lines of subtle path handling (`filepath.Rel` semantics, the `".."` prefix check, `Lstat` on
@@ -634,8 +660,15 @@ D11 — the repo's documented convention for test helpers, not an exception to i
 finding `.git` at the start directory, at an ancestor, and nowhere (the failure message);
 `--root` given as relative and absolute, pointing at a file, and pointing at nothing; target
 relativisation for a plain relative path, an absolute path inside the root, the root itself
-(yields `"."`), a `".."` escape, and an absolute path outside the root. `internal/cli`'s own tests
-stay and must still pass unchanged — that is the regression gate on the refactor.
+(yields `"."`), a `".."` escape, and an absolute path outside the root.
+
+**What "moves" means concretely,** since the moved cases cannot pass unchanged: `internal/cli/root_test.go`
+and `internal/cli/target_test.go` are **deleted** from `internal/cli` and their cases re-land in
+`internal/repopath`, with two mechanical edits — the calls lose their lowercase names, and the
+assertions switch from the `err.(usageError)` type assertion (`root_test.go:89,161`) to
+`errors.Is` on the new sentinels, since `usageError` does not exist in the new package. Every
+*other* test file in `internal/cli` stays and must pass unchanged; that, plus the new exact-string
+message test D11 adds, is the regression gate on the refactor.
 
 **`internal/mcpserver` — protocol surface (TDD candidate):** using the SDK's in-memory transport,
 connect a client to the server and assert on `tools/list`: exactly one tool, named `toc`, with
@@ -692,9 +725,18 @@ thing.
 `internal/mcpserver` and `cmd/quarry-mcp` (via `go list`-style package inspection, as V1's
 `layering_test.go` does) and fails if `internal/engine` or `internal/engine/treesitter` appears.
 
-**`cmd/quarry-mcp`:** keep it thin enough that it needs no test of its own beyond the package
-compiling — that is the point of D2. If flag parsing grows past `--root`, it moves into
-`internal/mcpserver` and gets a table test there.
+**Root resolution at the `internal/mcpserver` boundary (the `--root` path):** `--root` is the one
+thing that rescues a falsified D3 — it is how `{target_dir}` would be wired through
+`ladder-toc.yaml`'s `server.args` if cwd inheritance turned out not to hold — and D13's live probe
+runs *without* it, exercising only cwd discovery. So it must not ship untested. Put the resolution
+step behind a small exported function in `internal/mcpserver` (taking the flag value and a working
+directory, returning the absolute root or an error) and table-test it: flag absent → discovery from
+the given cwd; flag given relative → joined against cwd and absolutised; flag given absolute →
+taken as is; flag naming a file or a missing path → the D11 sentinel. `cmd/quarry-mcp` then holds
+only the flag declaration and the call.
+
+**`cmd/quarry-mcp`:** with root resolution moved as above, it needs no test of its own beyond the
+package compiling — that is the point of D2.
 
 **Not covered by `go test`:** the live §9a probe (D13 item 2), by design. Its result is recorded in
 the task's `_mill/` artifacts and named in the merge commit.

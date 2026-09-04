@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: mcp-thin
 branch: mcp-thin
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-09-04T08:13:24Z'
 discussion-fix-r1  '2026-09-04T08:26:38Z'
+discussion-fix-r4  '2026-09-04T08:46:40Z'
+discussed  '2026-09-04T08:46:40Z'
 ```
