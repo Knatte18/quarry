@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: ladder-breadth
 branch: ladder-breadth
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-matrix-and-conclusion  '2026-09-04T18:36:27Z'
 approved-doc-propagation  '2026-09-04T18:39:56Z'
 holistic-reviewing  '2026-09-04T18:40:20Z'
 holistic-fixing  '2026-09-04T18:45:11Z'
+holistic-reviewing  '2026-09-04T18:47:14Z'
 ```
 
 ## Batches
