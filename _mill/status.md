@@ -48,7 +48,9 @@ batches:
     start_sha: 2445bdfa0098e29ad1272a8bb16aae4d9580f0d0
     commit_sha: 1f698a0c1fe6177fac28bd0aa9db38782af7ef25
   - name: harness-mcp-init-fix
-    state: pending
+    state: running
+    implementer_session: c57ed069-873b-4ff5-9c45-46f23944a615
+    start_sha: d299bc18f887b51ec8144d662a8ee1b8bd57f6fd
     verify_baseline_failures: []
   - name: matrix-run
     state: pending
