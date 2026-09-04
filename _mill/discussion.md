@@ -31,8 +31,8 @@ ladder cell measures them. The temptation this task must resist is building the 
 
 - A new `internal/mcpserver` package: the MCP server construction and the single `toc` tool handler,
   written against the `quarry/` facade only.
-- A new `cmd/quarry-mcp/main.go`: flag parsing, root resolution, server construction, stdio
-  transport, exit-on-error. Nothing else.
+- A new `cmd/quarry-mcp/main.go`: flag parsing, root resolution, one `quarry.Open`, server
+  construction, stdio transport, exit-on-error. Nothing else.
 - A new `internal/repopath` package holding the repository-root discovery and target-relativisation
   logic currently unexported inside `internal/cli` (`discoverRoot`, `resolveRoot`, `repoRelTarget`),
   so the MCP server and the CLI share one implementation instead of two.
@@ -86,7 +86,8 @@ ladder cell measures them. The temptation this task must resist is building the 
 ### D2 — Package layout: `internal/mcpserver` plus a thin `cmd/quarry-mcp`
 
 - **Decision:** the server lives in `internal/mcpserver`; `cmd/quarry-mcp/main.go` does flags, root
-  resolution, one `NewServer` call, one `Run` call, and `os.Exit` on error, and nothing else.
+  resolution, one `quarry.Open` (D17), one `NewServer` call, one `Run` call, and `os.Exit` on error,
+  and nothing else.
 - **Rationale:** it mirrors the split already in the tree — `cmd/quarry/main.go` is six lines over
   `internal/cli` precisely so every byte the binary emits is testable in-process without a build
   step (see that file's header comment). The same argument applies here and is stronger: an MCP
@@ -321,6 +322,24 @@ ladder cell measures them. The temptation this task must resist is building the 
 - **Rejected:** pre-emptively adding a convenience constructor or a combined "open and answer"
   helper to the facade for the server's benefit.
 
+### D17 — Open the repository once, at startup
+
+- **Decision:** `cmd/quarry-mcp` calls `quarry.Open(root)` exactly once, at startup, after the root
+  resolves and before the transport starts, and hands the resulting `*quarry.Repo` to the server.
+  A failure to open is a startup failure (D12): stderr, non-zero exit, no server. The handler never
+  opens a repository.
+- **Rationale:** `quarry.Repo`'s doc comment states it is safe for concurrent use by multiple
+  goroutines because it holds only the engine handle, which holds only the root string and reads the
+  filesystem fresh on every query (`quarry/repo.go`). So there is nothing per-call to gain by
+  re-opening, and a per-call open would spread one failure mode — an unopenable root — across every
+  call instead of failing once, loudly, at startup where D12's stderr line already reports the root.
+  The CLI opens per invocation only because a CLI invocation *is* one call.
+- **Rejected:** opening per call. Recorded as a contingency, not an alternative: if the handler's
+  not-found path turns out to need a fresh open (it should not — the engine reads the filesystem
+  fresh per query, so a target created after startup is found by a later call), that is a
+  discrepancy with the facade's documented contract and is worth stopping and raising rather than
+  quietly switching designs.
+
 ## Technical context
 
 **What already exists on `main` and must be used unchanged:**
@@ -349,10 +368,8 @@ ladder cell measures them. The temptation this task must resist is building the 
 handler performs the same steps minus the flag parsing and the exit codes: relativise the target,
 `Lstat` it (not `Stat` — a symlink named as the target is treated as a file and not followed,
 matching the engine's own `resolveTarget`), open the repo, call `TOC`, map the error, render. Note
-that `Run` opens the repo per invocation; the server should open it once at startup instead, since
-`Repo` is concurrency-safe and holds no state beyond the root — but if that turns out to
-complicate the not-found path, opening per call is also correct and costs nothing measurable.
-`codeForTOCError` in that file is the error classification to mirror: `ErrTargetNotFound` and
+that `Run` opens the repo per invocation. The server does **not**: see D17. `codeForTOCError` in
+that file is the error classification to mirror: `ErrTargetNotFound` and
 `ErrTargetOutsideRepo` are answers, everything else is internal.
 
 **What is being moved (D11):**
@@ -441,11 +458,23 @@ connect a client to the server and assert on `tools/list`: exactly one tool, nam
 `target` required and `depth`/`symbols` optional, and `depth` typed integer. This is the test that
 catches an accidental second tool and a schema drift, both of which would silently break T7.
 
-**`internal/mcpserver` — the happy path (golden):** against a small committed testdata repository
-(a directory with a couple of Go files and a subdirectory is enough; reuse or mirror whatever
-`internal/cli` already has under `testdata/` rather than inventing a second fixture shape), call
+**`internal/mcpserver` — the happy path (golden):** against a small committed fixture repository at
+`internal/mcpserver/testdata/` — a directory with a couple of Go files and a subdirectory is enough
+— call
 `toc` for a directory target, a file target, a `depth` value, a `depth: -1` value, and `symbols`
-true and false, and compare `content[0].text` byte-for-byte against golden files. One of these must
+true and false, and compare `content[0].text` byte-for-byte against golden files.
+
+The fixture style is the engine's, not the CLI's, and that choice is deliberate:
+`internal/engine/testdata/` holds committed trees (`tree/`, `units/`, `methods/`, `tiebreak/`,
+`loomyard/` and others) and is the precedent to follow. `internal/cli` has no `testdata/` at all —
+its fixture-needing tests construct trees programmatically through `writeScratchTree`
+(`internal/cli/scratchtree_test.go`), which writes under the gitignored `.scratch/cli-tests/`. That
+helper is an unexported test helper in `package cli` and is not reachable from another package's
+tests, so following the CLI here would mean duplicating it; a committed tree also makes golden bytes
+obviously stable, which is the property these tests exist for. Go's toolchain ignores `testdata/`
+when building, so committed `.go` fixture files are inert.
+
+One of these tests must
 assert the stronger property directly: for the same target and options, the MCP text and
 `quarry.RenderJSON` of the facade's own answer are identical bytes. That single assertion is what
 makes "mirror of the CLI" testable rather than aspirational.
