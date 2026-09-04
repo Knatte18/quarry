@@ -144,6 +144,12 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   new cards in batch 4, and this plan's own `All Files Touched`. Card 12's `droppedSubstrings` for
   task 02 are then picked from the file as actually written rather than from this plan's examples,
   since a swap makes `8.4k lines` stale.
+
+  A swap also re-opens the blinding constraint on the replacement prompt: `c0-none` is a control and
+  `CheckRenderedControlPrompt` is fatal for it, so the new prompt must again contain none of the bare
+  tokens `quarry` or `toc`, nor the server name. Card 13's gate backstops this, but the constraint is
+  stated here so a swap does not have to rediscover it — the same sentence card 9 carries for
+  ladder d.
 - **Commit:** `bench(tasks): author task 02's exploration fasit`
 
 ## Batch Tests

@@ -109,7 +109,12 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   Add ladder c and ladder d paragraphs to the per-ladder design list, in the shape ladders a and b
   already use: the task, the scope it exercises, and what a result there would mean. Keep the
   reading-the-result guidance, the harness-rule reminders and the run command. Update the run
-  command's `--results` example to a `-breadth` root, and **add** a `--cells` line naming the six
+  command's `--results` example to a `-breadth` root, keeping the header's existing `<date>`
+  placeholder rather than writing a literal date — the committed header already reads
+  `results/<date>-toc`, so this becomes `results/<date>-breadth`. Writing a literal date here would
+  put a fourth site under the overview's `results-root-date-substitution` decision, inside a tracked
+  file that is stimulus configuration rather than a record of one run; the placeholder keeps that
+  decision's scope at the three sites it names. **Add** a `--cells` line naming the six
   cells this matrix runs — that command carries `--config` and `--results` only today, so this is a
   new line rather than an edit to an existing one. The T2/T7 sentence naming which cells those tasks
   ran is history and stays accurate as it is — extend it rather than replacing it.
@@ -224,7 +229,13 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
     `c0-none`, `d0-none` — every control the amended file declares, not only the three this matrix
     runs, so the gate covers the whole file and `a0-none` does not sit unguarded: load
     `../../ladder-toc.yaml` with `LoadLadder`, find that config, load its task's
-    `task_file` with `LoadTaskFile`, render the prompt the same way `run.go`'s `runCellRepetition`
+    `task_file` with `LoadTaskFile` — `task_file` values in the ladder file are **repository-relative**
+    (`bench/loomyard-eval/tasks/…`), which `run.go` resolves through the unexported
+    `resolveRepoRelative(quarryRepoRoot, …)`; passing one straight to `LoadTaskFile` from
+    `internal/ladder/` fails, so the test joins the literal prefix `../../../../../` onto
+    `task.TaskFile`. That prefix is the repository root from this package's directory — five levels
+    up, past `internal`, `ladder`, `loomyard-eval` and `bench` — not four. Render the prompt the same
+    way `run.go`'s `runCellRepetition`
     does — `RenderPrompt(content, dest, grantedToolNames(l, cfg))` with an arbitrary non-empty `dest`
     string standing in for the pinned worktree path — and assert `CheckRenderedControlPrompt(prompt,
     BlindingInput{MCPPrefix: l.MCPPrefix(), ServerName: l.ServerName(), QuarryRepoRoot: <the test's

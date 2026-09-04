@@ -3,7 +3,7 @@
 ```yaml
 task: "Ladder breadth (M1)"
 slug: "ladder-breadth"
-approved: false
+approved: true
 started: "20260904-165748"
 parent: "main"
 root: ""
