@@ -62,9 +62,16 @@ Batch-local decisions:
   not this number.
   `jsonschema-go` is direct because card 8 constructs the tool's input schema as a
   `jsonschema.Schema` value rather than letting the SDK infer one from a Go type.
-  Do this with `go get` at the pinned versions followed by `go mod tidy`, not by hand-editing the
-  requirement blocks. `go mod tidy` must leave the tree clean — a second run produces no diff.
-  Add no other dependency. The SDK's own indirect requirements are whatever `go mod tidy` records;
+  Do this with `go get` at both pinned versions, not by hand-editing the requirement blocks.
+  Do **not** run `go mod tidy` on this card. At this point no file in the module imports either
+  module, so tidy would prune both requirements and their checksum lines straight back out, leaving
+  this card's commit empty and the next two cards with no dependency to build against. Card 8 is the
+  first card that imports them, and it is the card that runs tidy — which is also what promotes both
+  from indirect to direct, since a module cannot be recorded as a direct requirement before an import
+  of it exists.
+  Expect this card's own requirement entries to be marked indirect until card 8 runs tidy; that is
+  correct at this point and is not something to hand-correct.
+  Add no other dependency. The SDK's own transitive requirements are whatever the go command records;
   do not promote any of them to direct.
 - **Commit:** `build(deps): add modelcontextprotocol/go-sdk v1.7.0 and jsonschema-go v0.4.3`
 
@@ -134,7 +141,9 @@ Batch-local decisions:
   - `quarry/repo.go`
   - `quarry/quarry.go`
   - `internal/engine/answer.go`
-- **Edits:** none
+- **Edits:**
+  - `go.mod`
+  - `go.sum`
 - **Creates:**
   - `internal/mcpserver/toc.go`
 - **Deletes:** none
@@ -230,6 +239,11 @@ Batch-local decisions:
   Do not add a second tool, a `targets` array, a compact or text view, or an output schema. If a
   second tool feels necessary, stop and raise it — that is a ladder cell first, not code.
   This file must not import the engine; every engine identifier it needs comes through the facade.
+
+  This card owns the module tidy card 5 deliberately deferred: once this file exists, it is the first
+  file in the module importing both new modules, so run `go mod tidy` here. It promotes both from
+  indirect to direct and records their transitive requirements. Tidy must leave the tree clean — a
+  second run produces no diff — and both modules must remain at the versions card 5 pinned.
 - **Commit:** `feat(mcpserver): add the toc tool, its schema and its handler`
 
 ### Card 9: server construction and the `quarry-mcp` binary
@@ -262,7 +276,12 @@ Batch-local decisions:
   read the working directory; call `mcpserver.ResolveRoot`; call `quarry.Open` on the resolved root
   exactly once; write one line to standard error naming the absolute resolved root; construct the
   server; and run it over `&mcp.StdioTransport{}` with a background context.
-  Every failure before the transport starts writes its message to standard error and exits non-zero.
+  Every failure before the transport starts writes its message to standard error and exits non-zero,
+  and so does the error the run call itself returns once the transport is up: one disposition for
+  every failure this binary can have, whichever side of the transport's start it falls on. A clean
+  end of the client's session is not a failure and exits zero. Nothing about this reaches standard
+  output, ever — not even a fatal error — because a diagnostic written there is indistinguishable
+  from a malformed protocol frame to whatever is still reading the stream.
   Nothing in this file writes to standard output — that stream carries framed MCP traffic only, and a
   stray write there is the one way this binary fails catastrophically and silently. Put that
   statement in the file's header comment, alongside the note that everything below it is testable
@@ -294,10 +313,13 @@ Batch-local decisions:
   test does not depend on where it is run from.
   Fail the test when it parsed zero files: a layering check that goes green by finding nothing to
   check is worse than no check at all.
-  Explain in the file header why this test exists rather than relying on review: the facade-only rule
-  is a constraint the task body states, and the engine's own layering test has no row covering these
-  two packages, so without this file the rule would be convention-only while the analogous engine
-  rule is mechanical.
+  Explain in the file header why this test exists rather than relying on review, and state the
+  situation as it actually is: this tree carries no import check of any kind today — the facade-only
+  rule holds by convention everywhere it holds, including in `internal/cli` — so this file is the
+  first place the rule is mechanical rather than one row added to an existing mechanism. Do not
+  claim an engine-side layering test exists and merely lacks a row for these packages; it does not
+  exist in this tree. The predecessor the header may name is V1's, on the frozen branch, which is
+  reference material rather than something this test extends.
   Do not exclude `_test.go` files from the walk — the rule binds the test files too.
 - **Commit:** `test(mcpserver): enforce the facade-only layering rule mechanically`
 

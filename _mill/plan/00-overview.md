@@ -104,7 +104,7 @@ batches:
   `internal/engine` and `quarry` each already carry their own copy of the helper for exactly this
   reason — Go test helpers are not importable across packages, so a per-package copy is the
   documented convention here, not duplication to be avoided.
-- **Applies to:** repopath-extraction, mcp-server-tests
+- **Applies to:** repopath-extraction, mcp-server, mcp-server-tests
 
 ### Decision: renames go through `git mv`
 
@@ -139,6 +139,21 @@ batches:
   purpose.
 - **Applies to:** all batches
 
+### Decision: the `symbols` comparison caveat is recorded in the merge commit, not in code
+
+- **Decision:** shipping the `symbols` knob narrows T7's by-id correctness comparison against
+  `results/2026-08-30`, because V1's `toc_dir` tool had no such knob and the granted agent therefore
+  had a different set of available actions. No card records this — it is not a code change and there
+  is no tracked file that would be the right home for it. It goes in this task's merge commit message
+  alongside the live-probe outcome, which discussion D13 already routes to the same place, and T7
+  carries it forward into its own conclusion when that document is written.
+- **Rationale:** discussion D9 decides two things and the plan implements only the first; naming where
+  the second lands is what keeps it from being silently dropped between this task and T7. Recording it
+  rather than suppressing the knob is deliberate — hiding a knob the CLI has, purely to preserve a
+  comparison, would make MCP a different surface from the CLI and hide the divergence instead of
+  stating it.
+- **Applies to:** all batches
+
 ### Decision: the live §9a probe is out of `go test`
 
 - **Decision:** the automated protocol tests in batch 3 are the whole of this plan's runnable gate.
@@ -157,7 +172,9 @@ batches:
 - `go.mod`
 - `go.sum`
 - `internal/cli/cli.go`
+- `internal/cli/doc.go`
 - `internal/cli/message_test.go`
+- `internal/cli/scratchtree_test.go`
 - `internal/mcpserver/doc.go`
 - `internal/mcpserver/fixture_test.go`
 - `internal/mcpserver/layering_test.go`

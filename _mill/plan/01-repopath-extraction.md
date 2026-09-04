@@ -39,9 +39,10 @@ second consumer of exactly these two behaviours.
 `repopath.RepoRelTarget(root, base, target string) (string, error)`, and the sentinels
 `repopath.ErrNoRepositoryRoot` and `repopath.ErrRootNotDirectory`.
 
-Batch-local decision, differing from nothing in the overview: `internal/cli/scratchtree_test.go` is
-**not** touched. `internal/cli/cli_test.go` still uses `writeScratchTree`, so the CLI's own copy
-stays exactly where it is; `internal/repopath` takes a copy, it does not take the original.
+Batch-local decision, differing from nothing in the overview: `internal/cli/scratchtree_test.go`
+keeps its helper. `internal/cli/cli_test.go` still uses `writeScratchTree`, so the CLI's own copy
+stays exactly where it is and only its header sentence naming its callers is corrected;
+`internal/repopath` takes a copy, it does not take the original.
 
 ## Cards
 
@@ -91,10 +92,14 @@ stays exactly where it is; `internal/repopath` takes a copy, it does not take th
   - `internal/repopath/target.go`
 - **Edits:**
   - `internal/cli/cli.go`
+  - `internal/cli/doc.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
+  Correct the one sentence in the package doc comment that lists repository-root discovery among what
+  this package does. After this card that work lives in `repopath`; the CLI resolves a root by calling
+  it. Change that clause and nothing else in the file.
   Replace `Run`'s calls to the now-moved unexported helpers with `repopath.ResolveRoot(req.root, cwd)`
   and `repopath.RepoRelTarget(root, base, req.target)`, importing
   `github.com/Knatte18/quarry/internal/repopath`.
@@ -121,10 +126,10 @@ stays exactly where it is; `internal/repopath` takes a copy, it does not take th
 ### Card 3: re-land the moved tests in `internal/repopath`
 
 - **Context:**
-  - `internal/cli/scratchtree_test.go`
   - `internal/repopath/root.go`
   - `internal/repopath/target.go`
-- **Edits:** none
+- **Edits:**
+  - `internal/cli/scratchtree_test.go`
 - **Creates:**
   - `internal/repopath/scratchtree_test.go`
 - **Deletes:** none
@@ -148,7 +153,10 @@ stays exactly where it is; `internal/repopath` takes a copy, it does not take th
   naming the same reason the CLI's own copy names. `internal/repopath/` sits two directories below
   the module root, the same depth as `internal/cli/`, so the `runtime.Caller(0)` walk keeps its three
   `filepath.Dir` steps unchanged.
-  Do not modify `internal/cli/scratchtree_test.go`; `internal/cli/cli_test.go` still uses it.
+  In `internal/cli/scratchtree_test.go`, correct the one header sentence naming the two test files
+  this card removes from that package as the helper's chief users; after this card its user is the
+  pipeline test. Change that sentence and nothing else — the helper's body, its scratch subdirectory
+  and its doc comment stay exactly as they are, because `internal/cli/cli_test.go` still uses it.
   Every other test file in `internal/cli` must pass unchanged — that is this refactor's regression
   gate.
 - **Commit:** `test(repopath): move the root and target tests with their functions`

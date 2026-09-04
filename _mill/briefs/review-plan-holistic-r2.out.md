@@ -1,0 +1,48 @@
+MILL_REVIEW_BEGIN
+# Review: MCP, thin (T6) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: Claude Opus 5 (claude-opus-5), Anthropic
+reviewed_file: plan/
+date: 2026-09-04
+```
+
+## Findings
+
+### [BLOCKING:design] Card 5's `go mod tidy` deletes the deps it just added
+**Location:** batch 2 / card 5 (and its interaction with cards 6, 8)
+**Issue:** At card 5 no file in the module imports `go-sdk` or `jsonschema-go`; `go get` records them (indirect) and the prescribed `go mod tidy` then removes both requirements and their `go.sum` lines, so the card's commit is empty and cards 6/8 have no dependency to build against. `jsonschema-go` also cannot be recorded as *direct* until card 8's import exists.
+**Fix:** Either fold the dependency addition into the first card that adds an importing file, or state that card 5 runs `go get` only and that `go mod tidy` is run after card 8.
+
+### [BLOCKING:consistency] Card 10 prescribes a false claim about an engine layering test
+**Location:** batch 2 / card 10, Requirements (file header)
+**Issue:** The card requires the header to say "the engine's own layering test has no row covering these two packages … while the analogous engine rule is mechanical". No layering test exists anywhere in this tree (grep for `layering`, `go/parser`, `ImportsOnly` finds only `_mill/` files); V1's `layering_test.go` lives on `origin/v1-final`, per discussion D10.
+**Fix:** Restate the header's justification against what is actually in the tree (no import check exists at all today) rather than against a non-existent engine test.
+
+### [BLOCKING:decision] D9's symbols caveat has no disposition in the plan
+**Location:** overview / Shared Decisions
+**Issue:** Discussion D9 decides two things — ship `symbols`, *and* record in the task's handoff that V1's `toc_dir` had no symbols knob, so T7's by-id comparison against `results/2026-08-30` is no longer like-for-like. The plan implements the first half; the second half appears in no card, no Shared Decision, and no explicit out-of-scope statement (unlike the live probe, which gets one).
+**Fix:** Add a Shared Decision stating where the D9 caveat is recorded (merge commit / `_mill/` handoff) or that it is deliberately deferred to T7.
+
+### [NIT:consistency] Extraction leaves two stale doc comments no card owns
+**Location:** batch 1 / cards 2, 3
+**Issue:** `internal/cli/doc.go:1` still says package `cli` performs "repository-root discovery", which moves to `repopath`; `internal/cli/scratchtree_test.go:2` names `root_test.go` and `target_test.go` as its chief users, and card 3 both removes those files from the package and forbids editing that header. Neither file is in `All Files Touched`.
+**Fix:** Give one card the two one-line header corrections, or state explicitly why each stale sentence is left standing.
+
+### [NIT:consistency] Scratch-tree Shared Decision omits the batch that adds a helper
+**Location:** overview / "Decision: tests never touch the system temp directory"; batch 2 / card 7
+**Issue:** `Applies to:` names only `repopath-extraction` and `mcp-server-tests`, but card 7 (batch `mcp-server`) declares a `writeScratchTree` copy under `.scratch/mcpserver-tests/` and repeats the ban itself.
+**Fix:** Add `mcp-server` to that decision's `Applies to:` list.
+
+### [NIT:scope] Card 9 leaves `server.Run`'s error undisposed
+**Location:** batch 2 / card 9
+**Issue:** The card fixes the disposition of "every failure before the transport starts" (stderr, non-zero exit) but says nothing about the error `Run(ctx, &mcp.StdioTransport{})` returns once the transport is running, leaving the exit code and the stream it reports on to implementer judgement.
+**Fix:** State the post-startup disposition — stderr and non-zero exit, never stdout.
+
+## Verdict
+
+REQUEST_CHANGES
+Dependency card cannot land as written; two claims and one discussion decision need disposition.
+MILL_REVIEW_END
