@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-parsing
+phase: approved-cli-pipeline
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
@@ -32,6 +32,7 @@ implementing  '2026-09-04T06:46:39Z'
 approved-facade-core  '2026-09-04T06:51:25Z'
 approved-facade-renderers  '2026-09-04T07:01:24Z'
 approved-cli-parsing  '2026-09-04T07:09:52Z'
+approved-cli-pipeline  '2026-09-04T07:16:42Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     commit_sha: 1bc814bc75a9c407200e0073c9f8ba1cb3db54dd
     verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]"]
   - name: cli-pipeline
-    state: running
+    state: approved
     implementer_session: 543f3894-cd0b-4af7-ada0-ce114bee9636
     start_sha: e5457df015a5ad48523d9078f59639268f53c6ed
+    commit_sha: 3061e6a1e9f91dba4b6ee83d19f24e378eea32b3
     verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]", "FAIL\t./cmd/quarry/... [setup failed]"]
   - name: goldens-and-after
     state: pending
