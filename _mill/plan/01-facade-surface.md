@@ -84,7 +84,9 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
   Each method's doc comment states what it answers, that it returns the engine's own value and error unchanged, and — for `Expand` — that `errors.As(err, &notType)` against `*NotATypeError` therefore succeeds for a caller that never imports the engine.
 
-  In `quarry/repo_test.go`, add tests beside the existing `TOC` tests, using the same `writeScratchTree` fixture pattern those tests already use:
+  In `quarry/repo_test.go`, add tests beside the existing `TOC` tests, built with the same `writeScratchTree` helper those tests already use — but with one difference from their fixtures that this card must not get wrong: every Go file these new cases query must live in a **nested package directory**, not directly at the fixture root. The existing `TOC` fixtures put their Go files at the root, and a file directly under the root has the empty unit, which no glyph can spell; a glyph case built that way could never resolve. Name the nested directory in the fixture and spell every glyph against it.
+
+  The cases:
 
   - `Resolve` over a glyph naming a free function in the fixture returns one result whose status is `StatusFound` and whose symbols hold that one declaration.
   - `Resolve` over a glyph whose member does not exist returns one result whose status is `StatusNotFound` and whose unit is `StatusFound`.
@@ -188,9 +190,11 @@ Batch-local decisions beyond the overview's Shared Decisions:
   2. `r.ID != ""` — a glyph target. On a not-found status, line 1 is the identifier, a space, the word `not_found`, a space, and the parenthesised clause `(unit found)` or `(unit not_found)` taken from the unit field, and nothing follows. On any other status, line 1 is the identifier, a space, and the status word; then one symbol line per entry, in order — the symbols slice for found and multipart, the candidates slice for ambiguous.
   3. otherwise — a path target. Line 1 is the target as given, a space, and the status word. On found, the directory-form block for the result's directory answer follows, starting on the line immediately after line 1, produced by joining `dirBlocks` of that answer with a newline — the same join the existing `RenderText` uses for its directory form. On not-found nothing follows, and no unit clause is emitted, because a path belongs to no unit.
 
+     The directory answer is a pointer field, so guard it: when it is nil, emit line 1 alone and nothing else, whatever the status. That is unreachable for a value the engine produces — it always sets the pointer alongside a found path status — and it is spelled for the same reason branch 4 of the expand renderer below is: this is an exported renderer, an external caller can construct a found result with no directory answer, and dereferencing nil there would panic rather than honour the one-trailing-newline promise this renderer makes for every input.
+
   The directory form is used for a path result even when the target names a file: the engine answers a file path target with its enclosing directory's answer holding exactly one file entry, which the directory form renders losslessly. No file-versus-directory flag is plumbed into this renderer.
 
-  `RenderExpandText` has three branches:
+  `RenderExpandText` has four branches:
 
   1. not-found — one line: the identifier, a space, `not_found`, a space, and `(unit found)` or `(unit not_found)`; nothing follows.
   2. found — line 1 is the identifier, a space, `found`; then the head's symbol line; then, only when the members slice is non-empty, one blank line followed by one symbol line per member in order. The blank line is the same block separator `dirBlocks` already uses, so no new marker is invented and the head stays distinguishable from the members without a key.
@@ -199,7 +203,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
   There is no text rendering of a not-a-type failure: that case takes the error path and produces no payload, and the existing rule that there is no text rendering of a failure already covers it.
 
-  In `quarry/text_test.go`, add a table per renderer covering every branch listed above as an exact expected string, and assert the no-trailing-whitespace-and-one-newline property with the file's existing `assertNoTrailingWhitespaceAndOneNewline` helper. Include the expand renderer's fall-through branch in that table, driven by a zero answer value, so the one-newline promise is pinned for it too. Include a path-target found case whose directory answer holds exactly one file entry — the shape the engine produces for a file path target — so the claim that a file target is rendered with the directory form is pinned here rather than only by the evidence goldens. These tests are written before the renderers: the grammar is fully specified above.
+  In `quarry/text_test.go`, add a table per renderer covering every branch listed above as an exact expected string, and assert the no-trailing-whitespace-and-one-newline property with the file's existing `assertNoTrailingWhitespaceAndOneNewline` helper. Include the expand renderer's fall-through branch in that table, driven by a zero answer value, and the resolve renderer's nil-directory-answer guard, driven by a found path result whose pointer is nil, so the one-newline promise is pinned for both. Include a path-target found case whose directory answer holds exactly one file entry — the shape the engine produces for a file path target — so the claim that a file target is rendered with the directory form is pinned here rather than only by the evidence goldens. These tests are written before the renderers: the grammar is fully specified above.
 - **Commit:** `feat(quarry): add RenderResolveText and RenderExpandText`
 
 ### Card 6: describe the widened facade surface
