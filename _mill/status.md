@@ -57,7 +57,9 @@ batches:
     commit_sha: 1bc814bc75a9c407200e0073c9f8ba1cb3db54dd
     verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]"]
   - name: cli-pipeline
-    state: pending
+    state: running
+    implementer_session: 543f3894-cd0b-4af7-ada0-ce114bee9636
+    start_sha: e5457df015a5ad48523d9078f59639268f53c6ed
     verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]", "FAIL\t./cmd/quarry/... [setup failed]"]
   - name: goldens-and-after
     state: pending
