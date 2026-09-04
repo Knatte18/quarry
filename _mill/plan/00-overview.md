@@ -3,7 +3,7 @@
 ```yaml
 task: "Ladder, toc rerun (T7)"
 slug: "ladder-toc-rerun"
-approved: false
+approved: true
 started: "20260904-112745"
 parent: "main"
 root: ""
@@ -277,17 +277,37 @@ batches:
   root comparable with the thing it exists to reproduce.
 - **Applies to:** all batches
 
+### Decision: the-pr-review-is-batch-2's-compensating-gate
+
+- **Decision:** `roles.code-review.batch.reviewer` is null in this hub, so batch 2's Go changes get
+  no per-batch code review — only the holistic pass at the end. The orchestrator accepted that
+  rather than change review configuration mid-flight, and named the orchestrator PR review at
+  finalize as the compensating gate. The PR description must therefore point that review at the
+  risk, naming three things explicitly: (1) batch 2's production files —
+  `stream.go`, `provenance.go`, `run.go`, `runstate.go` — and the retype's blast radius across every
+  consumer of the session-init record; (2) the plan-review round-5 fixes, which were applied and
+  approved without a further review round on the operator's instruction, specifically the
+  cross-repetition `abortRun` bound and the nil-init disposition in card 5; and (3) card 5's
+  `run.go` wiring, whose offline coverage arrived late via the fake-runner change and has never been
+  exercised against a real non-connected server.
+- **Rationale:** a compensating gate only compensates if it is aimed. Left unaimed, a PR review of
+  this task reads a mostly-markdown diff and skims the Go, which is the opposite of where the risk
+  sits.
+- **Applies to:** all batches
+
 ## All Files Touched
 
 - `HANDOFF.md`
+- `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
 - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
 - `bench/loomyard-eval/ladder/internal/ladder/gates_test.go`
 - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+- `bench/loomyard-eval/ladder/internal/ladder/provenance_test.go`
 - `bench/loomyard-eval/ladder/internal/ladder/run.go`
 - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
 - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
 - `bench/loomyard-eval/ladder/internal/ladder/stream_test.go`
-- `bench/loomyard-eval/ladder/internal/ladder/provenance_test.go`
+- `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/session-init-mcp-connected.jsonl`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/tool-bytes.jsonl`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/ABANDONED.md`
