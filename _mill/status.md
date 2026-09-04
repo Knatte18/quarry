@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-resolve
+phase: approved-expand
 slug: resolve-expand
 branch: resolve-expand
 plan: _mill/plan
@@ -38,6 +38,7 @@ implementing  '2026-09-04T06:19:21Z'
 approved-answer-types  '2026-09-04T06:23:10Z'
 approved-fixtures  '2026-09-04T06:25:04Z'
 approved-resolve  '2026-09-04T06:34:47Z'
+approved-expand  '2026-09-04T06:40:48Z'
 ```
 
 ## Batches
@@ -63,9 +64,10 @@ batches:
     commit_sha: 15efb0c9d0543607887f9af380e3f1f3da89850c
     verify_baseline_failures: []
   - name: expand
-    state: running
+    state: approved
     implementer_session: 3c2d2fcc-e352-45e7-ac4a-346a3105ec70
     start_sha: 90e6f8a79784093dc58a1bbeeefcdf0ec4399cb6
+    commit_sha: 66a18a8a1e9e88efbc5b01874415c3c8c9cbab32
     verify_baseline_failures: []
   - name: loomyard-timing
     state: pending
