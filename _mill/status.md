@@ -36,15 +36,22 @@ implementing  '2026-09-04T17:36:22Z'
 ```yaml
 batches:
   - name: m2-invalidation-reason-file
-    state: pending
+    state: running
+    implementer_session: f3244622-fec3-4a2e-994f-e4ba945531f7
+    start_sha: ec52f2e500c1fff4d7f1a8e353804f5901551008
+    verify_baseline_failures: []
   - name: ladder-c-task-02
     state: pending
+    verify_baseline_failures: []
   - name: ladder-d-task-06
     state: pending
+    verify_baseline_failures: []
   - name: ladder-file-and-pre-matrix-gates
     state: pending
+    verify_baseline_failures: []
   - name: matrix-and-conclusion
     state: pending
+    verify_baseline_failures: []
   - name: doc-propagation
     state: pending
 ```
