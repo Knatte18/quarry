@@ -41,7 +41,9 @@ have to redo.
 - Repository-root discovery and cwd-relative target interpretation (the engine does neither).
 - `docs/research/output-formats/after/`: the new outputs for the "before" side's `toc` commands,
   which double as this task's golden fixtures.
-- Loomyard-free unit tests for flag parsing, exit-code mapping, root discovery, and text rendering.
+- Loomyard-free unit tests for flag parsing, exit-code mapping, root discovery, target conversion,
+  and both renderers — the text view *and* the JSON view (key order, absent defaults, unescaped
+  `<`/`&`, trailing newline).
 
 **Out:**
 
@@ -154,7 +156,16 @@ have to redo.
   | 0 | answered | the directory answer |
   | 1 | the query has a negative answer: target not found, or target outside the repository | `{"ok": false, "error": …}` |
   | 2 | usage error: unknown flag, missing or extra argument, unparseable `--depth`, `--root` that is not a directory, no repository root discoverable | `{"ok": false, "error": …}` |
-  | 3 | internal error: an I/O failure the engine reported that is neither of the above | `{"ok": false, "error": …}` |
+  | 3 | internal error: an I/O failure the engine reported, a stat failure that is not "not exists", or a failure to render the answer once `TOC` has returned | `{"ok": false, "error": …}` |
+
+  **This table governs query invocations.** `--help` is the one stated exception: it is not a query,
+  it exits 0, and its stdout is usage text rather than an answer or an envelope (see
+  `flag-semantics`). Nothing else escapes the table.
+
+  A render failure is exit 3 rather than a new code: `RenderJSON` returns an `error` because
+  `json.Encoder` does, but by construction the answer holds only strings, ints, bools and slices of
+  the same, so the only way it can fire is a write failure on the output stream — an I/O failure,
+  which is exactly what 3 already means. `RenderText` cannot fail and returns no error.
 
   The JSON envelope always goes to **stdout**, including on failure, **and including under
   `--text`** — there is no text rendering of a failure. A human-readable message (and, for exit 2,
@@ -267,6 +278,67 @@ have to redo.
   look right and are wrong. *(c)* `--root` mandatory — hostile for interactive use, and the ladder
   and MCP would both have to compute it.
 
+### target-kind-and-the-cli-stat
+
+- **Decision:** `internal/cli` determines the target's kind itself, with `os.Lstat`, and the whole
+  request pipeline runs in this fixed order:
+
+  1. Parse flags and the verb. Any failure here → exit 2, `TOC` never called.
+  2. Resolve the root (`--root` or discovery). Failure → exit 2.
+  3. Resolve the target against its base (§ `root-discovery-and-target-interpretation`) to an
+     absolute path, and compute the clean repository-relative path. If it escapes the root → exit 1,
+     `TOC` never called. This step is pure path arithmetic and touches no filesystem.
+  4. **`os.Lstat` the absolute target.** `os.IsNotExist` → exit 1; any other stat error → exit 3;
+     otherwise record `targetIsFile = !info.IsDir()`. `Lstat`, never `Stat`, so a symlink named as
+     the target is treated as a file and not followed — the same rule, for the same reason, that
+     `engine.resolveTarget` follows (technical-context gotcha 6).
+  5. Call `TOC`. Its `ErrTargetNotFound` / `ErrTargetOutsideRepo` still map to exit 1 and anything
+     else to exit 3, even though step 3 and step 4 have already excluded both in the common case —
+     the target can be removed between the stat and the walk, and the CLI must not report that race
+     as success.
+  6. Render, per `--text` and `targetIsFile`. Emit and exit 0.
+
+- **Rationale:** `TOC` returns `(DirAnswer, error)` and nothing else, and the answer's shape cannot
+  carry the fact (a one-file directory is indistinguishable from a file target), so the kind has to
+  come from a stat somewhere. The CLI is the right place: it is already the layer doing cwd and root
+  resolution, the stat is one syscall on a path it has just constructed, and doing it *before* `TOC`
+  means the exit-1 "not found" answer is decided by the same call that decides the kind — one
+  filesystem observation, not two that could disagree. Putting the fact on the facade instead would
+  mean changing `TOC`'s signature or returning a wrapper struct, which contradicts
+  `facade-entry-point`'s one-to-one mapping and would leave Loomyard carrying a field it never reads.
+- **Rejected:** *(a)* infer from the answer's shape — wrong for a single-file directory, and the
+  grammar is claimed fixed to the character. *(b)* Give `TOC` a second return value or a result
+  struct — a facade-specific shape for a fact only the text renderer wants. *(c)* Stat only when
+  `--text` is given — one syscall saved in exchange for a request pipeline that differs by flag.
+  *(d)* `os.Stat` — follows symlinks and silently descends, defeating the engine's own never-follow
+  rule for a symlink named as the target.
+
+### error-message-derivation
+
+- **Decision:** the `error` value in the failure envelope is **CLI-authored and single-line**, and
+  the string on stderr is byte-identical to it (on exit 2, the usage text follows on subsequent
+  stderr lines). The engine's wrapped chain is never exposed verbatim, except inside an exit-3
+  message. Per code:
+
+  | exit | `error` value |
+  |---|---|
+  | 1 | `target not found: <repo-relative target>` or `target outside repository: <target as given>` |
+  | 2 | the specific complaint, e.g. `unknown flag: --depht`, `toc takes exactly one target, got 2`, `--depth must be a non-negative integer or "all", got "x"`, `no repository root found above <cwd>; pass --root` |
+  | 3 | `internal error: <err.Error()>` |
+
+- **Rationale:** the Testing block asserts stdout is *exactly* the envelope, which is only writable
+  if the string is fixed. Exits 1 and 2 name conditions quarry itself defines, so quarry spells them
+  — passing through `engine: resolve target "x": engine: target not found` would leak an internal
+  package name and the double-prefix of a wrapped chain into a public contract. Exit 3 is the
+  opposite case: the underlying OS or UTF-8 failure is the only useful content, so it is carried
+  whole behind one prefix. Making stderr the same string means the two channels can never
+  disagree about what went wrong, which was V1's `ok`-vs-exit-code defect in a different costume.
+- **Rejected:** *(a)* pass the wrapped engine error through for every code — leaks `internal/engine`
+  into the public contract and makes the golden assertion depend on the engine's wrapping text.
+  *(b)* A different, friendlier sentence on stderr than in `error` — two spellings of one fact that
+  drift. *(c)* A structured `error` object — the payload is fixed at two fields by
+  `failure-envelope-and-exit-codes`.
+
 ### flag-semantics
 
 - **Decision:**
@@ -376,7 +448,8 @@ have to redo.
   The directory's `doc` is not printed in this form (§4's example omits it), and the block is not
   headed by a directory line. This form is selected by `RenderText`'s `targetIsFile` argument, never
   inferred: a directory holding exactly one file and no subdirectories is indistinguishable from a
-  file target by shape alone, so the caller — which knows what it asked for — must say.
+  file target by shape alone, so the caller — which knows what it asked for — must say. Where the
+  caller gets the fact is fixed in `target-kind-and-the-cli-stat` below, not left to the plan writer.
 
   **Symbol lines**, in both forms, one per symbol in the answer's order, each followed by its doc:
 
@@ -602,6 +675,13 @@ the answer.
 - *Exit-code mapping.* A table from a returned `error` to the code: wrapped `ErrTargetNotFound` → 1,
   wrapped `ErrTargetOutsideRepo` → 1, an arbitrary error → 3, a pre-engine validation failure → 2,
   `nil` → 0. This is where the `errors.Is`-through-wrapping behaviour is pinned.
+- *Request-pipeline ordering.* The six steps of `target-kind-and-the-cli-stat` in order: a target
+  escaping the root exits 1 without any filesystem access; a missing target exits 1 from the stat,
+  not from `TOC`; `targetIsFile` is `!IsDir()` of an `Lstat`, so a symlink to a directory renders in
+  the file form.
+- *Error-message derivation.* Each row of `error-message-derivation`'s table: the `error` value is
+  the CLI's own sentence for exits 1 and 2, is `internal error: …` for exit 3, never contains the
+  string `internal/engine`, and is byte-identical to the first line written to stderr.
 - *Failure envelope.* For each non-zero code: stdout is exactly `{"ok": false, "error": …}` plus a
   newline, stderr is non-empty, and the two never swap. The same assertion is repeated **with
   `--text`** to pin that the failure envelope stays JSON regardless of the view flag.
@@ -682,7 +762,7 @@ what proves the rendering layer added nothing and dropped nothing.
 - **Q:** Where do the golden fixtures live? **A:** [auto-pick] The `after/` files *are* the goldens, gated on `LADDER_LOOMYARD_REPO` at pin `72c23d9` with `-update` regenerating them. **Why:** one artifact means the committed evidence and the regression gate cannot disagree, and it reuses the pattern T3 already established.
 - **Q:** How does the golden test invoke the CLI? **A:** [auto-pick] `cli.Run` in-process with an explicit `--root`. **Why:** it covers parsing, engine call, rendering and exit code in one assertion at unit-test speed, with no build step and no process-global `t.Chdir`.
 - **Q:** What files does `after/` contain? **A:** [auto-pick] `toc-dir.txt`, `toc-file.txt`, `toc-dir-text.txt`, `toc-file-text.txt`, and `INDEX.md`. **Why:** the before side's two `toc` commands times the two views; `INDEX.md` records that the lossy `-compact` files have no successor by design, which is plan §1's lesson 4.
-- **Q:** What format do the `after/*.txt` files use? **A:** [auto-pick] The before side's: `$ …` invocation line, blank line, output, blank line, `(exit code: N)`. **Why:** the pair is only readable as before/after if both sides are laid out the same way.
+- **Q:** What format do the `after/*.txt` files use? **A:** [round-3 review] The `$ …` invocation line, a blank line, and the output verbatim — **no exit-code trailer**. **Why:** this supersedes an earlier auto-pick that specified a trailer "mirroring the before side". The round-2 review checked the four before-side `toc` files and none carries an exit-code line; since these files are byte-compared goldens the trailer decides their bytes, so it is settled in `after-outputs-are-the-goldens` on its own merits and the exit code is asserted by the test instead.
 - **Q:** Are there tests beyond the goldens? **A:** [auto-pick] Yes — Loomyard-free table tests for flags, exit codes, root discovery, target conversion, and both renderers over hand-built answers. **Why:** the goldens need a checkout most machines lack, so the contract must be pinned by tests that always run.
 - **Q:** How is the `CGO_ENABLED=0` constraint verified? **A:** [auto-pick] `glyph/` stays cgo-free via T1's existing assertion; the facade and CLI are expected to need cgo and `internal/cgoguard` keeps that failure readable. **Why:** the task's done-when says exactly this; adding a build tag to the facade to make `CGO_ENABLED=0 go build ./...` pass would hide the guard.
 - **Q:** Does the facade need to do anything for "grammars loaded once per process"? **A:** [auto-pick] No — already satisfied; add no cache and no parser pool. **Why:** the Go grammar is a linked-in static and `ts.NewLanguage` only wraps its pointer; plan §10 forbids a phase-1 cache and §5 concludes nothing is worth optimising yet.
