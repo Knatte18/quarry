@@ -182,8 +182,15 @@ from the same place; the table is the artifact a reader is pointed at.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Four edits, no more.
-  (0) **§2, "The decisions the plan rests on".** The bullet beginning "T5 was split; the critical
+- **Requirements:** Five edits, no more.
+  (0a) **§1, "Where things stand".** Two sentences are stale by the same argument as (0b) below and
+  are corrected in the same pass: the merged-wave inventory reads "Waves 0–3 are merged on `main`"
+  with a task list stopping at T5a, naming neither T6 nor T7 — extend it to the waves and tasks
+  actually merged; and "Uncommitted on `main` right now: this file only" is a snapshot from a
+  different day that this task's own merge invalidates — retire it or restate it for the state the
+  task leaves behind. Leaving §1 claiming waves 0–3 while §2 and §4 say the critical path is
+  finished is the same self-contradiction the rest of this card exists to prevent.
+  (0b) **§2, "The decisions the plan rests on".** The bullet beginning "T5 was split; the critical
   path ran" ends "Only T6 and T7 remain on it." T7 has now run, so that sentence contradicts the §4
   rewrite below; correct it in place to say the critical path is finished, in one line, keeping the
   bullet's T5b clause and restating nothing about what T7 measured. This is the one exception to the
@@ -205,12 +212,12 @@ from the same place; the table is the artifact a reader is pointed at.
   section's opening sentence, "Wave 4 is spawned, workers not yet started", and the instructions
   that follow it for starting those workers, are stale by the same argument and are retired in the
   same edit — leaving them would put a "not yet started" claim two lines above a "critical path
-  finished" one, which is the self-contradiction step (0) exists to prevent in §2.
+  finished" one, which is the self-contradiction steps (0a) and (0b) exist to prevent.
   (3) **§5, "Open decisions (plan §11)".** Remove the raw-tree bullet, which is now decided, and
   point the reader at the conclusion and at the plan document's own updated bullet. The other two
   bullets stay.
   Do not restate the conclusion's numbers anywhere beyond the §3 table row — the handoff document
-  points at records, it does not duplicate them. Change no section other than the four named above.
+  points at records, it does not duplicate them. Change no section other than the five named above.
 - **Commit:** `docs(handoff): record the T7 toc rerun result and close the raw-tree decision`
 
 ## Batch Tests

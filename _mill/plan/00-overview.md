@@ -74,6 +74,13 @@ batches:
 - **Rationale:** this is the harness rule that carried over from V1 verbatim. `provenance.json`
   records `quarry_dirty` and `quarry_dirty_files`; a dirty tree makes the committed record describe
   something that is not in git, which is the exact fault the 2026-09-02 post-mortem fixed.
+- **Who discharges the obligation, since both cards that check it are zero-diff.** The `_mill/`
+  artifacts are committed by the pipeline's own commits — each card's own `Commit:` line, plus the
+  per-phase commits the orchestrator makes around every batch — not by the two gate cards. Card 2
+  and card 3 step (2) are gates confirming that already happened, and a gate card must not sweep
+  another card's diff into an unrelated commit. So when either finds an uncommitted file, the remedy
+  is to stop and name it: it belongs to whichever card should have committed it, and that card
+  commits it before the matrix starts.
 - **One carve-out, stated rather than hidden: a resumed invocation records `quarry_dirty` true by
   construction.** `CollectInvocation` derives the flag from plain `git status --porcelain`, which
   lists untracked files, and the machine artifacts the first invocation writes into the tracked

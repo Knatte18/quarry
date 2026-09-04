@@ -125,7 +125,12 @@ readings and the invocation count.
   is absent or stale, and a before-only rule would leave the final invocation's binary unhashed
   entirely. Two readings that differ mean what a differing commit means: the root mixed two versions
   of the code under test and is void.
-  **Before every re-invocation**, confirm `git status --porcelain` lists nothing outside the results
+  **Before every re-invocation**, confirm no `.ladder.lock` remains under the resolved ladder
+  worktree root. `AcquireRunLock` refuses outright when the file exists, so a killed background
+  invocation makes the next one fail in under a second having measured nothing. Clear a lock whose
+  recorded pid is dead, then re-invoke. **A lock-refused invocation does not consume an arm of the
+  three-invocation ceiling** — the ceiling exists to bound API spend, and this failure spends none.
+  Also confirm `git status --porcelain` lists nothing outside the results
   root. It will not be empty: the first invocation's machine artifacts sit untracked under a tracked
   directory until this card commits them, so `CollectInvocation` records `quarry_dirty` true for
   invocations 2 and 3 by construction. That carve-out is accepted and reported rather than worked
@@ -172,6 +177,19 @@ readings and the invocation count.
   in `## Shared Decisions`, and `ABANDONED.md` is the one file that stays here. Also copy `probe.md`
   into the fresh root unchanged, so that root satisfies the five-file list on its own — the operator
   report is about the server, not about which root measured it, and re-deriving it is not possible.
+  **If the last invocation exited on an error rather than on a summary, re-derive the artifacts
+  before committing.** `runCommand` returns as soon as `ladder.Run` reports an error and never
+  reaches `summarizeAndReport`, so `summary.json` and `table.txt` are then missing outright or still
+  describe an earlier invocation — while `provenance.json`, written as the run proceeds, is current.
+  That path is reachable: a resumed root's `ScanMemoryPaths` abort, a `BuildServer` failure, a
+  refused run lock, a reps mismatch, or any per-repetition error. Whenever the final invocation ends
+  that way, run `go run ./bench/loomyard-eval/ladder/cmd/ladder report --results
+  bench/loomyard-eval/ladder/results/2026-09-04-toc` before the commit. The `report` subcommand needs
+  only the results root — it re-derives the summary and the table from the raw tree and the existing
+  provenance record, running and scoring nothing — so it costs no API budget and leaves the
+  measurement untouched. Record in the run log that it was run and why. Committing a `summary.json`
+  from an earlier invocation, or committing three files when one was never written, would make every
+  number the write-up quotes describe a run that did not happen.
   **When the run terminates**, record in the run log: the number of invocations made, every
   server-hash reading, the final incomplete and invalid lists, the per-invocation `quarry_dirty`
   file lists, and the per-cell repetition counts. Then `git add` exactly the artifacts named in
