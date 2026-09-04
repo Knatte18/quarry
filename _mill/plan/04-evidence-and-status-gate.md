@@ -143,6 +143,13 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
 - **Context:**
   - `docs/research/output-formats/INDEX.md`
+  - `docs/research/output-formats/assert-no-callers.txt`
+  - `docs/research/output-formats/definition-ambiguous.txt`
+  - `docs/research/output-formats/definition.txt`
+  - `docs/research/output-formats/impact-file-scope.txt`
+  - `docs/research/output-formats/impact.txt`
+  - `docs/research/output-formats/refs.txt`
+  - `docs/research/output-formats/symbol.txt`
   - `docs/research/output-formats/after/expand-not-a-type.txt`
   - `docs/research/output-formats/after/expand-type-text.txt`
   - `docs/research/output-formats/after/expand-type.txt`
@@ -178,7 +185,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   | none | `resolve-path.txt` | new: a repository-relative path as a target, which makes a non-code deliverable a checkable plan target. The old side had no path-target form at all |
   | none | `expand-not-a-type.txt` | new: the plan's rule that the glyph must name a type, and that on any other kind the answer names the kind |
 
-  Reference each before-side file by its actual relative path in the table, as the existing rows already do. The three new after-side files that answer no before-side question take a none row rather than being left out, which is the same device the existing text-view rows already use; that is what makes the exit-code column total, so every after-side file records its exit code in a tracked file.
+  Reference each before-side file by its actual relative path in the table, as the existing rows already do. The seven before-side outputs these new rows name are the definition, ambiguous-definition, symbol, impact, file-scoped impact, assert-no-callers and refs files, all siblings of the parent index in the directory above this one, and all listed in this card's own `Context:`. The three new after-side files that answer no before-side question take a none row rather than being left out, which is the same device the existing text-view rows already use; that is what makes the exit-code column total, so every after-side file records its exit code in a tracked file.
 
   Add a short "what changed" paragraph for the resolve and expand side, matching the one already written for the table-of-contents side, drawn from reading the produced files rather than asserted from memory.
 
