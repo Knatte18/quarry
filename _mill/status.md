@@ -6,6 +6,7 @@ slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Facade + CLI, toc (T5a)
 task_description: |
   Facade + CLI, toc (T5a)
@@ -35,13 +36,20 @@ implementing  '2026-09-04T06:46:39Z'
 ```yaml
 batches:
   - name: facade-core
-    state: pending
+    state: running
+    implementer_session: 48778a4b-4ab9-4c53-a7a3-16943a7de8da
+    start_sha: aaf1e2a31f03185093683b8888c280453aed5a47
+    verify_baseline_failures: ["FAIL\t./quarry/... [setup failed]"]
   - name: facade-renderers
     state: pending
+    verify_baseline_failures: ["FAIL\t./quarry/... [setup failed]"]
   - name: cli-parsing
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]"]
   - name: cli-pipeline
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]", "FAIL\t./cmd/quarry/... [setup failed]"]
   - name: goldens-and-after
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]"]
 ```
