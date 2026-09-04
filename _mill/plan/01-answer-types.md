@@ -125,7 +125,11 @@ four `Status` constants.
 
 `verify:` is a build plus a vet of the engine package, not a test run: this batch adds type
 declarations and doc comments only, and has no behaviour of its own to assert. The types are
-exercised by every test in batches 3, 4 and 5 — the JSON tags specifically by batch 3's card 11,
-which marshals a `not_found` result and pins docs/glyph.md §5's `"unit": "found"` spelling and the
-`omitempty` on every absent key. `go vet` is the meaningful gate here because struct-tag syntax
-errors are exactly what it catches and the compiler does not.
+exercised by every test in batches 3, 4 and 5. The JSON tags specifically are pinned by three
+marshalled assertions, one per new type's shape: batch 3's card 11 marshals a `not_found`
+`ResolveResult`, pinning docs/glyph.md §5's `"unit": "found"` spelling and the `omitempty` on every
+absent key; batch 4's card 16 marshals a member-less `found` `ExpandAnswer` and card 17 a `not_found`
+one, which between them cover all six of that type's keys in both their present and their omitted
+state. `go vet` is a gate here but not the whole one — it catches struct-tag syntax errors the
+compiler does not, and nothing else: a key spelled wrongly or an `omitempty` left off is valid
+syntax, which is why the marshalled assertions exist rather than resting on vet.
