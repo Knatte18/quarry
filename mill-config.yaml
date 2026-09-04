@@ -119,7 +119,7 @@ llm:
 pipeline:
   auto_merge: true
   auto_report: true
-  done_gate: go test ./...  # Repo-wide check command run from git_root before marking done. Confirmed to exit 0 against this worktree's tip in ~3s (post-cgo-compile runs are slower; the tree-sitter C sources rebuild on a fresh build cache) before this key was set. No lint command is appended: golangci-lint is not installed on this machine, so a done_gate naming it would fail for a reason unrelated to this task's changes -- add it in a follow-up once it's confirmed installed. (#561, #861)
+  done_gate: go test ./... && golangci-lint run  # Repo-wide check command run from git_root before marking done. Both halves confirmed to exit 0 against this worktree's tip before this key was set (post-cgo-compile runs are slower; the tree-sitter C sources rebuild on a fresh build cache). The lint half was added by the engine-core (T3) plan: golangci-lint is now installed at ~/go/bin/golangci-lint and reports no finding on the current tip, so the gate carries no pre-existing debt. (#561, #861)
   done_gate_baseline_preflight: false  # Opt-in Prepare-phase done_gate baseline capture for self-capturing regression suites; see done_gate above. (#650)
   baseline_prepare_cmd: null  # Optional build-once command run once per distinct cwd fragment against --stage baseline's shared transient checkout, before any module-wide/per-batch verify command; null = disabled. e.g. "dotnet build" for a .NET solution whose verify: commands otherwise pay a cold-compile cost inside the first of several doubled baseline runs. (#894)
   max_cards_per_batch: 10  # batch-oversized validator gate (#371)
