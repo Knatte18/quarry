@@ -60,6 +60,8 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
   signatures and byte behaviour; T6 is being written against them in parallel.
 - **Multi-target `resolve` on the command line** (D1), **batching, caching or parallelism** (plan §10
   phase-1 non-goals), **`impact`, `refs`, `assert-no-callers`** (phase 2 or dropped, plan §5).
+- **`docs/rewrite-plan.md`.** Not edited. Amending §5's variadic `resolve` bullet to match D1 is an
+  operator follow-up on `main`, exactly as `toc`'s equivalent amendment was (commit `55161a6`).
 - **Anything in Loomyard's repository.**
 
 ## Decisions
@@ -82,10 +84,13 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
 - **Rejected:** a variadic CLI matching plan §5's `resolve <glyph|path>...` literally. It would
   force a new aggregate-exit-code rule, and it would make the JSON payload a top-level array where
   every other quarry command emits an object.
-- **Tension, flagged for review:** plan §5's `resolve` bullet spells the variadic form and is not
-  amended anywhere. The task body's "(plan §5)" citation points at the `toc` sentence, not the
-  `resolve` one. If the reviewer prefers the variadic CLI, the aggregate exit-code rule must be
-  decided by the reviewer, not here.
+- **Tension, and its disposition:** plan §5's `resolve` bullet spells the variadic form and is not
+  amended anywhere; the task body's "(plan §5)" citation points at the `toc` sentence, not the
+  `resolve` one. Round 1's review confirmed single-target and closed the tension: **amending plan §5's
+  `resolve` bullet is an operator follow-up on `main`, not a change this worktree makes** — the same
+  move `toc`'s own one-target amendment took (commit `55161a6`, "Plan §5: toc takes one target per
+  call, as T5a's discussion settled"), which landed on `main` outside the task that decided it. This
+  task edits no line of `docs/rewrite-plan.md`.
 
 ### D2 — a negative answer renders the payload, not the error envelope
 
@@ -131,6 +136,7 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
   | `expand` | `status: ambiguous` | 1 | the `ExpandAnswer` |
   | `expand` | `*NotATypeError` | 1 | the error envelope (D4) |
   | both | unparseable flag, wrong target count, unknown verb, toc-only flag on this verb, `--root` that is not a directory | 2 | the error envelope + `usageText` on stderr |
+  | `expand` | target containing no `#` (D10) | 2 | the error envelope + `usageText` on stderr |
   | both | engine read failure, `len(results) != 1`, render failure, stdout write failure | 3 | the error envelope |
 
 - **Rationale:** exit 2 keeps its T5a meaning exactly — "the caller asked wrong about the CLI" — and
@@ -324,29 +330,33 @@ rule already says there is no text rendering of a failure.
   and exits 1, where `toc` of the same path answers `{"ok":false,"error":"target not found: x"}` and
   exits 1. Same code, different stdout, and that difference is D2's whole point.
 
-### D10 — `expand` writes no `#` check of its own
+### D10 — `expand` rejects a `#`-less target on the CLI's own check, before any engine call
 
-- **Decision:** `quarry expand internal/logger` (no `#`) is passed to the facade unchanged and comes
-  back as a `*glyph.ParseError` wrapped by the engine, with reason `no_separator`.
-- **Open sub-question, and the recommendation:** that arrives at the CLI as an `error`, not a
-  payload — `Expand` returns `(ExpandAnswer{}, err)` — so D2 does not cover it and D4's envelope
-  path is the only shaped path there is. **Recommendation:** treat it as a usage error, exit 2 with
-  `usageText`, message `expand takes a glyph (a target containing "#"), got: <target>`, spelled by
-  the CLI rather than passed through, since the engine's chain would leak `engine: expand …`.
-  The CLI still writes no separator check: it detects this case with
-  `errors.As(err, &parseErr) && parseErr.Reason == glyph.ReasonNoSeparator`, which requires importing
-  `glyph/` from `internal/cli` — a public, cgo-free, dependency-free package, so the import is cheap
-  and legal.
+- **Decision:** `quarry expand internal/logger` (no `#`) is a usage error, exit 2 with `usageText`,
+  message `expand takes a glyph (a target containing "#"), got: <target>`. It is decided by the CLI's
+  own `strings.Contains(target, "#")` check — the same one D8 already gives the CLI for `resolve`'s
+  glyph-versus-path routing — applied at argument-handling time, **before** root discovery,
+  `quarry.Open`, or any call into the facade.
+- **Rationale for the routing:** T5a's `exitUsage` constant is documented as "TOC is never called on
+  this path" (`internal/cli/cli.go`), so a usage error discovered only *after* the engine has run
+  would contradict the code the constant is defined in. D8 already spends the "the CLI writes no
+  separator check" purity argument by giving the CLI that exact check, so there is no purity left to
+  preserve by routing this through the engine, and `errors.As(err, &parseErr) && parseErr.Reason ==
+  glyph.ReasonNoSeparator` would be a second, later, more expensive spelling of a decision the CLI
+  has already made. `internal/cli` therefore needs no import of `glyph/`.
 - **Rationale for exit 2 rather than 1:** unlike `resolve`, where the same string is a legitimate
   *path* target and the grammar rejection is a real answer about a real argument class, `expand`
   accepts one argument class only. A target with no `#` is the caller having asked the wrong verb,
   which is what exit 2 means.
-- **Flagged for review:** this is the third genuinely-unanswered question. The alternative — every
-  `expand` parse rejection, `no_separator` included, taking D4's exit-1 envelope path with the
-  engine's own message reworded — is coherent too and is one line simpler.
-- **Every other `glyph.Parse` rejection under `expand`** (`member_keyword`, `unit_bad_rune`, …) takes
-  D4's path: error envelope, exit 1, message `expand <target>: <reason>`, no usage text. It is a
-  well-formed invocation naming an unspellable glyph.
+- **Rejected:** detecting the case post-engine via `errors.As` on the wrapped `*glyph.ParseError`
+  (contradicts exit 2's own documented meaning, and duplicates a decision the CLI already made);
+  treating it as an ordinary parse rejection on D4's exit-1 envelope path (an invocation naming no
+  glyph at all is a different thing from one naming an unspellable glyph).
+- **Every other `glyph.Parse` rejection under `expand`** — a target that *does* contain `#` but that
+  the grammar still rejects, `#x` or `member_keyword` or `unit_bad_rune` — is unaffected by this
+  routing and takes D4's path: error envelope, exit 1, message `expand <target>: <reason>`, no usage
+  text. It is a well-formed invocation naming an unspellable glyph, and the CLI never parses it
+  itself.
 
 ### D11 — flags: `--text` and `--root` only; `--depth` and `--symbols` are rejected
 
@@ -368,6 +378,10 @@ rule already says there is no text rendering of a failure.
     `no verb given; expected: toc, resolve, or expand`; `unknown verb: <v>` is unchanged.
   - flag validity is checked per verb, producing `<flag> is not valid for <verb>`.
   - the arity message is spelled per verb: `<verb> takes exactly one target, got <n>`.
+  - `expand` additionally rejects a target containing no `#` (D10) here, with
+    `strings.Contains(target, "#")`. It belongs in `parseArgs` because that keeps the rejection pure
+    over the argument slice — no root discovery, no engine call — which is the property the parser's
+    fixture-free table test rests on.
   - `request` gains nothing: `verb` already exists and `depth`/`symbols` simply stay at their zero
     values for the two new verbs.
 - **Rationale:** `parseArgs` is already pure over its argument slice, which is what lets its table
@@ -593,7 +607,9 @@ renderer choice) → `cmd/quarry` (one line).
   the validator's whole reason for the key (plan §5, §8.1).
 - `expand` of a type with no members answers `found` with a head and no `members` key — not
   `not_found`, and not an error.
-- `expand internal/logger` (no `#`) takes D10's path.
+- `expand internal/logger` (no `#`) is rejected by `parseArgs` with exit 2 before any engine call
+  (D10); `expand '#x'` — a `#`-bearing target the grammar still rejects — takes D4's exit-1 envelope
+  path instead. Both belong in the tables.
 - Every failure path writes the JSON envelope to stdout even under `--text`.
 - `--root` rebases path-target interpretation but has no effect on a glyph target.
 
@@ -604,7 +620,7 @@ renderer choice) → `cmd/quarry` (one line).
 - **Q:** Which exit code does `ambiguous` get? **A:** [auto-pick] 1. **Why:** exit 2 means "the caller asked wrong about the CLI"; an ambiguous glyph is a well-formed invocation run to a definite conclusion, which is exit 1's stated meaning. Exit 2 here would repeat V1's `definition` defect in mirror image.
 - **Q:** Which exit code does a glyph grammar rejection get under `resolve`? **A:** [auto-pick] 1, with the payload carrying `error` and `reason`. **Why:** exit 2 prints `usageText` and routes through `fail()`, which discards the `reason` word the engine deliberately put in the payload. Flagged for review.
 - **Q:** What does `expand` do with a non-type glyph? **A:** [auto-pick] The error envelope, exit 1, sentence `expand <id>: not a type, kind <kind>` spelled by the CLI from `*quarry.NotATypeError`'s fields. **Why:** plan §5 says the answer is `ok: false` naming the kind, and `Expand` returns no payload on that path; T5a forbids leaking the engine's `engine: ` prefix.
-- **Q:** What does `expand` do with a target containing no `#`? **A:** [auto-pick] Usage error, exit 2, detected via `parseErr.Reason == glyph.ReasonNoSeparator`, message `expand takes a glyph (a target containing "#"), got: <target>`. **Why:** `expand` accepts one argument class, so a target with no `#` is the wrong verb, which is exit 2's meaning. Flagged for review — treating it as an ordinary parse rejection (D4's path, exit 1) is coherent and simpler.
+- **Q:** What does `expand` do with a target containing no `#`? **A:** [auto-pick, revised at round-1 review] Usage error, exit 2, message `expand takes a glyph (a target containing "#"), got: <target>`, decided by the CLI's own `strings.Contains(target, "#")` check at argument-handling time, before any engine call. **Why:** `expand` accepts one argument class, so a target with no `#` is the wrong verb, which is exit 2's meaning; and routing it post-engine via `parseErr.Reason == glyph.ReasonNoSeparator` (the original auto-pick) would contradict exit 2's own documented "TOC is never called on this path" and duplicate a check D8 already gives the CLI.
 - **Q:** Do `resolve` and `expand` accept `--depth` and `--symbols`? **A:** [auto-pick] No; both are usage errors naming the verb. **Why:** `resolvePathTarget` hardcodes `Depth: 0` and symbols off by design, so accepting the knobs would either lie or require an out-of-scope engine change.
 - **Q:** How is the `resolve`/`expand` symbol line rendered in the text view, given those symbols carry `file` and `toc`'s do not? **A:** [auto-pick] `writeSymbolLine` gains a `<file>:` prefix emitted only when `File != ""`. **Why:** `File` is always empty inside a `toc` answer, so every existing `toc` golden stays byte-identical and there is one grammar with one implementation.
 - **Q:** Does a `resolve` path result render `RenderText`'s file form or directory form? **A:** [auto-pick] The directory form, always. **Why:** `resolvePathTarget` uses `Depth: 0` with symbols off, so a file target's answer is its enclosing directory's answer with one entry, which the directory form renders losslessly — and this is what lets `resolve`'s pipeline drop `toc`'s `os.Lstat` step entirely.
