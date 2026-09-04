@@ -47,7 +47,7 @@ const loomyardPin = "72c23d9"
 // repository's worktrees directory, not a ref file itself, so reading it directly would either
 // misparse that pointer or, at best, resolve nothing at all. Asking git resolves this correctly
 // regardless of whether the checkout is a worktree or an ordinary clone.
-func loomyardRepo(t *testing.T) string {
+func loomyardRepo(t testing.TB) string {
 	t.Helper()
 
 	repo := os.Getenv("LADDER_LOOMYARD_REPO")

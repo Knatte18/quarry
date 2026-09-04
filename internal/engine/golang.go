@@ -270,12 +270,12 @@ func goSpecChild(decl *ts.Node) *ts.Node {
 // with source_file siblings.
 //
 // HeadStart and HeadEnd are set to this same Start and End, doc block included, for every Go type
-// alike — a struct, an interface, a defined scalar — because the later expand verb renders a type's
-// head by omitting the lines its own member symbols cover, and subtracting those spans from the
-// head range is that consumer's job, not this extractor's. An interface is the one Go type whose
-// declaration contains its own members (goInterfaceMethodSymbols' method symbols), so for an
-// interface specifically the member spans genuinely do lie inside this head range; for every other
-// type they simply have no member spans to subtract.
+// alike — a struct, an interface, a defined scalar — because the expand verb emits a type's head as
+// this one contiguous span alongside its member symbols' own spans, and subtracting those member
+// spans from the head range is that consumer's job, not this extractor's. An interface is the one
+// Go type whose declaration contains its own members (goInterfaceMethodSymbols' method symbols), so
+// for an interface specifically the member spans genuinely do lie inside this head range; for every
+// other type they simply have no member spans to subtract.
 func goUngroupedTypeSymbol(unit string, decl, spec *ts.Node, src []byte) (sym Symbol, ok bool) {
 	name := NodeText(spec.ChildByFieldName("name"), src)
 	if goBlank(name) {
