@@ -1,0 +1,1 @@
+- `--cells` run example re-includes the retired ladder-a cells: **Location:** `bench/loomyard-eval/ladder/ladder-toc.yaml:75` (the "Run with:" block's `--cells` line)
