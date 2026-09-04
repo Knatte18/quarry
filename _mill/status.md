@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-config
+phase: holistic-reviewing
 slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-repopath-extraction  '2026-09-04T09:26:15Z'
 approved-mcp-server  '2026-09-04T09:31:50Z'
 approved-mcp-server-tests  '2026-09-04T09:40:48Z'
 approved-docs-and-config  '2026-09-04T09:42:56Z'
+holistic-reviewing  '2026-09-04T09:43:17Z'
 ```
 
 ## Batches
