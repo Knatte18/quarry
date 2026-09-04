@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
@@ -37,6 +37,7 @@ approved-goldens-and-after  '2026-09-04T07:22:46Z'
 holistic-reviewing  '2026-09-04T07:23:19Z'
 holistic-approved  '2026-09-04T07:27:35Z'
 done  '2026-09-04T07:28:18Z'
+pr-pending  '2026-09-04T07:30:00Z'
 ```
 
 ## Batches
