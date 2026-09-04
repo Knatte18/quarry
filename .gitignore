@@ -3,6 +3,8 @@
 # package directory and its contents tracked.
 /quarry
 !/quarry/
+# /quarry-mcp names no tracked package directory, so it needs no re-include.
+/quarry-mcp
 *.test
 *.test.exe
 *.out

@@ -1,0 +1,68 @@
+{
+  "dir": "alpha",
+  "package": "alpha",
+  "language": "go",
+  "doc": "Package alpha is the mcpserver test fixture package: a small package with a doc comment, one\ntype, one method, one function, one const and one var, used by every test in this batch.",
+  "files": [
+    {
+      "name": "alpha.go",
+      "symbols": [
+        {
+          "id": "alpha#Widget",
+          "kind": "type",
+          "start": 3,
+          "sigend": 4,
+          "end": 6,
+          "signature": "type Widget struct",
+          "doc": "Widget is a fixture type."
+        },
+        {
+          "id": "alpha#Widget.Greet",
+          "kind": "method",
+          "start": 8,
+          "sigend": 9,
+          "end": 11,
+          "signature": "func (w Widget) Greet() string",
+          "doc": "Greet is a fixture method on Widget."
+        },
+        {
+          "id": "alpha#NewWidget",
+          "kind": "function",
+          "start": 13,
+          "sigend": 14,
+          "end": 16,
+          "signature": "func NewWidget(name string) Widget",
+          "doc": "NewWidget is a fixture function."
+        },
+        {
+          "id": "alpha#MaxWidgets",
+          "kind": "const",
+          "start": 18,
+          "end": 19,
+          "signature": "const MaxWidgets = 10",
+          "doc": "MaxWidgets is a fixture const."
+        },
+        {
+          "id": "alpha#DefaultWidget",
+          "kind": "var",
+          "start": 21,
+          "end": 22,
+          "signature": "var DefaultWidget = Widget{Name: \"default\"}",
+          "doc": "DefaultWidget is a fixture var."
+        }
+      ]
+    },
+    {
+      "name": "doc.go",
+      "header": "Package alpha is the mcpserver test fixture package: a small package with a doc comment, one\ntype, one method, one function, one const and one var, used by every test in this batch.",
+      "symbols": []
+    }
+  ],
+  "dirs": [
+    {
+      "dir": "alpha/sub",
+      "package": "sub",
+      "doc": "Package sub exists so the depth cases have a nested subdirectory to recurse into."
+    }
+  ]
+}
