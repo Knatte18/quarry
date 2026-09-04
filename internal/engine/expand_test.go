@@ -10,10 +10,18 @@
 package engine
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/Knatte18/quarry/glyph"
 )
+
+// isZeroExpandAnswer reports whether got is the zero ExpandAnswer, field by field: ExpandAnswer
+// holds two slices and a pointer, none of them comparable with ==, so a plain got != (ExpandAnswer{})
+// does not compile.
+func isZeroExpandAnswer(got ExpandAnswer) bool {
+	return got.ID == "" && got.Status == "" && got.Unit == "" && got.Head == nil && got.Members == nil && got.Candidates == nil
+}
 
 // TestExpand_Struct expands the methods fixture package's Widget type, whose three methods span two
 // files, and asserts the head span, the member order, and the marshalled shape of a found answer
@@ -173,6 +181,174 @@ func TestExpand_TypeWithoutMembers(t *testing.T) {
 		t.Errorf("marshalled status = %v; want %q", got, want)
 	}
 	for _, key := range []string{"unit", "members", "candidates"} {
+		if _, ok := m[key]; ok {
+			t.Errorf("marshalled: unexpected key %q present in %v", key, m)
+		}
+	}
+}
+
+// TestExpand_NotAType asserts a package-level function glyph and a package-level const glyph — each
+// matching exactly once, so the single-match requirement is met by construction — return a
+// *NotATypeError naming the walk's own kind and the zero ExpandAnswer. It then asserts the case a
+// match-count gate would miss: the bare init glyph, which matches three declarations and still
+// returns a *NotATypeError, never a multipart answer, which ExpandAnswer's Status does not admit.
+func TestExpand_NotAType(t *testing.T) {
+	tests := []struct {
+		name     string
+		target   string
+		wantKind Kind
+	}{
+		// AnonParam is declared once in iface.go — its anonymous parameter interface contributes no
+		// symbol of its own — so the glyph matches exactly one declaration.
+		{"Function", "internal/engine/testdata/glyphs#AnonParam", KindFunction},
+		// UngroupedConst is declared once in decls.go.
+		{"Const", "internal/engine/testdata/glyphs#UngroupedConst", KindConst},
+		// The bare init glyph matches three declarations in inits.go, all of them functions. A
+		// match-count gate would call this multipart; the kind gate catches it instead.
+		{"Init", "internal/engine/testdata/glyphs#init", KindFunction},
+	}
+
+	r := openQuarryRoot(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := r.Expand(tt.target)
+			var notATypeErr *NotATypeError
+			if !errors.As(err, &notATypeErr) {
+				t.Fatalf("Expand(%q) error = %v; want errors.As to *NotATypeError", tt.target, err)
+			}
+			if notATypeErr.Kind != tt.wantKind {
+				t.Errorf("NotATypeError.Kind = %q; want %q", notATypeErr.Kind, tt.wantKind)
+			}
+			if !isZeroExpandAnswer(got) {
+				t.Errorf("Expand(%q) = %+v; want the zero ExpandAnswer", tt.target, got)
+			}
+		})
+	}
+}
+
+// TestExpand_AmbiguousBuildTags asserts the duplicated type glyph of the tags fixture package
+// answers ambiguous with both declarations in Candidates and no head or members, and that the mixed
+// glyph — a type in one file and a function in the other — answers ambiguous too rather than a
+// *NotATypeError, because the set holds a type and choosing between the two would be a silent pick.
+func TestExpand_AmbiguousBuildTags(t *testing.T) {
+	r := openQuarryRoot(t)
+
+	dupTarget := "internal/engine/testdata/tags#DupType"
+	dup, err := r.Expand(dupTarget)
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", dupTarget, err)
+	}
+	if dup.Status != StatusAmbiguous {
+		t.Fatalf("Status = %q; want %q", dup.Status, StatusAmbiguous)
+	}
+	if len(dup.Candidates) != 2 {
+		t.Fatalf("Candidates = %d entries; want 2", len(dup.Candidates))
+	}
+	if dup.Head != nil {
+		t.Errorf("Head = %+v; want absent", dup.Head)
+	}
+	if dup.Members != nil {
+		t.Errorf("Members = %v; want absent", dup.Members)
+	}
+
+	mixedTarget := "internal/engine/testdata/tags#Mixed"
+	mixed, err := r.Expand(mixedTarget)
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", mixedTarget, err)
+	}
+	if mixed.Status != StatusAmbiguous {
+		t.Fatalf("Status = %q; want %q — a type and a function both named Mixed, choosing would be a silent pick", mixed.Status, StatusAmbiguous)
+	}
+
+	// The only marshal in the plan that observes candidates in its present state.
+	m := marshalToMap(t, dup)
+	candidatesVal, ok := m["candidates"].([]any)
+	if !ok || len(candidatesVal) != 2 {
+		t.Errorf("marshalled: candidates = %v; want two entries present under %q", m["candidates"], "candidates")
+	}
+	for _, key := range []string{"head", "members"} {
+		if _, ok := m[key]; ok {
+			t.Errorf("marshalled: unexpected key %q present in %v", key, m)
+		}
+	}
+}
+
+// TestExpand_MalformedTarget asserts a target the grammar rejects and a target with no "#" each
+// return a non-nil error and the zero answer, that errors.As reaches a *glyph.ParseError in both
+// cases, and that the no-separator case carries the grammar's own no-separator reason — proof that
+// expand writes no separator check of its own.
+func TestExpand_MalformedTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		target     string
+		wantReason glyph.Reason
+	}{
+		{"RejectedByGrammar", "internal/engine/testdata/tree/pkg#A.B.C", glyph.ReasonMemberTooDeep},
+		{"NoSeparator", "internal/engine/testdata/tree/pkg", glyph.ReasonNoSeparator},
+	}
+
+	r := openQuarryRoot(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := r.Expand(tt.target)
+			if err == nil {
+				t.Fatalf("Expand(%q) = %+v, nil error; want a non-nil error", tt.target, got)
+			}
+			if !isZeroExpandAnswer(got) {
+				t.Errorf("Expand(%q) = %+v; want the zero ExpandAnswer", tt.target, got)
+			}
+			var parseErr *glyph.ParseError
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("Expand(%q) error = %v; want errors.As to *glyph.ParseError", tt.target, err)
+			}
+			if parseErr.Reason != tt.wantReason {
+				t.Errorf("ParseError.Reason = %q; want %q", parseErr.Reason, tt.wantReason)
+			}
+		})
+	}
+}
+
+// TestExpand_NotFound asserts that a name that does not exist inside an existing unit answers
+// not_found with unit: found and a nil error, and that a glyph whose unit directory does not exist
+// answers not_found with unit: not_found and a nil error — a miss is a legitimate answer with a
+// status, never a failure.
+func TestExpand_NotFound(t *testing.T) {
+	r := openQuarryRoot(t)
+
+	missingName := "internal/engine/testdata/glyphs#NoSuchDeclaration"
+	nameRes, err := r.Expand(missingName)
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", missingName, err)
+	}
+	if nameRes.Status != StatusNotFound || nameRes.Unit != StatusFound {
+		t.Errorf("Expand(%q) = %+v; want not_found with unit: found", missingName, nameRes)
+	}
+
+	missingUnit := "internal/engine/testdata/does-not-exist#X"
+	unitRes, err := r.Expand(missingUnit)
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", missingUnit, err)
+	}
+	if unitRes.Status != StatusNotFound || unitRes.Unit != StatusNotFound {
+		t.Errorf("Expand(%q) = %+v; want not_found with unit: not_found", missingUnit, unitRes)
+	}
+
+	// The fourth and last of the four marshals across cards 16 and 17 that together cover every one
+	// of ExpandAnswer's six keys in both its present and its omitted state — this one observes unit
+	// present and head absent.
+	m := marshalToMap(t, nameRes)
+	for _, key := range []string{"id", "status", "unit"} {
+		if _, ok := m[key]; !ok {
+			t.Errorf("marshalled: missing key %q in %v", key, m)
+		}
+	}
+	if got, want := m["status"], string(StatusNotFound); got != want {
+		t.Errorf("marshalled status = %v; want %q", got, want)
+	}
+	if got, want := m["unit"], string(nameRes.Unit); got != want {
+		t.Errorf("marshalled unit = %v; want %q", got, want)
+	}
+	for _, key := range []string{"head", "members", "candidates"} {
 		if _, ok := m[key]; ok {
 			t.Errorf("marshalled: unexpected key %q present in %v", key, m)
 		}
