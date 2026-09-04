@@ -54,7 +54,9 @@ batches:
     commit_sha: 76cd9978c35eef44ce2bb723d2dd3e19329b6c2e
     verify_baseline_failures: []
   - name: cli-pipelines
-    state: pending
+    state: running
+    implementer_session: 3aa42928-76bb-415d-9702-335d6d5347b0
+    start_sha: d5c0cdc91dbc5e5f5b758c4d75bae4d718e1c571
     verify_baseline_failures: []
   - name: evidence-and-status-gate
     state: pending
