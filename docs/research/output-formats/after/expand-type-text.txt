@@ -1,0 +1,16 @@
+$ quarry expand --text internal/logger#dualHandler
+
+internal/logger#dualHandler found
+internal/logger/logger.go:173-195 (sig 173-184) internal/logger#dualHandler: type dualHandler struct
+    dualHandler is the composite slog.Handler discussion.md's dual-handler-fan-out decision requires: Enabled is the OR of the stderr and durable halves' own Enabled, so an Info record is accepted by the composite even when the stderr half alone would reject it at the default Warn threshold (this is what lets an Info record reach the durable sink regardless of -v/-vv). Handle independently re-checks each half's own Enabled before delegating to it -- it never forwards to one half just because the composite's own Enabled, or the other half's Enabled, already returned true. Getting that independent re-check wrong would leak an Info record to stderr at the default Warn threshold, even though stderr's own Enabled(Info) is false there.
+
+internal/logger/logger.go:203-208 (sig 203-206) internal/logger#dualHandler.stderr: func (d dualHandler) stderr() slog.Handler
+    stderr resolves this dualHandler's stderr-half handler by reading the current package-level inner handler and applying this handler's accumulated WithAttrs/WithGroup transform on top of it.
+internal/logger/logger.go:210-214 (sig 210-212) internal/logger#dualHandler.Enabled: func (d dualHandler) Enabled(ctx context.Context, level slog.Level) bool
+    Enabled implements slog.Handler as the OR of the stderr and durable halves' own Enabled -- see the dualHandler doc comment for why this must be OR, not stderr's gate alone.
+internal/logger/logger.go:216-239 (sig 216-222) internal/logger#dualHandler.Handle: func (d dualHandler) Handle(ctx context.Context, record slog.Record) error
+    Handle implements slog.Handler by independently re-checking each half's own Enabled and delegating only to the halves that pass -- see the dualHandler doc comment for why this independent re-check, rather than a single shared gate, is load-bearing. record.Clone() is used for all but the last delegate because slog.Record documents that a Record passed to more than one Handler must be cloned for each use beyond the first, since its internal small-attrs storage may otherwise be shared.
+internal/logger/logger.go:241-250 (sig 241-244) internal/logger#dualHandler.WithAttrs: func (d dualHandler) WithAttrs(attrs []slog.Attr) slog.Handler
+    WithAttrs implements slog.Handler by extending both halves' accumulated transform with the same attrs, so a logger built via slog.Logger.With keeps fanning out to both halves rather than collapsing to one.
+internal/logger/logger.go:252-260 (sig 252-254) internal/logger#dualHandler.WithGroup: func (d dualHandler) WithGroup(name string) slog.Handler
+    WithGroup implements slog.Handler by extending both halves' accumulated transform with the same group, mirroring WithAttrs.

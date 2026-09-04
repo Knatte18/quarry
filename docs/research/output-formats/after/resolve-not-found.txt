@@ -1,0 +1,8 @@
+$ quarry resolve internal/logger#noSuchSymbol
+
+{
+  "target": "internal/logger#noSuchSymbol",
+  "id": "internal/logger#noSuchSymbol",
+  "status": "not_found",
+  "unit": "found"
+}

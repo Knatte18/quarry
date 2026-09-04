@@ -157,12 +157,23 @@ func writeSymbolLines(b *strings.Builder, fe FileEntry) {
 	}
 }
 
-// writeSymbolLine writes one symbol's line, identical in both the directory and file forms:
-// "<Start>-<End>", then " (sig <Start>-<SigEnd>)" only when SigEnd != 0 — the engine's documented
-// marker for a symbol with no body, such as a Go type alias, never line zero, since every real line
-// number is 1-based — then " <ID>: " + normalizeProse(Signature). When Doc is non-empty, a following
-// line of exactly four spaces then normalizeProse(Doc); when it is empty, no line at all.
+// writeSymbolLine writes one symbol's line, identical in both the directory and file forms: a
+// leading "<File>:" only when sym.File is non-empty, then "<Start>-<End>", then " (sig
+// <Start>-<SigEnd>)" only when SigEnd != 0 — the engine's documented marker for a symbol with no
+// body, such as a Go type alias, never line zero, since every real line number is 1-based — then
+// " <ID>: " + normalizeProse(Signature). When Doc is non-empty, a following line of exactly four
+// spaces then normalizeProse(Doc); when it is empty, no line at all.
+//
+// The file prefix is invisible to the existing table-of-contents view: inside a toc answer the
+// symbol's File field is always empty, because the symbol already sits in its own file's entry in
+// that view. Resolve and Expand entries span files, so their symbol lines need the prefix to stay
+// self-describing outside that context. This is one grammar with one implementation, not two: the
+// same writeSymbolLine serves both, and File's emptiness is what selects the toc-compatible form.
 func writeSymbolLine(b *strings.Builder, sym Symbol) {
+	if sym.File != "" {
+		b.WriteString(sym.File)
+		b.WriteString(":")
+	}
 	b.WriteString(strconv.Itoa(sym.Start))
 	b.WriteString("-")
 	b.WriteString(strconv.Itoa(sym.End))
@@ -183,6 +194,155 @@ func writeSymbolLine(b *strings.Builder, sym Symbol) {
 		b.WriteString(normalizeProse(sym.Doc))
 		b.WriteString("\n")
 	}
+}
+
+// RenderResolveText renders r as the lossless text view of one resolve result. Like RenderText, it
+// cannot fail and returns no error, and the returned string has no trailing whitespace on any line
+// and ends with exactly one "\n".
+//
+// RenderResolveText has three branches, checked in this order:
+//
+//  1. r.Status == "" — a pre-resolution rejection carried by the error field. One line: the target
+//     as given, then " error", then " "+r.Reason only when Reason is non-empty, then ": "+the
+//     normalised error string only when that normalised string is non-empty. An empty Reason
+//     degenerates the line to "<target> error: <message>"; an empty Error degenerates it to
+//     "<target> error" with no trailing colon or space — a shape the engine never produces, spelled
+//     only so an external caller's zero-ish value still satisfies the no-trailing-whitespace
+//     invariant this renderer promises for every input.
+//  2. r.ID != "" — a glyph target. On StatusNotFound, one line: the identifier, " not_found", then
+//     " (unit found)" or " (unit not_found)" only when the unit field is non-empty — the engine
+//     always sets it here, so the guard exists only to keep an external caller's empty-unit value
+//     from emitting a dangling space. On any other status, one line — the identifier, a space, the
+//     status word — followed by one symbol line per entry, in order: the symbols slice for found and
+//     multipart, the candidates slice for ambiguous.
+//  3. otherwise — a path target. One line: the target as given, a space, the status word. r.Dir is a
+//     pointer field; when it is nil — a shape the engine never produces for a found path, spelled for
+//     the same external-caller reason as branch 1's empty-error guard — line 1 is emitted alone.
+//     Otherwise, on found, the directory-form block for *r.Dir follows immediately, produced by
+//     joining dirBlocks(*r.Dir) with a newline, the same join RenderText's own directory form uses;
+//     on any other status nothing follows, because a path belongs to no unit.
+//
+// The directory form renders a file path target too: the engine answers a file target with its
+// enclosing directory's answer holding exactly one file entry, which the directory form renders
+// losslessly, so this renderer plumbs no separate file-versus-directory flag.
+func RenderResolveText(r ResolveResult) string {
+	var b strings.Builder
+	switch {
+	case r.Status == "":
+		b.WriteString(r.Target)
+		b.WriteString(" error")
+		if r.Reason != "" {
+			b.WriteString(" ")
+			b.WriteString(r.Reason)
+		}
+		if msg := normalizeProse(r.Error); msg != "" {
+			b.WriteString(": ")
+			b.WriteString(msg)
+		}
+		b.WriteString("\n")
+	case r.ID != "":
+		if r.Status == StatusNotFound {
+			b.WriteString(r.ID)
+			b.WriteString(" not_found")
+			if r.Unit != "" {
+				b.WriteString(" (unit ")
+				b.WriteString(string(r.Unit))
+				b.WriteString(")")
+			}
+			b.WriteString("\n")
+			break
+		}
+		b.WriteString(r.ID)
+		b.WriteString(" ")
+		b.WriteString(string(r.Status))
+		b.WriteString("\n")
+		entries := r.Symbols
+		if r.Status == StatusAmbiguous {
+			entries = r.Candidates
+		}
+		for _, sym := range entries {
+			writeSymbolLine(&b, sym)
+		}
+	default:
+		b.WriteString(r.Target)
+		b.WriteString(" ")
+		b.WriteString(string(r.Status))
+		b.WriteString("\n")
+		if r.Dir == nil {
+			break
+		}
+		if r.Status == StatusFound {
+			b.WriteString(strings.Join(dirBlocks(*r.Dir), "\n"))
+		}
+	}
+	return b.String()
+}
+
+// RenderExpandText renders a as the lossless text view of one expand answer. Like RenderText, it
+// cannot fail and returns no error, and the returned string has no trailing whitespace on any line
+// and ends with exactly one "\n". There is no text rendering of a *NotATypeError failure: that case
+// takes the error path and produces no payload, exactly as the existing rule that there is no text
+// rendering of a failure already covers.
+//
+// RenderExpandText has four branches:
+//
+//  1. StatusNotFound — one line: the identifier, a space, "not_found", a space, and "(unit found)"
+//     or "(unit not_found)"; nothing follows.
+//  2. StatusFound — one line: the identifier, a space, "found". a.Head is a pointer field; when it
+//     is nil — a shape the engine never produces for a found answer, spelled for the same
+//     external-caller reason as the resolve renderer's own nil-pointer guards — line 1 is emitted
+//     alone, with no head line and no members. Otherwise the head's own symbol line follows, then,
+//     only when Members is non-empty, one blank line — the same block separator dirBlocks already
+//     uses, so no new marker is invented — followed by one symbol line per member in order.
+//  3. StatusAmbiguous — one line: the identifier, a space, "ambiguous"; then one symbol line per
+//     candidate in order, with no blank line.
+//  4. otherwise — a fall-through for any other status value, including the empty status of a zero
+//     answer and the multipart status this answer type does not admit. One line: the identifier,
+//     then a space and the status word only when the status is non-empty — the guard that keeps a
+//     zero ExpandAnswer's empty identifier and empty status from leaving a dangling space, under the
+//     same no-trailing-whitespace invariant the other branches' guards serve. This branch is
+//     unreachable for any value the engine produces; it exists because this is an exported renderer
+//     an external caller can hand a zero value to, and the invariant must hold for every input.
+func RenderExpandText(a ExpandAnswer) string {
+	var b strings.Builder
+	switch a.Status {
+	case StatusNotFound:
+		b.WriteString(a.ID)
+		b.WriteString(" not_found")
+		if a.Unit == StatusFound {
+			b.WriteString(" (unit found)")
+		} else {
+			b.WriteString(" (unit not_found)")
+		}
+		b.WriteString("\n")
+	case StatusFound:
+		b.WriteString(a.ID)
+		b.WriteString(" found\n")
+		if a.Head == nil {
+			break
+		}
+		writeSymbolLine(&b, *a.Head)
+		if len(a.Members) > 0 {
+			b.WriteString("\n")
+			for _, m := range a.Members {
+				writeSymbolLine(&b, m)
+			}
+		}
+	case StatusAmbiguous:
+		b.WriteString(a.ID)
+		b.WriteString(" ambiguous\n")
+		for _, c := range a.Candidates {
+			writeSymbolLine(&b, c)
+		}
+	default:
+		b.WriteString(a.ID)
+		if a.Status != "" {
+			b.WriteString(" ")
+			b.WriteString(string(a.Status))
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // writeFileForm writes the file-form block: joinRel(a.Dir, fe.Name), then " (package <Package>,

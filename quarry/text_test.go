@@ -238,6 +238,203 @@ func TestRenderText_Symbols(t *testing.T) {
 	}
 }
 
+// TestRenderText_SymbolLine_EmptyFileRegressionGolden is a regression golden: it asserts that
+// rendering a directory answer whose symbols carry an empty file field — the toc view's own shape —
+// produces a byte-identical string to the one the pre-file-prefix implementation produced. The
+// expected string is written as a fixed literal, not as a comparison against a stored file, so the
+// card 4 file-prefix change cannot silently alter the toc view's own output.
+func TestRenderText_SymbolLine_EmptyFileRegressionGolden(t *testing.T) {
+	symbols := []Symbol{
+		{ID: "pkg#Fn", Start: 1, End: 5, SigEnd: 2, Signature: "func Fn()", Doc: "Fn does a thing."},
+		{ID: "pkg#Alias", Start: 7, End: 7, Signature: "type Alias = int"},
+	}
+	a := DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go", Symbols: &symbols}}}
+	want := "pkg, 1 file\na.go\n1-5 (sig 1-2) pkg#Fn: func Fn()\n    Fn does a thing.\n7-7 pkg#Alias: type Alias = int\n"
+	got := RenderText(a, false)
+	if got != want {
+		t.Errorf("RenderText() = %q; want %q", got, want)
+	}
+	assertNoTrailingWhitespaceAndOneNewline(t, got)
+}
+
+// TestRenderText_SymbolLine_FilePrefix asserts a symbol carrying a non-empty file field renders with
+// the "<file>:" prefix, covering both the with-signature-end and without-signature-end forms.
+func TestRenderText_SymbolLine_FilePrefix(t *testing.T) {
+	tests := []struct {
+		name string
+		sym  Symbol
+		want string
+	}{
+		{
+			"WithSigEnd",
+			Symbol{ID: "pkg#Fn", File: "pkg/a.go", Start: 1, End: 5, SigEnd: 2, Signature: "func Fn()"},
+			"pkg/a.go:1-5 (sig 1-2) pkg#Fn: func Fn()\n",
+		},
+		{
+			"WithoutSigEnd",
+			Symbol{ID: "pkg#Alias", File: "pkg/a.go", Start: 7, End: 7, Signature: "type Alias = int"},
+			"pkg/a.go:7-7 pkg#Alias: type Alias = int\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var b strings.Builder
+			writeSymbolLine(&b, tt.sym)
+			got := b.String()
+			if got != tt.want {
+				t.Errorf("writeSymbolLine() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRenderResolveText covers every branch of RenderResolveText's grammar, exercised in the same
+// order the grammar is spelled: the pre-resolution rejection branch, the glyph branch, and the path
+// branch, plus every totality guard that branch owns.
+func TestRenderResolveText(t *testing.T) {
+	sym1 := Symbol{ID: "pkg#Fn", Start: 1, End: 5, SigEnd: 2, Signature: "func Fn()"}
+	sym2 := Symbol{ID: "pkg#Fn2", Start: 7, End: 7, Signature: "func Fn2()"}
+
+	tests := []struct {
+		name string
+		r    ResolveResult
+		want string
+	}{
+		{
+			"RejectionWithReasonAndError",
+			ResolveResult{Target: "#bad", Error: "engine: bad glyph", Reason: "no_unit"},
+			"#bad error no_unit: engine: bad glyph\n",
+		},
+		{
+			"RejectionEmptyReason",
+			ResolveResult{Target: "#bad", Error: "engine: bad glyph"},
+			"#bad error: engine: bad glyph\n",
+		},
+		{
+			"RejectionEmptyError_TotalityGuard",
+			ResolveResult{Target: "#bad"},
+			"#bad error\n",
+		},
+		{
+			"GlyphNotFoundUnitFound",
+			ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusFound},
+			"pkg#Missing not_found (unit found)\n",
+		},
+		{
+			"GlyphNotFoundUnitNotFound",
+			ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusNotFound},
+			"pkg#Missing not_found (unit not_found)\n",
+		},
+		{
+			"GlyphNotFoundEmptyUnit_TotalityGuard",
+			ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound},
+			"pkg#Missing not_found\n",
+		},
+		{
+			"GlyphFound",
+			ResolveResult{Target: "pkg#Fn", ID: "pkg#Fn", Status: StatusFound, Symbols: []Symbol{sym1}},
+			"pkg#Fn found\n1-5 (sig 1-2) pkg#Fn: func Fn()\n",
+		},
+		{
+			"GlyphMultipart",
+			ResolveResult{Target: "pkg#init", ID: "pkg#init", Status: StatusMultipart, Symbols: []Symbol{sym1, sym2}},
+			"pkg#init multipart\n1-5 (sig 1-2) pkg#Fn: func Fn()\n7-7 pkg#Fn2: func Fn2()\n",
+		},
+		{
+			"GlyphAmbiguous",
+			ResolveResult{Target: "pkg#Fn", ID: "pkg#Fn", Status: StatusAmbiguous, Candidates: []Symbol{sym1, sym2}},
+			"pkg#Fn ambiguous\n1-5 (sig 1-2) pkg#Fn: func Fn()\n7-7 pkg#Fn2: func Fn2()\n",
+		},
+		{
+			"PathFound",
+			ResolveResult{Target: "pkg", Status: StatusFound, Dir: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
+			"pkg found\npkg, 1 file\na.go\n",
+		},
+		{
+			"PathFoundOneFileEntry",
+			ResolveResult{Target: "pkg/a.go", Status: StatusFound, Dir: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
+			"pkg/a.go found\npkg, 1 file\na.go\n",
+		},
+		{
+			"PathNotFound",
+			ResolveResult{Target: "missing", Status: StatusNotFound},
+			"missing not_found\n",
+		},
+		{
+			"PathFoundNilDir_TotalityGuard",
+			ResolveResult{Target: "pkg", Status: StatusFound},
+			"pkg found\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RenderResolveText(tt.r)
+			if got != tt.want {
+				t.Errorf("RenderResolveText() = %q; want %q", got, tt.want)
+			}
+			assertNoTrailingWhitespaceAndOneNewline(t, got)
+		})
+	}
+}
+
+// TestRenderExpandText covers every branch of RenderExpandText's grammar: not-found, found (with and
+// without members, and the nil-head totality guard), ambiguous, and the fall-through default branch.
+func TestRenderExpandText(t *testing.T) {
+	head := Symbol{ID: "pkg#Thing", Start: 1, End: 3, Signature: "type Thing struct{}"}
+	member := Symbol{ID: "pkg#Thing.Method", Start: 5, End: 5, Signature: "func (t Thing) Method()"}
+
+	tests := []struct {
+		name string
+		a    ExpandAnswer
+		want string
+	}{
+		{
+			"NotFoundUnitFound",
+			ExpandAnswer{ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusFound},
+			"pkg#Missing not_found (unit found)\n",
+		},
+		{
+			"NotFoundUnitNotFound",
+			ExpandAnswer{ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusNotFound},
+			"pkg#Missing not_found (unit not_found)\n",
+		},
+		{
+			"FoundWithMembers",
+			ExpandAnswer{ID: "pkg#Thing", Status: StatusFound, Head: &head, Members: []Symbol{member}},
+			"pkg#Thing found\n1-3 pkg#Thing: type Thing struct{}\n\n5-5 pkg#Thing.Method: func (t Thing) Method()\n",
+		},
+		{
+			"FoundNoMembers",
+			ExpandAnswer{ID: "pkg#Thing", Status: StatusFound, Head: &head},
+			"pkg#Thing found\n1-3 pkg#Thing: type Thing struct{}\n",
+		},
+		{
+			"FoundNilHead_TotalityGuard",
+			ExpandAnswer{ID: "pkg#Thing", Status: StatusFound},
+			"pkg#Thing found\n",
+		},
+		{
+			"Ambiguous",
+			ExpandAnswer{ID: "pkg#Thing", Status: StatusAmbiguous, Candidates: []Symbol{head, member}},
+			"pkg#Thing ambiguous\n1-3 pkg#Thing: type Thing struct{}\n5-5 pkg#Thing.Method: func (t Thing) Method()\n",
+		},
+		{
+			"ZeroValue_TotalityGuard",
+			ExpandAnswer{},
+			"\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RenderExpandText(tt.a)
+			if got != tt.want {
+				t.Errorf("RenderExpandText() = %q; want %q", got, tt.want)
+			}
+			assertNoTrailingWhitespaceAndOneNewline(t, got)
+		})
+	}
+}
+
 // TestRenderText_ProseNormalisation uses docs/rewrite-plan.md §4's own "placement" example as the
 // fixture: the one case the plan shows both sides of.
 func TestRenderText_ProseNormalisation(t *testing.T) {

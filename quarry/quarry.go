@@ -45,6 +45,40 @@ const (
 // caller can name it without importing internal/engine.
 const DepthAll = engine.DepthAll
 
+// ResolveResult is an alias for engine.ResolveResult, for the same reason DirAnswer is: Go enforces
+// the internal rule on import paths, not on types reached through an alias, so an external importer
+// can name the resolve verb's answer shape without importing internal/engine.
+type ResolveResult = engine.ResolveResult
+
+// ExpandAnswer is an alias for engine.ExpandAnswer, for the same reason DirAnswer is: it makes the
+// expand verb's answer shape nameable without an import of internal/engine.
+type ExpandAnswer = engine.ExpandAnswer
+
+// Status is an alias for engine.Status, the closed per-entry vocabulary both ResolveResult and
+// ExpandAnswer draw from, for the same reason DirAnswer is.
+type Status = engine.Status
+
+// NotATypeError is an alias for engine.NotATypeError, not a re-declaration, so that
+// errors.As(err, &notType) against *quarry.NotATypeError succeeds for a caller that never imports
+// the engine — the same transitivity argument ErrTargetNotFound's and ErrTargetOutsideRepo's own
+// doc comments make below for errors.Is.
+type NotATypeError = engine.NotATypeError
+
+// The four Status values a resolve or expand query ever emits, aliased from the engine so a caller
+// can name them without importing internal/engine.
+const (
+	// StatusFound marks exactly one matching declaration.
+	StatusFound = engine.StatusFound
+	// StatusNotFound marks no matching declaration.
+	StatusNotFound = engine.StatusNotFound
+	// StatusAmbiguous marks several different declarations matching, with nothing chosen between
+	// them.
+	StatusAmbiguous = engine.StatusAmbiguous
+	// StatusMultipart marks one symbol the language lets be declared in several places, with every
+	// part returned.
+	StatusMultipart = engine.StatusMultipart
+)
+
 // ErrTargetNotFound is the engine's own ErrTargetNotFound value, not a copy, so errors.Is stays
 // transitive across the facade: a caller checking errors.Is(err, quarry.ErrTargetNotFound) against
 // an error returned by (*Repo).TOC succeeds without ever importing internal/engine.
