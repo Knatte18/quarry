@@ -160,18 +160,33 @@ T4 stands on most directly is in that batch:
   ```
 
   The returned slice has exactly `len(targets)` elements and `result[i]` answers `targets[i]`. A
-  target repeated twice is answered twice. The returned `error` is reserved for a failure of the
-  call as a whole (an I/O error the walk could not attribute to one target); every per-target outcome
-  — including a malformed target — is expressed in that target's own `ResolveResult`.
+  target repeated twice is answered twice.
+
+  **The error boundary, stated exhaustively.** A `ResolveResult` expresses one of two things: a
+  resolution outcome (`Status`), or a *pre-resolution* rejection of the target string itself
+  (D8's `Error`/`Reason`). It never carries an engine failure. Every error from the engine other
+  than the sentinels D7 and D8 match by name — `ErrTargetNotFound` and `ErrTargetOutsideRepo` —
+  **fails the whole call**: `Resolve` returns a nil slice and that error, wrapped with the target
+  or unit it was reading. This covers a `symbolsOfUnit` or `unitDirs` read failure, an
+  `ignoreSet.extend` failure, and anything a future engine change adds.
 - Rationale: §8.1 is explicit that "All glyphs of a draft go in one `resolve` call", and the
   validator that makes the call has to map each answer back to the card that asked for it. A
   positional 1:1 slice makes that mapping total and free, and it is the only shape where a duplicate
   or a malformed target cannot silently vanish. Returning `error` for one bad glyph would throw away
   the other thirty-nine answers of a plan-validation call, which is the exact call the verb exists
   for.
+- Rationale for the error boundary: an engine failure is not an answer about a glyph, and dressing
+  one up as a per-target `Error` would put two unrelated meanings under one key — "this target is
+  not spellable" and "this machine could not read a directory". A validator reading the first as
+  the second would reject a card over a disk error. Failing the call is also the only disposition
+  that cannot silently under-report: a unit that failed to read would otherwise answer `not_found`
+  for every glyph in it, which a Delete card's done-check reads as success. Losing the other
+  answers is acceptable here precisely because an engine failure makes the whole answer
+  untrustworthy, unlike a malformed target, which taints only itself.
 - Rejected: one target per call (§5's whole grouping guarantee is about many targets at once, and
   §8.1 asks for one call); a `map[string]ResolveResult` keyed by target (loses argument order and
-  collapses duplicates); returning `error` on a malformed target (D8).
+  collapses duplicates); returning `error` on a malformed target (D8); a per-entry `Error` for a
+  unit-read failure (two meanings under one key, and a `not_found` that means "unreadable").
 
 ### D3 — The result types, and the status vocabulary as one closed type
 
@@ -297,6 +312,9 @@ T4 stands on most directly is in that batch:
     `Unit` absent.
   - `errors.Is(err, ErrTargetNotFound)` → `Status: not_found`, `Dir` absent, `Unit` absent.
   - `errors.Is(err, ErrTargetOutsideRepo)` → D8's error entry.
+  - any other error from `TOC` (an unreadable directory, a failed ignore-file read) → D2's error
+    boundary: it fails the whole `Resolve` call. `TOC`'s two sentinels are the only errors this
+    verb converts into an answer.
 - Rationale: §5 says a path target "answers with the file entry or directory answer and `found` or
   `not_found`", and §4 says a file query *is* a directory answer with one file entry and that "the
   file never repeats its parent's facts" — so a bare `FileEntry` would be an answer a consumer
@@ -323,7 +341,12 @@ T4 stands on most directly is in that batch:
   - a path target that `resolveTarget` rejects with `ErrTargetOutsideRepo` — `Error` is that error's
     message, `Reason` empty.
 
-  Neither aborts the call: the other results are answered normally.
+  Neither aborts the call: the other results are answered normally. **These two are the whole of
+  `Error`'s domain.** Both are rejections of the target *string*, decidable before anything is read,
+  which is why they are safe to report per entry — they say nothing about the repository and cannot
+  be mistaken for a fact about it. Every engine failure that happens *during* a read goes to D2's
+  error boundary and fails the call; the plan writer adds no third case here without a decision
+  changing D2 first.
 - Rationale: the four statuses are *resolution* outcomes — glyph.md §5's table is headed by what a
   declaration search found. A string that is not a glyph was never searched for, and calling it
   `not_found` would be exactly the guess §5 forbids ("Resolution never guesses ... no 'did you
@@ -408,9 +431,9 @@ T4 stands on most directly is in that batch:
   }
   ```
 
-  `Status` is `found`, `not_found` or `ambiguous`, decided by exactly D5's and D6's rules over the
-  matches for `target`, with `Unit` set on a miss by D10. `Head` and `Members` are populated only on
-  `found`; `Candidates` only on `ambiguous`.
+  `Status` is `found`, `not_found` or `ambiguous`, never `multipart` — D14's kind gate is what makes
+  the fourth value unreachable here, and D14 states the full disposition table. `Unit` is set on a
+  miss by D10. `Head` and `Members` are populated only on `found`; `Candidates` only on `ambiguous`.
 - Rationale: a caller that asks `expand` a question should not have to call `resolve` first to learn
   that the glyph is a typo or that two build-tagged types answer to it. Reusing the one `Status`
   type and the one set of rules costs a shared helper and means the two verbs can never disagree
@@ -422,11 +445,12 @@ T4 stands on most directly is in that batch:
   target, so there is no other answer to protect and no reason to move the failure into the payload;
   D8's whole argument is about not losing thirty-nine good answers, and it does not apply here.
   `toc` never takes a glyph and `expand` never takes a path — plan §5 states both.
-- `multipart` is unreachable for a Go type and is not special-cased: §5 says "a Go type never splits
-  (only `init` does)", and D5 already routes every non-`init` multi-match to `ambiguous`. When a
-  language with partial types arrives, that language's `expand` reads §5's C# rule ("the head is the
-  sum of the parts' own lines") and the status follows from the same shared helper. Stated in the
-  doc comment; no code.
+- `multipart` is unreachable in `ExpandAnswer` **by construction, not by luck**: D14's table sends
+  every match set with no type in it to `*NotATypeError`, which is where `<unit>#init` — the one Go
+  glyph D5 calls `multipart` — lands, however many declarations it has. §5's "a Go type never splits
+  (only `init` does)" is what makes the remaining type-only cases safe. When a language with partial
+  types arrives, that language's `expand` reads §5's C# rule ("the head is the sum of the parts' own
+  lines") and D14's table gains the row. Stated in the doc comment; no code.
 - Rejected: `Expand(g glyph.Glyph)` (T5b holds a string, and pre-parsing would put layer 1 in the
   caller for one verb and not the other); a bare `[]Symbol` return with the head first by convention
   (loses the status, and "the first element is the head" is the kind of positional contract §4's
@@ -500,8 +524,22 @@ T4 stands on most directly is in that batch:
   func (e *NotATypeError) Error() string // "engine: expand <id>: not a type, kind <kind>"
   ```
 
-  `Expand` returns it when the target resolves `found` to exactly one symbol whose `Kind` is not
-  `KindType`. It is returned as the `error`, not carried in `ExpandAnswer`.
+  It is returned as the `error`, not carried in `ExpandAnswer`. The full disposition of a match set
+  — the one place `Expand`'s outcome is decided, so D11's `Status` needs no second rule:
+
+  | matches | disposition |
+  |---|---|
+  | none | `not_found`, with `Unit` per D10 |
+  | one, `KindType` | `found`: `Head` and `Members` per D12/D13 |
+  | several, all `KindType` | `ambiguous`, `Candidates` set, no head — §5 says a Go type never splits, so several type declarations under one glyph are build-tag duplicates |
+  | one **or several**, none `KindType` | `*NotATypeError`, naming the kind of the first match in file-then-line order |
+  | several, mixed kinds | `ambiguous`, `Candidates` set — the glyph names a type *and* something else, and choosing between them is the silent pick §3 forbids |
+
+  Row four is the one that needs saying out loud: `expand <unit>#init` is a reachable call, and its
+  several declarations are exactly what a naive "unique `found` non-type match" gate would miss,
+  leaving `multipart` — a status `ExpandAnswer` does not admit — as the only thing D5 could hand
+  back. Keying the gate on *no match being a type* rather than on the match count closes that hole
+  and needs no `init` special case: the rule is about kinds, and `init`'s kind is `function`.
 - Rationale: §5 says "The glyph must name a type; on any other kind the answer is `ok: false` naming
   the kind." `ok` is the envelope's, and T3's D20 established the pattern for exactly this: the
   engine returns typed, `errors.Is`/`errors.As`-able sentinels and T5a/T5b map them to `ok`, a
@@ -509,9 +547,8 @@ T4 stands on most directly is in that batch:
   kind without parsing a string, which is the same argument D20 made for splitting
   `ErrTargetOutsideRepo` from `ErrTargetNotFound`.
 - The precedence is fixed and testable: a malformed target errors before anything is read; a
-  `not_found` or `ambiguous` is a payload answer with `ok: true` and never reaches this check
-  (there is no single kind to name); only a unique, `found`, non-type match produces
-  `*NotATypeError`.
+  zero-match or a mixed/type-only multi-match is a payload answer with `ok: true` and never reaches
+  this check; only a match set containing no type at all produces `*NotATypeError`.
 - Rejected: an `ok bool` + `kind` pair in `ExpandAnswer` (duplicates the envelope T5a owns inside
   the payload — the exact "`ok: true` inside data" clutter §4 lists); a bare sentinel `ErrNotAType`
   (cannot name the kind, which §5 requires); reporting it as a `not_found` (the symbol is there —
@@ -742,10 +779,19 @@ chose, not the layout its discussion assumed.
     head range, and the members are the `method_elem`s with the interface as owner. This is D12's
     shape assertion and the reason no discontiguous span is emitted.
 14. `expand` on a type with no members — `found`, `Head` set, `Members` absent.
-15. `expand` failures — a `func` glyph and a `const` glyph each give `*NotATypeError` with the right
-    `Kind`, asserted with `errors.As`; a malformed glyph and a target with no `#` each give an error
-    and no answer; a nonexistent name gives `not_found` with `Unit` set, not an error; a build-tag
-    pair of types gives `ambiguous` with candidates and no head.
+15. `expand` failures, one case per row of D14's table — a `func` glyph and a `const` glyph each
+    give `*NotATypeError` with the right `Kind`, asserted with `errors.As`; **the several-`init`
+    glyph gives `*NotATypeError` with `Kind: function`, not `multipart` and not an ambiguous
+    answer**, which is the case a match-count gate would miss; a build-tag pair of types gives
+    `ambiguous` with candidates and no head; a build-tag pair of *mixed* kinds (a type and a func
+    under one glyph) also gives `ambiguous`, not `*NotATypeError`; a malformed glyph and a target
+    with no `#` each give an error and no answer; a nonexistent name gives `not_found` with `Unit`
+    set, not an error.
+15a. The error boundary (D2/D7/D8) — a run-time `.scratch/` tree whose unit directory is made
+    unreadable mid-call, asserting `Resolve` returns a nil slice and a non-nil error rather than
+    `not_found` entries, and that the error is neither `ErrTargetNotFound` nor
+    `ErrTargetOutsideRepo`. If the host cannot make a directory unreadable (running as root, or a
+    filesystem without the permission bit), skip with the reason rather than weaken the assertion.
 16. Ordering (D15) — a unit whose files are not in lexicographic `os.ReadDir` order, asserting both
     verbs' outputs come back file-then-line regardless.
 
@@ -779,4 +825,6 @@ types to `answer.go`, and changes no walk rule, no `toc` answer and no existing 
 - **Q:** What are the ordering guarantees? **A:** [auto-pick] Resolve: argument order, 1:1; symbols and candidates by file then start line. Expand: head first, members by file then start line. **Why:** glyph.md §5 states the file-then-line rule as contract, and T3's D18 already made the engine the sorter; argument order is the only top-level order that keeps the 1:1 mapping usable.
 - **Q:** How is the 150 ms criterion asserted without flakiness? **A:** [auto-pick] Best-of-five minimum, env-gated with D17's pin rule, skipped under `-short`, with the twenty glyphs asserted `found` first and a `Benchmark` kept beside it. **Why:** the minimum measures the floor the criterion is about; asserting `found` first stops a drifted glyph list turning the criterion green by timing twenty misses.
 - **Q:** Which fixtures cover glyph.md §5? **A:** [auto-pick] Committed fixtures for `found`, `multipart`, build-tag `ambiguous` and both `not_found` shapes; run-time `.scratch/` trees for the collision `ambiguous` and the ignore-filter case. **Why:** §12's done-when makes the fixtures the deliverable, and the two exceptions are the shapes a committed tree provably cannot express — the same split T3 made, with the same helper.
+- **Q:** What does `expand <unit>#init`, with several `init` declarations, answer? **A:** [auto-pick, discussion-review r1 gap] `*NotATypeError` with `Kind: function`. D14's gate keys on *no match being a type*, not on the match count, and now carries the full five-row disposition table. **Why:** `init` is the one Go glyph D5 calls `multipart`, and `ExpandAnswer` does not admit that status; a unique-match gate would leave the case with no defined answer at all. Keying on kinds needs no `init` special case.
+- **Q:** Where does an I/O failure inside a `Resolve` call go — the entry or the call? **A:** [auto-pick, discussion-review r1 gap] The call: every engine error other than `ErrTargetNotFound` and `ErrTargetOutsideRepo` fails the whole call, and D8's per-entry `Error` stays closed to pre-resolution rejections of the target string. **Why:** a per-entry I/O error puts "unspellable target" and "unreadable directory" under one key, and a unit that failed to read would otherwise answer `not_found` for every glyph in it — which a Delete card's done-check reads as success.
 - **Q:** Does T4 amend `docs/glyph.md`? **A:** [auto-pick] No — two gaps are recorded in code comments and neither is closed. **Why:** T3 took the same position for the same reason: a single task changing the shared identifier contract is the coupling §7's ordering avoids, and both gaps should be decided against a repository that needs one.
