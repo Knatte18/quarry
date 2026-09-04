@@ -25,16 +25,15 @@ subject, and share one risk: a change to a T3 file. Both changes to T3 files are
 by construction and each is its own card so a reviewer sees it in isolation, and each of the three
 test artefacts is its own card and its own commit for the same reason.
 
-**Batch prerequisite: a pinned Loomyard checkout must be reachable before card 20 starts.** Cards 20,
-21 and 22 all measure against a checkout at the commit `loomyard_test.go`'s own pin names, and card 20
-reads its twenty glyph strings off it. Resolve it once, before card 20: read `LADDER_LOOMYARD_REPO`
-from the environment first; when it is unset, read simple key-equals-value lines from the gitignored
-`.scratch/ladder.env` beneath the repository root, the same file and the same precedence the ladder
-harness uses; when neither names a checkout at the pinned commit, locate one on the host and write its
-path into `.scratch/ladder.env`, which is gitignored and therefore carries no machine path into a
-tracked file. If no checkout at the pinned commit can be found at all, stop and report that as the
-blocker rather than inventing glyph strings — the list must be read off the real checkout or it is not
-a measurement, and no later card in this batch can be validated without it.
+**Batch prerequisite — an environment step, not a deliverable.** Cards 20, 21 and 22 all measure
+against a checkout at the commit `loomyard_test.go`'s own pin names, and card 20 reads its twenty
+glyph strings off it. The gate helper reads one thing and one thing only: the `LADDER_LOOMYARD_REPO`
+environment variable. So before card 20 starts, resolve a path to a checkout at the pinned commit and
+export it for every test run in this batch. Nothing is written and nothing is committed by this step —
+no file in this repository reads that path, and no tracked file may carry it. If no checkout at the
+pinned commit can be found on the host, stop and report that as the blocker rather than inventing
+glyph strings: the list must be read off the real checkout or it is not a measurement, and none of the
+three cards can be validated without it.
 
 ## Cards
 

@@ -148,8 +148,17 @@ and every card in this batch leaves the package building and the existing suite 
   `func matchesFor(symbols []Symbol, g glyph.Glyph) []Symbol` returns every symbol whose owner chain
   and name equal the glyph's, reusing the existing `sameOwner` helper, preserving the input order and
   therefore the file-then-line order `symbolsOfUnit` established. It is the filter `SpansOf` performs
-  inline today, lifted so both verbs share one copy; do not change `SpansOf` to call it, and do not
-  change `SpansOf` at all.
+  inline today, written once here so the two new verbs share one copy.
+
+  `SpansOf` keeps its own inline copy of that filter: do not change `SpansOf` to call `matchesFor`,
+  and do not change `SpansOf` at all. That leaves two implementations of one filter in this file, and
+  the duplication is deliberate rather than overlooked — record it in `matchesFor`'s own doc comment,
+  naming `SpansOf`'s inline loop as the second copy and stating both halves of the reason. First, this
+  task's scope permits exactly two edits to code T3 wrote for its own purposes, both named and both
+  elsewhere; a third, however behaviour-preserving, is a scope change and not this plan's to make.
+  Second, `SpansOf` is what T3's round trip is written against, so a refactor of it would put a test
+  this task must keep passing untouched onto code this task rewrote. Whether the two collapse into one
+  is a question for whichever later task next edits `SpansOf` for its own reasons.
 
   `func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, error)` answers one
   glyph target:
@@ -362,7 +371,10 @@ and every card in this batch leaves the package building and the existing suite 
   unit directory does not exist at all, asserting `Status` equal to `StatusNotFound` with `Unit` equal
   to `StatusNotFound`. Marshal one result of each kind with `encoding/json` and assert on the emitted
   JSON, not only on the struct: the `unit` key must be spelled with the values `found` and
-  `not_found`, and `id`, `symbols`, `candidates`, `dir`, `error` and `reason` must all be absent. That
+  `not_found`; `target`, `id` and `status` must all be present, `id` carrying the glyph's own string
+  form; and `symbols`, `candidates`, `dir`, `error` and `reason` must all be absent. `id` is present on
+  every successfully parsed glyph target, a miss included — card 7 sets it the moment the parse
+  succeeds, and its `omitempty` exists for the path branch, which has no glyph, not for the miss. That
   marshalled assertion is what pins docs/glyph.md §5's spelling and every `omitempty` at once.
 
   Write each test's doc comment in this file's established register, naming what it asserts and why

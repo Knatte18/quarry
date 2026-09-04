@@ -165,8 +165,18 @@ invite branching on a condition that must never occur.
   inside the head range by file and line. Document that only the glyph's own unit is searched: the
   external test unit is a different unit and cannot declare methods on this unit's types. Document, on
   the head, why the span is read from the head fields rather than re-derived: for Go the two pairs are
-  identical so nothing observable changes today, and for the first language whose head is a strict
-  subset of its declaration `expand` needs no edit. Document that docs/rewrite-plan.md's "the class
+  identical, so nothing observable changes today, and the head field is what a language whose head is a
+  strict subset of its declaration would read instead of re-deriving the rule here.
+
+  Record, at that same substitution, this task's fourth contract gap, closed by nobody: substituting
+  `Start` and `End` with the head span means the type's *full* declaration span is not recoverable from
+  an `ExpandAnswer` for a language whose head is a strict subset — while docs/rewrite-plan.md's
+  three-queries section says the whole class is the type symbol's own `start`–`end` and "is available,
+  never the default". For Go the two spans are identical, so nothing is lost and the gap is
+  unreachable; the first language whose head is a strict subset has to decide whether `expand` carries
+  both spans, and that decision belongs to that language's task, against a repository that needs it.
+  Do not add a second span pair to the answer now for a case no test can reach. Document that
+  docs/rewrite-plan.md's "the class
   span minus its member spans" — its phrase, in the three-queries section, not docs/glyph.md's —
   describes what a reader ends up reading, not arithmetic this verb performs —
   for a Go struct the subtraction is empty, and for an interface the answer already carries every
@@ -178,8 +188,10 @@ invite branching on a condition that must never occur.
 ### Card 16: expand's found answers
 
 - **Context:**
+  - `glyph/glyph.go`
   - `internal/engine/answer.go`
   - `internal/engine/expand.go`
+  - `internal/engine/resolve.go`
   - `internal/engine/resolve_test.go`
   - `internal/engine/testdata/glyphs/decls.go`
   - `internal/engine/testdata/glyphs/iface.go`
