@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-04T05:34:45Z'
+discussion-fix-r1  '2026-09-04T05:56:58Z'
 ```
