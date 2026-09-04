@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r4
+phase: plan-review-r5
 slug: facade-cli-resolve-expand
 branch: facade-cli-resolve-expand
 plan: _mill/plan
@@ -28,4 +28,5 @@ plan-review-r3  '2026-09-04T09:27:35Z'
 plan-fix-r3  '2026-09-04T09:28:56Z'
 plan-review-r4  '2026-09-04T09:35:28Z'
 plan-fix-r4  '2026-09-04T09:36:28Z'
+plan-review-r5  '2026-09-04T09:42:50Z'
 ```
