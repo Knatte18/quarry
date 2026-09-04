@@ -381,46 +381,82 @@ func runCellRepetition(
 		return repOutcome{}, err
 	}
 
-	// The measured-invocation attempt loop: an infrastructure failure or a formatting miss renames
-	// the repetition directory away and retries, up to MaxAttempts, after which the cell is recorded
-	// incomplete and the loop moves on to the next cell without aborting the run.
+	// The measured-invocation attempt loop: an infrastructure failure, a formatting miss, or a
+	// granted server that never connected renames the repetition directory away and retries, up to
+	// MaxAttempts, after which the cell is recorded incomplete and the loop moves on to the next cell
+	// -- unless, per the connectFailures check below, every one of those attempts failed to connect
+	// the server, which aborts the whole run instead.
 	var (
 		transcript  *Transcript
 		answerText  string
 		maxTurnsHit bool
 	)
+	connectFailures := 0
 	for {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return repOutcome{}, err
 		}
 
 		t, invokeErr := invokeMeasuredProcess(ctx, opts, l, cfg, prompt, dest, mcpConfigPath, dir)
+		var serverFinding *Finding
+		accepted := false
 		if invokeErr == nil && t.Result != nil && !t.Result.IsError {
-			maxTurnsHit = t.Result.TerminalReason == maxTurnsTerminalReason
-			if maxTurnsHit {
-				transcript = t
-				break
+			// check (e): a granted cell whose server did not connect measured a toolless run --
+			// caught here, against the candidate transcript, before this attempt is accepted and the
+			// loop breaks. A control cell is never this check's concern, matching how the blinding
+			// checks are gated by IsControl at their own call site.
+			if !cfg.IsControl() {
+				serverFinding = CheckServerConnected(t.Init, l.ServerName())
 			}
-			text := finalAssistantText(t.Records)
-			_, inner, extractErr := ExtractFencedJSON(text, "last")
-			if extractErr == nil {
-				var probe map[string]any
-				if json.Unmarshal([]byte(inner), &probe) == nil {
+			if serverFinding == nil {
+				maxTurnsHit = t.Result.TerminalReason == maxTurnsTerminalReason
+				if maxTurnsHit {
 					transcript = t
-					answerText = inner
-					break
+					accepted = true
+				} else {
+					text := finalAssistantText(t.Records)
+					_, inner, extractErr := ExtractFencedJSON(text, "last")
+					if extractErr == nil {
+						var probe map[string]any
+						if json.Unmarshal([]byte(inner), &probe) == nil {
+							transcript = t
+							answerText = inner
+							accepted = true
+						}
+					}
 				}
+			}
+		}
+		if accepted {
+			break
+		}
+
+		if serverFinding != nil {
+			// Persist the finding into the attempt directory, before InvalidateRep renames it away --
+			// this path never reaches writeCompleteState, so the attempt's own directory is the only
+			// place left for the finding to survive.
+			connectFailures++
+			if err := writeServerConnectFailure(dir, cfg.ID, rep, l.ServerName(), serverFinding); err != nil {
+				return repOutcome{}, err
 			}
 		}
 
 		// Either an infrastructure failure (non-zero exit, unparseable stream, or an error flag in
-		// the result record) or a formatting miss (a missing or undecodable fenced answer) --
-		// invalidate this attempt and retry up to the ceiling.
+		// the result record), a formatting miss (a missing or undecodable fenced answer), or a
+		// granted server that did not connect -- invalidate this attempt and retry up to the ceiling.
 		attempts, invalidateErr := InvalidateRep(dir)
 		if invalidateErr != nil {
 			return repOutcome{}, invalidateErr
 		}
 		if attempts >= MaxAttempts {
+			if connectFailures == attempts {
+				// Every attempt failed to connect the same server: a configuration or environment
+				// fault, not bad luck, and the next repetition would reproduce it at the cost of
+				// three more measured calls. Stop the whole invocation here instead, bounding the
+				// blast radius at MaxAttempts calls rather than MaxAttempts times every remaining
+				// repetition.
+				return repOutcome{incomplete: true, abortRun: true}, nil
+			}
 			return repOutcome{incomplete: true}, nil
 		}
 	}
@@ -542,6 +578,21 @@ func runCellRepetition(
 	}
 
 	return repOutcome{}, nil
+}
+
+// writeServerConnectFailure writes finding's message, alongside the cell id, repetition number and
+// expected server name, to dir/ServerConnectFailureFile -- called immediately before InvalidateRep
+// renames dir away, so the reason survives at <root>/raw/<cell>/<rep>.invalid-<k>/ after the rename.
+func writeServerConnectFailure(dir, cellID string, rep int, serverName string, finding *Finding) error {
+	content := fmt.Sprintf(
+		"cell: %s\nrepetition: %d\nexpected_server: %s\n%s\n",
+		cellID, rep, serverName, finding.Message,
+	)
+	path := filepath.Join(dir, ServerConnectFailureFile)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write server connect failure %s: %w", path, err)
+	}
+	return nil
 }
 
 // invokeMeasuredProcess runs the measured claude process for one cell-and-repetition pair through the

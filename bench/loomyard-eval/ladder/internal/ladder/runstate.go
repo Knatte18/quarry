@@ -30,6 +30,13 @@ const (
 	RunStateFile = "run.json"
 )
 
+// ServerConnectFailureFile is the file name run.go writes CheckServerConnected's finding under, into
+// the attempt directory, immediately before InvalidateRep renames it away. It is not one of the six
+// per-repetition file names above: it exists only inside a discarded attempt directory, never inside
+// a completed repetition's own directory, since InvalidateRep -- unlike the blinding-failed path --
+// renames the directory it lives in rather than leaving it in place.
+const ServerConnectFailureFile = "server_connect_failure.txt"
+
 // MaxAttempts is the ceiling on how many times one repetition is retried -- shared by the
 // invalid-repetition rename this file implements and the scorer-only retry run.go implements -- so
 // the two retry paths never drift to different limits.

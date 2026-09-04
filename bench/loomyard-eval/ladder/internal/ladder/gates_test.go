@@ -278,6 +278,81 @@ func TestCheckGrantedToolUsed(t *testing.T) {
 	}
 }
 
+func TestCheckServerConnected(t *testing.T) {
+	tests := []struct {
+		name        string
+		init        *SessionInit
+		server      string
+		wantFinding bool
+	}{
+		{
+			name:        "GrantedCell_ServerConnected_NoFinding",
+			init:        &SessionInit{MCPServers: []MCPServerStatus{{Name: "quarry", Status: "connected"}}},
+			server:      "quarry",
+			wantFinding: false,
+		},
+		{
+			name:        "GrantedCell_ServerOtherStatus_Finding",
+			init:        &SessionInit{MCPServers: []MCPServerStatus{{Name: "quarry", Status: "failed"}}},
+			server:      "quarry",
+			wantFinding: true,
+		},
+		{
+			name:        "GrantedCell_ServerAbsentFromList_Finding",
+			init:        &SessionInit{MCPServers: []MCPServerStatus{{Name: "other", Status: "connected"}}},
+			server:      "quarry",
+			wantFinding: true,
+		},
+		{
+			name:        "GrantedCell_NilInit_Finding",
+			init:        nil,
+			server:      "quarry",
+			wantFinding: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CheckServerConnected(tt.init, tt.server)
+			if tt.wantFinding {
+				if got == nil {
+					t.Fatalf("CheckServerConnected() = nil, want a finding")
+				}
+				if got.Gate != "server_connected" {
+					t.Errorf("CheckServerConnected() finding.Gate = %q, want %q", got.Gate, "server_connected")
+				}
+				if !strings.Contains(got.Message, tt.server) {
+					t.Errorf("CheckServerConnected() finding.Message = %q, want it to name the expected server %q", got.Message, tt.server)
+				}
+			} else if got != nil {
+				t.Errorf("CheckServerConnected() = %+v, want nil", got)
+			}
+		})
+	}
+
+	t.Run("NilInitAndServerAbsent_MessagesAreDistinct", func(t *testing.T) {
+		nilInit := CheckServerConnected(nil, "quarry")
+		absent := CheckServerConnected(&SessionInit{}, "quarry")
+		if nilInit == nil || absent == nil {
+			t.Fatalf("CheckServerConnected() = %+v, %+v; want two findings", nilInit, absent)
+		}
+		if nilInit.Message == absent.Message {
+			t.Errorf("nil-init finding and server-absent finding carry the same message %q; want them worded distinctly", nilInit.Message)
+		}
+	})
+
+	// A control cell -- an empty allowed list -- is never this check's own concern: the predicate
+	// keeping a control cell out belongs to the caller, matching how the blinding checks are gated by
+	// IsControl at the call site rather than inside the check. This case documents that contract
+	// without asserting caller-side gating, which run.go's own tests cover.
+	t.Run("ControlCell_CallerGatesNotTheCheckItself", func(t *testing.T) {
+		cfg := Config{ID: "a0-none", Allowed: nil}
+		if !cfg.IsControl() {
+			t.Fatalf("Config{Allowed: nil}.IsControl() = false, want true")
+		}
+	})
+}
+
 func TestCheckWorktreeDirtied(t *testing.T) {
 	if got := CheckWorktreeDirtied(""); got != nil {
 		t.Errorf("CheckWorktreeDirtied(\"\") = %+v, want nil", got)
