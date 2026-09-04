@@ -1,6 +1,6 @@
-// golang.go implements the Go Strategy: function, method, and type extraction, and the Go header,
-// generated-file, and test-file rules. It registers itself under the canonical language name "go"
-// from this file's own init.
+// golang.go implements the Go Strategy: function, method, type, const, and var extraction, and the
+// Go header, generated-file, and test-file rules. It registers itself under the canonical language
+// name "go" from this file's own init.
 
 package engine
 
@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
+
+	"github.com/Knatte18/quarry/glyph"
 )
 
 // goStrategy implements Strategy for Go source parsed by the pinned tree-sitter-go v0.25.0 grammar.
@@ -22,46 +24,85 @@ func (goStrategy) Language() string {
 	return "go"
 }
 
+// goBlank reports whether name is the blank identifier "_". A blank-named declaration names
+// nothing a plan could ever target, and giving every blank declaration in a package the one glyph
+// its bare name would produce would collapse them the way func init's shared id does, but without
+// init's defined multipart meaning. docs/glyph.md's identifier contract is silent on this point;
+// excluding the blank identifier from every kind this strategy extracts is quarry's own choice,
+// made so that every emitted id stays addressable. Every builder in this file that can see a
+// blank-named declaration — a function, a method, a type, a const, or a var — checks this before
+// building a Symbol for it.
+func goBlank(name string) bool {
+	return name == "_"
+}
+
 // Symbols implements Strategy. It iterates the direct children of the source_file root in source
-// order and handles exactly three child kinds — function_declaration, method_declaration, and
-// type_declaration — ignoring every other child. It never descends into a "block", so a
-// type_declaration or func literal nested inside a function body is never listed.
-func (goStrategy) Symbols(root *ts.Node, src []byte) []Symbol {
+// order and handles five child kinds — function_declaration, method_declaration, type_declaration,
+// const_declaration, and var_declaration — ignoring every other child. It never descends into a
+// "block", so a type_declaration or func literal nested inside a function body is never listed.
+func (goStrategy) Symbols(unit string, root *ts.Node, src []byte) []Symbol {
 	symbols := make([]Symbol, 0)
 	for i := uint(0); i < root.ChildCount(); i++ {
 		child := root.Child(i)
 		switch child.Kind() {
 		case "function_declaration":
-			symbols = append(symbols, goFunctionSymbol(child, src))
+			if sym, ok := goFunctionSymbol(unit, child, src); ok {
+				symbols = append(symbols, sym)
+			}
 		case "method_declaration":
-			symbols = append(symbols, goMethodSymbol(child, src))
+			if sym, ok := goMethodSymbol(unit, child, src); ok {
+				symbols = append(symbols, sym)
+			}
 		case "type_declaration":
-			symbols = append(symbols, goTypeSymbols(child, src)...)
+			symbols = append(symbols, goTypeSymbols(unit, child, src)...)
+		case "const_declaration":
+			symbols = append(symbols, goConstSymbols(unit, child, src)...)
+		case "var_declaration":
+			symbols = append(symbols, goVarSymbols(unit, child, src)...)
 		}
 	}
 	return symbols
 }
 
-// goFunctionSymbol builds the KindFunction Symbol for a function_declaration node.
-func goFunctionSymbol(decl *ts.Node, src []byte) Symbol {
-	body := decl.ChildByFieldName("body")
+// goFunctionSymbol builds the KindFunction Symbol for a function_declaration node, or reports ok
+// == false for a blank-named one — see goBlank. Several func init() in one package all carry the
+// one id "<unit>#init" and are listed separately with their own spans: that falls out of building
+// the glyph from the name alone, with no dedup and no special case for "init".
+func goFunctionSymbol(unit string, decl *ts.Node, src []byte) (sym Symbol, ok bool) {
 	name := NodeText(decl.ChildByFieldName("name"), src)
-	return goDeclSymbol(KindFunction, name, "", decl, body, src)
+	if goBlank(name) {
+		return Symbol{}, false
+	}
+	body := decl.ChildByFieldName("body")
+	return goDeclSymbol(KindFunction, unit, nil, name, decl, body, src), true
 }
 
-// goMethodSymbol builds the KindMethod Symbol for a method_declaration node. Owner is the receiver's
-// type name, read from the receiver field's parameter_declaration's type field, with a leading "*"
-// stripped when that type is a pointer_type — so a "*T" receiver yields "T".
-func goMethodSymbol(decl *ts.Node, src []byte) Symbol {
-	body := decl.ChildByFieldName("body")
+// goMethodSymbol builds the KindMethod Symbol for a method_declaration node, or reports ok == false
+// for a blank-named one — see goBlank. Owner is the receiver's bare type name, read from the
+// receiver field's parameter_declaration's type field via goReceiverTypeName.
+func goMethodSymbol(unit string, decl *ts.Node, src []byte) (sym Symbol, ok bool) {
 	name := NodeText(decl.ChildByFieldName("name"), src)
+	if goBlank(name) {
+		return Symbol{}, false
+	}
+	body := decl.ChildByFieldName("body")
 	owner := goReceiverTypeName(decl.ChildByFieldName("receiver"), src)
-	return goDeclSymbol(KindMethod, name, owner, decl, body, src)
+	return goDeclSymbol(KindMethod, unit, []string{owner}, name, decl, body, src), true
 }
 
 // goReceiverTypeName extracts the bare receiver type name from a method's receiver field
 // (a parameter_list holding exactly one parameter_declaration), stripping a leading "*" when the
-// declared type is a pointer_type.
+// declared type is a pointer_type, and — after that unwrap — stripping a generic receiver's type
+// parameters when the declared type is a generic_type.
+//
+// Type parameters are not part of a glyph (docs/glyph.md §3: "Box[T]" is "Box", since Go does not
+// allow the two to coexist), so "func (b *Box[T]) M()" must yield the owner "Box", never "Box[T]" —
+// the latter's "[" and "]" would make glyph.Parse reject the resulting id with a type-parameters
+// reason. A generic_type's own "type" field is exactly that bare identifier, so this function takes
+// it directly rather than the generic_type's whole text. This is the one place in the Go strategy
+// this stripping is applied explicitly: a type's own declared *name* (goSpecChild's target, for
+// instance) is already bare wherever it appears, so only a receiver's reference to that name — which
+// spells out the type parameters again — needs unwrapping.
 func goReceiverTypeName(receiver *ts.Node, src []byte) string {
 	for i := uint(0); i < receiver.NamedChildCount(); i++ {
 		param := receiver.NamedChild(i)
@@ -72,7 +113,10 @@ func goReceiverTypeName(receiver *ts.Node, src []byte) string {
 		if typeNode.Kind() == "pointer_type" {
 			// A pointer_type's named child is the pointee type; NodeText on the pointer_type itself
 			// would keep the leading "*", which the Owner field must not carry.
-			return NodeText(typeNode.NamedChild(0), src)
+			typeNode = typeNode.NamedChild(0)
+		}
+		if typeNode.Kind() == "generic_type" {
+			return NodeText(typeNode.ChildByFieldName("type"), src)
 		}
 		return NodeText(typeNode, src)
 	}
@@ -81,21 +125,22 @@ func goReceiverTypeName(receiver *ts.Node, src []byte) string {
 
 // goDeclSymbol builds the Symbol shared by function_declaration and method_declaration extraction:
 // docstring and range come from CommentBlockAbove, and the signature and sigend come from the
-// shared node helpers with bodyOnSignatureLine = true, since Go always puts the body's opening "{"
-// on the signature's own last line.
-func goDeclSymbol(kind Kind, name, owner string, decl, body *ts.Node, src []byte) Symbol {
+// shared node helpers. owner is nil for a package-level name and a one-element slice naming the
+// receiver's bare type for a method — the same rule docs/glyph.md §3 states for the Go member form.
+func goDeclSymbol(kind Kind, unit string, owner []string, name string, decl, body *ts.Node, src []byte) Symbol {
 	docComment, raw := CommentBlockAbove(decl, src)
 	start, _ := Line(decl)
 	if docComment != nil {
 		start, _ = Line(docComment)
 	}
 	_, end := Line(decl)
+	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Owner: owner, Name: name}
 	return Symbol{
+		Glyph:     g,
+		ID:        g.String(),
 		Kind:      kind,
-		Name:      name,
-		Owner:     owner,
 		Signature: SignatureCut(decl, body, src),
-		Docstring: StripComment(raw, "//"),
+		Doc:       StripComment(raw, "//"),
 		Start:     start,
 		SigEnd:    SigEnd(decl, body),
 		End:       end,
@@ -104,7 +149,9 @@ func goDeclSymbol(kind Kind, name, owner string, decl, body *ts.Node, src []byte
 
 // goTypeSymbols builds the KindType Symbol(s) for one type_declaration node, covering both the
 // ungrouped ("type X int") and grouped ("type ( ... )") source shapes with one rule rather than a
-// branch per shape.
+// branch per shape, and — for each type spec whose declared type is a named interface — the
+// KindMethod Symbol(s) for that interface's own method_elem members, via
+// goInterfaceMethodSymbols.
 //
 // The two shapes are distinguished by the presence of a literal "(" child of decl, never by
 // counting spec children: "type ( X int )" is legal Go with a single spec, and a spec-count test
@@ -112,10 +159,15 @@ func goDeclSymbol(kind Kind, name, owner string, decl, body *ts.Node, src []byte
 // the whole "type (\n\tX int\n)" block with the group's range instead of the spec's. Verified against
 // the pinned tree-sitter-go v0.25.0: a grouped declaration always has a literal "(" child and an
 // ungrouped one never does, whatever the spec count.
-func goTypeSymbols(decl *ts.Node, src []byte) []Symbol {
+func goTypeSymbols(unit string, decl *ts.Node, src []byte) []Symbol {
 	if !goDeclIsGrouped(decl) {
 		spec := goSpecChild(decl)
-		return []Symbol{goUngroupedTypeSymbol(decl, spec, src)}
+		sym, ok := goUngroupedTypeSymbol(unit, decl, spec, src)
+		if !ok {
+			return nil
+		}
+		symbols := []Symbol{sym}
+		return append(symbols, goInterfaceMethodSymbols(unit, sym.Glyph.Name, spec, src)...)
 	}
 	symbols := make([]Symbol, 0, decl.NamedChildCount())
 	for i := uint(0); i < decl.NamedChildCount(); i++ {
@@ -123,7 +175,65 @@ func goTypeSymbols(decl *ts.Node, src []byte) []Symbol {
 		if spec.Kind() != "type_spec" && spec.Kind() != "type_alias" {
 			continue
 		}
-		symbols = append(symbols, goGroupedTypeSymbol(spec, src))
+		sym, ok := goGroupedTypeSymbol(unit, spec, src)
+		if !ok {
+			continue
+		}
+		symbols = append(symbols, sym)
+		symbols = append(symbols, goInterfaceMethodSymbols(unit, sym.Glyph.Name, spec, src)...)
+	}
+	return symbols
+}
+
+// goInterfaceMethodSymbols returns one KindMethod Symbol per method_elem directly inside typeSpec's
+// declared type, owned by ownerName — the enclosing interface's own name — but only when typeSpec's
+// "type" field is itself an interface_type; every other typeSpec (a struct, an alias, a defined
+// scalar) contributes nothing, so every caller can call this unconditionally once per type symbol.
+//
+// Only the interface named by a file-scope type_spec or type_alias is ever descended into this way:
+// this function's callers, goTypeSymbols' two branches, only ever hand it the interface_type that is
+// such a spec's own "type" field child, never one reached by descending into a struct field, a
+// parameter, a return type, a var, or a generic constraint. An anonymous interface_type in any of
+// those positions is therefore never reached from here and never contributes a symbol — it has no
+// type name to own its methods, and docs/glyph.md's identifier contract excludes struct fields and
+// local declarations outright. Without this bound the walk would emit owner-less or wrongly-owned
+// glyphs for a method that was never actually the named interface's own, and the round trip — two
+// readings of one walk — cannot catch that kind of mistake.
+//
+// An embedded interface (Embedded, or an inline anonymous one) is a type_elem, not a method_elem, so
+// it is excluded by the child-kind switch below falling out naturally rather than by a special case:
+// the embedded name is not itself a member of the embedder.
+func goInterfaceMethodSymbols(unit, ownerName string, typeSpec *ts.Node, src []byte) []Symbol {
+	typeNode := typeSpec.ChildByFieldName("type")
+	if typeNode == nil || typeNode.Kind() != "interface_type" {
+		return nil
+	}
+	var symbols []Symbol
+	for i := uint(0); i < typeNode.ChildCount(); i++ {
+		elem := typeNode.Child(i)
+		if elem.Kind() != "method_elem" {
+			continue
+		}
+		name := NodeText(elem.ChildByFieldName("name"), src)
+		if goBlank(name) {
+			continue
+		}
+		docComment, raw := CommentBlockAbove(elem, src)
+		start, _ := Line(elem)
+		if docComment != nil {
+			start, _ = Line(docComment)
+		}
+		_, end := Line(elem)
+		g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Owner: []string{ownerName}, Name: name}
+		symbols = append(symbols, Symbol{
+			Glyph:     g,
+			ID:        g.String(),
+			Kind:      KindMethod,
+			Signature: SignatureCut(elem, nil, src),
+			Doc:       StripComment(raw, "//"),
+			Start:     start,
+			End:       end,
+		})
 	}
 	return symbols
 }
@@ -153,11 +263,24 @@ func goSpecChild(decl *ts.Node) *ts.Node {
 	return nil
 }
 
-// goUngroupedTypeSymbol builds the Symbol for an ungrouped type_declaration's single spec. Its
-// Signature and range are computed from decl, not from spec: Signature is cut from decl's own first
-// byte so the emitted text carries the "type" keyword, and the docstring walk starts at decl, since
-// decl — not spec — is the node with source_file siblings.
-func goUngroupedTypeSymbol(decl, spec *ts.Node, src []byte) Symbol {
+// goUngroupedTypeSymbol builds the Symbol for an ungrouped type_declaration's single spec, or
+// reports ok == false for a blank-named one — see goBlank. Its Signature and range are computed
+// from decl, not from spec: Signature is cut from decl's own first byte so the emitted text carries
+// the "type" keyword, and the docstring walk starts at decl, since decl — not spec — is the node
+// with source_file siblings.
+//
+// HeadStart and HeadEnd are set to this same Start and End, doc block included, for every Go type
+// alike — a struct, an interface, a defined scalar — because the later expand verb renders a type's
+// head by omitting the lines its own member symbols cover, and subtracting those spans from the
+// head range is that consumer's job, not this extractor's. An interface is the one Go type whose
+// declaration contains its own members (goInterfaceMethodSymbols' method symbols), so for an
+// interface specifically the member spans genuinely do lie inside this head range; for every other
+// type they simply have no member spans to subtract.
+func goUngroupedTypeSymbol(unit string, decl, spec *ts.Node, src []byte) (sym Symbol, ok bool) {
+	name := NodeText(spec.ChildByFieldName("name"), src)
+	if goBlank(name) {
+		return Symbol{}, false
+	}
 	body := goTypeBody(spec)
 	docComment, raw := CommentBlockAbove(decl, src)
 	start, _ := Line(decl)
@@ -165,26 +288,37 @@ func goUngroupedTypeSymbol(decl, spec *ts.Node, src []byte) Symbol {
 		start, _ = Line(docComment)
 	}
 	_, end := Line(decl)
+	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
 	return Symbol{
+		Glyph:     g,
+		ID:        g.String(),
 		Kind:      KindType,
-		Name:      NodeText(spec.ChildByFieldName("name"), src),
 		Signature: SignatureCut(decl, body, src),
-		Docstring: StripComment(raw, "//"),
+		Doc:       StripComment(raw, "//"),
 		Start:     start,
 		SigEnd:    SigEnd(decl, body),
 		End:       end,
-	}
+		HeadStart: start,
+		HeadEnd:   end,
+	}, true
 }
 
-// goGroupedTypeSymbol builds the Symbol for one spec inside a grouped "type ( ... )" declaration.
-// Its Signature and range are computed from spec itself, not from the enclosing type_declaration:
-// the grammar makes each spec's own doc comment a comment child of the type_declaration, interleaved
-// with the spec siblings, so CommentBlockAbove's prev-sibling walk works unchanged one level down
-// from the ungrouped case. The rendered signature is "type " prepended to the spec's own signature
-// text, so the grouped and ungrouped forms produce identical output for identical types. A comment
-// on the "type (" line itself is a prev-sibling of decl, not of any spec, so it is never picked up
-// here — that is this rule falling out naturally, not a special case.
-func goGroupedTypeSymbol(spec *ts.Node, src []byte) Symbol {
+// goGroupedTypeSymbol builds the Symbol for one spec inside a grouped "type ( ... )" declaration,
+// or reports ok == false for a blank-named one — see goBlank. Its Signature and range are computed
+// from spec itself, not from the enclosing type_declaration: the grammar makes each spec's own doc
+// comment a comment child of the type_declaration, interleaved with the spec siblings, so
+// CommentBlockAbove's prev-sibling walk works unchanged one level down from the ungrouped case. The
+// rendered signature is "type " prepended to the spec's own signature text, so the grouped and
+// ungrouped forms produce identical output for identical types. A comment on the "type (" line
+// itself is a prev-sibling of decl, not of any spec, so it is never picked up here — that is this
+// rule falling out naturally, not a special case.
+//
+// HeadStart and HeadEnd are set exactly as goUngroupedTypeSymbol's doc comment describes.
+func goGroupedTypeSymbol(unit string, spec *ts.Node, src []byte) (sym Symbol, ok bool) {
+	name := NodeText(spec.ChildByFieldName("name"), src)
+	if goBlank(name) {
+		return Symbol{}, false
+	}
 	body := goTypeBody(spec)
 	docComment, raw := CommentBlockAbove(spec, src)
 	start, _ := Line(spec)
@@ -192,15 +326,19 @@ func goGroupedTypeSymbol(spec *ts.Node, src []byte) Symbol {
 		start, _ = Line(docComment)
 	}
 	_, end := Line(spec)
+	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
 	return Symbol{
+		Glyph:     g,
+		ID:        g.String(),
 		Kind:      KindType,
-		Name:      NodeText(spec.ChildByFieldName("name"), src),
 		Signature: "type " + SignatureCut(spec, body, src),
-		Docstring: StripComment(raw, "//"),
+		Doc:       StripComment(raw, "//"),
 		Start:     start,
 		SigEnd:    SigEnd(spec, body),
 		End:       end,
-	}
+		HeadStart: start,
+		HeadEnd:   end,
+	}, true
 }
 
 // goTypeBody resolves spec's body-bearing child from its "type" field child: the first direct child
@@ -224,6 +362,160 @@ func goTypeBody(spec *ts.Node) *ts.Node {
 		}
 	}
 	return nil
+}
+
+// goConstSymbols builds the KindConst Symbol(s) for one const_declaration node, covering the
+// ungrouped ("const X = 1") and grouped ("const ( ... )") shapes. Confirmed against the pinned
+// tree-sitter-go v0.25.0: a const_declaration's spec children — const_spec — sit directly among its
+// own children in both shapes, exactly like a type_declaration's, so goDeclIsGrouped's literal-"("-
+// child test tells them apart here for the same reason it does there: a single-spec group,
+// "const ( X = 1 )", is legal Go, and a spec-count test would misroute it to the ungrouped path.
+func goConstSymbols(unit string, decl *ts.Node, src []byte) []Symbol {
+	if !goDeclIsGrouped(decl) {
+		return goUngroupedConstOrVarSymbols(unit, KindConst, decl, goConstOrVarSpecChild(decl, "const_spec"), src)
+	}
+	var symbols []Symbol
+	for i := uint(0); i < decl.NamedChildCount(); i++ {
+		spec := decl.NamedChild(i)
+		if spec.Kind() != "const_spec" {
+			continue
+		}
+		symbols = append(symbols, goGroupedConstOrVarSymbols(unit, KindConst, spec, src)...)
+	}
+	return symbols
+}
+
+// goVarSymbols builds the KindVar Symbol(s) for one var_declaration node, covering the ungrouped
+// ("var x int") and grouped ("var ( ... )") shapes.
+//
+// Unlike const_declaration, a var_declaration's grouped specs are not direct children of decl:
+// confirmed against the pinned tree-sitter-go v0.25.0, the grammar wraps them in an intermediate
+// var_spec_list child instead, whose own children carry the "(", the var_spec siblings, and the
+// ")". goDeclIsGrouped's "("-scan therefore cannot run on decl itself here — it would never find
+// the "(", which sits one level down — so grouping is told apart by that wrapper node's presence
+// among decl's named children instead. A var_spec_list only ever appears for the grouped form,
+// so this is the same single-spec-safe test as goDeclIsGrouped's, keyed on a different node the
+// grammar itself provides for exactly this purpose.
+func goVarSymbols(unit string, decl *ts.Node, src []byte) []Symbol {
+	if list := goVarSpecList(decl); list != nil {
+		var symbols []Symbol
+		for i := uint(0); i < list.NamedChildCount(); i++ {
+			spec := list.NamedChild(i)
+			if spec.Kind() != "var_spec" {
+				continue
+			}
+			symbols = append(symbols, goGroupedConstOrVarSymbols(unit, KindVar, spec, src)...)
+		}
+		return symbols
+	}
+	return goUngroupedConstOrVarSymbols(unit, KindVar, decl, goConstOrVarSpecChild(decl, "var_spec"), src)
+}
+
+// goVarSpecList returns decl's var_spec_list child — present only for the grouped "var ( ... )"
+// form — or nil for the ungrouped form, whose single spec is a var_spec child of decl directly.
+func goVarSpecList(decl *ts.Node) *ts.Node {
+	return goConstOrVarSpecChild(decl, "var_spec_list")
+}
+
+// goConstOrVarSpecChild returns decl's single named child of kind kind, or nil when it has none.
+// It is called with "const_spec" for an ungrouped const_declaration, "var_spec" for an ungrouped
+// var_declaration, and "var_spec_list" to detect the grouped var_declaration shape.
+func goConstOrVarSpecChild(decl *ts.Node, kind string) *ts.Node {
+	for i := uint(0); i < decl.NamedChildCount(); i++ {
+		if c := decl.NamedChild(i); c.Kind() == kind {
+			return c
+		}
+	}
+	return nil
+}
+
+// goSpecNames returns every identifier under spec's "name" field, in source order: one name for
+// "const x = 1" or "var x int", several for "const a, b = 1, 2" — the grammar's "name" field holds
+// multiple identifier children (interleaved with "," tokens) for exactly this shape, on both
+// const_spec and var_spec.
+func goSpecNames(spec *ts.Node, src []byte) []string {
+	nodes := spec.ChildrenByFieldName("name", spec.Walk())
+	names := make([]string, len(nodes))
+	for i := range nodes {
+		names[i] = NodeText(&nodes[i], src)
+	}
+	return names
+}
+
+// goUngroupedConstOrVarSymbols builds one Symbol per non-blank name in spec — decl's single,
+// ungrouped const_spec or var_spec — sharing decl's own span, doc, and signature: Start/End and the
+// docstring come from CommentBlockAbove on decl, since decl, not spec, is the node with
+// source_file siblings, and Signature is decl's own text trimmed whole, which carries the "const"
+// or "var" keyword because decl's span already starts there. SigEnd and HeadStart/HeadEnd stay
+// zero: none of these shapes has a body-bearing child, and head spans are populated for KindType
+// only. Several names sharing one spec produce distinct glyphs over identical spans, which needs no
+// special case.
+func goUngroupedConstOrVarSymbols(unit string, kind Kind, decl, spec *ts.Node, src []byte) []Symbol {
+	docComment, raw := CommentBlockAbove(decl, src)
+	start, _ := Line(decl)
+	if docComment != nil {
+		start, _ = Line(docComment)
+	}
+	_, end := Line(decl)
+	signature := SignatureCut(decl, nil, src)
+	doc := StripComment(raw, "//")
+
+	var symbols []Symbol
+	for _, name := range goSpecNames(spec, src) {
+		if goBlank(name) {
+			continue
+		}
+		g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
+		symbols = append(symbols, Symbol{
+			Glyph:     g,
+			ID:        g.String(),
+			Kind:      kind,
+			Signature: signature,
+			Doc:       doc,
+			Start:     start,
+			End:       end,
+		})
+	}
+	return symbols
+}
+
+// goGroupedConstOrVarSymbols builds one Symbol per non-blank name in spec — one const_spec or
+// var_spec inside a grouped "const ( ... )" or "var ( ... )" declaration — sharing spec's own span
+// and doc, mirroring goGroupedTypeSymbol's rule: Signature is the declaration's keyword prepended to
+// spec's own signature text, verbatim, never synthesised from a preceding spec even for a bare
+// `iota` spec with no type and no value of its own. SigEnd and HeadStart/HeadEnd stay zero, for the
+// same reason goUngroupedConstOrVarSymbols' do.
+func goGroupedConstOrVarSymbols(unit string, kind Kind, spec *ts.Node, src []byte) []Symbol {
+	docComment, raw := CommentBlockAbove(spec, src)
+	start, _ := Line(spec)
+	if docComment != nil {
+		start, _ = Line(docComment)
+	}
+	_, end := Line(spec)
+	keyword := "const "
+	if kind == KindVar {
+		keyword = "var "
+	}
+	signature := keyword + SignatureCut(spec, nil, src)
+	doc := StripComment(raw, "//")
+
+	var symbols []Symbol
+	for _, name := range goSpecNames(spec, src) {
+		if goBlank(name) {
+			continue
+		}
+		g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
+		symbols = append(symbols, Symbol{
+			Glyph:     g,
+			ID:        g.String(),
+			Kind:      kind,
+			Signature: signature,
+			Doc:       doc,
+			Start:     start,
+			End:       end,
+		})
+	}
+	return symbols
 }
 
 // Package implements Strategy by returning the package_clause child's package_identifier text, or
