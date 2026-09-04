@@ -522,8 +522,10 @@ them.
 - Type checker for phase 2 (gopls vs `go/packages` in-process; what Python and C# use).
 - C# long parameter lists: whether to cap a method glyph at N types plus a hash, decided only
   after measuring a real C# repository (`docs/glyph.md` §3).
-- Whether the new harness's `results/**/raw/` is committed or ignored; T2 decides when it writes
-  its first root.
+- Settled: the new harness's `results/**/raw/` is ignored. This was settled in
+  `results/2026-09-04-toc` (T7): resolved auto-memory directory paths would otherwise be committed
+  in a repository whose rule is that no tracked file carries a machine path, and the raw tree is
+  fully summarised by the artifacts the root does commit.
 
 ## 12. Work breakdown — one mill task per row
 
