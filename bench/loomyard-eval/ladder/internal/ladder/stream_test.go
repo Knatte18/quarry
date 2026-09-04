@@ -80,6 +80,62 @@ func TestParseTranscript_LargeLineReadWhole(t *testing.T) {
 	}
 }
 
+// TestParseTranscript_SessionInitMCPServers pins the session-init record's "mcp_servers" shape
+// against two real fixtures: a connected server (an object list) and a control cell (an empty list).
+// The connected-server fixture is copied verbatim, apart from four scrubbed machine paths and
+// identifiers, from a real invalidated a2-toc-dir repetition run on this host against
+// claude_code_version 2.1.236 -- see .scratch/orch-evidence/a2-invalid-real-transcript.jsonl, which
+// is what first showed this harness that Claude Code emits mcp_servers as a list of
+// {"name","status"} objects rather than a list of names, the defect this test guards against.
+func TestParseTranscript_SessionInitMCPServers(t *testing.T) {
+	tests := []struct {
+		name           string
+		fixture        string
+		wantLen        int
+		wantFirstName  string
+		wantFirstState string
+	}{
+		{
+			name:           "ConnectedServer",
+			fixture:        "session-init-mcp-connected.jsonl",
+			wantLen:        1,
+			wantFirstName:  "quarry",
+			wantFirstState: "connected",
+		},
+		{
+			name:    "ControlCellEmptyList",
+			fixture: "grouped-usage.jsonl",
+			wantLen: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := os.ReadFile("testdata/transcripts/" + tt.fixture)
+			if err != nil {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+
+			transcript, err := ParseTranscript(bytes.NewReader(data))
+			if err != nil {
+				t.Fatalf("ParseTranscript() error = %v, want nil", err)
+			}
+			if transcript.Init == nil {
+				t.Fatal("transcript.Init = nil, want a decoded session-init record")
+			}
+			if len(transcript.Init.MCPServers) != tt.wantLen {
+				t.Fatalf("len(Init.MCPServers) = %d, want %d", len(transcript.Init.MCPServers), tt.wantLen)
+			}
+			if tt.wantLen == 0 {
+				return
+			}
+			got := transcript.Init.MCPServers[0]
+			if got.Name != tt.wantFirstName || got.Status != tt.wantFirstState {
+				t.Errorf("Init.MCPServers[0] = %+v, want {Name: %q, Status: %q}", got, tt.wantFirstName, tt.wantFirstState)
+			}
+		})
+	}
+}
+
 // TestTranscript_MarshalAllRoundTrips asserts that MarshalAll reproduces every raw line of a real
 // fixture losslessly.
 func TestTranscript_MarshalAllRoundTrips(t *testing.T) {
