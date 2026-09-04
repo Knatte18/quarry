@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
@@ -39,6 +39,8 @@ holistic-fixing  '2026-09-04T09:48:08Z'
 blocked  '2026-09-04T09:49:13Z'
 holistic-reviewing  '2026-09-04T10:06:16Z'
 holistic-fixing  '2026-09-04T10:08:56Z'
+nits-fixed-holistic  '2026-09-04T10:10:26Z'
+holistic-approved  '2026-09-04T10:10:32Z'
 ```
 
 ## Batches
