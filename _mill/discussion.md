@@ -48,8 +48,11 @@ after that is a change to a published contract rather than a choice.
 - The per-call unit memo that makes §5's "each unit is parsed once" true for a many-glyph call, and
   the test that proves it.
 - Ordering guarantees on both verbs, stated and tested.
-- Fixtures under `internal/engine/testdata/` covering every status in `docs/glyph.md` §5, including
-  a build-tag `ambiguous` pair and the `_test`-directory collision.
+- Fixtures covering every status in `docs/glyph.md` §5: committed under
+  `internal/engine/testdata/` where they add nothing to a tree T3's tests assert on (including a
+  build-tag `ambiguous` pair), and built at run time under `.scratch/` where committing them would
+  break a T3 test — the `_test`-directory collision among them. D17 is the full inventory and
+  states which goes where and why.
 - A Loomyard timing test asserting §12's "twenty glyphs across five units under 150 ms on this host",
   and a `Benchmark` of the same call kept alongside it.
 
@@ -66,8 +69,11 @@ after that is a change to a published contract rather than a choice.
      comment describing `expand`'s behaviour. A comment about *this* task, corrected by this task,
      with no code touched (D12's last bullet).
   2. **`internal/engine/loomyard_test.go`** — widening T3's `loomyardRepo(t *testing.T)` gate helper
-     to `loomyardRepo(tb testing.TB)`, a signature-only change so D16's benchmark can call it. No
-     body change, no behaviour change, and every existing `*testing.T` caller still compiles.
+     to `loomyardRepo(t testing.TB)` so D16's benchmark can call it. **The parameter keeps the name
+     `t`**, which is what makes this genuinely one line: the body calls `t.Helper`, `t.Skip`,
+     `t.Skipf` and `t.Fatalf` seven times over, every one of them a `testing.TB` method, so renaming
+     it to `tb` would rewrite the whole body for nothing. No behaviour change, and every existing
+     caller still compiles.
 
   **Nothing else under `internal/engine` changes behaviour.** Adding `Resolve`, `Expand` and their
   types to `answer.go`, `resolve.go` and `expand.go`, and extending `resolve_test.go`, is the task
@@ -76,8 +82,8 @@ after that is a change to a published contract rather than a choice.
   it in isolation.
 - Any change to `glyph/`. The engine never re-implements the grammar (glyph.md §6); T4 imports it
   and believes its answers.
-- Any change to `docs/glyph.md` or `docs/rewrite-plan.md`. T4 records two contract gaps it runs into
-  and closes neither — see D18.
+- Any change to `docs/glyph.md` or `docs/rewrite-plan.md`. T4 records three contract gaps it runs
+  into and closes none — see D18.
 - `impact`, `assert-no-callers`, `verified`, a type checker — phase 2.
 - Any language but Go, and any cache, index, daemon or concurrency (plan §5, §10; T3's D22).
 - Changes to `bench/`. The Loomyard timing test is a Go test in `internal/engine`, not a ladder cell.
@@ -347,10 +353,12 @@ asserted about them are now read from code, not from a plan:
   `<something>_test`, so no round trip over either repository exercises this case — which is why it
   is decided by construction rather than left to be discovered. T3 does commit
   `internal/engine/testdata/foo_test/`, so the literal-first branch itself has a committed fixture;
-  what it deliberately does not commit is a `testdata/foo/` sibling, because adding one would put a
-  second package under `testdata/` and perturb the existing walk and round-trip assertions that
-  enumerate that tree. The collision fixture is therefore built under `.scratch/` for that reason —
-  test isolation — and not because a committed tree could not express it. See D17.
+  what it deliberately does not commit is a `testdata/foo/` sibling — and the reason is one named
+  assertion, not a general tidiness argument: `TestSpansOf_LiteralFirst` in T3's `resolve_test.go`
+  asserts `collision == false` for the unit `internal/engine/testdata/foo_test`, its failure message
+  reading "this fixture has no sibling `testdata/foo` directory". Committing that sibling would flip
+  the flag and break a T3 test the gate requires to keep passing untouched. The collision fixture is
+  therefore built under `.scratch/`, and not because a committed tree could not express it. See D17.
 - Rejected: reporting `found` on a single match under a collision (a glyph that names two units
   answering as if it named one); reporting `ambiguous` with zero matches (there is nothing to be
   ambiguous between, and it would hide the `unit: found` a Create card needs).
@@ -703,8 +711,9 @@ asserted about them are now read from code, not from a plan:
   **fail** when it is set but `git -C <repo> rev-parse HEAD` is not `72c23d9`; skip when the `git`
   binary is missing or errors). **The gate is T3's helper, widened, not a copy of it:** T3's
   `loomyardRepo(t *testing.T)` in `loomyard_test.go` cannot be called from a `*testing.B`, so T4
-  changes its parameter to `testing.TB` — signature only, no body change, every existing caller
-  still compiling. That is Scope's second named exception. Duplicating the pin check into T4's own
+  changes its parameter type to `testing.TB` while **keeping the name `t`** — one line, body
+  untouched (its seven `t.Helper`/`t.Skip`/`t.Skipf`/`t.Fatalf` calls are all `testing.TB`
+  methods), every existing caller still compiling. That is Scope's second named exception. Duplicating the pin check into T4's own
   file was rejected: two implementations of "is this the right Loomyard" is exactly the drift that
   makes a done-criterion silently unverifiable when one of them is updated and the other is not.
   1. `TestResolve_TwentyGlyphsUnder150ms` — skipped under `-short`. It first asserts that all twenty
@@ -751,11 +760,11 @@ asserted about them are now read from code, not from a plan:
   | `ambiguous`, mixed kinds | same `testdata/tags/` — one file's `Mixed` a type, the other's a func | Testing 15 | one directory, one build-tag mechanism, two shapes |
   | `not_found` + `unit: found` | `testdata/tree/pkg`, a name not in it | Testing 7 | no fixture needed |
   | `not_found` + `unit: not_found` | a unit whose directory does not exist | Testing 7, 15b | no fixture needed |
-  | `ambiguous`, unit collision | `.scratch/` tree: `foo/` with an external test package **and** a literal `foo_test/` | Testing 6, 15c | T3 commits `testdata/foo_test/`; adding the `testdata/foo/` sibling would put a second package into the tree T3's tests enumerate |
+  | `ambiguous`, unit collision | `.scratch/` tree: `foo/` with an external test package **and** a literal `foo_test/` | Testing 6, 15c | T3's `TestSpansOf_LiteralFirst` asserts `collision == false` for `testdata/foo_test`; committing the `testdata/foo/` sibling would flip it and break that test |
   | path targets | `testdata/tree/` (existing: `README.md`, `config.yaml`, `Makefile`, `notes.rst`, `sub/`) | Testing 10 | already committed, and already covers a code file, several non-code files and a subdirectory |
   | gitignored path target | `.scratch/` tree with a `.gitignore` | Testing 10 | a committed tree cannot hold a tracked file its own `.gitignore` excludes |
   | unreadable directory | `.scratch/` tree, chmod'd mid-test | Testing 15a | cannot be committed at all; skipped when the host cannot revoke read permission |
-  | ordering, collision union | the same `.scratch/` collision tree | Testing 16 | the one place the engine's sort is load-bearing: `symbolsOfUnit` appends the two directories in `unitDirs` order and only its final sort restores file order. `os.ReadDir` is already sorted, so a read-order fixture would assert nothing |
+  | ordering, collision union | the same `.scratch/` collision tree | Testing 16 | the one place the engine's sort is load-bearing: `symbolsOfUnit` appends the two directories in `unitDirs` order and only its closing `sort.SliceStable` restores file order. `os.ReadDir` is already sorted by filename, so a read-order fixture would assert nothing |
   | ordering, members across files | `testdata/methods/` — two files whose names sort opposite to declaration order | Testing 16 | exercises `Expand`'s member sort independently of the collision |
 
   The ignore-filter case T3 already covers in `TestSpansOf_IgnoreFilter` is **not** rebuilt here:
@@ -763,13 +772,16 @@ asserted about them are now read from code, not from a plan:
   its own and testing it again would assert T3's behaviour through a longer path.
 - Rationale: §12's T4 done-when is "glyph.md §5 statuses each have a fixture", so the fixtures are
   the deliverable, not a by-product, and an inventory the plan writer can work from directly is what
-  makes that checkable. The placement rule is the one T3's own tests impose: several of them walk
-  `testdata/tree/` and assert on what they find, so a new package dropped in there is a change to
-  T3's tests disguised as a fixture.
+  makes that checkable. The placement rule is narrower than "do not disturb `testdata/`": what
+  constrains each case is one named assertion — `TestSpansOf_LiteralFirst`'s `collision == false`
+  for the collision fixture, and the walk assertions over `testdata/tree/` for anything added there.
+  The round trip is **not** among them: its `tupleSetDiff` is a duplicate-tolerant multiset
+  comparison and enumerates no directory's children. A fixture that trips no named assertion is
+  committed.
 - Rejected: `t.TempDir()` (banned by the constraints); synthesising sources as string literals in
   the test (a fixture nobody can open and read is a worse fixture); putting the new `methods/` and
-  `tags/` packages under `testdata/tree/` (perturbs T3's walk assertions); committing the
-  collision's `testdata/foo/` sibling (same reason, for a case a `.scratch/` tree covers exactly as
+  `tags/` packages under `testdata/tree/` (T3's walk assertions enumerate that directory);
+  committing the collision's `testdata/foo/` sibling (breaks `TestSpansOf_LiteralFirst`, for a case a `.scratch/` tree covers exactly as
   well); reusing `testdata/glyphs/` for the method-across-files case (its files are one package by
   design and T3's `glyph_test.go` asserts on the whole symbol list).
 
@@ -834,7 +846,7 @@ chose, not the layout its discussion assumed.
 | `internal/engine/testdata/tags/` | new: the build-tag `ambiguous` fixtures (func and type) |
 | `internal/engine/testdata/methods/` | new: a type with methods across two files |
 | `internal/engine/golang.go` | **comment only**: the one stale sentence in `goUngroupedTypeSymbol`'s doc comment (D12's last bullet). Its own card, no code change |
-| `internal/engine/loomyard_test.go` | **signature only**: `loomyardRepo(t *testing.T)` → `(tb testing.TB)`, so D16's benchmark can use the one gate. Its own card |
+| `internal/engine/loomyard_test.go` | **one line**: `loomyardRepo(t *testing.T)` → `(t testing.TB)` — parameter name kept, so the body is untouched — letting D16's benchmark use the one gate. Its own card |
 
 **Helpers to reuse rather than rewrite** (all T3's, all in `internal/engine`):
 
@@ -972,7 +984,7 @@ chose, not the layout its discussion assumed.
     members span two files with names that sort opposite to their declaration order, so `Expand`'s
     member sort is exercised independently of the collision.
 
-**Loomyard, env-gated per D17's skip/fail rule, skipped under `-short`:**
+**Loomyard, env-gated per T3's D17 skip/fail rule, skipped under `-short`:**
 
 17. `TestResolve_TwentyGlyphsUnder150ms` — asserts all twenty resolve `found` first, then the
     minimum of five timed calls is under 150 ms.
@@ -1000,7 +1012,7 @@ types to `answer.go`, and changes no walk rule, no `toc` answer and no existing 
 - **Q:** What exactly is `expand`'s head? **A:** [auto-pick] The type's own symbol entry with `Start`/`End` read from `HeadStart`/`HeadEnd`. **Why:** §4 says the three verbs return that entry and nothing else for a symbol; reading the head field rather than re-deriving it is D4's stated purpose, and the "minus its member spans" reading is the consumer's, done from the member entries already in the answer.
 - **Q:** How does `expand` report a glyph naming a non-type? **A:** [auto-pick] A typed `*NotATypeError` carrying the id and the kind. **Why:** `ok: false` is the envelope's and T5b maps typed errors to it, exactly as T3's D20 split `ErrTargetOutsideRepo` from `ErrTargetNotFound` so a message could name the cause without parsing a string.
 - **Q:** What are the ordering guarantees? **A:** [auto-pick] Resolve: argument order, 1:1; symbols and candidates by file then start line. Expand: head first, members by file then start line. **Why:** glyph.md §5 states the file-then-line rule as contract, and T3's D18 already made the engine the sorter; argument order is the only top-level order that keeps the 1:1 mapping usable.
-- **Q:** How is the 150 ms criterion asserted without flakiness? **A:** [auto-pick] Best-of-five minimum, env-gated with D17's pin rule, skipped under `-short`, with the twenty glyphs asserted `found` first and a `Benchmark` kept beside it. **Why:** the minimum measures the floor the criterion is about; asserting `found` first stops a drifted glyph list turning the criterion green by timing twenty misses.
+- **Q:** How is the 150 ms criterion asserted without flakiness? **A:** [auto-pick] Best-of-five minimum, env-gated with T3's D17 pin rule, skipped under `-short`, with the twenty glyphs asserted `found` first and a `Benchmark` kept beside it. **Why:** the minimum measures the floor the criterion is about; asserting `found` first stops a drifted glyph list turning the criterion green by timing twenty misses.
 - **Q:** Which fixtures cover glyph.md §5? **A:** [auto-pick] Committed fixtures for `found`, `multipart`, build-tag `ambiguous` and both `not_found` shapes; run-time `.scratch/` trees for the collision `ambiguous` and the ignore-filter case. **Why:** §12's done-when makes the fixtures the deliverable, and the two exceptions are the shapes a committed tree provably cannot express — the same split T3 made, with the same helper.
 - **Q:** What does `expand <unit>#init`, with several `init` declarations, answer? **A:** [auto-pick, discussion-review r1 gap] `*NotATypeError` with `Kind: function`. D14's gate keys on *no match being a type*, not on the match count, and now carries the full five-row disposition table. **Why:** `init` is the one Go glyph D5 calls `multipart`, and `ExpandAnswer` does not admit that status; a unique-match gate would leave the case with no defined answer at all. Keying on kinds needs no `init` special case.
 - **Q:** Where does an I/O failure inside a `Resolve` call go — the entry or the call? **A:** [auto-pick, discussion-review r1 gap] The call: every engine error other than `ErrTargetNotFound` and `ErrTargetOutsideRepo` fails the whole call, and D8's per-entry `Error` stays closed to pre-resolution rejections of the target string. **Why:** a per-entry I/O error puts "unspellable target" and "unreadable directory" under one key, and a unit that failed to read would otherwise answer `not_found` for every glyph in it — which a Delete card's done-check reads as success.
@@ -1013,4 +1025,4 @@ types to `answer.go`, and changes no walk rule, no `toc` answer and no existing 
 - **Q:** How is the ordering guarantee tested, given `os.ReadDir` already returns sorted entries? **A:** [auto-pick, discussion-review r4 gap] Over the collision union, where `symbolsOfUnit` appends the two directories in `unitDirs` order and only its closing sort restores file-then-line; plus a two-file member set whose filenames sort opposite to declaration order. **Why:** a fixture built to perturb read order cannot fail — `os.ReadDir` is documented sorted — so it would assert a property that holds by construction.
 - **Q:** Is the `HeadStart == 0` invariant failure a typed error? **A:** [auto-pick, discussion-review r4 nit] No — a plain `fmt.Errorf`, unlike D14's `*NotATypeError`. **Why:** it says the engine is internally inconsistent, not something about the caller's glyph; there is no status for that and nothing a caller can do differently, so a struct would invite branching on a condition that should never occur.
 - **Q:** Does a unit reached through an intermediate symlink resolve? **A:** [auto-pick, discussion-review r4 nit] Yes, and it is never listed by `toc` — `os.Lstat` refuses only the final component. T4 inherits it unchanged and records it as D18's third gap. **Why:** changing `dirExists` is a change to T3's walk-inverse in a task whose Scope excludes it, and whether a unit may be reached through a link is a statement glyph.md does not make.
-- **Q:** Does T4 amend `docs/glyph.md`? **A:** [auto-pick] No — two gaps are recorded in code comments and neither is closed. **Why:** T3 took the same position for the same reason: a single task changing the shared identifier contract is the coupling §7's ordering avoids, and both gaps should be decided against a repository that needs one.
+- **Q:** Does T4 amend `docs/glyph.md`? **A:** [auto-pick] No — three gaps are recorded in code comments and none is closed. **Why:** T3 took the same position for the same reason: a single task changing the shared identifier contract is the coupling §7's ordering avoids, and each gap should be decided against a repository that needs one.
