@@ -24,6 +24,26 @@ const (
 	KindVar Kind = "var"
 )
 
+// Status is the closed per-entry vocabulary of docs/glyph.md §5, shared by ResolveResult's Status
+// and Unit keys and by ExpandAnswer's. The Unit key of both result types draws from this same type
+// but only ever carries StatusFound or StatusNotFound, so the package holds one vocabulary rather
+// than two overlapping ones.
+type Status string
+
+// The four Status values docs/glyph.md §5 defines. No other value is valid.
+const (
+	// StatusFound marks exactly one matching declaration.
+	StatusFound Status = "found"
+	// StatusNotFound marks no matching declaration.
+	StatusNotFound Status = "not_found"
+	// StatusAmbiguous marks several different declarations matching, with nothing chosen between
+	// them.
+	StatusAmbiguous Status = "ambiguous"
+	// StatusMultipart marks one symbol the language lets be declared in several places, with every
+	// part returned.
+	StatusMultipart Status = "multipart"
+)
+
 // Symbol is one listable declaration extracted from a file: a function, method, type, const, or
 // var, in source order.
 //
