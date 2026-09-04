@@ -76,8 +76,23 @@ change, and a harness change cannot land mid-matrix.
   `InvalidReasonFile = "invalid_reason.txt"`, written into the attempt directory immediately before
   `InvalidateRep` renames it, on **every** path that invalidates an attempt. The file is plain text,
   one `key: value` per line, carrying at least: `cell`, `repetition`, `attempt`, `cause`, and a
-  free-form `detail`; plus `exit_code` when one is recoverable. `cause` is a fixed enumeration:
+  `detail`; plus `exit_code` when one is recoverable. `cause` is a fixed enumeration:
   `runner_error`, `result_error`, `unparseable_answer`, `server_not_connected`.
+
+  **`detail` is constructed, never `err.Error()`.** It is a single line — no newlines, at most 200
+  characters, truncated with an ellipsis if longer — built at the call site from cause-specific text
+  the harness already knows: for `runner_error`, a fixed phrase plus the `*exec.ExitError`'s status
+  string; for `result_error`, the result record's `terminal_reason` and `stop_reason`; for
+  `unparseable_answer`, which of the two steps failed (no fenced block, or a block that did not
+  decode); for `server_not_connected`, the finding's own `Message` (already a short fixed string).
+  Passing the wrapped error through would defeat the field: `ExecRunner.Run` formats it as
+  `run %s %s: %w` over the **full** argument vector, which carries `-p <the entire rendered prompt>`,
+  the absolute `--mcp-config` path and the claude binary path — kilobytes, multi-line, and full of
+  machine paths, breaking the one-pair-per-line shape in the same stroke.
+
+  **The conclusion quotes `cause` values and counts, never `detail` verbatim.** The reason files live
+  in the untracked `raw/` tree where a stray path would be harmless, but the conclusion is tracked and
+  no tracked file in this repository carries a machine path.
 - Rationale: the T7 conclusion's own ask is "a future harness change that also persists the
   runner-level error (or the process exit code) into the discarded attempt directory". One file with
   a `cause` field answers that for all four paths and keeps a reader of a `.invalid-N/` directory
@@ -144,7 +159,11 @@ change, and a harness change cannot land mid-matrix.
 ### m2-proven-by-test
 
 - Decision: prove M2 with e2e tests in `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
-  driven by the existing `testdata/fakeclaude` fixture: a new case using `FAKE_CLAUDE_STREAM=partial_fail`
+  driven by the `testdata/fakeclaude` fixture. **The Testing section below is the authoritative test
+  inventory — five e2e cases** (`runner_error`, `unparseable_answer`, `result_error`, re-entry, and
+  the retargeted `server_not_connected`) plus the two regressions; the sketch here names the first
+  three of them and must not be read as the complete list. In outline: a new case using
+  `FAKE_CLAUDE_STREAM=partial_fail`
   (which flushes a partial stream and `os.Exit(1)`) asserting that each `N.invalid-k/` carries
   `invalid_reason.txt` naming `cause: runner_error`, the cell, the repetition and `exit_code: 1`; a
   case using `no_fence` asserting `cause: unparseable_answer`; and the existing
@@ -206,8 +225,12 @@ change, and a harness change cannot land mid-matrix.
   only blockers are the missing schema heading — without which `LoadTaskFile` hard-fails — and the
   missing fasit. Writing a fresh three-package prompt instead would discard drafted, reviewed work.
 - Rejected: a brand-new multi-package prompt (duplicated effort, no better); using task 05
-  (`05-mergeresolve-resolve-impact`) instead — it is impact-shaped, and `impact`-shaped tools have
-  measured flat in every run since August (`docs/rewrite-plan.md` §2 point 2).
+  (`05-mergeresolve-resolve-impact`) instead — ladder b already contributes one impact-schema task
+  (04) as this matrix's negative control, a second adds no scope contrast, and 05 has no drafted
+  multi-package shape to offer that 02 does not. (It would be wrong to reject 05 by citing
+  `docs/rewrite-plan.md` §2 point 2: that point is about *LSP-shaped tools* — definition, references,
+  symbol — measuring flat, and says nothing about impact-schema *tasks*. The `impact` tool is unbuilt
+  and parked in T8, so it has never measured anything.)
 
 ### ladder-d-cold-start-orientation
 
@@ -327,16 +350,19 @@ change, and a harness change cannot land mid-matrix.
      incomplete again. Plan around that: verify the fix out of band before re-invoking rather than
      using the matrix as the test, and cap this at **two resume invocations**; past that, stop and
      report. If a cell still cannot reach `5/5`, it is reported in the conclusion as **incomplete
-     with its causes quoted**, its comparison is not presented as a result, and that task shape is
+     with its `cause` values and their counts named** (never a `detail` string verbatim, per
+     `m2-one-reason-file-for-every-cause`), its comparison is not presented as a result, and that task shape is
      named as unmeasured rather than as flat. A shape reported flat on `3/5` would be the worst
      possible outcome of this task.
   2. **The whole invocation aborts** because every attempt of one repetition failed to connect the
      server (`connectFailures == attempts`). This is an environment or configuration fault by
      construction, not data: fix it, then re-invoke over the same root. Repetitions already complete
      are not re-run. **That abort is a fresh-root protection only.** `connectFailures` is loop-local
-     while `attempts` is cumulative, so on a re-entered root the equality is unreachable and an
-     unfixed server fault no longer stops the invocation — it quietly burns one real call per
-     remaining repetition across all six cells. The cost guard therefore has to be the operator's on
+     while `attempts` is cumulative, so the equality is unreachable **for any repetition that already
+     carries `.invalid-*` directories** — for those, an unfixed server fault no longer stops the
+     invocation and quietly burns one real call each. A repetition never attempted before (say reps 4
+     and 5 of a resumed root) still reaches `3 == 3` and aborts normally, so the protection degrades
+     rather than disappears — but it degrades exactly on the repetitions a resume exists to retry. The cost guard therefore has to be the operator's on
      a resume: confirm the server actually connects (the `--setting-sources ""` probe `HANDOFF.md`
      §4 documents) before re-invoking, not after. Correcting this accounting in the harness is
      **out of scope** here — it is a retry-semantics change with no bearing on what this task
@@ -701,6 +727,13 @@ shortfall rather than paper over it.
   fires mid-matrix the root is abandoned and restarted, since the prompt cannot be edited in flight.
   **Why:** a void control repetition re-fails deterministically forever and never aborts the run,
   while its paired rung cell spends five real calls against a control that can never complete.
+- **Q:** What goes in the reason file's `detail`, given the wrapped runner error embeds the whole
+  argv? **A:** [auto-resolve, review r5 BLOCKING] A constructed single line (≤200 chars, no
+  newlines), built from cause-specific facts the harness already has — never `err.Error()`, which
+  carries the rendered prompt and absolute paths — and the conclusion quotes only `cause` values and
+  counts, never `detail` verbatim. **Why:** `ExecRunner.Run` formats its error over the full argument
+  vector, which would break the one-pair-per-line shape and put machine paths a step away from a
+  tracked file.
 - **Q:** What happens at the discussion-review round cap if findings remain? **A:** [operator]
   Approve and hand off regardless. **Why:** the operator's explicit instruction this session — the
   round cap ends the review loop and proceeds to Handoff rather than blocking the task.
