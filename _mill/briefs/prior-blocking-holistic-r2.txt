@@ -1,1 +1,0 @@
-- toc-file.json golden omits the file-target symbols default: **Location:** `internal/mcpserver/testdata/golden/toc-file.json:6-10`
