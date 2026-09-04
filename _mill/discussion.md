@@ -115,6 +115,13 @@ ladder cell measures them. The temptation this task must resist is building the 
   substitution has no consumer until the MCP-server task writes one" — this task is that task — and
   an operator wiring the server into a client that spawns it from an arbitrary directory has no
   other way to say which repository it serves.
+- **This assumption is load-bearing and must be tested, not asserted.** The entire "the harness is
+  not modified by this task" scope rests on `Dir: dest` propagating to a grandchild process, and its
+  failure mode is silent: a server rooted at the wrong directory answers every call `not_found`,
+  which the harness reports as a cell that used its tool and learned nothing. §9a's probe table has
+  no cwd row, so nothing on `main` verifies it. D13's live probe therefore has to be run from a
+  *different* repository than the one the server should serve — see D13 item 2, which is written to
+  make exactly this observation.
 - **Rejected:** requiring `--root`. It would force an edit to `ladder-toc.yaml` (adding
   `args: ["--root", "{target_dir}"]`) inside a task whose scope excludes the harness, and it would
   make the natural single-project case need configuration. Also rejected: cwd only, no flag, which
@@ -138,7 +145,8 @@ ladder cell measures them. The temptation this task must resist is building the 
 - **Decision:** the tool's input object is exactly:
   - `target` (string, **required**) — a repository-relative path to a directory or file; `""` and
     `"."` both mean the repository root.
-  - `depth` (integer, optional) — how far a directory query recurses; `-1` means the whole tree.
+  - `depth` (integer, optional, `minimum: -1`) — how far a directory query recurses; `-1` means the
+    whole tree. Absent means `0`, the CLI's own default. See D6 for validation.
   - `symbols` (boolean, optional) — whether each file entry carries its symbols. Absent means the
     engine's per-target default (true for a file target, false for a directory target).
 - **Rationale:** plan §7 defines MCP as a mirror of the CLI, and `quarry toc <target> [--depth N|all]
@@ -155,6 +163,20 @@ ladder cell measures them. The temptation this task must resist is building the 
 
 - **Decision:** `depth` is a JSON integer. `-1` recurses to the bottom of the tree. The property
   description spells that out. There is no string form and no union type.
+- **Validation and absent-value semantics (both required, not optional):**
+  - The schema carries `minimum: -1`, so the SDK rejects `depth: -7` before the handler runs.
+  - The handler *also* rejects `depth < -1` with a D8 error (`isError`, message
+    `--depth must be -1 (whole tree) or a non-negative integer, got <n>`, worded from the CLI's own
+    `flags.go` complaint). Belt and braces, because the schema is advisory to a client that ignores
+    it and the failure mode is silent: `internal/engine/walk.go`'s recursion decrements `depth` on
+    every level and only stops at `depth == 0` or `DepthAll`, so any other negative value recurses
+    without ever taking the identity-only cut — an unbounded walk that looks like a valid answer.
+    The CLI already rejects exactly this (`internal/cli/flags.go:100`, `n < 0`), and D5's
+    mirror-the-CLI claim has to hold on invalid input too, not only on valid input.
+  - An **absent** `depth` means `0`, which is `TOCOptions.Depth`'s zero value and the CLI's own
+    default when `--depth` is not given. `0` is a meaningful value here (the target's own files
+    plus identity-only subdirectories), not a "not set" marker, so no pointer is needed — unlike
+    `symbols`, where absence and `false` genuinely differ.
 - **Rationale:** `quarry.DepthAll` is already `-1` (`internal/engine/answer.go:238`), so the wire
   value and the Go constant are the same value and the handler needs no mapping table. V1 recorded
   the cost of the alternative directly in code: `tools_toc.go`'s `docSentences` comment notes that
@@ -175,12 +197,27 @@ ladder cell measures them. The temptation this task must resist is building the 
 - **Rationale:** the task body says "JSON in `content[].text`" and plan §12 repeats it. Reusing
   `RenderJSON` rather than re-encoding means the MCP payload and the CLI's stdout are the same bytes
   for the same query, which is what "mirror of the CLI" has to mean concretely and which makes a
-  golden test cheap. Declaring `structuredContent` as well would send the identical payload twice in
-  one result; the whole point of T7 is counting tokens, so duplicating the payload into every
-  transcript would corrupt the metric the task exists to feed.
-- **Rejected:** `structuredContent` alongside the text block (token duplication, as above); a
-  quarry-invented envelope with `status`/`result` keys, as V1 had (that shape existed to serve
-  batching, which D5 rejects).
+  golden test cheap. Omitting `structuredContent` leaves one payload shape and no output schema to
+  keep in step with the engine's answer type as it evolves.
+- **Not the rationale — a measurement already settled this:**
+  `docs/research/mcp-surface.md` measured V1's duplication directly (`toc_dir internal/logger`:
+  11 356 wire bytes, `content[0].text` 5 501, `structuredContent` 5 491) and concluded **"It does
+  not cost context."** Verified against a ladder transcript: Claude Code renders `content[].text`
+  and discards `structuredContent`; the duplication is transport-only over a local stdio pipe. So
+  "it would corrupt T7's token metric" is **not** a valid argument here and must not be repeated —
+  the decision stands on payload-shape simplicity alone, and would be worth revisiting only if a
+  client that consumes `structuredContent` ever becomes a consumer of this server.
+- **Implementation consequence:** the same research note records that the go-sdk emits
+  `structuredContent` **whenever a tool declares an `outputSchema`**, and that all seven V1 tools
+  declared one. So omitting it is not the default — the tool must be registered such that the SDK
+  infers no output schema (in the go-sdk, that means the handler's result is not a typed value the
+  SDK can derive a schema from). This is not a stylistic detail: it is the one place D7 can be
+  violated silently. The `tools/list` test in Testing therefore asserts that the `toc` tool carries
+  **no** `outputSchema`, and the happy-path test asserts the call result carries **no**
+  `structuredContent`.
+- **Rejected:** `structuredContent` alongside the text block (a second payload shape and an output
+  schema to maintain, for no consumer this server has); a quarry-invented envelope with
+  `status`/`result` keys, as V1 had (that shape existed to serve batching, which D5 rejects).
 
 ### D8 — Errors: `isError: true` with the facade's failure envelope as the text
 
@@ -233,21 +270,42 @@ ladder cell measures them. The temptation this task must resist is building the 
 ### D11 — Shared root discovery: lift it into `internal/repopath`
 
 - **Decision:** move `discoverRoot`, `resolveRoot`, and `repoRelTarget` out of `internal/cli`
-  (`root.go`, `target.go`) into a new `internal/repopath` package with exported names. The moved
-  functions return plain errors — a `repopath`-owned sentinel or error type for the "not a
-  directory" / "no repository root found" conditions and `quarry.ErrTargetOutsideRepo` for the
-  escape condition — and `internal/cli` wraps them back into its own unexported `usageError` at its
-  call sites so its exit-code mapping and its messages are unchanged. `internal/mcpserver` uses the
-  same functions for the same jobs.
+  (`root.go`, `target.go`) into a new `internal/repopath` package with exported names.
+- **Error shape (one choice, not two):** `repopath` declares two exported **sentinels**,
+  `ErrRootNotDirectory` and `ErrNoRepositoryRoot`, and returns them wrapped with `fmt.Errorf("%w: …")`
+  carrying the same detail text the CLI prints today. Sentinels, not a custom error type: the only
+  thing either caller needs to ask is "which condition is this", `errors.Is` answers it, and the
+  facade already established sentinels as this repo's idiom for exactly that question
+  (`quarry/quarry.go`'s three). `repoRelTarget`'s escape condition keeps returning
+  `quarry.ErrTargetOutsideRepo` unchanged — it already does, and the CLI already matches on it with
+  `errors.Is`. `internal/cli` maps the two new sentinels back into its own unexported `usageError`
+  at its call sites, preserving its exit-code mapping and its message bytes exactly.
+  `internal/mcpserver` maps them into startup failures (D3/D12) instead.
 - **Rationale:** the MCP server needs both behaviours — resolve a root from a flag or cwd, and turn
   a caller's target into a clean repository-relative path while rejecting escapes — and they are
   ~60 lines of subtle path handling (`filepath.Rel` semantics, the `".."` prefix check, `Lstat` on
   `.git`, the `"."`-means-root convention) that must not diverge between the two surfaces. They are
   currently unexported and return an unexported error type, so they cannot be reused as they stand.
-- **Rejected:** copying them into `mcpserver` (two implementations of the same rule is exactly the
-  drift this repo's facade discipline exists to prevent); exporting them from `internal/cli` and
-  importing `internal/cli` from `internal/mcpserver` (V1 did this and it made the MCP server depend
-  on the CLI's own concerns; a leaf package with no other content is cleaner).
+- **Test fixtures for the moved tests:** `internal/repopath` gets its **own per-package copy** of
+  `writeScratchTree`, in a `scratchtree_test.go` alongside the moved tests. This is not duplication
+  the repo frowns on — it is the repo's documented convention: `internal/cli/scratchtree_test.go`'s
+  header states it is "a deliberate per-package copy of `internal/engine/scratchtree_test.go`'s
+  helper of the same name, because Go test helpers are not importable across packages", and
+  `quarry/` carries a third copy. The copy must be adjusted for depth: the helper walks up from
+  `runtime.Caller(0)` to the module root, and `internal/repopath/` sits two directories down, the
+  same as `internal/cli/` and `internal/engine/`, so the same three `filepath.Dir` steps apply
+  unchanged. `t.TempDir()` stays banned (the system temp directory is banned for this repo's tests;
+  `.scratch/` is the sanctioned location) — so is `/tmp` in any form.
+  `internal/cli`'s own copy stays exactly where it is and is not touched; the moved tests take a
+  copy, they do not take the original.
+- **Rejected:** copying the *production* functions into `mcpserver` (two implementations of the same
+  path rule is exactly the drift this repo's facade discipline exists to prevent — note this is the
+  opposite of the test-helper case above, where per-package copies are the sanctioned pattern
+  precisely because the language forbids sharing); exporting them from `internal/cli` and importing
+  `internal/cli` from `internal/mcpserver` (V1 did this and it made the MCP server depend on the
+  CLI's own concerns; a leaf package with no other content is cleaner); promoting `writeScratchTree`
+  into a shared importable package (it would contradict the convention the three existing copies
+  document, and drag `testing` into a non-test package).
 
 ### D12 — Startup output: one stderr line naming the resolved root; stdout is the transport
 
@@ -256,10 +314,19 @@ ladder cell measures them. The temptation this task must resist is building the 
   errors go to stderr and exit non-zero.
 - **Rationale:** stdout belongs entirely to the stdio transport — V1's `cmd/quarry-mcp` header
   comment makes the same point and it is the one way this binary can fail catastrophically and
-  silently. The stderr line exists because a server rooted at the wrong directory is the most likely
-  misconfiguration in a ladder run and is otherwise invisible: the harness tees only stdout to
-  `transcript.jsonl`, so the line cannot pollute a transcript, and an absolute machine path on
-  stderr is not a tracked file and does not violate the no-machine-paths constraint.
+  silently. The stderr line serves **interactive and operator use**: someone wiring the server into
+  a client, or running D13's live probe, sees immediately which root it took.
+- **It does not help during a ladder run, and must not be relied on there.**
+  `invokeMeasuredProcess` sets no `Stderr` on the measured `Cmd`
+  (`bench/loomyard-eval/ladder/internal/ladder/run.go`), so the server's stderr is discarded, not
+  merely uncaptured — the line goes nowhere. During a ladder run, a misrooting is observed instead
+  from the answers themselves: a granted cell whose `toc` results are all `not_found`, or whose
+  results name the wrong repository's files. That is what D13's live probe (and, better, the
+  single-cell harness run it proposes) exists to catch *before* T7's matrix is started, since the
+  harness rule "never edit the code under test mid-matrix" means a misrooting discovered mid-run
+  costs the whole results root.
+- An absolute machine path on stderr is not a tracked file and does not violate the no-machine-paths
+  constraint.
 - **Rejected:** total silence (a misrooted server then presents as a cell whose answers are all
   not-found, with nothing to diagnose from); any stdout write whatsoever.
 
@@ -272,11 +339,29 @@ ladder cell measures them. The temptation this task must resist is building the 
   2. Live, once, by the operator or the implementing agent at the end of the task: build the binary,
      write an MCP config pointing at it, and run `claude -p` with `--mcp-config`,
      `--strict-mcp-config`, `--output-format stream-json --verbose`,
-     `--no-session-persistence`, `< /dev/null`, per plan §9a's table. Confirm three things from the
-     stream: the server appears connected in the `system` init record; a `toc` call runs and returns
-     the envelope; and a call to `toc` under an allowlist that does not grant it is refused and
-     recorded in `permission_denials`. The transcript goes to gitignored `.scratch/`; the outcome is
-     recorded in the task's `_mill/` artifacts and in the merge commit message.
+     `--no-session-persistence`, `< /dev/null`, per plan §9a's table.
+
+     **Run it from a different repository than the one the server must serve.** The natural choice
+     is the Loomyard checkout the ladder already uses (`LADDER_LOOMYARD_REPO`, per
+     `.scratch/ladder.env`); running the probe from the quarry repo would prove nothing about D3,
+     because cwd discovery there succeeds whether or not the inheritance assumption holds. Three
+     things are then confirmed from the stream, and the first is the one D3 depends on:
+
+     - **Rooting:** the `toc` answer names *that* repository's own directories and files, not
+       quarry's. A `not_found`, or an answer listing quarry's tree, falsifies D3 and means the
+       server needs `--root` wired through `ladder-toc.yaml`'s `server.args` after all — which
+       would be a scope change worth stopping for, not a quiet fix.
+     - **Connection:** the server appears in the `system` init record's server list.
+     - **Denial:** see D14 for how the denial is elicited and what counts as a miss.
+
+     Alternatively, and better if the environment allows it, run the harness itself once —
+     `ladder run --config bench/loomyard-eval/ladder/ladder-toc.yaml --cells a2-toc-dir --reps 1`
+     into a throwaway results root — which exercises the real `Dir: dest` path rather than a
+     hand-built imitation of it. That is the strongest available form of "the harness probe of §9a
+     runs against it", and it is a read-only use of the merged harness, not a modification of it.
+
+     The transcript goes to gitignored `.scratch/`; the outcome, including which repository the
+     probe ran from, is recorded in the task's `_mill/` artifacts and in the merge commit message.
 - **Rationale:** the done-when is "the harness probe of §9a runs against it", which is a live claim
   about a real client and cannot be made by an in-process test. But a `go test` that shells out to
   `claude -p` costs real money on every run of the done gate, needs network and a logged-in CLI, and
@@ -287,10 +372,26 @@ ladder cell measures them. The temptation this task must resist is building the 
 
 ### D14 — Allowlist denial with a single tool
 
-- **Decision:** the denial half of the probe is performed by running the probe session with an
-  allowlist that does not name `toc` — either empty, or naming a tool the server does not expose —
+- **Decision:** the denial half of the probe is performed by running a **separate** probe session
+  whose allowlist does not name `toc` — either empty, or naming a tool the server does not expose —
   while the server is still declared in the MCP config. The `toc` call is then denied and lands in
   `permission_denials`.
+- **Eliciting the call, and what counts as a miss.** §9a's original denial was incidental: the agent
+  happened to try `toc_file`, a tool it had not been granted. With one tool there is nothing
+  incidental left, so the denial has to be provoked deliberately. The probe prompt names the tool
+  explicitly and asks for nothing else — e.g. *"Call the `toc` tool on the repository root and show
+  me its output. Use that tool and no other; do not read files."* — and the run is given a small
+  `--max-turns` so it cannot wander off into built-in tools.
+  - **Pass:** the final `result` record's `permission_denials` is non-empty and names
+    `mcp__quarry__toc`.
+  - **Miss (no call attempted at all):** `permission_denials` is empty *and* no `toc` `tool_use`
+    appears in the stream. This is a probe failure, not a server failure: retry once with a blunter
+    prompt. If it misses again, record it as such — the gate is then "connect and `toc` call
+    verified; denial not elicited" — and say so explicitly in the merge commit rather than letting
+    an empty list read as a pass. An empty `permission_denials` with no attempted call proves
+    nothing; only a denial recorded against an attempted call does.
+  - The denial session is separate from the success session precisely so one stream cannot be read
+    as evidence for both.
 - **Rationale:** §9a's original probe demonstrated denial with `toc_file`, a second tool that has no
   successor in the thin server's surface (`ladder-toc.yaml`'s header comment says exactly this about
   the file-level toc tool). What the gate is actually testing is that the allowlist mechanism binds
@@ -381,8 +482,11 @@ that file is the error classification to mirror: `ErrTargetNotFound` and
 - `internal/cli/target.go:28` — `repoRelTarget(root, base, target string)` joins a relative target
   against `base`, `filepath.Rel`s it against `root`, rejects `".."` and `"../"` prefixes with
   `quarry.ErrTargetOutsideRepo`, and returns a slash-form cleaned path (`"."` for the root itself).
-- Both currently return `usageError` (unexported, `internal/cli/flags.go`), which is why they cannot
-  be reused as they stand. Note the `base` parameter: the CLI passes `cwd` normally and `root` when
+- `discoverRoot` and `resolveRoot` return `usageError` (unexported, `internal/cli/flags.go`), which
+  is D11's error-shape problem. `repoRelTarget` does **not** — it already returns
+  `quarry.ErrTargetOutsideRepo` (`internal/cli/target.go:38,43`), exactly the sentinel D11 keeps, so
+  its only reuse blocker is that the function itself is unexported. Note the `base` parameter: the
+  CLI passes `cwd` normally and `root` when
   `--root` was given. The MCP server has no per-call cwd, so it always passes `root` as `base` —
   targets are repository-relative by definition on this surface.
 
@@ -446,7 +550,9 @@ TDD candidates are marked. The engine and facade are already tested; nothing her
 
 **`internal/repopath` (TDD candidate — pure, no I/O beyond `Lstat`/`Stat`):** the move is a
 refactor, so the existing table tests in `internal/cli/root_test.go` and
-`internal/cli/target_test.go` move with the functions and are the starting point. Cover: discovery
+`internal/cli/target_test.go` move with the functions and are the starting point. Their fixtures
+come from a per-package copy of `writeScratchTree` in `internal/repopath/scratchtree_test.go`, per
+D11 — the repo's documented convention for test helpers, not an exception to it. Cover: discovery
 finding `.git` at the start directory, at an ancestor, and nowhere (the failure message);
 `--root` given as relative and absolute, pointing at a file, and pointing at nothing; target
 relativisation for a plain relative path, an absolute path inside the root, the root itself
@@ -455,8 +561,10 @@ stay and must still pass unchanged — that is the regression gate on the refact
 
 **`internal/mcpserver` — protocol surface (TDD candidate):** using the SDK's in-memory transport,
 connect a client to the server and assert on `tools/list`: exactly one tool, named `toc`, with
-`target` required and `depth`/`symbols` optional, and `depth` typed integer. This is the test that
-catches an accidental second tool and a schema drift, both of which would silently break T7.
+`target` required and `depth`/`symbols` optional, `depth` typed integer with `minimum: -1`, and
+**no `outputSchema`** — that last assertion is what enforces D7's implementation consequence, since
+the go-sdk emits `structuredContent` for any tool that declares one. This is the test that catches
+an accidental second tool and a schema drift, both of which would silently break T7.
 
 **`internal/mcpserver` — the happy path (golden):** against a small committed fixture repository at
 `internal/mcpserver/testdata/` — a directory with a couple of Go files and a subdirectory is enough
@@ -479,9 +587,19 @@ assert the stronger property directly: for the same target and options, the MCP 
 `quarry.RenderJSON` of the facade's own answer are identical bytes. That single assertion is what
 makes "mirror of the CLI" testable rather than aspirational.
 
+One of these tests must also assert the result carries **no `structuredContent`** (D7).
+
 **`internal/mcpserver` — absent-property semantics:** a call omitting `symbols` must produce the
 engine's per-target default (file target → symbols present, directory target → absent), not
 `symbols: false`. This is the pointer-vs-bool trap in `TOCOptions` and deserves its own named test.
+A call omitting `depth` must behave as `depth: 0` (D6), which is a separate case with a separate
+failure mode and gets its own assertion.
+
+**`internal/mcpserver` — `depth` validation (D6):** `depth: -1` recurses to the bottom;
+`depth: -2` and `depth: -7` are rejected by the handler with `isError` and the CLI-worded message,
+**not** answered. This is the test that matters most of the four schema tests: the engine's
+`walkDir` decrements without a floor, so an unvalidated negative depth is an unbounded walk that
+returns a plausible-looking answer rather than an error.
 
 **`internal/mcpserver` — error paths:** a target that does not exist, a target escaping the
 repository (`"../elsewhere"`), and a target that is a broken symlink. Each must return `isError`
@@ -517,4 +635,8 @@ the task's `_mill/` artifacts and named in the merge commit.
 - **Q:** What is the automated test surface? **A:** [auto-pick] in-memory-transport client↔server tests: `tools/list` shape, golden bytes on `content[0].text`, absent-`symbols` default semantics, the error paths with their wording, and a layering test. **Why:** it catches exactly the drifts that would silently invalidate T7, and runs in the ordinary gate.
 - **Q:** Documentation? **A:** [auto-pick] a short `README.md` section with a placeholder-path `.mcp.json` snippet; no new doc file. **Why:** plan §2 deleted V1's `docs/mcp-setup.md` and kept the README a stub; a one-tool server needs four lines, and the no-machine-paths constraint rules out a real path.
 - **Q:** Does `quarry/` need anything added? **A:** [auto-pick] no facade change. **Why:** `Open`, `TOC`, `TOCOptions`, `DepthAll`, `RenderJSON`, `RenderErrorJSON` and the three sentinels all exist on `main` and cover the whole need; needing more would be a signal the design drifted, not a licence to extend the facade.
+- **Q:** [r2 gap] D7 justified omitting `structuredContent` by token cost — but `docs/research/mcp-surface.md` measured that Claude Code discards it and the duplication is transport-only. Keep the decision or reverse it? **A:** [auto-pick] keep the decision, replace the rationale. **Why:** one payload shape and no output schema to maintain still justify it; the token argument is refuted and is now marked in D7 as explicitly not a valid reason. The note's other finding — that the go-sdk emits `structuredContent` for any tool declaring an `outputSchema`, as all seven V1 tools did — turns this into an implementation requirement with a `tools/list` assertion behind it.
+- **Q:** [r2 gap] Nothing verifies that the stdio server actually inherits `claude`'s cwd, which the whole "harness untouched" scope rests on. How is it gated? **A:** [auto-pick] run D13's live probe from a *different* repository (the ladder's Loomyard checkout) and assert the answer names that repository's files; better still, run the harness itself once at `--cells a2-toc-dir --reps 1`. **Why:** run from the quarry repo the probe proves nothing, since discovery succeeds there either way; and a misrooting found mid-matrix costs the whole results root, because the harness forbids editing the code under test mid-run.
+- **Q:** [r2 gap] The tests moved into `internal/repopath` use `writeScratchTree`, an unexported `package cli` helper. Where do their fixtures come from? **A:** [auto-pick] a per-package copy of the helper in `internal/repopath/scratchtree_test.go`. **Why:** that is the repo's documented convention, not a workaround — `internal/cli/scratchtree_test.go`'s own header calls itself a deliberate per-package copy of the engine's, "because Go test helpers are not importable across packages", and `quarry/` carries a third. `internal/cli`'s copy is untouched.
+- **Q:** [r2 gap] What validates `depth`, and what does an absent `depth` mean? **A:** [auto-pick] schema `minimum: -1`, plus a handler-level D8 rejection of `depth < -1`; absent means `0`. **Why:** `internal/engine/walk.go` decrements depth with no floor and stops only at `0` or `DepthAll`, so `depth: -7` is an unbounded walk that returns a plausible answer instead of an error — and the CLI already rejects it (`flags.go:100`), so mirroring the CLI has to include its invalid-input behaviour.
 - **Q:** How do the MCP server and the CLI share root discovery and target relativisation? **A:** [auto-pick] lift `discoverRoot`/`resolveRoot`/`repoRelTarget` into a new `internal/repopath` package, with `internal/cli` wrapping their errors back into its own `usageError`. **Why:** they are unexported and return an unexported type today, and duplicating ~60 lines of subtle path handling across two surfaces is exactly the drift the facade discipline exists to prevent.
