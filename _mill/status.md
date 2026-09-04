@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
@@ -26,4 +26,19 @@ plan-fix-r2  '2026-09-04T09:10:19Z'
 plan-review-r3  '2026-09-04T09:17:01Z'
 plan-fix-r3  '2026-09-04T09:19:22Z'
 planned  '2026-09-04T09:19:32Z'
+implementing  '2026-09-04T09:19:55Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: repopath-extraction
+    state: pending
+  - name: mcp-server
+    state: pending
+  - name: mcp-server-tests
+    state: pending
+  - name: docs-and-config
+    state: pending
 ```
