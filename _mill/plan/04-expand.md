@@ -237,6 +237,7 @@ invite branching on a condition that must never occur.
   - `internal/engine/expand.go`
   - `internal/engine/resolve_test.go`
   - `internal/engine/testdata/glyphs/decls.go`
+  - `internal/engine/testdata/glyphs/iface.go`
   - `internal/engine/testdata/glyphs/inits.go`
   - `internal/engine/testdata/tags/linux.go`
   - `internal/engine/testdata/tags/other.go`
@@ -250,10 +251,16 @@ invite branching on a condition that must never occur.
 
   `TestExpand_NotAType` asserts, with `errors.As`, that a package-level function glyph and a
   package-level const glyph each return a `*NotATypeError` whose `Kind` is the kind the walk reports,
-  and that the returned answer is the zero value. It then asserts the case a match-count gate would
-  miss: the bare `init` glyph of the glyphs fixture package, which matches three declarations, returns
-  a `*NotATypeError` with a function kind — not a multipart answer, which the type does not admit, and
-  not an ambiguous one.
+  and that the returned answer is the zero value. Take both from the glyphs fixture package, so the
+  single-match requirement is met by construction: the function is `AnonParam`, declared once in
+  `internal/engine/testdata/glyphs/iface.go` — the anonymous interface in its parameter list
+  contributes no symbol, so the glyph matches exactly one declaration — and the const is
+  `UngroupedConst`, declared once in `internal/engine/testdata/glyphs/decls.go`. Neither the tags
+  fixture's `Dup` nor its `Mixed` can serve here: both match twice and answer `ambiguous` before the
+  kind gate is reached, which is what card 17's own ambiguous test asserts. It then asserts the case a
+  match-count gate would miss: the bare `init` glyph of the glyphs fixture package, which matches three
+  declarations, returns a `*NotATypeError` with a function kind — not a multipart answer, which the
+  type does not admit, and not an ambiguous one.
 
   `TestExpand_AmbiguousBuildTags` asserts that the duplicated type glyph of the tags fixture package
   answers `StatusAmbiguous` with both declarations in `Candidates` and no head and no members, and

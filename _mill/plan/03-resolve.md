@@ -151,7 +151,8 @@ and every card in this batch leaves the package building and the existing suite 
   inline today, written once here so the two new verbs share one copy.
 
   `SpansOf` keeps its own inline copy of that filter: do not change `SpansOf` to call `matchesFor`,
-  and do not change `SpansOf` at all. That leaves two implementations of one filter in this file, and
+  and change no line of its code — card 9 re-tenses one clause of its doc comment and that is the only
+  edit it takes in this plan. That leaves two implementations of one filter in this file, and
   the duplication is deliberate rather than overlooked — record it in `matchesFor`'s own doc comment,
   naming `SpansOf`'s inline loop as the second copy and stating both halves of the reason. First, this
   task's scope permits exactly two edits to code T3 wrote for its own purposes, both named and both
@@ -289,11 +290,26 @@ and every card in this batch leaves the package building and the existing suite 
   repository-relative forward-slash string under `sort.Strings` semantics with no case folding and no
   locale. No caller sorts.
 
-  Update the header comment at the top of `internal/engine/resolve.go`: it currently says the file
-  stops short of a status vocabulary and that the collision flag exists for a later verb to promote.
-  Rewrite those clauses to describe what the file now holds — `SpansOf` still returning an empty slice
-  with no status, and `Resolve` above it holding the vocabulary and promoting the collision — without
-  touching the file's description of `unitDirs`, `symbolsOfUnit` or `symbolsOfDir`.
+  Re-tense every comment in `internal/engine/resolve.go` that speaks of `resolve` as a verb that does
+  not exist yet. There are three, and this card owns all of them, on the same ground card 2 owns
+  `internal/engine/answer.go`'s: a comment that describes its own file wrongly is worse than the churn
+  of fixing it, and this file is one the task edits as its own work rather than under a scope
+  exception. Change no code and no other comment while doing it.
+
+  1. The header comment at the top of the file, which says the file stops short of a status vocabulary
+     and that the collision flag is carried for a later verb to promote. Rewrite those clauses to
+     describe what the file now holds — `SpansOf` still returning an empty slice with no status, and
+     `Resolve` above it holding the vocabulary and promoting the collision — without touching the
+     file's description of `unitDirs`, `symbolsOfUnit` or `symbolsOfDir`.
+  2. `unitDirs`'s doc comment, which says the later `resolve` verb promotes the collision into an
+     `ambiguous` status when it builds the status vocabulary, and that the flag lives on an unexported
+     return so the task records the fact without inventing a status type that is not its to design.
+     Re-tense both clauses: `Resolve` in this same file now reads the flag and promotes it, and the
+     status type now exists in `internal/engine/answer.go`.
+  3. `SpansOf`'s doc comment, which contrasts its own empty-slice-no-status result with "the later
+     resolve verb's" four statuses. Re-tense that one clause only. Card 7's instruction not to change
+     `SpansOf` is about its code and its behaviour, not its doc comment: the function keeps its inline
+     filter, its signature and every line of its body.
 - **Commit:** `feat(engine): add Repo.Resolve over the glyph and path branches`
 
 ### Card 10: decision-function table tests

@@ -105,14 +105,20 @@ four `Status` constants.
   never splits — are docs/rewrite-plan.md's three-queries section. Reading the wrong file's name into a
   shipped doc comment sends the next reader to a section that does not contain the sentence.
 
-  Change no existing declaration and no existing JSON tag in this file. Two existing comments do
+  Change no existing declaration and no existing JSON tag in this file. Three existing comments do
   change, for the same reason card 23 corrects one stale sentence in the Go extractor and card 9
-  rewrites the resolve file's own header: leaving a comment that describes this file wrongly is
-  worse than the churn of fixing it. Extend the file's header comment so its enumeration of the file's
-  contents names `Status`, `ResolveResult` and `ExpandAnswer` alongside the types it already lists, and
-  reword `Symbol.HeadStart`'s "consumed by the later expand verb" so it names the verb in the present
-  tense, without touching the rest of that comment's substance — the head fields stay JSON-hidden and
-  `KindType`-only, and the sentence about the subtraction being the consumer's job stays as it is.
+  re-tenses three in the resolve file: leaving a comment that describes its own file wrongly is worse
+  than the churn of fixing it, and this file is one the task edits as its own work rather than under a
+  scope exception. All three are re-tensings with no change of substance:
+
+  1. The file's header comment, whose enumeration of the file's contents must now name `Status`,
+     `ResolveResult` and `ExpandAnswer` alongside the types it already lists.
+  2. `Symbol.HeadStart`'s "consumed by the later expand verb", which names the verb in the present
+     tense once `Expand` exists. The head fields stay JSON-hidden and `KindType`-only, and the sentence
+     about the subtraction being the consumer's job stays exactly as it is.
+  3. `Symbol.File`'s "The span lookup batch 5 adds, and the later resolve and expand verbs, fill File
+     because their entries span files" — the same forward reference, in the same file, and left
+     standing it would be the one stale "later verb" phrasing in a file whose other two were fixed.
 - **Commit:** `feat(engine): add ResolveResult and ExpandAnswer payload types`
 
 ## Batch Tests
