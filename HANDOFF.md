@@ -1,6 +1,6 @@
 > Next agent: call the Skill tool with `mill:conversation` before reading the rest of this document.
 
-# HANDOFF — the quarry rewrite, state as of 2026-09-03 (evening)
+# HANDOFF — the quarry rewrite, state as of 2026-09-04 (morning)
 
 A fresh session on any machine acts on this file, `docs/rewrite-plan.md` and `docs/glyph.md`.
 Nothing else is needed. The plan (§12) is the task table; the glyph document is the identifier
@@ -9,15 +9,18 @@ contract. Neither is summarised here — read them.
 ## 1. Where things stand
 
 Quarry is being rewritten around one identifier, the glyph, and three queries: `toc`, `resolve`,
-`expand`. Tree-sitter only, Go only. **T0 (the V1 deletion) is merged; wave 1 (T1, T2) is spawned
-and mid-discussion** (§4). What survives on `main` after T0 is listed in plan §2's "kept" rows:
-the Go extractor under `internal/quarryengine/`, the ladder yaml and tasks under
-`bench/loomyard-eval/`, the two rewrite documents, and `docs/research/`.
+`expand`. Tree-sitter only, Go only. **Waves 0–2 are merged on `main`:** T0 (the V1 deletion),
+T1 (`glyph/`), T2 (the ladder harness under `bench/loomyard-eval/ladder/`), T3 (the engine).
+Each landed as one squash commit titled by its task; each task branch's full history, `_mill/`
+artifacts included, is preserved under its `archive/<slug>` tag.
+
+The engine now lives at **`internal/engine`** (renamed from V1's `internal/quarryengine` by T3's
+D1 — see §2), one package, files per concern, with `internal/engine/treesitter` as the grammar
+seam and `internal/cgoguard` guarding `CGO_ENABLED=0` builds.
 
 `CLAUDE.md` is one line: Go repository, no Python. No tracked file may carry a machine path.
 
-**Uncommitted on `main` right now:** this file, `docs/rewrite-plan.md` and `docs/glyph.md` — the
-`members`→`expand` rename and its rationale (this session). Commit before switching machines.
+**Uncommitted on `main` right now:** this file only. Commit before switching machines.
 
 ## 2. The decisions the plan rests on
 
@@ -25,23 +28,36 @@ the Go extractor under `internal/quarryengine/`, the ladder yaml and tasks under
   against the glyph contract. Nothing in the tree describes a language it does not support.
 - **The listing verb is `toc`.** `map` was considered and rejected: a keyword in Go, a different
   operation everywhere else.
-- **The type verb is `expand`** (renamed from `members`, 2026-09-03, in all three documents).
-  "Member" stays the grammar's word for what follows `#`; as a verb it was one language's
-  vocabulary and said nothing about the operation. `expand` unfolds one type into its head and
-  everything its owner chain holds, across files. Type glyphs only — paths belong to `toc`, a leaf
-  has nothing to unfold, and `toc` never takes a glyph (full rationale in plan §5).
-- **The facade is the primary surface**, for Loomyard's own Go code. The CLI mirrors it with JSON
-  and exit codes. **MCP is thin**: one `toc` tool, more only when a ladder cell measures more.
-- **The plan validates before dispatch**: `glyph.Parse`, then `resolve`, then plan-internal checks,
-  before any agent runs (plan §8.1).
+- **The type verb is `expand`** (renamed from `members`, 2026-09-03). "Member" stays the grammar's
+  word for what follows `#`. Type glyphs only; `toc` never takes a glyph (rationale in plan §5).
+- **T5 is split; waves 3 and 4 are parallel** (2026-09-03). The MCP exposes only `toc`, so the
+  critical path to the measurement is T0 → T1 → T3 → T5a → T6 → T7; T4 and T5b sit off it
+  (plan §12).
+- **The engine package is `engine`, not `quarryengine`** (T3's D1, challenged and upheld
+  2026-09-04). `quarryengine` stutters against the module path; `internal/` is compiler-enforced
+  private, so the short name is visible only inside quarry, where there is exactly one engine.
+  The "unambiguous names" rule targets no-cohesion grab-bags (`util`), not module-scoped names.
+  If a second engine ever arrives, the *new* thing gets the qualifier — a rename then is one
+  in-repo refactor, since nothing outside the module can ever import it.
+- **Pipelined tasking works and is the pattern now:** a dependent task's *discussion* runs against
+  its predecessor's decided artifacts (via the `.portals/<slug>/` junction) while the predecessor
+  implements; the code dependency binds only implementation. The task body must (a) mark which
+  facts come from artifacts rather than code on `main`, (b) hold before implementation until the
+  predecessor merges, then `mill-merge-in` and plan against real code. T4 ran this way against T3
+  and its round-1 review verified every provenance mark. Best case: the predecessor merges before
+  `mill-plan` starts, and the plan is simply written against reality — no revision round.
+- **The facade is the primary surface**; CLI mirrors it; **MCP is thin**: one `toc` tool, more
+  only when a ladder cell measures more.
+- **The plan validates before dispatch**: `glyph.Parse`, then `resolve`, then plan-internal
+  checks, before any agent runs (plan §8.1).
 - **Extraction is complete; views filter.** No default view drops anything.
 
 ## 3. What was measured, and still holds
 
 The numbers the plan cites (its §1 points here). The runs are on branch `v1-final` under
-`bench/loomyard-eval/ladder/results/<root>/conclusion.md`; nothing on `main` reproduces them, and
-the uncommitted `raw/` data only ever existed on the machines that ran the matrices (one machine's
-leftovers were deleted 2026-09-03 — the committed conclusions are the record).
+`bench/loomyard-eval/ladder/results/<root>/conclusion.md`; nothing on `main` reproduces them
+(the T7 rerun will). The committed conclusions are the record; the raw run data was never
+committed anywhere.
 
 | finding | run |
 |---|---|
@@ -51,55 +67,57 @@ leftovers were deleted 2026-09-03 — the committed conclusions are the record).
 | Symbol spans are syntactic: doc p90=12 lines, total span p90=52, max=971. A fixed grep window truncates silently. | 1741 symbols, Loomyard |
 | Cold tree-sitter extraction: one package 19 ms, the whole repository 318 ms. No daemon needed. | Loomyard, 439 files |
 
-Two harness rules carry into T2: never edit the code under test mid-matrix (binary hash per rep in
-`provenance.json`), and cost numbers compare only within one results root. Everything else the old
-harness enforced, `claude -p` now guarantees (plan §9a).
+Two harness rules carry into every matrix: never edit the code under test mid-matrix (binary hash
+per rep in `provenance.json`), and cost numbers compare only within one results root.
 
 ## 4. Next
 
-**Wave 1 is in flight.** Both tasks spawned 2026-09-03 into `wts/glyph-package` and
-`wts/ladder-harness`, both running `mill-start --orch` with the orchestrator session substituting
-for discussion-review round 1 (`orch-review.md`, written; round 2+ reverts to the automated
-reviewer):
+**Wave 3 is half in flight.** `resolve-expand` (T4) is `[active]`, phase `discussed`: its
+discussion ran pipelined against T3's artifacts, round-1 orch-review returned REQUEST_CHANGES
+(two undefined dispositions: `expand <unit>#init` with several `init`s reaches no defined answer;
+engine I/O errors mid-`Resolve` have no decided home), the worker absorbed the review, and
+`mill-start` has finished. **Its next steps, in the worker session:** `/mill-merge-in` (T3 is now
+on `main` — this is the hold-point release), verify the discussion's provenance marks against the
+real `internal/engine/` code (especially the head-span reading its discussion flagged for
+post-merge verification), then `/mill-plan` directly against the code. Its implementation needs
+a Loomyard checkout path from the environment (`.scratch/ladder.env` convention,
+`LADDER_LOOMYARD_REPO=<path>` — gitignored, recreate per machine).
 
-- **`glyph-package` (T1):** round-1 verdict **APPROVE**, 3 NITs. The worker proceeds through
-  mill-plan/mill-go on its own.
-- **`ladder-harness` (T2):** round-1 verdict **REQUEST_CHANGES**, 2 BLOCKING: (1) its
-  blinding-gate check treats any control transcript containing the quarry repo root as fatal,
-  while its own no-tmp-paths decision puts every task worktree *under* that root — every control
-  rep would trip it; (2) it read plan §9a's "1 000–1 500 lines" as including tests, contradicting
-  §2's non-test parallel. The worker picks the review up and fixes. Its worktree has the
-  gitignored `.scratch/ladder.env` with `LADDER_LOOMYARD_REPO=<path to a Loomyard checkout>` —
-  recreate that file when resuming on another machine.
+**T5a (facade + CLI, toc) is spawned** (`facade-cli-toc`, phase `discussing`) — run
+`/mill-start --orch` in its worktree and orch-review round 1 here; it is too big for `mill-quick`
+(see Suggested skills). T6 follows T5a and is the real `mill-quick` candidate; T7 needs T2
+(merged) and T6.
 
-After wave 1: T3 engine core alone; then T4 (resolve + expand) in parallel with T5a (facade +
-CLI, `toc` only); then T5b (resolve/expand join the facade and CLI) in parallel with T6 (thin
-MCP); then T7 the ladder run (plan §12, restructured 2026-09-03: the MCP exposes only `toc`, so
-T4 and T5b sit off the critical path to the measurement). For mechanical tasks (T5a, T5b, T6)
-use `mill-quick`; the review rounds were pure overhead on T0.
+**Wiki state:** `resolve-expand` active; `engine-core`, `glyph-package`, `ladder-harness` are
+`[done]` (grooming policy: `[done]` entries get removed — do so at the next groom). Wave 3+
+tasks (T5a, T5b, T6, T7, T8) are not in the wiki yet — add each from plan §12 as its wave
+approaches. The `engine-core` worktree still exists and awaits `mill-cleanup --apply`.
 
-**The wiki holds only the two active wave-1 tasks.** Groomed 2026-09-03: every `[done]` entry
-removed; `ladder-model-tier-comparison` dropped as obsolete (bound to V1's seven-tool MCP — if
-wanted again it is a ladder cell against the new surface). **Wave 2+ (T3–T7) is not in the wiki
-yet** — add those tasks from plan §12 as their wave approaches.
-
-Millhouse notes: the wiki is a daemon-backed store rendering `Home.md` and the proposal files.
-Edit tasks only through the `millpy-*` wrappers or `wiki._client`; a hook also blocks the literal
-string `.wiki` in shell commands — resolve the path via `_paths.resolve_wiki_path`. `mill-merge`
-strips `_mill/` before squashing; a manual squash must `git rm -r _mill` first.
+**Millhouse notes.** The wiki is daemon-backed: edit tasks only through `wiki._client` /
+`millpy-*` wrappers; a hook blocks the literal string `.wiki` in shell commands — resolve the
+path via `_paths.resolve_wiki_path(_paths.resolve_git_root())`. The orch-review pattern: this
+session owns the `Monitor` wait for `discussion.md`, a fork writes `orch-review.md` only after
+the file exists. The repo has `require_pr_to_base: true`: mill-finalize opens a PR, the operator
+reviews and **closes it without merging — that closed state is the approval signal**, and
+mill-merge then squashes locally. The worker may run mill-merge itself; before merging as
+orchestrator, check the parent's `.scratch/merge.lock` and whether the squash already landed on
+`main` — do not double-merge.
 
 ## 5. Open decisions (plan §11)
 
 - The phase-2 type checker: gopls or `go/packages` in-process. Decided when `impact` is built.
-- Whether the new harness commits `results/**/raw/`. T2 decides with its first root.
+- Whether the harness commits `results/**/raw/`. Decided with T7's first results root.
 - A C# parameter-list cap, only after a real C# repository is measured — and only when C# is wanted.
 
 ## Suggested skills
 
 - `mill:conversation` and `mill:workflow` — load at startup (response rules, skill table).
-- `mill:mill-status` — the per-task state table; run it first to see where wave 1 stands.
-- `mill:orch-review` — if wave-1 round-1 reviews are still pending when you arrive (they were
-  written this session; only needed again for newly spawned tasks).
-- `mill:mill-resume` — to recreate an active task's worktree on a new machine.
-- `mill:mill-merge` / `mill:mill-cleanup` — when a wave-1 task reaches `[ready-to-merge]`.
+- `mill:mill-status` — the per-task state table; run it first.
+- `mill:orch-review` — for each newly spawned task's round-1 discussion review (T5a next).
+- `mill:mill-quick` — for T6 only (thin wrapper, §9a's harness probe as an independent gate). T5a
+  is too big for it (new facade + envelope + CLI, and its `after/` done-when is generated by its own
+  code — review is the only independent §4 check): full pipeline with orch-review. T5b: decide when
+  T5a's surfaces exist.
+- `mill:mill-cleanup` — the `engine-core` worktree teardown is pending.
+- `mill:mill-resume` — to recreate `resolve-expand`'s worktree on a new machine.
 - `golang:golang-build` — build/test commands after any Go change.

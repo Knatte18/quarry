@@ -39,7 +39,7 @@ func (r *recordingRunner) Run(_ context.Context, c Cmd) error {
 	}
 	if r.outputs != nil && c.Stdout != nil {
 		if out, ok := r.outputs[c.Name+" "+strings.Join(c.Args, " ")]; ok {
-			c.Stdout.Write([]byte(out))
+			_, _ = c.Stdout.Write([]byte(out))
 		}
 	}
 	return nil

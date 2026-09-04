@@ -294,7 +294,8 @@ parts' own lines, matching `resolve`'s `multipart` answer; a Go type never split
 does) — Go's spread is members only, which is why `resolve` of a Go type returns one block and
 `expand` is how the rest is found.
 
-**`toc <dir|file>... [--depth N|all] [--symbols]`** — what is here: a table of contents. V1's
+**`toc <dir|file> [--depth N|all] [--symbols]`** — one target per call (settled in T5a's
+discussion: one invocation, one answer, one exit code). What is here: a table of contents. V1's
 `toc dir` and `toc file` as one verb over one recursive answer (§4 Depth): a directory answers with its files and its
 subdirectories' identities, a file with its entry and symbols, and the two knobs fill in more of the
 tree or more of each file. The measured win. Headers and docs complete (lesson 4).
