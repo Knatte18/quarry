@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: facade-cli-resolve-expand
 branch: facade-cli-resolve-expand
 plan: _mill/plan
@@ -31,4 +31,19 @@ plan-fix-r4  '2026-09-04T09:36:28Z'
 plan-review-r5  '2026-09-04T09:42:50Z'
 plan-fix-r5  '2026-09-04T09:44:17Z'
 planned  '2026-09-04T09:44:27Z'
+implementing  '2026-09-04T09:44:59Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: facade-surface
+    state: pending
+  - name: cli-argument-layer
+    state: pending
+  - name: cli-pipelines
+    state: pending
+  - name: evidence-and-status-gate
+    state: pending
 ```
