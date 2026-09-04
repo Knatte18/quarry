@@ -112,9 +112,10 @@ Batch-local decisions beyond the overview's Shared Decisions:
   - a glyph whose unit does not exist: exit 1, a payload whose status is not-found and whose unit is not-found;
   - a glyph the grammar rejects: exit 1, a payload carrying an error string and a reason word, empty stderr — not the failure envelope;
   - a repository-relative path naming a directory: exit 0, a payload whose status is found and which carries a directory answer;
+  - a repository-relative path naming a file: exit 0, a payload whose status is found and whose directory answer is that file's enclosing directory carrying exactly that one file entry. This case pins the claim that a file path target is answered and rendered in the directory form with no file-versus-directory flag plumbed through, on every machine rather than only where the pinned checkout exists;
   - a path that does not exist: exit 1, a payload whose status is not-found and which carries no unit key;
   - a path escaping the root: exit 1, a payload carrying the engine's own error string, emitted verbatim, and empty stderr;
-  - the text flag over the found glyph and over the found path, asserting the exact rendered bytes;
+  - the text flag over the found glyph, over the found directory path, and over the found file path, asserting the exact rendered bytes;
   - a path target given relative to a subdirectory, asserting the payload's target field echoes the repository-relative form, together with a glyph target asserting its target field echoes the argument verbatim — cover both in one test so the asymmetry is pinned rather than discovered.
 
   Every existing assertion in this file must keep passing unchanged; that is the extraction's proof.
