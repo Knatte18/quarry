@@ -6,7 +6,7 @@ batch: "ladder-file-and-pre-matrix-gates"
 number: 4
 cards: 4
 verify: go test ./bench/loomyard-eval/ladder/internal/ladder/
-depends-on: [2, 3]
+depends-on: [1, 2, 3]
 ```
 
 ## Batch Scope
@@ -21,8 +21,16 @@ right pin, and `CheckRenderedControlPrompt` returning nil for every control cell
 prompt.
 
 It is one batch because all four assertions are the same gate — cheap, pure, offline, and worthless
-individually. It depends on batches 2 and 3 because every one of them reads a file those batches
-write. It is the last batch before real budget is spent.
+individually. It is the last batch before real budget is spent.
+
+It declares `depends-on: [1, 2, 3]`. Batches 2 and 3 are there because every assertion here reads a
+file those batches write. Batch 1 is there for a different reason: this batch's `verify:` runs the
+whole `ladder` package, and batch 1 deliberately lands failing `e2e_test.go` assertions in its card 4
+that stay red until its card 5. Without that edge the two batches are unordered, so this batch's
+verify could fail on batch 1's mid-TDD state rather than on its own diff. The edge costs no extra
+serialisation on the critical path — batch 5 already depends on both — and it is preferred over
+narrowing this batch's verify to a `-run` filter excluding `TestE2E`, which would leave the package's
+e2e regressions unguarded at exactly the boundary before real budget is spent.
 
 The external interface batch 5 consumes is the amended `ladder-toc.yaml` itself, specifically the six
 cell ids `b0-none`, `b8-toc-dir`, `c0-none`, `c1-toc-dir`, `d0-none`, `d1-toc-dir`, which batch 5
@@ -205,8 +213,10 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
 
   Two test functions:
 
-  - `TestPreMatrix_ControlPromptsAreBlind`. For each control cell id in `b0-none`, `c0-none`,
-    `d0-none`: load `../../ladder-toc.yaml` with `LoadLadder`, find that config, load its task's
+  - `TestPreMatrix_ControlPromptsAreBlind`. For each control cell id in `a0-none`, `b0-none`,
+    `c0-none`, `d0-none` — every control the amended file declares, not only the three this matrix
+    runs, so the gate covers the whole file and `a0-none` does not sit unguarded: load
+    `../../ladder-toc.yaml` with `LoadLadder`, find that config, load its task's
     `task_file` with `LoadTaskFile`, render the prompt the same way `run.go`'s `runCellRepetition`
     does — `RenderPrompt(content, dest, grantedToolNames(l, cfg))` with an arbitrary non-empty `dest`
     string standing in for the pinned worktree path — and assert `CheckRenderedControlPrompt(prompt,

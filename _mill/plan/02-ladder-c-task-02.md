@@ -42,6 +42,7 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
 - **Context:**
   - `bench/loomyard-eval/tasks/01-reed-geometry-exploration.md`
   - `bench/loomyard-eval/ladder/internal/ladder/prompt.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/score.go`
 - **Edits:**
   - `bench/loomyard-eval/tasks/02-shedadapters-exploration.md`
 - **Creates:** none
@@ -124,6 +125,15 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   re-author now, before the matrix, and record the swap and its reason in the task file's own notes
   section. After the matrix starts, the prompts and the fasit are measured stimulus under the
   no-mid-matrix-edit rule and that window is closed.
+
+  A swap **keeps the identifier `02-shedadapters-exploration` everywhere it already appears**: the
+  task file name, the fasit file name, the fasit's `_meta.task` value, and card 10's `tasks:` key and
+  its two `configs:` entries' `task:` field. Only the prompt body, the `## Scope` section and the
+  notes section change. The id is an opaque key `validate` matches `configs[].task` against — it is
+  not required to describe the subject, and renaming it would ripple through the ladder file, both
+  new cards in batch 4, and this plan's own `All Files Touched`. Card 12's `droppedSubstrings` for
+  task 02 are then picked from the file as actually written rather than from this plan's examples,
+  since a swap makes `8.4k lines` stale.
 - **Commit:** `bench(tasks): author task 02's exploration fasit`
 
 ## Batch Tests

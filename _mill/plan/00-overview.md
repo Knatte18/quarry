@@ -35,7 +35,7 @@ batches:
   - number: 4
     name: ladder-file-and-pre-matrix-gates
     file: 04-ladder-file-and-pre-matrix-gates.md
-    depends-on: [2, 3]
+    depends-on: [1, 2, 3]
     verify: go test ./bench/loomyard-eval/ladder/internal/ladder/
   - number: 5
     name: matrix-and-conclusion
