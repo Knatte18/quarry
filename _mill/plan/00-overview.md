@@ -135,6 +135,26 @@ batches:
   every batch verifies against.
 - **Applies to:** all batches
 
+### Decision: fixture-trees-live-under-scratch-never-t-tempdir
+
+- **Decision:** every on-disk fixture tree in this task is built under `.scratch/<pkg>-tests/<name>/`
+  at the repository root, never with `t.TempDir()`. Two packages need such trees, and each declares
+  its own helper because Go test helpers are not importable across packages:
+  `quarry/scratchtree_test.go` (batch 1 card 4) and `internal/cli/scratchtree_test.go` (batch 3
+  card 14). Both mirror `internal/engine/scratchtree_test.go`'s `writeScratchTree` — resolve the
+  module root from `runtime.Caller(0)`, `os.RemoveAll` any stale tree, write each entry, and
+  register a `t.Cleanup` that removes it — and both write regular files only, leaving symlinks and
+  other special entries for the calling test to create on the returned path.
+- **Rationale:** `internal/engine/scratchtree_test.go`'s helper doc states the convention verbatim
+  ("It never calls `t.TempDir()`: the system temp directory is banned … `.scratch/` — gitignored at
+  the repository root — is the sanctioned location instead"), and every engine test follows it. The
+  ban is not merely T3-scoped: writing tests, fixtures, or any ephemeral scratch into a system
+  temporary directory is prohibited outright for this repository. `.scratch/` is already gitignored
+  by the repo-root `.gitignore`, so nothing the helper writes can be committed by accident.
+  `bench/loomyard-eval/ladder` does use `t.TempDir()`, but it is the vendored benchmark harness and
+  is not the convention new first-party packages follow.
+- **Applies to:** all batches
+
 ### Decision: verify-scope-is-per-batch
 
 - **Decision:** each batch's `verify:` runs only the packages that batch touches
@@ -172,6 +192,7 @@ batches:
 - `internal/cli/plan4_test.go`
 - `internal/cli/root.go`
 - `internal/cli/root_test.go`
+- `internal/cli/scratchtree_test.go`
 - `internal/cli/target.go`
 - `internal/cli/target_test.go`
 - `internal/cli/usage.go`
@@ -181,5 +202,6 @@ batches:
 - `quarry/render_test.go`
 - `quarry/repo.go`
 - `quarry/repo_test.go`
+- `quarry/scratchtree_test.go`
 - `quarry/text.go`
 - `quarry/text_test.go`

@@ -124,20 +124,33 @@ Batch-local decision: `quarry/` is split across three source files by role (`doc
   - `internal/engine/repo.go`
   - `internal/engine/answer.go`
   - `internal/engine/toc.go`
-  - `internal/engine/testdata/tree/pkg/alpha.go`
   - `internal/engine/repo_test.go`
+  - `internal/engine/scratchtree_test.go`
 - **Edits:** none
 - **Creates:**
   - `quarry/repo_test.go`
+  - `quarry/scratchtree_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `quarry/repo_test.go` in `package quarry`, table-driven where a table
-  fits, using `t.TempDir()` for every filesystem fixture — do not read
-  `internal/engine/testdata/`, which belongs to the engine's own tests; build the fixture tree in
-  the temp dir instead.
+- **Requirements:** Create `quarry/scratchtree_test.go` in `package quarry` declaring
+  `func writeScratchTree(t *testing.T, name string, files map[string]string) string`, mirroring
+  `internal/engine/scratchtree_test.go`'s helper of the same name: resolve the module root from
+  `runtime.Caller(0)`, build the tree under `.scratch/quarry-tests/<name>/`, `os.RemoveAll` any
+  stale tree first, create parent directories as needed, register a `t.Cleanup` that removes the
+  tree, and return its absolute path. It writes regular files only. Its doc comment states that it
+  never calls `t.TempDir()` because the system temp directory is banned for this repository's tests
+  and `.scratch/` — gitignored at the repository root — is the sanctioned location, and that the
+  helper is a deliberate per-package copy because Go test helpers are not importable across
+  packages.
+
+  Create `quarry/repo_test.go` in `package quarry`, table-driven where a table fits, building every
+  filesystem fixture with `writeScratchTree` — do not read `internal/engine/testdata/`, which
+  belongs to the engine's own tests, and do not call `t.TempDir()`.
   Cover: `Open` rejecting a relative root, a non-existent root, and a root that names a file rather
   than a directory, each returning a non-nil error whose message begins `quarry: open`; `Open`
   succeeding on an absolute existing directory and returning a non-nil `*Repo`.
+  For the `Open` cases that need a path rather than a tree, use paths under the tree
+  `writeScratchTree` returns.
   Cover `TOC` on a small synthesised tree: a directory target answering with the directory's own
   `Dir` and its files; a file target answering with one entry in `Files`.
   Cover the sentinel transitivity that is this batch's whole point: `TOC` on a missing target
@@ -152,7 +165,8 @@ Batch-local decision: `quarry/` is split across three source files by role (`doc
 
 ## Batch Tests
 
-`verify: go test ./quarry/...` runs the one new test file, `quarry/repo_test.go`. Scoped to the
+`verify: go test ./quarry/...` runs the new `quarry/repo_test.go` over the `writeScratchTree`
+helper `quarry/scratchtree_test.go` adds. Scoped to the
 `quarry` package because that is the only package this batch touches; the module-wide
 `go build ./...` at the batch boundary catches any cross-package compile break. The engine's own
 suite is not re-run — no batch in this plan modifies `internal/engine`.

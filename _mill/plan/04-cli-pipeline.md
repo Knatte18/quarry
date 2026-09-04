@@ -134,9 +134,11 @@ half-applied.
   - `internal/cli/root.go`
   - `internal/cli/target.go`
   - `internal/cli/usage.go`
+  - `internal/cli/scratchtree_test.go`
   - `quarry/quarry.go`
   - `quarry/render.go`
   - `quarry/text.go`
+  - `_mill/discussion.md`
 - **Edits:** none
 - **Creates:**
   - `internal/cli/cli_test.go`
@@ -144,9 +146,11 @@ half-applied.
 - **Moves:** none
 - **Requirements:** Create `internal/cli/cli_test.go` in `package cli`. Every case calls
   `Run(args, &stdout, &stderr)` with `bytes.Buffer` sinks and an explicit `--root` pointing at a
-  `t.TempDir()` fixture tree, so no test changes the process working directory. Build the fixture
-  tree in the temp dir: a directory holding a Go file with a package clause and a doc comment, a
-  nested subdirectory, and a symlink to a directory.
+  fixture tree built by batch 3 card 14's `writeScratchTree`, so no test changes the process
+  working directory and no test writes to a system temp directory. The fixture tree holds a
+  directory with a Go file carrying a package clause and a doc comment, a nested subdirectory, and
+  — created by the test itself on the returned path, since the helper writes regular files only —
+  a symlink pointing at a directory.
   Cover, per `discussion.md`'s Testing block:
   *Exit-code mapping* — a directory target and a file target returning 0; a missing target returning
   1; a `..` target escaping the root returning 1; an unknown flag, a missing target, two targets, an
@@ -156,9 +160,24 @@ half-applied.
   returns 1 with the `target not found:` sentence naming the repository-relative path; a symlink
   pointing at a directory, given as the target, renders in the **file** form under `--text`, which
   is only possible if `targetIsFile` came from an `os.Lstat` rather than an `os.Stat`.
+  *Exit 3, with the two fixtures that reach it* — exit 3 has no accidental trigger, so name both
+  deliberately rather than asserting a code no case produces:
+  1. **A stat error that is not `IsNotExist`.** Give a target whose parent component is a regular
+     file rather than a directory, e.g. the target `pkg/doc.go/inner` where `pkg/doc.go` is a file
+     in the fixture tree. Step 6's `os.Lstat` then fails with `ENOTDIR`, which `os.IsNotExist`
+     reports false for, so the pipeline takes the `exitInternal` branch. Assert the code is 3 and
+     the message begins `internal error: `. Skip this case with a reason on a platform where that
+     `Lstat` reports `IsNotExist` instead, so the test never asserts a platform-specific errno.
+  2. **A failing stdout writer.** Declare a tiny `type failingWriter struct{}` whose `Write` always
+     returns an error, pass it as `stdout` for an otherwise-valid directory query, and assert `Run`
+     returns 3. This is the render-path write failure, which is why a render failure is exit 3
+     rather than a new code. Note in the test that `fail` writes its envelope to the same failing
+     writer and cannot report there either — the assertion is on the returned code and on stderr,
+     never on stdout, for this case alone.
   *Error-message derivation* — for each non-zero code, the first line written to stderr is
   byte-identical to the `error` value in the stdout envelope; the exit-1 and exit-2 messages never
-  contain the substring `internal/engine`; the exit-3 message begins `internal error: `.
+  contain the substring `internal/engine`; the exit-3 message begins `internal error: `. Exclude the
+  failing-stdout-writer case from the stdout-envelope half of this assertion, for the reason above.
   *Failure envelope* — for each non-zero code, stdout is exactly
   `{"ok":false,"error":"<msg>"}` plus a newline and nothing else, and stderr is non-empty; the two
   are never swapped. Repeat the whole set **with `--text` added** to pin that the failure envelope
@@ -181,4 +200,6 @@ half-applied.
 batch's `cli_test.go`, and compiles `cmd/quarry` (which has no tests of its own — its one line is
 covered by every `Run` case in `cli_test.go`). Scoped to the two packages this batch touches; the
 module-wide `go build ./...` at the batch boundary catches a cross-package break. Every case here
-is Loomyard-free and builds its own `t.TempDir()` fixture, so the batch verifies on any machine.
+is Loomyard-free and builds its own `.scratch/cli-tests/` fixture, so the batch verifies on any
+machine; the one platform-dependent case — the `ENOTDIR` stat that reaches exit 3 — skips with a
+reason rather than failing where the errno differs.
