@@ -9,11 +9,12 @@ contract. Neither is summarised here — read them.
 ## 1. Where things stand
 
 Quarry is rewritten around one identifier, the glyph, and three queries: `toc`, `resolve`,
-`expand`. Tree-sitter only, Go only. **Waves 0–3 are merged on `main`:** T0 (the V1 deletion),
+`expand`. Tree-sitter only, Go only. **Waves 0–4 are merged on `main`:** T0 (the V1 deletion),
 T1 (`glyph/`), T2 (the ladder harness), T3 (the engine), T4 (`resolve` + `expand` in the engine),
-T5a (the `quarry/` facade, `internal/cli`, and `cmd/quarry` with the verb `toc`). Each landed as
-one squash commit titled by its task; each task branch's full history, `_mill/` artifacts
-included, is under its `archive/<slug>` tag.
+T5a (the `quarry/` facade, `internal/cli`, and `cmd/quarry` with the verb `toc`), T5b (`resolve`
++ `expand` joining the facade and the CLI), T6 (`cmd/quarry-mcp`, the thin MCP server). Each
+landed as one squash commit titled by its task; each task branch's full history, `_mill/`
+artifacts included, is under its `archive/<slug>` tag.
 
 The engine is `internal/engine` (with `internal/engine/treesitter` as the grammar seam,
 `internal/cgoguard` for `CGO_ENABLED=0` builds). The public surface is the `quarry/` facade over
@@ -25,7 +26,9 @@ The full `pipeline.done_gate` (`go test ./... && golangci-lint run`) is green on
 pre-existing errcheck debt in the ladder code was cleared (commit `e45c649`) rather than
 narrowing the gate.
 
-**Uncommitted on `main` right now:** this file only. Commit before switching machines.
+Check `git status --porcelain` on `main` before switching machines — this line is retired rather
+than restated, since a fixed "uncommitted right now" claim in a handoff document goes stale the
+moment anything else lands.
 
 ## 2. The decisions the plan rests on
 
@@ -35,8 +38,8 @@ narrowing the gate.
   stays the grammar's word for what follows `#`. `toc` never takes a glyph (plan §5).
 - **`toc` takes one target per call** (T5a's discussion, plan §5 amended `55161a6`): one
   invocation, one answer, one exit code.
-- **T5 was split; the critical path ran T0 → T1 → T3 → T5a → T6 → T7** (plan §12). Only T6 and
-  T7 remain on it. T5b (resolve/expand into facade + CLI) sits off it.
+- **T5 was split; the critical path ran T0 → T1 → T3 → T5a → T6 → T7** (plan §12), and it is now
+  finished. T5b (resolve/expand into facade + CLI) sits off it.
 - **The engine package is `engine`, not `quarryengine`** (T3's D1, challenged and upheld).
   `internal/` is compiler-enforced private, so the short name is visible only in-module, where
   there is exactly one engine; a future second engine gets the qualifier.
@@ -62,13 +65,15 @@ narrowing the gate.
 ## 3. What was measured, and still holds
 
 The numbers the plan cites (its §1 points here). The runs are on branch `v1-final` under
-`bench/loomyard-eval/ladder/results/<root>/conclusion.md`; nothing on `main` reproduces them
-(the T7 rerun will). The committed conclusions are the record; the raw run data was never
-committed anywhere.
+`bench/loomyard-eval/ladder/results/<root>/conclusion.md`; T7 reran the toc-dir finding against
+the merged rewrite (`main`'s `cmd/quarry-mcp`) and it did not reproduce cleanly — see the new row
+below and `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` for the full account.
+The committed conclusions are the record; the raw run data was never committed anywhere.
 
 | finding | run |
 |---|---|
 | A directory table of contents halves exploration on unfamiliar code: turns 8→4, cache_read 127k→83k, recall unchanged. The one measured win and the regression gate for the rewrite (T7). | `2026-09-02-toc`, reps 5 |
+| T7's rerun of the same comparison, against the merged rewrite: no cost metric separated from the control at n=5 (turns and cache_read both `separated: false`), and most cost medians ran equal-or-higher for the toc-dir cell rather than lower. Recall/precision stayed consistent with the prior root. The regression gate did not reproduce the prior win on this host/harness/CLI-version pairing. | `2026-09-04-toc`, reps 5 |
 | Every LSP-shaped tool (definition, references, symbol) sat flat with or below the grep control. | `2026-08-30`, 45 runs |
 | A lossy compact view cut bytes 4× and cost precision 0.96→0.82. Views must be complete by default. | `2026-09-02-compact2` |
 | Symbol spans are syntactic: doc p90=12 lines, total span p90=52, max=971. A fixed grep window truncates silently. | 1741 symbols, Loomyard |
@@ -79,15 +84,10 @@ per rep in `provenance.json`), and cost numbers compare only within one results 
 
 ## 4. Next
 
-**Wave 4 is spawned, workers not yet started.** T5b (`facade-cli-resolve-expand`, deps T4+T5a,
-both merged) and T6 (`mcp-thin`, dep T5a) each have a worktree branched from the T5a tip, with
-`.scratch/ladder.env` already written. Start each worker in its worktree: **T5b** runs
-`/mill-start --orch` — its `config.local.yaml` carries 5-round caps (T6 keeps 3), and the
-orchestrator session arms the `orch-review` wait when told the worker is running; **T6** runs
-`/mill-quick` (§9a's harness probe is its independent gate). Both finalize PRs get the
-orchestrator PR review before the operator closes them. T7 (the measurement, the regression
-gate) needs T2 (merged) and T6; it needs `.scratch/ladder.env` on the machine that runs it,
-Loomyard at pin `72c23d9`.
+**The critical path is finished.** T0 → T1 → T3 → T5a → T6 → T7 has run end to end; T7 measured
+the regression gate against the merged rewrite and wrote its conclusion (see §3). What remains is
+wave 6's type checker (T8: gopls vs `go/packages`, `impact`, `assert-no-callers`, `verified` per
+entry, the DAG tightening of plan §8.2 — plan §12), plus the cleanup and grooming items below.
 
 **Cleanup:** three worktrees await `mill-cleanup --apply`: `wts/engine-core`,
 `wts/resolve-expand`, `wts/facade-cli-toc`. Wiki grooming: all five `[done]` entries can go at
@@ -118,8 +118,11 @@ the full task title (`^Facade + CLI, toc`), not a substring another commit can c
 - The phase-2 type checker: gopls or `go/packages` in-process. Decided when `impact` is built.
   (If `impact` is ever pursued, the gate is a *task-shaped* ladder cell — an edit task where the
   agent must find break sites — since reference-shaped tools measured flat in §3.)
-- Whether the harness commits `results/**/raw/`. Decided with T7's first results root.
 - A C# parameter-list cap, only after a real C# repository is measured — and only when C# is wanted.
+
+The raw-tree decision is settled — see
+`bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` and `docs/rewrite-plan.md`
+§11's updated bullet.
 
 ## Suggested skills
 
