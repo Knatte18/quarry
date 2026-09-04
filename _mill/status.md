@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-pre-matrix-gates
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -35,6 +35,7 @@ planned  '2026-09-04T12:19:28Z'
 planning  '2026-09-04T12:32:41Z'
 planned  '2026-09-04T12:34:58Z'
 implementing  '2026-09-04T14:15:44Z'
+approved-pre-matrix-gates  '2026-09-04T14:19:32Z'
 ```
 
 ## Batches
@@ -42,9 +43,10 @@ implementing  '2026-09-04T14:15:44Z'
 ```yaml
 batches:
   - name: pre-matrix-gates
-    state: running
+    state: approved
     implementer_session: 1dfa86ac-104e-403c-a60f-0969997c9fd7
     start_sha: 2445bdfa0098e29ad1272a8bb16aae4d9580f0d0
+    commit_sha: 1f698a0c1fe6177fac28bd0aa9db38782af7ef25
   - name: harness-mcp-init-fix
     state: pending
     verify_baseline_failures: []
