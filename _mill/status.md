@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-facade-core
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r3  '2026-09-04T06:44:09Z'
 plan-fix-r3  '2026-09-04T06:45:39Z'
 planned  '2026-09-04T06:45:49Z'
 implementing  '2026-09-04T06:46:39Z'
+approved-facade-core  '2026-09-04T06:51:25Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-09-04T06:46:39Z'
 ```yaml
 batches:
   - name: facade-core
-    state: running
+    state: approved
     implementer_session: 48778a4b-4ab9-4c53-a7a3-16943a7de8da
     start_sha: aaf1e2a31f03185093683b8888c280453aed5a47
+    commit_sha: 7ab2727a3877abd088d0a70b67fd3f95c96e0c5f
     verify_baseline_failures: ["FAIL\t./quarry/... [setup failed]"]
   - name: facade-renderers
     state: pending
