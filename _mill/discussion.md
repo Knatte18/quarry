@@ -32,12 +32,15 @@ ever produced, so the decision is made and recorded with it.
 
 - Recording the operator's plan §9a live probe of the merged `cmd/quarry-mcp` (connect, `toc` call,
   allowlist denial) as `probe.md` in the results root, and running the harness's own guarded
-  `TestLive` smoke test as a cheap pre-matrix check of the worker's tooling.
+  `TestLive` as a pre-matrix check of the worker's tooling — one measured repetition's worth of
+  spend, not a unit test.
 - One matrix run: `bench/loomyard-eval/ladder/ladder-toc.yaml`, cells `a0-none` and `a2-toc-dir`,
   reps 5 (the file's own value), via `bench/loomyard-eval/ladder/cmd/ladder run`, against the
   server built from `./cmd/quarry-mcp` at this branch's tip.
-- Resuming that same results root until each cell has 5 complete repetitions or the harness's
-  `MaxAttempts` ceiling is reached.
+- Resuming that same results root until each cell has 5 complete repetitions, or the driver's own
+  three-invocation ceiling is reached, or every missing repetition is attempt-exhausted — whichever
+  comes first (see `resume-not-restart`; the harness's `MaxAttempts` is not a stop condition across
+  invocations).
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`, written in the shape of the
   `v1-final` conclusions, plus the machine artifacts the run produced (`summary.json`,
   `provenance.json`, `table.txt`).
@@ -73,6 +76,9 @@ ever produced, so the decision is made and recorded with it.
   files that will one day write roots on the same day. If the matrix's first successful invocation
   happens on a later date, use that date instead — the root is named for the run, not for the task
   branch.
+- A restart on the same day does **not** reuse this path — see `harness-fixes-restart-the-matrix`
+  for the `-r2` suffix rule and why re-invoking against an abandoned root silently merges two
+  measurement regimes instead of restarting.
 - Rejected: an undated name (`toc-rerun`), which breaks the existing convention and stops the roots
   from sorting chronologically.
 
@@ -117,7 +123,12 @@ ever produced, so the decision is made and recorded with it.
   and ask.
 - What `probe.md` contains: it **transcribes the orchestrator's round-1 review answer verbatim** —
   quoted, attributed to the round-1 discussion review at
-  `_mill/reviews/20260904-110823-discussion-review-r1.md`, and labelled as an operator report rather
+  `_mill/reviews/20260904-110823-discussion-review-r1.md` **and to the `archive/ladder-toc-rerun`
+  tag**, since this task merges as one squash commit and its `_mill/` tree survives only under that
+  tag — a bare `_mill/` path would be unresolvable on `main`, which is exactly the cleaning that made
+  T6's own probe evidence unfindable in the first place. Cite it as
+  `archive/ladder-toc-rerun:_mill/reviews/20260904-110823-discussion-review-r1.md`. It is labelled as
+  an operator report rather
   than a transcript this task captured. No operator artifact exists in the tree to copy, so the
   review file is the source of record and must be named as such. Minimum fields: the date
   (2026-09-04); what was probed (the merged `cmd/quarry-mcp`, built from `main`); the three §9a
@@ -134,13 +145,21 @@ ever produced, so the decision is made and recorded with it.
   wrong instinct regardless of how cheap the command is. `probe.md` still exists because plan §12's
   T6 done-when and this task's constraints both name the probe as a gate, and a results root with no
   record of it read as unverified.
-- Kept from the earlier draft: `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT LADDER_LIVE_TEST=1 go
-  test ./bench/loomyard-eval/ladder/internal/ladder -run TestLive -v` runs once before the matrix.
-  That is the harness's own guarded smoke test — the worker's tooling, not the operator's probe — and
-  it is cheap insurance that the `claude -p` seam works on this host before ten repetitions depend on
-  it. It carries the same `env -u` prefix as the matrix (see `matrix-runs-backgrounded`): the test
-  exists to make a claim about that seam under the conditions the matrix runs in, and running it
-  under the very markers the matrix strips would test something else. A failure blocks the matrix.
+- Kept from the earlier draft, with its true price named: `env -u CLAUDECODE -u
+  CLAUDE_CODE_ENTRYPOINT LADDER_LIVE_TEST=1 go test ./bench/loomyard-eval/ladder/internal/ladder
+  -run TestLive -v -timeout 20m` runs once before the matrix. It carries the same `env -u` prefix as
+  the matrix (see `matrix-runs-backgrounded`): the test exists to make a claim about the `claude -p`
+  seam under the conditions the matrix runs in, and running it under the very markers the matrix
+  strips would test something else. A failure blocks the matrix.
+- **This is not a cheap smoke test.** `TestLive_FreshWorktreeGrantsExactlyBuiltins` calls
+  `invokeMeasuredProcess` with the ladder file's own `run_model`, `run_effort` and `--max-turns 60`:
+  it is one full `a0-none` repetition's API spend and wall-clock, run against a fresh worktree,
+  costing what an eleventh repetition would. It is worth that once — it is the only thing that
+  exercises the real CLI seam before ten repetitions depend on it, and it asserts what no offline
+  test can (the advertised tool list is exactly the four built-ins, no MCP server loaded, a granted
+  tool executes from a fresh directory) — but the plan must budget it as a repetition, not as a unit
+  test. `-timeout 20m` is explicit because `go test`'s 10-minute default is uncomfortably close to a
+  60-turn run's worst case, and a timeout kill would read as a seam failure when it is not.
 - Rejected: re-running the operator's `claude -p` probe (duplicates a reported-done gate). Rejected:
   proceeding with no `probe.md` at all (the results root would carry no record of a gate the plan
   names). Rejected: rewriting the constraint to say the worker runs the probe — the artifact must
@@ -153,7 +172,7 @@ ever produced, so the decision is made and recorded with it.
   The invocation strips the driving session's own Claude Code markers:
 
   ```
-  cd <worktree-root> && \
+  cd <quarry-repo-root> && \
     env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT \
       go run ./bench/loomyard-eval/ladder/cmd/ladder run \
         --config bench/loomyard-eval/ladder/ladder-toc.yaml \
@@ -196,8 +215,8 @@ ever produced, so the decision is made and recorded with it.
      This is the real drift check under resume and it survives the overwrite above, since
      `invocations[]` is appended to, never rewritten.
   2. **The server hash captured out-of-band, per invocation.** Before each invocation of the matrix
-     command, record `sha256sum` of the built server binary (`<worktree-root>/bin/quarry` under the
-     resolved worktree root, `~/.cache/ladder-eval` on this host — the harness's own build target)
+     command, record `sha256sum` of the built server binary (`<ladder-worktree-root>/bin/quarry`,
+     `~/.cache/ladder-eval/bin/quarry` on this host — the harness's own build target)
      into the run log, and transcribe every reading into the conclusion. Two readings that differ
      mean the same thing as a `quarry_commit` difference: the root is void and the matrix restarts.
   Both checks are cheap, and the conclusion states the values it checked rather than asserting the
@@ -207,6 +226,21 @@ ever produced, so the decision is made and recorded with it.
 
 ### resume-not-restart
 
+- **The driver's own invocation ceiling: at most three invocations of the matrix command per results
+  root, and the third is the last.** `MaxAttempts` is not a stop condition across invocations.
+  `InvalidateRep` derives its counter from the `.invalid-<k>` directories already on disk, so a
+  resumed invocation's first attempt at an already-thrice-invalidated repetition is attempt 4:
+  `attempts >= MaxAttempts` trips immediately, the cell is recorded `incomplete`, and the invocation
+  returns non-zero — after having spent a fresh measured `claude -p` call getting there. Nothing in
+  `summary.json` or in the exit code distinguishes "never attempted" from "attempt-exhausted", so a
+  polled loop that simply re-runs until the exit code is zero would burn API budget forever. The
+  driver therefore counts its own invocations and stops at three regardless of outcome. **The
+  observable it checks before each re-invocation:** for every incomplete cell, list
+  `<root>/raw/<cell>/<rep>.invalid-*`; a repetition with three or more such directories is
+  attempt-exhausted and will never complete, so if every missing repetition is attempt-exhausted, do
+  not re-invoke at all — go straight to the conclusion and report the cell at its real `n` with the
+  cause. This is the same defeated-detector class as `WarnOnServerHashDrift` above, and it gets the
+  same treatment: an explicit check the driver performs, not a harness signal it waits for.
 - Decision: an incomplete or blinding-invalidated repetition is re-attempted by re-running the same
   command against the same results root — the harness resumes on `RepIsComplete` and renames a
   discarded repetition to `<n>.invalid-<k>`. Repeat until each cell reports 5 complete repetitions
@@ -235,7 +269,7 @@ ever produced, so the decision is made and recorded with it.
     should not have had, or the prompt leaked the prefix. Non-transient: inspect the cell's config
     and the rendered prompt; stop until it is explained.
   - **Check (b), the quarry repository root path in a control transcript.** Almost always the
-    worktree root resolving somewhere it should not; re-check `LADDER_WORKTREE_ROOT` against
+    ladder worktree root resolving somewhere it should not; re-check `LADDER_WORKTREE_ROOT` against
     `ResolveWorktreeRoot`'s two invariants. Non-transient.
   - **Check (d), `CheckRenderedControlPrompt`.** Deterministic and pre-dispatch — see the gate
     inventory in Technical context. Re-running can never clear it, so it gets **zero** re-attempts:
@@ -244,9 +278,27 @@ ever produced, so the decision is made and recorded with it.
     repetition. Fixing it means removing the offending file from the measured session's auto-memory
     directory (or accepting that this host cannot run the matrix cleanly) — and re-running only
     after that. One re-attempt after the fix, then stop.
+- **Two outcomes are accepted, never retried, and must be reported.** Both satisfy `RepIsComplete`,
+  so resume will never revisit them, and both silently shrink a statistic rather than the run:
+  - **A scorer failure.** `dispatchScorer` retries the scorer alone up to `MaxAttempts` and never
+    re-runs the measured process; on exhaustion the repetition is written `complete` with
+    `scored: false` and `score_skip_reason: "scorer_failed"`. `summarizeCell` then drops it from
+    `recall` and `precision` only, counting it in `UnscoredCount`. Disposition: **accept it.** The
+    cost metrics are valid and the correctness metrics are simply at a smaller `n`.
+  - **A max-turns completion.** Complete by design (`run.go`'s taxonomy), counted in
+    `MaxTurnsCount`. Disposition: **accept it**, and treat it as a signal about the cell rather than
+    a fault — an agent that hit a 60-turn ceiling was not doing the task the fasit scores.
+  Because of these two, a cell can report turns and cache-read at n=5 while recall sits at n=2. The
+  conclusion **must** print the correctness `n` separately from the cost `n` — `table.txt` already
+  carries `recall_n` and `precision_n` columns and the `MAX_TURNS` / `UNSCORED` flags — and must
+  never state "recall unchanged" without naming the `n` behind it. That claim is the headline of the
+  thing this task exists to reproduce; an unqualified version of it at n=2 would be the single most
+  damaging sentence the conclusion could contain.
 - Rejected: starting a fresh root on any failure. Rejected: pushing past `MaxAttempts` by hand,
   which turns a systematic fault into an expensive loop. Rejected: relying on `MaxAttempts` to bound
-  blinding re-attempts — it does not reach that path at all.
+  blinding re-attempts — it does not reach that path at all. Rejected: re-running a scorer-failed
+  repetition's measured process to recover its score (it would replace a good measurement with a new
+  one and is not what the harness's own retry does).
 
 ### separation-verdict-from-the-harness
 
@@ -304,6 +356,15 @@ ever produced, so the decision is made and recorded with it.
   and the abandoned root. If the defect is in the code under test instead
   (`internal/`, `quarry/`, `cmd/`), the run stops and the conclusion records it; fixing it is a
   separate task.
+- **Naming the fresh root, and never re-invoking against the abandoned one.** A same-day restart must
+  not reuse `results/2026-09-04-toc` — re-invoking against that path is not a restart at all:
+  `ReadProvenance` finds the existing record, `MergeProvenance` appends the new invocation to it, and
+  every pre-fix repetition still satisfies `RepIsComplete` and is skipped, so the two measurement
+  regimes merge silently into one root. That is exactly what this decision forbids. The fresh root
+  takes a `-r2` suffix (`results/2026-09-04-toc-r2`, then `-r3`, and so on), and the abandoned
+  directory is never passed to `--results` again. It keeps its partial artifacts and gains an
+  `ABANDONED.md` naming the fix, the date and the successor root, following
+  `v1-final:.../2026-09-02-compact/`.
 - Rationale: the harness is not the code under test, so fixing it does not break the "never edit the
   code under test mid-matrix" rule — but it does change how a repetition is measured, which makes
   pre- and post-fix repetitions incomparable in a way `provenance.json`'s per-rep server hash does
@@ -339,7 +400,7 @@ ever produced, so the decision is made and recorded with it.
 summarises, writes and prints the table; `report` re-derives the summary and table from an existing
 raw tree without running or scoring anything — useful for re-rendering after a partial run. Both
 resolve the quarry repository root from the process's own working directory, so the command is run
-from the worktree root.
+from the quarry repo root.
 
 Files worth reading before planning:
 
@@ -372,7 +433,7 @@ Files worth reading before planning:
   fatal finding, and `run.go` turns it into `abortRun` — the repetition is written blinding-failed
   and the invocation returns. Note *whose* memory is scanned: the paths come from the measured
   session's own init record, and that session runs with its working directory in the pinned Loomyard
-  worktree under the resolved worktree root, so it is Loomyard's project memory that is walked, not
+  worktree under the ladder worktree root, so it is Loomyard's project memory that is walked, not
   this quarry worktree's. That is a narrower blast radius than it first looks, but it is still a
   live abort path on any host whose Loomyard memory mentions quarry, and the plan must handle it.
 - `internal/ladder/worktree.go` — the `Runner` seam every external process goes through;
@@ -382,7 +443,7 @@ Files worth reading before planning:
   refuses any path that is the quarry root, under it, or merely contains the substring `quarry`
   (because gate 2 check (b)/(c) scan the cell's working directory out of the transcript);
   `PrepareWorktree` / `RestoreWorktree` create and reset the detached pinned worktree; and the
-  advisory single-run lock `.ladder.lock` lives directly under the worktree root — a stale lock
+  advisory single-run lock `.ladder.lock` lives directly under the ladder worktree root — a stale lock
   after a killed run must be cleared by hand, and the error message names its holder's pid and
   results root.
 - `internal/ladder/provenance.go` — `provenance.json`: `quarry_commit`, `quarry_dirty`,
@@ -474,10 +535,12 @@ plan and `HANDOFF.md`:
 Most of this task is a run, not new code, so the test strategy is mostly about what gates the run
 rather than what unit tests get written.
 
-- **The pre-matrix smoke test is the first gate.**
+- **The pre-matrix live test is the first gate, and it costs one measured repetition.**
   `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT LADDER_LIVE_TEST=1 go test
-  ./bench/loomyard-eval/ladder/internal/ladder -run TestLive -v` — the same `env -u` prefix the
-  matrix uses — must pass before the matrix starts; a failure blocks it. This is the harness's own guarded live test —
+  ./bench/loomyard-eval/ladder/internal/ladder -run TestLive -v -timeout 20m` — the same `env -u`
+  prefix the matrix uses — must pass before the matrix starts; a failure blocks it. Budget it as an
+  eleventh repetition, not as a unit test: it drives `invokeMeasuredProcess` at the ladder file's own
+  model, effort and 60-turn ceiling. This is the harness's own guarded live test —
   the `claude -p` seam, the fresh-worktree tool grant, the no-MCP-server assertion for a control
   cell — and it is the worker's tooling check, not the operator's §9a probe. The §9a probe is
   reported done (see `probe-is-reported-done`) and is written up in `probe.md`, not re-run.
@@ -530,3 +593,5 @@ rather than what unit tests get written.
 - **Q:** Does the done gate run the live test? **A:** [auto-pick] No — `go test ./... && golangci-lint run` with `LADDER_LIVE_TEST` unset. **Why:** the guard exists so the repeated gate stays free and deterministic; the live test runs once, explicitly, in the probe batch.
 - **Q:** The server-hash drift warning is defeated by the resume workflow this task mandates — what checks drift instead? **A:** [auto-pick] `quarry_commit` equality across `provenance.json`'s `invocations[]`, plus an out-of-band `sha256sum` of the built server binary recorded per invocation and transcribed into the conclusion. **Why:** `run.go` rewrites `server_hashes` for every rep on every invocation and `CollectInvocation` leaves the per-invocation copy nil, so after any resume the map holds one hash and `WarnOnServerHashDrift` cannot fire; `invocations[]` is appended to rather than rewritten, so it survives.
 - **Q:** `MaxAttempts` does not bound blinding-failed repetitions — what stops the loop? **A:** [auto-pick] One re-attempt, and only after the cause is diagnosed and named; a second failure of the same repetition stops the matrix and the conclusion reports the cell at its real `n`. Check (d) gets zero re-attempts because it is deterministic. **Why:** a blinding failure is written `complete` with the flag set rather than invalidated, so no counter increments and an unattended loop would re-attempt it without limit.
+- **Q:** `MaxAttempts` bounds attempts within one invocation but not across them — what stops the resume loop? **A:** [auto-pick] The driver caps itself at three invocations per results root, and before each re-invocation it counts `<root>/raw/<cell>/<rep>.invalid-*` directories: a repetition with three or more is attempt-exhausted and will never complete, so if every missing repetition is exhausted it does not re-invoke at all. **Why:** `InvalidateRep` counts the `.invalid-<k>` directories already on disk, so a resumed invocation trips `attempts >= MaxAttempts` immediately — after spending a fresh measured call — and neither `summary.json` nor the exit code distinguishes "never attempted" from "exhausted".
+- **Q:** A harness fix on the same day would land on the same results-root path — is that a restart? **A:** [auto-pick] No. The fresh root takes a `-r2` suffix (`2026-09-04-toc-r2`), and the abandoned directory is never passed to `--results` again; it keeps its artifacts and gains an `ABANDONED.md` naming the fix and the successor. **Why:** re-invoking against the old path makes `ReadProvenance` find the existing record, `MergeProvenance` append to it, and every pre-fix repetition satisfy `RepIsComplete` and be skipped — silently merging two measurement regimes, which is exactly what the decision forbids.

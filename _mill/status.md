@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r1
+phase: discussed
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: null
@@ -16,4 +16,6 @@ task_description: |
 ```text
 discussing  '2026-09-04T10:51:42Z'
 discussion-fix-r1  '2026-09-04T11:09:48Z'
+discussion-fix-r3  '2026-09-04T11:23:09Z'
+discussed  '2026-09-04T11:23:09Z'
 ```
