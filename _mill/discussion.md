@@ -98,7 +98,9 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
   value with the selected renderer and exits with the code D3 assigns — including for
   `status: not_found`, `status: ambiguous`, and a `ResolveResult` carrying a pre-resolution `error`.
   `fail()` and `RenderErrorJSON` are used only when there is no payload at all: usage errors,
-  internal errors, and `expand`'s `*NotATypeError` (D4).
+  internal errors, `expand`'s `*NotATypeError` (D4), and `expand`'s exit-1 grammar rejection (D10a).
+  Those four are the complete set of payload-free paths; D3's table is the authority and this list
+  must be read as tracking it, never as narrowing it.
 - **Rationale:** `toc` uses the error envelope on exit 1 because `toc` has no negative payload — the
   engine returns an error, not an answer. `resolve` and `expand` are the opposite case by
   construction: T4 deliberately moved these dispositions *into* the payload
@@ -135,7 +137,8 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
   | `expand` | `status: not_found` | 1 | the `ExpandAnswer` |
   | `expand` | `status: ambiguous` | 1 | the `ExpandAnswer` |
   | `expand` | `*NotATypeError` | 1 | the error envelope (D4) |
-  | both | unparseable flag, wrong target count, unknown verb, toc-only flag on this verb, `--root` that is not a directory | 2 | the error envelope + `usageText` on stderr |
+  | both | unparseable flag, wrong target count, unknown verb, toc-only flag on this verb, `--root` that is not a directory, `discoverRoot` finding no `.git` above the cwd (`no repository root found above <dir>; pass --root`) | 2 | the error envelope + `usageText` on stderr |
+  | `resolve` | `repoRelPath` itself erroring (`filepath.Rel` failure — a different volume on Windows, in practice) | 1 | the error envelope, message `target outside repository: <target>` |
   | `expand` | target containing no `#` (D10) | 2 | the error envelope + `usageText` on stderr |
   | `expand` | `glyph.Parse` rejection of a target that *does* contain `#` (`#x`, `member_keyword`, `unit_bad_rune`, …) | 1 | the error envelope, message `expand <target>: <reason>` (D10) |
   | `expand` | the `HeadStart == 0` invariant error (a matched `KindType` symbol carrying no head span) | 3 | the error envelope |
@@ -147,6 +150,12 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
   `fmt.Errorf` naming an invariant violation in the walk — an internal failure with no answer behind
   it, which is exactly what exit 3 means — and it is reached with `errors.As` failing for both
   `*NotATypeError` and `*glyph.ParseError`, so no message parsing is needed to tell it apart.
+  The `repoRelPath` row is exit 1 with `toc`'s own message for the same condition, byte for byte:
+  the target cannot be expressed relative to the root at all, so there is no relative form to hand
+  the engine and therefore no payload to render — D2's payload rule cannot apply, and diverging from
+  `toc` here would make the same argument exit differently under two verbs. It is unreachable on a
+  single-volume POSIX filesystem and is stated so that a mapping written from this table cannot
+  silently route it to 3.
 
 - **Rationale:** exit 2 keeps its T5a meaning exactly — "the caller asked wrong about the CLI" — and
   a well-formed invocation naming an unspellable glyph is not that: quarry ran it to a definite
@@ -326,6 +335,22 @@ rule already says there is no text rendering of a failure.
   comment makes about reusing `TOC`.
 - **Rejected:** teaching `repoRelTarget` a boolean mode flag (a flag argument that changes a
   function's contract, for two call sites, when two named functions read better).
+- **What the payload's `target` echoes, and it differs by target class.** `ResolveResult.Target` is
+  "the caller's argument, verbatim" from the *engine's* point of view — that is, whatever string the
+  CLI handed it. So:
+  - **a glyph target** echoes argv verbatim, because the CLI passes it through untouched;
+  - **a path target** echoes the **repository-relative form**, not argv, because that is what the CLI
+    hands the engine. `quarry resolve logger.go` run inside `internal/logger/` answers
+    `"target": "internal/logger/logger.go"`.
+
+  This is the correct behaviour, not a leak: `internal/cli/doc.go` already states the rule as "input
+  is interpreted where the user is, output is always repository-root relative", and plan §4 requires
+  relative paths and forbids absolute ones. It is written down here because D7's text form puts
+  `<Target>` on line 1, so the same rebasing is visible in both views and every golden depends on it.
+- **Every `after/` golden and every example in this file is written with cwd == the repository root**
+  (in the goldens' case, guaranteed by `--root`), so argv and the repository-relative form coincide
+  and the recorded invocation line reads the way a user at the root would type it. D10b's
+  `resolve ../x` example is under that same assumption.
 
 ### D9 — `resolve` performs no `os.Lstat`; `expand` performs no path work at all
 
@@ -454,7 +479,8 @@ rule already says there is no text rendering of a failure.
     quarry expand <glyph> [--text] [--root <path>]
   ```
 
-  with `1  negative answer: not found, outside the repository, ambiguous, or not a type` replacing
+  with `1  negative answer: not found, outside the repository, ambiguous, not a type, or not a
+  well-formed glyph` replacing
   the current line 1 wording, and the existing note that JSON is the default and there is no `--json`
   flag retained.
 - **Rationale:** the current text names only `toc` and would be wrong the moment a second verb
@@ -505,9 +531,22 @@ rule already says there is no text rendering of a failure.
   | `../impact.txt`, `../impact-file-scope.txt` | *no successor, phase 2* | `impact` needs a type checker (plan §5); it is T8 |
   | `../assert-no-callers.txt` | *no successor, phase 2* | same, plan §5 and §12 T8 |
   | `../refs.txt` | *no successor, by design* | plan §5: "No reference query in phase 1" — dropped after measurement, not deferred |
+  | *(none)* | `resolve-not-found.txt` | new: the `unit: found` miss plan §5 and §8.1 name as the validator's reason for the key. V1 had no equivalent — `definition` on a missing name returned an empty list |
+  | *(none)* | `resolve-path.txt` | new: a repository-relative path as a target (plan §4, §5), which makes a non-code deliverable a checkable plan target. V1 had no path-target form at all |
+  | *(none)* | `expand-not-a-type.txt` | new: plan §5's "the glyph must name a type; on any other kind the answer is `ok: false` naming the kind" |
 
-  The existing four `toc` rows and the two compact-view rows stay as T5a wrote them. A short "what
-  changed" paragraph is added for the resolve/expand side, matching the one T5a wrote for `toc`.
+  Three of the eight new goldens answer no before-side file, so they take `*(none)*` rows rather than
+  being left out — the same device T5a used for `toc-dir-text.txt` and `toc-file-text.txt`. That is
+  what makes the exit-code column total: **every** after-side file has a row, so every one of them
+  records its exit code in a tracked file, which is D14's whole rationale for not writing trailers
+  into the goldens themselves.
+
+  The six rows T5a wrote stay exactly as they are: two `toc` before→after rows (`../toc-dir.txt`,
+  `../toc-file.txt`), two compact-view "no successor, by design" rows (`../toc-dir-compact.txt`,
+  `../toc-file-compact.txt`), and two `*(none)*` text-view rows (`toc-dir-text.txt`,
+  `toc-file-text.txt`). They gain an exit-code cell (all four after files exit 0) and nothing else.
+  A short "what changed" paragraph is added for the resolve/expand side, matching the one T5a wrote
+  for `toc`.
 - **Rationale:** the done-when is "`after/` covers the same command set as the before side — nothing
   missing". That is only checkable if every before-side file has an explicit row, and only true if
   the four phase-2 and dropped verbs are stated as deliberate absences with their plan citation.
@@ -682,6 +721,9 @@ renderer choice) → `cmd/quarry` (one line).
   path instead. Both belong in the tables.
 - Every failure path writes the JSON envelope to stdout even under `--text`.
 - `--root` rebases path-target interpretation but has no effect on a glyph target.
+- A path target given relative to a subdirectory echoes the repository-relative form in the payload's
+  `target` and on the text view's line 1, while a glyph target echoes argv verbatim (D8). Cover both
+  in one test so the asymmetry is pinned rather than discovered.
 
 ## Q&A log
 
