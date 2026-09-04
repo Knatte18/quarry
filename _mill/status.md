@@ -56,6 +56,8 @@ batches:
     commit_sha: 2534c3e1ef7661ea78650b82f6fdc62a347a3ff4
     verify_baseline_failures: ["FAIL\t./internal/mcpserver/... [setup failed]"]
   - name: docs-and-config
-    state: pending
+    state: running
+    implementer_session: 717d6902-048b-4266-a7bc-c3928dab553c
+    start_sha: ae657a1c3e6d09f117dea2fbc1507618c3ba0f95
     verify_baseline_failures: []
 ```
