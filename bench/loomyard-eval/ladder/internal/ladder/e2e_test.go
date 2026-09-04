@@ -557,7 +557,7 @@ func TestE2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AcquireRunLock() = %v; want no error", err)
 		}
-		t.Cleanup(func() { release() })
+		t.Cleanup(func() { _ = release() })
 
 		_, err = Run(context.Background(), runOpts(env, ladderPath, nil))
 		if err == nil {
