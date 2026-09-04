@@ -149,6 +149,12 @@ from the same place; the table is the artifact a reader is pointed at.
   entry the ladder directory's ignore file already carries, and give both reasons — the resolved
   auto-memory paths that no tracked file may hold, and the size of ten 60-turn transcripts that the
   committed artifacts already summarise. Name the five files this root commits.
+  **Name the pre-matrix harness fix, whether or not anything restarted.** This task did not only
+  measure: it fixed a defect that made the harness unable to parse any rung cell's transcript, and
+  the matrix ran against a harness that differs from the one on the parent branch at the start of
+  the task. A reader comparing this root against a later one needs that stated. Name the batch, what
+  it changed, and that it landed before repetition 1 — the fix precedes the measurement, so it does
+  not fall under the mid-matrix restart rule below.
   If the matrix restarted into a `-r2` root, name the harness fix and the abandoned root, and
   confirm the abandoned directory carries the marker card 7 wrote there naming the fix, the date and
   this root as its successor. If the run stopped on a defect in the code

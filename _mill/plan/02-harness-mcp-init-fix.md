@@ -83,6 +83,8 @@ rung cell's transcript at all.
   - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
   - `bench/loomyard-eval/ladder/internal/ladder/mcp.go`
   - `bench/loomyard-eval/ladder/ladder-toc.yaml`
+  - `.scratch/orch-evidence/init-line.json`
+  - `.scratch/orch-evidence/a2-invalid-real-transcript.jsonl`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/stream_test.go`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/tool-bytes.jsonl`
@@ -94,17 +96,30 @@ rung cell's transcript at all.
   this host produced**, never hand-written — a hand-written line would pin the shape someone believed
   the CLI emits, which is the assumption that produced this defect. Save the captured line as the new
   `testdata` fixture and load it from the test.
-  **Obtaining the line, in priority order.** (a) If the operator supplies one of the informal run's
-  invalidated `a2-toc-dir` transcripts, take the first line of that file. (b) Otherwise capture one:
-  build the server, write an MCP config naming it via the same code path the harness uses, and run a
-  single trivial `claude -p` turn under that config with stream-json output, keeping the first
-  record. That is one cheap turn, not a measured repetition — do not use the pre-matrix live test for
-  this, which costs a full 60-turn repetition and runs after this batch anyway. Whichever route is
-  taken, record in the test's comment which one it was and the CLI version the line came from. Route
-  (b)'s capture turn carries the same `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT` prefix every
-  other `claude -p` invocation in this task carries: the fixture is supposed to pin the init record
-  the matrix's own children emit, and a capture run under markers the matrix strips could differ in
-  exactly the session-configuration fields the record reports.
+  **The line is already on disk — do not capture a new one.** The orchestrator supplied a real
+  invalidated `a2-toc-dir` transcript from the informal run at
+  `.scratch/orch-evidence/a2-invalid-real-transcript.jsonl`, with its init record extracted alone to
+  `.scratch/orch-evidence/init-line.json`. That is a genuine 2.1.236 record from this host, produced
+  by the matrix's own code path against a connected quarry server; it carries
+  `"mcp_servers":[{"name":"quarry","status":"connected"}]`, `mcp__quarry__toc` in `tools`, and
+  `"claude_code_version":"2.1.236"`. Use it. Do not spend a `claude -p` turn re-deriving evidence
+  that already exists.
+  Both evidence files live under a gitignored directory and do not travel with the branch. If they
+  are absent — a fresh clone, or another machine — **stop and ask the operator for the line**; do not
+  hand-write one and do not spend a measured call re-deriving it. Once this card commits the scrubbed
+  fixture the evidence is no longer needed, because the fixture itself is the tracked record.
+  **Scrub before committing, and scrub only what must be scrubbed.** The record carries machine
+  paths and session identifiers that no tracked file in this repository may hold: `cwd` (an absolute
+  ladder-worktree path), `session_id`, `uuid`, `memory_paths.auto` (an absolute auto-memory path —
+  note it resolves into the Loomyard checkout, confirming whose memory `ScanMemoryPaths` walks), and
+  `messaging_socket_path` (an absolute socket path carrying a pid). Replace each value with an
+  obviously-synthetic stand-in of the same JSON type, and **keep every key present and every other
+  value byte-verbatim** — above all `mcp_servers`, `tools`, `model`, `permissionMode` and
+  `claude_code_version`, which are the fields the fixture exists to pin. Do not drop keys you think
+  are irrelevant: the point of a captured fixture is that it carries the shape the CLI actually
+  emits, including fields no current code reads. Record in the test's comment that the line came from
+  a real invalidated `a2-toc-dir` repetition, name the CLI version, and state that only machine paths
+  and identifiers were substituted.
   The line must have a **non-empty** `mcp_servers` array carrying at least one object with `name` and
   `status` — an empty array reproduces exactly the control-cell case that already passed and would
   leave the defect uncovered. Assert that `ParseTranscript` succeeds on it, that the decoded
@@ -135,6 +150,8 @@ rung cell's transcript at all.
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
   - `bench/loomyard-eval/ladder/internal/ladder/gates_test.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -194,6 +211,20 @@ rung cell's transcript at all.
   case that proves the guard rather than a panic), and a control cell, which the caller-side
   predicate keeps out — assert the check's own behaviour for the granted cases and leave the control
   gating to the call site.
+  **Make the fake emit a real server list, so the wiring is covered offline too.**
+  `testdata/fakeclaude/main.go`'s `writeInit` hardcodes `"mcp_servers":[]` on every line it emits,
+  which is demonstrably the wrong default for a rung-cell fake: the real init record this batch's
+  fixture comes from carries both `mcp__quarry__toc` in `tools` and quarry in `mcp_servers` with
+  status `connected`. `writeInit` already receives the granted tool list, so derive the server list
+  from it — for each `mcp__<server>__<tool>` entry in `tools`, emit one `mcp_servers` object for
+  `<server>` with status `connected`, deduplicated — and keep the empty array when the tool list has
+  no prefixed entry, which is what a control cell must continue to produce. One source of truth, and
+  every existing rung-cell case starts exercising the real shape without being rewritten.
+  Add an environment override following the file's existing `FAKE_CLAUDE_*` convention that forces a
+  named server to a status other than `connected`, and use it from `e2e_test.go` for one new case: a
+  granted cell whose server never connects, asserting the repetition is invalidated rather than
+  measured, that the reason file lands in the renamed attempt directory, and that exhausting the
+  attempts aborts the invocation per the cross-repetition bound above.
 - **Commit:** `feat(ladder): invalidate a granted repetition whose mcp server did not connect`
 
 ## Batch Tests
@@ -210,12 +241,11 @@ the CLI's wire format shifts. The one thing offline tests cannot prove is that t
 still matches what the CLI emits today — that is what the pre-matrix live test in card 6 checks,
 before ten repetitions depend on it.
 
-**One coverage limit, stated rather than left to be discovered.** Card 5's *check* is covered by
-`gates_test.go`, but its *wiring* in `run.go` is not reachable from the offline end-to-end tests:
-`testdata/fakeclaude/main.go` hardcodes `"mcp_servers":[]` on every init line it emits, so a granted
-cell driven by the fake runner can never present a non-connected server and never trips the new
-path. Parameterising the fake to emit a server would widen this batch beyond the defect it exists to
-fix, so the wiring's first real exercise is the pre-matrix live test and then the matrix's own first
-granted repetition. That is an accepted gap, not an oversight — if the wiring is wrong, it surfaces
-as a rung cell invalidating on a connected server, which the matrix card's `.invalid-*` accounting
-makes visible within one invocation rather than silently.
+**The wiring is covered offline, and that coverage is a late addition worth flagging.** An earlier
+draft of this batch accepted a gap here: `testdata/fakeclaude/main.go` hardcoded `"mcp_servers":[]`,
+so no fake-runner cell could present a non-connected server and card 5's `run.go` wiring was
+reachable only from the live matrix. The orchestrator's real transcript settled it — a rung cell's
+init record does carry the server, so the fake's empty array was simply the wrong default — and card
+5 now derives the fake's server list from the granted tool list and adds an `e2e_test.go` case
+driving the not-connected path end to end. The fake's control-cell behaviour is unchanged: no
+prefixed tool, no server, empty array, exactly as before.
