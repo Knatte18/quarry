@@ -50,7 +50,9 @@ batches:
     commit_sha: 1875d2862e77a461d43a54bda5183e4002491c1a
     verify_baseline_failures: ["FAIL\t./quarry/... [setup failed]"]
   - name: cli-parsing
-    state: pending
+    state: running
+    implementer_session: 519ecd10-5815-46a9-8869-710d26d1a5f2
+    start_sha: cbe52b295163bfe8ceaea0a8cfdc2eebbee3b658
     verify_baseline_failures: ["FAIL\t./internal/cli/... [setup failed]"]
   - name: cli-pipeline
     state: pending
