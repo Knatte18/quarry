@@ -28,6 +28,11 @@ Batch-local decisions:
 - The handler's decision logic lives in an unexported function returning a `*mcp.CallToolResult`,
   separate from the SDK-facing closure, so batch 3 can exercise it through the protocol without the
   logic being tangled with SDK plumbing.
+- Every `_test.go` file this batch and batch 3 add to `internal/mcpserver` is an **in-package** test
+  (`package mcpserver`, not `package mcpserver_test`), matching how `internal/cli` and
+  `internal/engine` test themselves. Two consequences the cards below rely on: the layering test can
+  walk this package's own files including its tests, and batch 3 card 15 can call the unexported
+  handler function directly for the one assertion that cannot be made through the protocol.
 - `NewServer` takes the already-opened `*quarry.Repo` and the already-resolved absolute root rather
   than resolving either itself. Both are resolved exactly once, in `main`, before the transport
   starts (discussion D17): a failure to open is a startup failure, never a per-call error.
@@ -47,11 +52,16 @@ Batch-local decisions:
 - **Requirements:**
   Add `github.com/modelcontextprotocol/go-sdk` at exactly `v1.7.0` and
   `github.com/google/jsonschema-go` at exactly `v0.4.3` as direct requirements, with their transitive
-  requirements recorded as indirect. Both versions are pinned by discussion D1: V1 used this SDK at
-  this version and plan §9a's probe was verified against a server built on it, so protocol
-  compatibility is not part of this task's risk surface. `jsonschema-go` is direct because card 8
-  constructs the tool's input schema as a `jsonschema.Schema` value rather than letting the SDK infer
-  one from a Go type.
+  requirements recorded as indirect.
+  The SDK version is pinned by discussion D1: V1 used this SDK at this version and plan §9a's probe
+  was verified against a server built on it, so protocol compatibility is not part of this task's
+  risk surface. The `jsonschema-go` version is **not** pinned by D1, which does not mention that
+  module at all — it is pinned to whatever the chosen SDK version's own requirement names, which for
+  `go-sdk v1.7.0` is `v0.4.3`. Read that requirement rather than trusting this sentence, and if it
+  disagrees, follow the SDK's own file: the constraint is "the version the SDK already resolves to",
+  not this number.
+  `jsonschema-go` is direct because card 8 constructs the tool's input schema as a
+  `jsonschema.Schema` value rather than letting the SDK infer one from a Go type.
   Do this with `go get` at the pinned versions followed by `go mod tidy`, not by hand-editing the
   requirement blocks. `go mod tidy` must leave the tree clean — a second run produces no diff.
   Add no other dependency. The SDK's own indirect requirements are whatever `go mod tidy` records;
@@ -102,7 +112,8 @@ Batch-local decisions:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Table-test `mcpserver.ResolveRoot` over four cases: the flag absent, resolving by discovery from the
+  Write this file as an in-package test (`package mcpserver`), per this batch's scope note.
+  Table-test `ResolveRoot` over four cases: the flag absent, resolving by discovery from the
   given working directory; the flag given as a relative path, joined against the working directory and
   absolutised; the flag given as an absolute path, taken as is; and the flag naming a file or a
   missing path, producing an error whose message carries the `quarry-mcp: --root is not a directory: `
@@ -173,12 +184,21 @@ Batch-local decisions:
   Declare the decision logic as a separate unexported function taking the repo, the absolute root and
   a `tocInput`, and returning a `*mcp.CallToolResult`. It performs the CLI's pipeline minus flag
   parsing and exit codes, in this fixed order:
-  1. Reject a depth below `-1` — the schema's `minimum` is advisory to a client that ignores it, and
-     the engine's walk decrements depth with no floor, so an unvalidated negative depth is an
-     unbounded walk that returns a plausible-looking answer instead of an error. The message is
-     exactly `--depth must be -1 (whole tree) or a non-negative integer, got <n>` with the offending
-     integer substituted. This is the one place this surface's wording deliberately diverges from the
-     CLI's, because `-1` is valid here and `"all"` does not exist here.
+  1. Reject a depth below `-1`. The message is exactly
+     `--depth must be -1 (whole tree) or a non-negative integer, got <n>` with the offending integer
+     substituted. This is the one place this surface's wording deliberately diverges from the CLI's,
+     because `-1` is valid here and `"all"` does not exist here.
+     Be accurate about what this branch is for, because the discussion's "the schema is advisory to a
+     client that ignores it" framing does not hold for this SDK: `mcp.AddTool`'s generated wrapper
+     validates the arguments against the input schema *before* the typed handler runs and returns its
+     own error result on failure, so a call arriving over the protocol with `depth: -2` is rejected by
+     the SDK against the schema's `minimum` and never reaches this branch. The branch is kept anyway,
+     as the layer that owns the wording, and batch 3 asserts it directly rather than through the
+     protocol. It earns its place: the engine's walk decrements depth with no floor and stops only at
+     zero or at the whole-tree sentinel, so if the schema's `minimum` is ever dropped or the handler
+     is reached from in-process code, an unvalidated negative depth is an unbounded walk that returns
+     a plausible-looking answer instead of an error. Both layers stay; neither is removed to make the
+     other reachable.
   2. Relativise the target with `repopath.RepoRelTarget`, passing the root as both the root and the
      base — this surface has no per-call working directory, so targets are repository-relative by
      definition. An `errors.Is` match on `quarry.ErrTargetOutsideRepo` produces

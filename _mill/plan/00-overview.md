@@ -124,6 +124,21 @@ batches:
   granted cell's tool is never allowed and T7 measures nothing.
 - **Applies to:** all batches
 
+### Decision: the repo-wide gate runs once, at the end, not at every batch boundary
+
+- **Decision:** no batch's `verify:` and not the module-wide `verify:` runs the discussion's stated
+  gate `go test ./... && golangci-lint run`. Per-batch commands are package-scoped, the module-wide
+  command is `go vet ./...`, and the full gate runs once at the end of the task — it is already
+  configured as this hub's `pipeline.done_gate`, which mill-go runs from the repository root before
+  marking the task done, so a regression in a package no batch scoped to is caught there.
+- **Rationale:** this repository's suite links tree-sitter through cgo and includes the engine's whole
+  extraction corpus; running it plus the linter after every implementer round and every fixer round —
+  which is what a batch `verify:` means — would cost minutes per round for a task whose own code lives
+  in three packages. `go vet ./...` at each batch boundary is the cheap cross-package compile check
+  that catches what package-scoped tests cannot, which is the module-wide `verify:` field's stated
+  purpose.
+- **Applies to:** all batches
+
 ### Decision: the live §9a probe is out of `go test`
 
 - **Decision:** the automated protocol tests in batch 3 are the whole of this plan's runnable gate.
