@@ -290,23 +290,35 @@ and every card in this batch leaves the package building and the existing suite 
   repository-relative forward-slash string under `sort.Strings` semantics with no case folding and no
   locale. No caller sorts.
 
-  Re-tense every comment in `internal/engine/resolve.go` that speaks of `resolve` as a verb that does
-  not exist yet. There are three, and this card owns all of them, on the same ground card 2 owns
-  `internal/engine/answer.go`'s: a comment that describes its own file wrongly is worse than the churn
-  of fixing it, and this file is one the task edits as its own work rather than under a scope
-  exception. Change no code and no other comment while doing it.
+  Correct every comment in `internal/engine/resolve.go` that speaks of `resolve` as a verb that does
+  not exist yet. There are five such clauses across four comments, and this card owns all of them, on
+  the same ground card 2 owns `internal/engine/answer.go`'s: a comment that describes its own file
+  wrongly is worse than the churn of fixing it, and this file is one the task edits as its own work
+  rather than under a scope exception. Four of the five are re-tensings with no change of substance;
+  the first is not, and is the one to get right. Change no code and no other comment while doing it.
 
-  1. The header comment at the top of the file, which says the file stops short of a status vocabulary
-     and that the collision flag is carried for a later verb to promote. Rewrite those clauses to
-     describe what the file now holds — `SpansOf` still returning an empty slice with no status, and
-     `Resolve` above it holding the vocabulary and promoting the collision — without touching the
-     file's description of `unitDirs`, `symbolsOfUnit` or `symbolsOfDir`.
-  2. `unitDirs`'s doc comment, which says the later `resolve` verb promotes the collision into an
+  1. The header comment's sentence saying `Repo.SpansOf` is "the public, per-glyph wrapper the rest of
+     this task's later verbs (resolve, expand) are built on". That is not merely mistensed — this plan
+     builds neither verb on `SpansOf`. Both go through `symbolsOfUnit` behind the memo, precisely so
+     each unit is parsed once per call, and card 5 states that `symbolsOf` is the only site in either
+     verb that calls `symbolsOfUnit`. Rewrite the sentence to say what is true: `SpansOf` is the
+     single-glyph convenience the round trip is written against, and `Resolve` and `Expand` are built
+     on `symbolsOfUnit` through the per-call memo. Leaving the sentence standing would ship a claim the
+     plan's own design contradicts.
+  2. The header comment's closing clauses, which say the file stops short of a status vocabulary and
+     that the collision flag is carried for a later verb to promote. Rewrite them to describe what the
+     file now holds — `SpansOf` still returning an empty slice with no status, and `Resolve` above it
+     holding the vocabulary and promoting the collision — without touching the file's description of
+     `unitDirs`, `symbolsOfUnit` or `symbolsOfDir`.
+  3. `symbolsOfUnit`'s doc comment, which says "the later resolve verb needs the same grouping anyway
+     for the many glyphs one card can name". Re-tense that clause: the verb exists, in this file, and
+     the memo is where the grouping is realised.
+  4. `unitDirs`'s doc comment, which says the later `resolve` verb promotes the collision into an
      `ambiguous` status when it builds the status vocabulary, and that the flag lives on an unexported
      return so the task records the fact without inventing a status type that is not its to design.
      Re-tense both clauses: `Resolve` in this same file now reads the flag and promotes it, and the
      status type now exists in `internal/engine/answer.go`.
-  3. `SpansOf`'s doc comment, which contrasts its own empty-slice-no-status result with "the later
+  5. `SpansOf`'s doc comment, which contrasts its own empty-slice-no-status result with "the later
      resolve verb's" four statuses. Re-tense that one clause only. Card 7's instruction not to change
      `SpansOf` is about its code and its behaviour, not its doc comment: the function keeps its inline
      filter, its signature and every line of its body.
@@ -341,6 +353,16 @@ and every card in this batch leaves the package building and the existing suite 
   every other.
   State in the test's doc comment that `#x` is a glyph target the grammar then rejects, not a path —
   the split does not pre-empt the alphabet's own rules.
+
+  This card also owns `internal/engine/resolve_test.go`'s header comment, on the same ground cards 2
+  and 9 own their files': it currently says the file covers `Repo.unitDirs`, `Repo.symbolsOfUnit`'s
+  ignore filtering and the public `Repo.SpansOf`, and describes a committed-versus-`.scratch` fixture
+  split drawn for those three. Cards 10 through 13 add fourteen test functions for `Resolve`, a second
+  collision tree and a permissions fixture, so both halves stop describing the file. Extend the
+  enumeration to name `Repo.Resolve` and its status vocabulary alongside the three already there, and
+  extend the fixture-split paragraph to cover the new run-time trees. Card 10 owns it rather than 11,
+  12 or 13 because it is the first card to touch the file, so no intermediate commit leaves the header
+  describing a file it no longer matches.
 - **Commit:** `test(engine): table the resolve status decision and the target split`
 
 ### Card 11: the four statuses over committed fixtures

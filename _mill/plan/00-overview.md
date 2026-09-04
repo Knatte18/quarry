@@ -185,8 +185,11 @@ batches:
 - **Rationale:** the tree-sitter binding needs cgo, so a verify without it does not build. Scoping the
   test run to the one package every card in this plan touches is the right scope and not an over-broad
   one: the package's whole suite runs in well under a second on this host, and every existing test in
-  it is a must-keep-passing gate for a task that grows files T3 wrote. `go vet` at module scope is the
-  cheap cross-package regression check at each batch boundary.
+  it is a must-keep-passing gate for a task that grows files T3 wrote. The module-wide `go vet ./...`
+  is the cheap cross-package regression check, and it runs at **every** batch boundary without being
+  repeated in any batch's own `verify:` — that is what the overview-level `verify:` key is: mill-go
+  runs it after each batch's own command passes, against a baseline computed once before the first
+  batch. Copying it into each batch's `verify:` would run it twice per boundary and gain nothing.
 - **Applies to:** all batches
 
 ### Decision: the configured done gate carries pre-existing lint debt this task does not own
@@ -201,6 +204,16 @@ batches:
   recorded rather than worked around: the done gate will fail on lint at the end of this task for
   reasons that predate it, and clearing those three findings is the operator's call — either as a
   separate task or by narrowing `done_gate` before this task finishes.
+- **On the config file's own inline comment:** the `done_gate` key carries a trailing comment, written
+  by the engine-core (T3) plan, saying golangci-lint "reports no finding on the current tip, so the
+  gate carries no pre-existing debt". That comment is not current, and this plan's measurement is. The
+  three findings sit in code committed by the ladder-harness (T2) commit, which predates the T3 commit
+  that wrote the comment, so they were already present when it was written — this is not debt that
+  arrived afterwards and made a true statement stale. Whatever produced the comment's conclusion, a
+  direct `CGO_ENABLED=1 golangci-lint run` from the repository root on this branch's tip exits 1 with
+  those three findings, checked while writing this plan against a clean tree. The config file itself is
+  left untouched, as this Decision requires; correcting or removing that comment belongs to whoever
+  changes the key.
 - **Applies to:** all batches
 
 ## All Files Touched
