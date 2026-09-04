@@ -161,10 +161,11 @@ func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSy
 	}
 
 	docs := make(map[string]string)
+	spellable := make(map[string]bool)
 	var targetFileEntry FileEntry
 	for _, entry := range fileEntries {
 		base := entry.Name()
-		fe, doc := r.fileEntry(dirRel, base, dirPkg, dirLang, clauses[base], base == targetBase && wantSymbols)
+		fe, doc := r.fileEntry(dirRel, base, dirPkg, dirLang, clauses[base], base == targetBase && wantSymbols, spellable)
 		if doc != "" {
 			docs[base] = doc
 		}
