@@ -1,7 +1,8 @@
 # Status
 
 ```yaml
-phase: plan-fix-r3
+phase: blocked
+blocked_reason: max-rounds exhausted after 3 rounds, 1 BLOCKINGs remain
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -25,4 +26,5 @@ plan-review-r2  '2026-09-04T11:46:44Z'
 plan-fix-r2  '2026-09-04T11:48:54Z'
 plan-review-r3  '2026-09-04T11:54:28Z'
 plan-fix-r3  '2026-09-04T11:56:08Z'
+blocked  '2026-09-04T11:56:16Z'
 ```
