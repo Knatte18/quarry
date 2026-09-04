@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-fixtures
+phase: approved-resolve
 slug: resolve-expand
 branch: resolve-expand
 plan: _mill/plan
@@ -37,6 +37,7 @@ planned  '2026-09-04T06:19:00Z'
 implementing  '2026-09-04T06:19:21Z'
 approved-answer-types  '2026-09-04T06:23:10Z'
 approved-fixtures  '2026-09-04T06:25:04Z'
+approved-resolve  '2026-09-04T06:34:47Z'
 ```
 
 ## Batches
@@ -56,9 +57,10 @@ batches:
     commit_sha: b16da596b33c54fcc495cd1984f987cdac47ffdf
     verify_baseline_failures: []
   - name: resolve
-    state: running
+    state: approved
     implementer_session: bbc75a40-2495-4c1d-ad39-0f582af7d770
     start_sha: 23d1b7df640df4917e5e93434703925c523182fa
+    commit_sha: 15efb0c9d0543607887f9af380e3f1f3da89850c
     verify_baseline_failures: []
   - name: expand
     state: pending
