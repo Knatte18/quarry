@@ -185,7 +185,7 @@ Nothing else is needed for non-code deliverables, and `plan-card-format.md`'s ru
   "doc": "Package render owns the closed display vocabulary and the deterministic Rules(strands, box, params) -> (layout, focus) function that turns a set of strands into a tmux window_layout string. It is a pure leaf: no I/O, no tmux, no engine import.",
   "files": [
     { "name": "checksum.go", "header": "checksum.go computes tmux's window_layout checksum: a 16-bit rotate-right-1 accumulator over the layout body ..." },
-    { "name": "checksum_test.go", "test": true, "header": "checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, ..." },
+    { "name": "checksum_test.go", "header": "checksum_test.go pins a known-good layoutChecksum fixture from live psmux testing, ...", "test": true },
     { "name": "focus.go", "header": "focus.go resolves which pane receives tmux input focus, and detects whether a strand has a descendant present ..." },
     { "name": "layout.go", "header": "layout.go is the layout mechanics layer: it turns a resolved, ordered list of pane placements within a Box into a tmux/psmux window_layout body and its checksum-prefixed full string. It is region-relative — ..." },
     ... 12 files ] }
