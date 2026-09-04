@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-ladder-d-task-06
+phase: approved-ladder-file-and-pre-matrix-gates
 slug: ladder-breadth
 branch: ladder-breadth
 plan: _mill/plan
@@ -32,6 +32,7 @@ implementing  '2026-09-04T17:36:22Z'
 approved-m2-invalidation-reason-file  '2026-09-04T17:44:17Z'
 approved-ladder-c-task-02  '2026-09-04T17:48:55Z'
 approved-ladder-d-task-06  '2026-09-04T17:54:36Z'
+approved-ladder-file-and-pre-matrix-gates  '2026-09-04T18:01:13Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     commit_sha: 0416216fba964ce42c8a5ccd47ca64a2d2472fae
     verify_baseline_failures: []
   - name: ladder-file-and-pre-matrix-gates
-    state: running
+    state: approved
     implementer_session: 1311e862-7ea3-481d-b7e3-6bb70f625a18
     start_sha: e606f91934571bb3e22d0eb85758b6eaf46acdd7
+    commit_sha: 33b129f1504df38c22d9a480b9f4176bf4924c7a
     verify_baseline_failures: []
   - name: matrix-and-conclusion
     state: pending
