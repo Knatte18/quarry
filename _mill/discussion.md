@@ -99,8 +99,9 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
   `status: not_found`, `status: ambiguous`, and a `ResolveResult` carrying a pre-resolution `error`.
   `fail()` and `RenderErrorJSON` are used only when there is no payload at all: usage errors,
   internal errors, `expand`'s `*NotATypeError` (D4), and `expand`'s exit-1 grammar rejection (D10a).
-  Those four are the complete set of payload-free paths; D3's table is the authority and this list
-  must be read as tracking it, never as narrowing it.
+  There is one further payload-free path that is neither a usage nor an internal error — a
+  `repoRelPath` failure, exit 1 (D3) — so this list is a summary, not a closed set. **D3's table is
+  the authority**; where the two differ, the table is right.
 - **Rationale:** `toc` uses the error envelope on exit 1 because `toc` has no negative payload — the
   engine returns an error, not an answer. `resolve` and `expand` are the opposite case by
   construction: T4 deliberately moved these dispositions *into* the payload
@@ -189,7 +190,12 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
 ### D5 — the facade's new surface, exactly
 
 - **Decision:** `quarry/quarry.go` gains four aliases and four constants; `quarry/repo.go` gains two
-  methods; two new files hold the new renderers.
+  methods; the four new renderers go into the two files that already hold their kind — the two JSON
+  renderers and the shared `renderJSON` into `quarry/render.go`, the two text renderers into
+  `quarry/text.go` beside the grammar and `writeSymbolLine` they reuse. **No new file is added to
+  `quarry/`,** and this is a decision, not a delegation: splitting a renderer away from the encoder
+  configuration or the grammar it shares would put the two halves of one byte contract in two
+  files.
 
   ```go
   // quarry/quarry.go
@@ -352,6 +358,31 @@ rule already says there is no text rendering of a failure.
   and the recorded invocation line reads the way a user at the root would type it. D10b's
   `resolve ../x` example is under that same assumption.
 
+### D8a — a rebased path may be re-classified as a glyph by the engine: accepted, documented
+
+- **The case:** the CLI classifies **argv** with `strings.Contains(target, "#")`, but hands the
+  engine the **rebased** form, and `internal/engine/resolve.go`'s own `isGlyphTarget` classifies that
+  string again. The two can disagree exactly once: a path target whose repository-relative form
+  acquires a `#` from a directory name. `quarry resolve foo.go` run inside a directory literally
+  named `we#ird` reaches the engine as `we#ird/foo.go`, is classified there as a glyph, and answers a
+  grammar rejection (`unit_bad_rune`, since `#` splits unit from member) instead of the path answer
+  the user asked for.
+- **Decision: accepted and documented, not worked around.** It is recorded here and in
+  `internal/cli/doc.go` as a known contract gap, in the same style `internal/engine/resolve.go`
+  records its own three.
+- **Rationale:** closing it needs the target's *class* to travel with the target, which means a new
+  facade and engine signature (a classified target, or separate `ResolvePath`/`ResolveGlyph` entry
+  points). `internal/engine/` is out of scope for this task (Scope/Out) and inventing a facade
+  signature the engine cannot honour would be worse than the gap. The CLI-only workarounds are both
+  worse than the disease: rejecting a path whose rebased form contains `#` makes a legitimate
+  repository path unaddressable, and percent-escaping it would invent an encoding no other quarry
+  surface knows. Nothing about the case is silent — the caller gets a grammar rejection naming the
+  reason, not a wrong answer.
+- **Reachability:** `#` in a directory name is legal on POSIX and pathological in practice; no
+  repository quarry is measured against contains one. Deliberately not covered by a golden or a
+  fixture test — a test would pin behaviour this task considers wrong-but-unfixable, and the next
+  task to touch the engine's verb signatures is the one that should close it.
+
 ### D9 — `resolve` performs no `os.Lstat`; `expand` performs no path work at all
 
 - **Decision:** `resolve`'s pipeline omits `toc`'s step 6 entirely. `expand`'s pipeline omits steps 5
@@ -467,24 +498,46 @@ rule already says there is no text rendering of a failure.
   test run with no fixtures; that property must survive. One parser for three verbs beats three
   parsers, because the shared flags (`--text`, `--root`, `--help`) are the majority.
 
-### D13 — `usageText`
+### D13 — `usageText`, spelled in full
 
-- **Decision:** extended to list all three verbs with their own flag lines, ASCII only, and with the
-  exit-code block reworded so it is true of all three:
+- **Decision:** `usage.go`'s `usageText` is replaced by exactly this, ASCII only, no typographic
+  characters, byte-comparable in tests:
 
   ```
+  quarry - a table of contents for a source repository
+
   usage:
     quarry toc <target> [--depth N|all] [--symbols|--no-symbols] [--text] [--root <path>]
     quarry resolve <glyph|path> [--text] [--root <path>]
     quarry expand <glyph> [--text] [--root <path>]
+
+  flags:
+    --depth <N|all>   toc only: how far to recurse into subdirectories (default 0)
+    --symbols         toc only: populate every file entry's symbols
+    --no-symbols      toc only: leave every file entry's symbols unpopulated
+    --text            emit the lossless text view instead of JSON
+    --root <path>     use <path> as the repository root instead of discovering one
+    -h, --help        print this text and exit 0
+
+  exit codes:
+    0  answered
+    1  negative answer: not found, outside the repository, ambiguous, not a type,
+       or not a well-formed glyph
+    2  usage error
+    3  internal error
   ```
 
-  with `1  negative answer: not found, outside the repository, ambiguous, not a type, or not a
-  well-formed glyph` replacing
-  the current line 1 wording, and the existing note that JSON is the default and there is no `--json`
-  flag retained.
-- **Rationale:** the current text names only `toc` and would be wrong the moment a second verb
-  exists. `usage.go`'s ASCII-only and byte-comparable-in-tests constraints are kept.
+- **Rationale:** the `flags:` block is **kept as one list, not split per verb**, with the three
+  toc-only flags marked `toc only:` in their own descriptions — that is what makes D11's rejection
+  messages (`--depth is not valid for resolve`) legible from the help text alone, without repeating
+  `--text`, `--root` and `-h` three times. The `usage:` block carries the per-verb bracketed lists so
+  a reader sees each verb's real shape; the two blocks together state validity once each, from two
+  directions. The exit-1 line is the only one whose wording changes, and it now covers every row of
+  D3 that maps to 1. `usage.go`'s existing rule that there is no `--json` flag (JSON is the default,
+  naming it would imply a third format) is unchanged and stays a code comment, not help text.
+- **Rejected:** per-verb `flags:` sections (three near-identical blocks, and the help text triples in
+  length for two verbs that share every flag they accept); leaving `usage:` as `quarry <verb>
+  <target> [flags]` (hides that `--depth` is toc-only, which is the one thing a reader needs here).
 
 ### D14 — the `after/` evidence set
 
@@ -525,12 +578,14 @@ rule already says there is no text rendering of a failure.
 
   | before | after | note |
   |---|---|---|
-  | `../definition.txt` | `resolve-glyph.txt` (+ `-text`) | `definition --in-file internal/logger/logger.go stderrHandlerSnapshot` becomes `resolve internal/logger#stderrHandlerSnapshot`: no `--in-file`, no absolute path, a glyph instead of a bare name |
+  | `../definition.txt` | `resolve-glyph.txt` | `definition --in-file internal/logger/logger.go stderrHandlerSnapshot` becomes `resolve internal/logger#stderrHandlerSnapshot`: no `--in-file`, no absolute path, a glyph instead of a bare name |
   | `../definition-ambiguous.txt` | `resolve-method.txt` | V1's ambiguity does not survive the glyph grammar. `definition … Handle` was a fuzzy name query that matched two receivers' methods; `internal/logger#dualHandler.Handle` names exactly one and answers `found`. The before side's `ok: true` with exit 2 was the addressing defect, not a fact about the repository |
-  | `../symbol.txt` | `expand-type.txt` (+ `-text`) | `symbol dualHandler` was a fuzzy `workspace/symbol` passthrough returning an unrelated package's test function and undecoded LSP kind integers; `expand internal/logger#dualHandler` answers the same question exactly — the head plus every member, named kinds, glyph ids, no cross-package noise |
+  | `../symbol.txt` | `expand-type.txt` | `symbol dualHandler` was a fuzzy `workspace/symbol` passthrough returning an unrelated package's test function and undecoded LSP kind integers; `expand internal/logger#dualHandler` answers the same question exactly — the head plus every member, named kinds, glyph ids, no cross-package noise |
   | `../impact.txt`, `../impact-file-scope.txt` | *no successor, phase 2* | `impact` needs a type checker (plan §5); it is T8 |
   | `../assert-no-callers.txt` | *no successor, phase 2* | same, plan §5 and §12 T8 |
   | `../refs.txt` | *no successor, by design* | plan §5: "No reference query in phase 1" — dropped after measurement, not deferred |
+  | *(none)* | `resolve-glyph-text.txt` | new: the lossless text view of the same query, as T5a's `toc-*-text.txt` are |
+  | *(none)* | `expand-type-text.txt` | new: the lossless text view of the same query |
   | *(none)* | `resolve-not-found.txt` | new: the `unit: found` miss plan §5 and §8.1 name as the validator's reason for the key. V1 had no equivalent — `definition` on a missing name returned an empty list |
   | *(none)* | `resolve-path.txt` | new: a repository-relative path as a target (plan §4, §5), which makes a non-code deliverable a checkable plan target. V1 had no path-target form at all |
   | *(none)* | `expand-not-a-type.txt` | new: plan §5's "the glyph must name a type; on any other kind the answer is `ok: false` naming the kind" |
@@ -603,9 +658,9 @@ renderer choice) → `cmd/quarry` (one line).
 **Files this task changes:**
 
 - `quarry/quarry.go` (aliases + constants), `quarry/repo.go` (two methods), `quarry/render.go`
-  (extract `renderJSON`, add two JSON renderers — or a new `quarry/resolve.go` / `quarry/expand.go`
-  pair, mill-plan's call), `quarry/text.go` (the `File` prefix on `writeSymbolLine`; the two new text
-  renderers), `quarry/doc.go`.
+  (extract `renderJSON`; add `RenderResolveJSON` and `RenderExpandJSON`), `quarry/text.go` (the
+  `File` prefix on `writeSymbolLine`; add `RenderResolveText` and `RenderExpandText`),
+  `quarry/doc.go`. Per D5, no new file is added to `quarry/`.
 - `internal/cli/flags.go` (three verbs, per-verb flag validity, per-verb arity messages),
   `internal/cli/target.go` (split into `repoRelPath` + `repoRelTarget`), `internal/cli/cli.go` (two
   new pipelines beside `Run`'s existing one; `codeForTOCError` stays as-is and gains siblings for the

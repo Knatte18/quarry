@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r3
+phase: discussed
 slug: facade-cli-resolve-expand
 branch: facade-cli-resolve-expand
 plan: null
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-09-04T08:13:20Z'
 discussion-fix-r1  '2026-09-04T08:27:17Z'
 discussion-fix-r3  '2026-09-04T08:41:27Z'
+discussion-fix-r4  '2026-09-04T08:47:54Z'
+discussed  '2026-09-04T08:47:54Z'
 ```
