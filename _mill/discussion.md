@@ -46,8 +46,8 @@ change, and a harness change cannot land mid-matrix.
   `bench/loomyard-eval/ladder/results/<YYYY-MM-DD>-breadth/`.
 - **The conclusion:** `results/<YYYY-MM-DD>-breadth/conclusion.md`, naming per task shape whether any
   cost or correctness metric separates, or stating plainly that none does anywhere.
-- **Doc propagation:** update `docs/roadmap.md`'s parked-T8 section and `HANDOFF.md` §3's measured
-  record from the conclusion's own finding.
+- **Doc propagation:** update `docs/roadmap.md` and `HANDOFF.md` §3's measured record from the
+  conclusion's own finding — see `roadmap-row-disposition` for exactly which roadmap lines move.
 
 **Out:**
 
@@ -96,6 +96,14 @@ change, and a harness change cannot land mid-matrix.
   a non-nil `CheckServerConnected` finding → `server_not_connected`. Recover `exit_code` by
   `errors.As` down to `*exec.ExitError` and calling `ExitCode()`; when no exit status is recoverable,
   omit the `exit_code` line rather than writing a sentinel.
+  Classification is ordered: `invokeErr` is checked first, so a process that exits non-zero is
+  `runner_error` even though its transcript also lacks a usable result record. `result_error` is
+  therefore reachable only by a process that exits **zero** and still reports failure (or reports
+  nothing) — which today's `testdata/fakeclaude` cannot produce, since every stream variant calls
+  `writeResult(..., isError=false)` and the only variant omitting a result record (`partial_fail`)
+  exits 1. The fixture gains a fifth `FAKE_CLAUDE_STREAM` variant, `result_error`, that writes an
+  assistant record and then `writeResult(w, "error_during_execution", "end_turn", true)` at exit 0,
+  so all four causes are provable offline rather than three of four.
 - Rationale: these are exactly the four branches the existing loop already distinguishes — the change
   records a decision the code already makes rather than inventing a new classification. `ExecRunner`
   wraps its failure with `%w`, and `invokeMeasuredProcess` wraps again with `%w`, so the exit error
@@ -107,23 +115,30 @@ change, and a harness change cannot land mid-matrix.
 
 ### m2-attempt-numbering
 
-- Decision: the attempt number written into `invalid_reason.txt` comes from a **loop-local counter in
-  `run.go`'s attempt loop**, initialised to zero before the loop and incremented once per rejected
-  attempt immediately before the reason file is written — never from `InvalidateRep`'s return value,
-  which is only produced after the rename. `InvalidateRep`'s own numbering is unchanged: it still
-  scans for the next unused `.invalid-<n>` suffix. The two are kept in agreement by assertion, not by
-  hope: every e2e case specified below asserts that each `N.invalid-k/` directory's own reason file
-  carries `attempt: k`.
-- Rationale: the reason file must be written into the directory *before* it is renamed away, so the
-  writer cannot know the suffix the rename will pick. A counter incremented once per rejection
-  produces the same sequence `InvalidateRep`'s scan does for a fresh repetition directory, and the
-  assertion is what catches the one case where they could diverge — a results root re-entered by a
-  second invocation where earlier `.invalid-*` directories already exist.
-- Rejected: writing the file after the rename into the renamed directory (it would work, but it moves
-  the write outside the "before `InvalidateRep`" contract the roadmap's done-when states, and leaves
-  a window where a crash between rename and write loses the reason entirely). Also rejected: omitting
-  the `attempt` field (it is what lets a reader of three sibling `.invalid-*` directories tell which
-  cause came first).
+- Decision: `attempt` means **the attempt's index within the invocation that produced it**, counted
+  by a loop-local counter in `run.go`'s attempt loop — initialised to zero before the loop,
+  incremented once per rejected attempt immediately before the reason file is written. It is
+  explicitly **not** the directory's `.invalid-<n>` suffix, and the two are **not** asserted equal in
+  general. `InvalidateRep`'s own numbering is unchanged: it scans for the next unused suffix across
+  everything already on disk, so it counts cumulatively across invocations while `attempt` restarts
+  at 1 in each. On a **fresh** repetition directory the two sequences coincide (1,2,3 ↔
+  `.invalid-1,2,3`); on a **re-entered** results root they deliberately diverge — a second invocation
+  re-attempting the same repetition writes `attempt: 1` into `.invalid-4/`. Both facts are pinned by
+  test: the fresh-root e2e cases assert `attempt: k` in `.invalid-k/`, and a dedicated re-entry case
+  asserts `attempt: 1` in the first directory the second invocation produces.
+- Rationale: the reason file is written into the directory *before* it is renamed, so the writer
+  cannot know the suffix the rename will pick — any claim of equality would be an invariant the code
+  does not enforce. Loop-local is also the more useful reading for a human debugging a retry storm:
+  it answers "how far into this invocation's ceiling was this?", which is what `MaxAttempts` is
+  measured against, while the cumulative count is already legible from the directory name itself. The
+  round-1 wording ("kept in agreement by assertion") claimed an invariant that is false on resume;
+  this decision replaces it rather than patching it.
+- Rejected: defining `attempt` as the suffix (unknowable at write time without moving the write after
+  the rename). Also rejected: writing the file after the rename into the renamed directory — it moves
+  the write outside the "before `InvalidateRep`" contract the roadmap's done-when states and opens a
+  window where a crash between rename and write loses the reason entirely. Also rejected: omitting
+  the `attempt` field (it is what lets a reader of three sibling `.invalid-*` directories from two
+  different invocations tell which came from which).
 
 ### m2-proven-by-test
 
@@ -192,7 +207,10 @@ change, and a harness change cannot land mid-matrix.
   checkout under three constraints: (a) the real answer spans at least two packages, (b) none of
   those package names appears in the prompt text, (c) it is answerable entirely from the pinned SHA.
   The chosen subject and the reason it satisfies (a)–(c) is recorded in the task file's own notes
-  section.
+  section. Constraints (a) and (c) are **provisional at pick time** — the pick rests on a reading
+  good enough to be plausible, and only the reference-agent fasit card's exhaustive read establishes
+  either. If that read disconfirms one, the remedy is `degenerate-fasit-is-a-pre-matrix-swap` and
+  nothing else: swap the subject, re-author, record the swap, all before the invocation.
 - Rationale: this is the condition under which a directory-level toc is most plausibly worth its
   prompt cost — the agent does not know where to look, so the first cheap survey is the whole value.
   Every shape measured so far (01, 02, 04) hands the agent its scope in the prompt, which is exactly
@@ -297,13 +315,33 @@ change, and a harness change cannot land mid-matrix.
   per-shape verdict under the rule above, a gate/invalidation/drift/provenance coverage section, and
   a "what this settles" section that names the T8 unpark implication in the roadmap's own terms
   (either a measured win that re-establishes the surface's value, or not). It then updates
-  `docs/roadmap.md`'s parked-T8 section and `HANDOFF.md` §3's table with the new row.
+  `docs/roadmap.md` per `roadmap-row-disposition` and adds `HANDOFF.md` §3's new table row.
 - Rationale: `docs/roadmap.md` names this conclusion as the input to the unpark decision, and T7's
   own finding was that the record must stop citing a superseded result — the same propagation is owed
   here. Quoting rather than re-deriving is what made T7's conclusion auditable.
 - Rejected: writing the conclusion and leaving the roadmap and HANDOFF to a later task (the stale
   record is the exact failure T7 called out); making the unpark decision in this task (it is the
   operator's, and the roadmap says so).
+
+### roadmap-row-disposition
+
+- Decision: when the conclusion lands, `docs/roadmap.md`'s "Next wave: measure" table loses both its
+  rows — M1 and M2 are then done, and the file's own header says it "only ever says what is ahead",
+  so a completed row has no place in it (the build record is git history and `HANDOFF.md`). The
+  section heading goes with them if the table is left empty. The parked-T8 section is rewritten to
+  state which of its two unpark conditions this root's finding does or does not satisfy, without
+  making the unpark decision. The **OSL-1033 host rerun**, which this task declares Out and which the
+  M1 row currently carries as a clause, is not silently dropped with that row: it moves to
+  `docs/roadmap.md`'s "Small and independent, any time" list as its own bullet, named as
+  operator-coordinated and as the one remaining way to isolate the host variable behind T7's
+  task-01 discrepancy.
+- Rationale: the reviewer's point is that striking a row can delete a live open item hidden inside it.
+  Naming where the OSL-1033 clause lands keeps the roadmap's own invariant (everything in it is
+  ahead) without losing the item. Rewriting rather than deleting the parked section is what makes the
+  conclusion legible as T8's input.
+- Rejected: leaving the M1/M2 rows in place with a "done" marker (contradicts the file's stated
+  purpose and duplicates `HANDOFF.md`'s build record); dropping the OSL-1033 clause entirely (it is
+  deferred, not resolved); unparking or re-parking T8 here (the operator's call).
 
 ### m2-observability-is-not-measured
 
@@ -393,7 +431,11 @@ go run ./bench/loomyard-eval/ladder/cmd/ladder run \
 **The test fixtures.** `internal/ladder/testdata/fakeclaude` is a fake `claude` binary driven by
 `FAKE_CLAUDE_*` environment variables; `FAKE_CLAUDE_STREAM` selects one of `normal`, `max_turns`,
 `no_fence`, `leak_prefix`, `partial_fail`. `partial_fail` writes a partial stream then `os.Exit(1)` —
-the runner-error injection M2's test needs. `FAKE_CLAUDE_SERVER_STATUS_OVERRIDE` (e.g.
+the runner-error injection M2's test needs. No existing variant produces a failing *result record*:
+`writeResult(w, terminalReason, stopReason, isError bool)` is called with `isError=false` everywhere,
+which is why this task adds a fifth variant (see `m2-cause-taxonomy-and-exit-code`). An unrecognised
+`FAKE_CLAUDE_STREAM` value is a hard fixture error by design, so the new variant must be added to the
+`switch` in `writeCellStream` rather than defaulted into. `FAKE_CLAUDE_SERVER_STATUS_OVERRIDE` (e.g.
 `quarry=failed`) drives the server-not-connected path. `e2e_test.go` has helpers `newE2EEnv`,
 `baseLadder`, `writeSyntheticLadderFile`, `setFakeClaudeEnv`, `setFakeClaudeEnvGranted`,
 `runOpts`, `summarizeAndWriteReport`, and an existing `GrantedCellServerNeverConnects` case (~line
@@ -440,17 +482,29 @@ There is no `CONSTRAINTS.md` at the hub root. The binding constraints come from 
   and `exit_code: 1`. Assert the attempt number in each file matches its own directory's suffix.
 - *e2e — `unparseable_answer`:* the same shape under `no_fence`, asserting `cause: unparseable_answer`
   and no `exit_code` line (the process exited zero).
+- *e2e — `result_error`:* the same shape under the new `result_error` fixture variant (assistant
+  record, then a result record with `is_error: true`, process exit 0), asserting
+  `cause: result_error` and no `exit_code` line. This case is why the variant is added: without it
+  one of the four enumerated causes ships unproven.
+- *e2e — re-entry:* run a matrix that exhausts a repetition's attempts, then run a second invocation
+  over the same results root and assert that the first directory the second invocation produces is
+  `.invalid-4/` and its reason file carries `attempt: 1` — the `m2-attempt-numbering` decision's
+  divergence, pinned rather than assumed.
 - *e2e — `server_not_connected`:* retarget the existing `GrantedCellServerNeverConnects` case from
   `ServerConnectFailureFile` to `InvalidReasonFile`, keeping its existing assertions that the file
   names the cell and the server, and adding `cause: server_not_connected`.
-- *Every e2e case above* asserts the `attempt` field equals its own directory's `.invalid-<k>` suffix,
-  per the `m2-attempt-numbering` decision — not only the `runner_error` case.
+- *Every fresh-root e2e case above* asserts the `attempt` field equals its own directory's
+  `.invalid-<k>` suffix — valid only because the root starts empty. The re-entry case above is the
+  one that pins the divergence; no test asserts the equality in general, per `m2-attempt-numbering`.
 - *Regression:* the happy path must write **no** `invalid_reason.txt` into a completed repetition's
   own directory — assert its absence, since the file belongs only inside a discarded attempt.
 - *Regression:* the `connectFailures == attempts` whole-run abort still fires (the existing case's
   `summary.Incomplete` assertion covers it) and `MaxAttempts` is still 3.
-- *Compile-time:* every reference to `ServerConnectFailureFile` is removed; the constant is deleted,
-  not left orphaned.
+- *Compile-time:* every reference to `ServerConnectFailureFile` **in Go source and tests** is removed
+  and the constant is deleted, not left orphaned. Prose references in already-committed results roots
+  — `results/2026-09-04-toc/conclusion.md` names the constant twice — are **not** touched: a
+  committed conclusion is a frozen record of what the harness did at that time, and rewriting it to
+  match a later harness would falsify it.
 
 **The ladder file and the new task files.** Not TDD, but gated before any real run:
 
@@ -526,6 +580,11 @@ the conclusion can say whether a flat rung actually called its tool.
   notes anticipate exactly this, and after the invocation the prompts are measured stimulus.
 - **Q:** Reps? **A:** [auto-pick] 5. **Why:** fixed by the task body's cost discipline and by
   `ladder-toc.yaml`'s own `reps: 5`.
+- **Q:** On a re-entered results root the loop-local attempt counter and `InvalidateRep`'s suffix
+  diverge — which one is `attempt`? **A:** [auto-resolve, review r2 BLOCKING] The loop-local index
+  within the producing invocation; the two are asserted equal only on a fresh root, and a re-entry
+  e2e case pins the divergence. **Why:** the file is written before the rename, so the suffix is
+  unknowable at write time, and the round-1 wording claimed an invariant the code cannot enforce.
 - **Q:** What happens at the discussion-review round cap if findings remain? **A:** [operator]
   Approve and hand off regardless. **Why:** the operator's explicit instruction this session — the
   round cap ends the review loop and proceeds to Handoff rather than blocking the task.
