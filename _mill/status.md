@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-spans
+phase: approved-goldens-and-round-trip
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-text-rules  '2026-09-03T19:38:53Z'
 approved-answer-and-walk  '2026-09-03T20:00:49Z'
 approved-glyph-symbols  '2026-09-04T04:21:00Z'
 approved-spans  '2026-09-04T04:29:51Z'
+approved-goldens-and-round-trip  '2026-09-04T04:41:24Z'
 ```
 
 ## Batches
@@ -71,8 +72,9 @@ batches:
     commit_sha: ff40b59f1c08c036bbcc6e5a9b120696f2e0839a
     verify_baseline_failures: []
   - name: goldens-and-round-trip
-    state: running
+    state: approved
     implementer_session: be553342-7973-4d99-87a0-21cf5cfe042b
     start_sha: 130a8211b85b3af87f3671671c5ebac9a0de3d5a
+    commit_sha: dc1f09f746ecdfac617012db7b13d1ebf3bc243f
     verify_baseline_failures: []
 ```
