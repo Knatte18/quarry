@@ -10,6 +10,10 @@ root: ""
 verify: go vet ./...
 ```
 
+## Prior failure
+
+- Round 1 (holistic): pushback: sole BLOCKING finding (toc-file.json golden omits symbols) is factually inaccurate -- the golden at internal/mcpserver/testdata/golden/toc-file.json already carries the populated symbols array for alpha.go, unchanged since creation commit 401f757, and go test ./internal/mcpserver/... -run TestGolden_TOC passes; no fix exists to commit, so HEAD cannot differ from baseline 299a55d6f1ac5386f5552236288a3ce42d9baa07 without a needless no-op change
+
 ## Batch Index
 
 _The fenced yaml block below is the authoritative DAG mill-go reads to schedule batches.
