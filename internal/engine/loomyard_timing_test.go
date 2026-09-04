@@ -117,3 +117,40 @@ func BenchmarkResolveTwentyGlyphs(b *testing.B) {
 		}
 	}
 }
+
+// TestExpand_LoomyardMembersAcrossFiles checks testing.Short() and skips first, then calls
+// loomyardRepo — the same gate order TestResolve_TwentyGlyphsUnder150ms uses and for the same reason
+// — and opens the checkout with openRepo. It expands internal/fabricengine#Topology: a type declared
+// in topology.go, whose own methods are declared across add.go, checkout.go, cleanup.go, and list.go
+// at the pinned commit. That last property is the one no committed fixture proves as convincingly as
+// this real repository does — a fixture built to have members in two files proves the filter runs,
+// where a real repository proves it finds what a reader would have had to open several files to see.
+func TestExpand_LoomyardMembersAcrossFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping the Loomyard expand spot check in -short mode")
+	}
+	repoRoot := loomyardRepo(t)
+	r := openRepo(t, repoRoot)
+
+	got, err := r.Expand("internal/fabricengine#Topology")
+	if err != nil {
+		t.Fatalf(`Expand("internal/fabricengine#Topology") failed: %v`, err)
+	}
+	if got.Status != StatusFound {
+		t.Fatalf("Expand(...).Status = %q; want %q (full answer: %+v)", got.Status, StatusFound, got)
+	}
+	if got.Head == nil {
+		t.Fatal("Expand(...).Head is nil; want the Topology type's own symbol entry")
+	}
+	if len(got.Members) == 0 {
+		t.Fatal("Expand(...).Members is empty; want Topology's methods")
+	}
+
+	files := make(map[string]bool)
+	for _, m := range got.Members {
+		files[m.File] = true
+	}
+	if len(files) < 2 {
+		t.Errorf("Expand(...).Members span %d distinct file(s): %v; want at least 2", len(files), files)
+	}
+}
