@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-pre-matrix-gates
+phase: approved-harness-mcp-init-fix
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -36,6 +36,7 @@ planning  '2026-09-04T12:32:41Z'
 planned  '2026-09-04T12:34:58Z'
 implementing  '2026-09-04T14:15:44Z'
 approved-pre-matrix-gates  '2026-09-04T14:19:32Z'
+approved-harness-mcp-init-fix  '2026-09-04T14:29:12Z'
 ```
 
 ## Batches
@@ -48,9 +49,10 @@ batches:
     start_sha: 2445bdfa0098e29ad1272a8bb16aae4d9580f0d0
     commit_sha: 1f698a0c1fe6177fac28bd0aa9db38782af7ef25
   - name: harness-mcp-init-fix
-    state: running
+    state: approved
     implementer_session: c57ed069-873b-4ff5-9c45-46f23944a615
     start_sha: d299bc18f887b51ec8144d662a8ee1b8bd57f6fd
+    commit_sha: cbcc7ab90459b879aba6ec67ee5383dd18c23b14
     verify_baseline_failures: []
   - name: matrix-run
     state: pending
