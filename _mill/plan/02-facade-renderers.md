@@ -148,6 +148,7 @@ overview's `engine-unexported-helpers-are-not-reachable`), so card 6 declares an
   - `quarry/quarry.go`
   - `internal/engine/answer.go`
   - `docs/rewrite-plan.md`
+  - `_mill/discussion.md`
 - **Edits:** none
 - **Creates:**
   - `quarry/render_test.go`
@@ -179,6 +180,7 @@ overview's `engine-unexported-helpers-are-not-reachable`), so card 6 declares an
   - `quarry/quarry.go`
   - `internal/engine/answer.go`
   - `docs/rewrite-plan.md`
+  - `_mill/discussion.md`
 - **Edits:** none
 - **Creates:**
   - `quarry/text_test.go`

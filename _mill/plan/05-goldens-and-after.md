@@ -99,6 +99,17 @@ this batch does not depend on any engine change.
   to that path instead of comparing, creating the `after/` directory with `os.MkdirAll` if needed.
   On mismatch report with a want/got diff in the style `internal/engine/golden_test.go`'s
   `compareGolden` uses.
+
+  **Ordering within this batch.** This card's test compares against files card 21 has not written
+  yet, so on a machine that does have the pinned checkout `go test ./internal/cli/...` fails on a
+  missing golden between this card's commit and card 21's. That red window is expected and bounded:
+  it opens at this card and closes at card 21, and the batch's own `verify:` runs only after every
+  card in the batch has landed, so the batch boundary is never reached in the red state. Do not
+  paper over it by making the test skip when the golden file is absent — after card 21 a missing
+  golden is a real regression (a deleted or unstaged fixture), and a skip there would hide exactly
+  the failure this gate exists to catch. Read the golden with `os.ReadFile` and fail on its error.
+  State this window in the file-level comment so the next reader does not "fix" the red by
+  weakening the gate.
 - **Commit:** `test(cli): add the four after/ golden cases`
 
 ### Card 21: generate the four `after/` outputs
@@ -146,6 +157,8 @@ this batch does not depend on any engine change.
   - `internal/cli/loomyard_test.go`
   - `internal/cli/after_test.go`
   - `internal/cli/cli.go`
+  - `quarry/quarry.go`
+  - `internal/engine/answer.go`
   - `internal/engine/testdata/loomyard/render-layout-file.json`
   - `docs/rewrite-plan.md`
 - **Edits:** none
@@ -178,6 +191,8 @@ this batch does not depend on any engine change.
 
 - **Context:**
   - `docs/research/output-formats/INDEX.md`
+  - `docs/research/output-formats/toc-dir.txt`
+  - `docs/research/output-formats/toc-file.txt`
   - `internal/cli/after_test.go`
   - `docs/research/output-formats/after/toc-dir.txt`
   - `docs/research/output-formats/after/toc-dir-text.txt`
@@ -219,7 +234,10 @@ this batch does not depend on any engine change.
 ## Batch Tests
 
 `verify: go test ./internal/cli/...` runs every test in the package: batches 3 and 4's Loomyard-free
-suite plus this batch's three gated files. On a machine with no Loomyard checkout the gated cases
+suite plus this batch's three gated files. It is green at the batch boundary, which is the only
+point mill-go evaluates it; card 20 opens a deliberate red window that card 21 closes, and card 20's
+own requirements explain why that window must not be closed by making the golden comparison
+skippable. On a machine with no Loomyard checkout the gated cases
 skip with a reason and the rest still run, which is the intended asymmetry — a machine at the
 **wrong** pin fails loudly instead. Card 21 is the one card that genuinely requires the checkout;
 its own requirements say to stop and report rather than invent fixtures if none is present.

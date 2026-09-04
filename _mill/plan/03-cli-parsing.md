@@ -13,8 +13,8 @@ depends-on: [1]
 
 This batch creates `internal/cli` and its four pure layers: the usage text, the hand-rolled flag
 parser, repository-root resolution, and target conversion. None of them calls the engine or the
-facade's `TOC`; every one is a function over strings and, at most, a `t.TempDir()` tree, which is
-what makes this the batch that carries most of the task's test weight. Batch 4 adds `Run`, which
+facade's `TOC`; every one is a function over strings and, at most, a `.scratch/cli-tests/` fixture
+tree, which is what makes this the batch that carries most of the task's test weight. Batch 4 adds `Run`, which
 composes these four in the fixed order `target-kind-and-the-cli-stat` sets out.
 
 It depends on batch 1 only — `internal/cli/target.go` imports `quarry` for the
@@ -114,11 +114,18 @@ exit codes:
   - The first argument is the verb. Anything other than `toc` returns
     `usageError(fmt.Sprintf("unknown verb: %s", verb))`. A first argument beginning with `-` is
     reported as a missing verb, not an unknown flag, with the same message as the empty case.
-  - Parse the remaining arguments. A token beginning with `--` is a flag; accept both the
-    space-separated form (`--depth 3`) and the equals form (`--depth=3`), splitting on the first `=`
-    with `strings.Cut`. A value-taking flag with no value following it returns
-    `usageError(fmt.Sprintf("%s requires a value", flag))`. An unrecognised flag returns
-    `usageError(fmt.Sprintf("unknown flag: %s", flag))` — the token as given, including its dashes.
+  - Parse the remaining arguments. A token beginning with `-` is a flag — **single dash as well as
+    double**, so `-x` is rejected as an unknown flag rather than silently becoming the target. The
+    only single-dash token the parser recognises is `-h`, and the help pre-scan above has already
+    consumed it. Accept both the space-separated form (`--depth 3`) and the equals form
+    (`--depth=3`), splitting on the first `=` with `strings.Cut`. A value-taking flag with no value
+    following it returns `usageError(fmt.Sprintf("%s requires a value", flag))`. Any unrecognised
+    flag, one dash or two, returns `usageError(fmt.Sprintf("unknown flag: %s", flag))` — the token
+    as given, including its dashes.
+    The bare token `-` is also an unknown flag: quarry reads no target from stdin, so the
+    conventional stdin spelling has no meaning here and silently treating it as a filename would be
+    worse than rejecting it. The bare token `--` is likewise an unknown flag rather than an
+    end-of-flags separator; the flag set is closed and a target never begins with a dash.
   - `--depth` takes `all`, mapping to `quarry.DepthAll`, or a non-negative decimal integer parsed
     with `strconv.Atoi`. A negative integer, a non-integer, or an empty value returns
     `usageError(fmt.Sprintf("--depth must be a non-negative integer or \"all\", got %q", value))`.
@@ -128,7 +135,8 @@ exit codes:
     `usageError("--symbols and --no-symbols cannot both be given")`, whatever their order and even
     when one is repeated.
   - `--text` sets `text`. `--root` takes the following token verbatim into `root`.
-  - Every non-flag token after the verb is a target. Zero targets returns
+  - Every remaining token after the verb — that is, every token not beginning with `-` — is a
+    target. Zero targets returns
     `usageError("toc takes exactly one target, got 0")`; two or more returns the same sentence with
     the actual count. Exactly one sets `target`.
   Do not resolve any path, stat anything, or read the working directory here — this function is pure
@@ -228,6 +236,10 @@ exit codes:
   Cover the usage-error cases: unknown flag (asserting the message is exactly
   `unknown flag: --depht` for that input), missing target, two targets (asserting the count in the
   message), missing verb, unknown verb, and a first argument that is a flag.
+  Cover the single-dash hole explicitly, as its own table rows: a post-verb `-x` is
+  `usageError("unknown flag: -x")` and **not** a target, so it can never reach the exit-1 path as
+  `target not found: -x`; the bare `-` and the bare `--` are likewise unknown flags; and `-h`
+  remains the one single-dash token that succeeds, via the help pre-scan.
   Cover `--help` and `-h` in every position — alone, before the verb, after the verb, after a
   target, and alongside an otherwise-invalid flag — each yielding `help: true` and a nil error, so
   help wins over every other complaint.
@@ -240,19 +252,42 @@ exit codes:
 - **Context:**
   - `internal/cli/root.go`
   - `internal/cli/flags.go`
+  - `internal/engine/scratchtree_test.go`
 - **Edits:** none
 - **Creates:**
   - `internal/cli/root_test.go`
+  - `internal/cli/scratchtree_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `internal/cli/root_test.go` in `package cli`, building every fixture
-  under `t.TempDir()` and never calling `t.Chdir` or `os.Chdir`.
+- **Requirements:** Create `internal/cli/scratchtree_test.go` in `package cli` declaring
+  `func writeScratchTree(t *testing.T, name string, files map[string]string) string`, mirroring
+  `internal/engine/scratchtree_test.go`'s helper of the same name: resolve the module root from
+  `runtime.Caller(0)`, build the tree under `.scratch/cli-tests/<name>/`, `os.RemoveAll` any stale
+  tree first, create parent directories as needed, register a `t.Cleanup` that removes the tree,
+  and return its absolute path. It writes regular files only — a test needing a symlink, an empty
+  directory, or a `.git` entry creates it itself on the returned path. Its doc comment states that
+  it never calls `t.TempDir()` because the system temp directory is banned for this repository's
+  tests and `.scratch/` is the sanctioned location, and that it is a deliberate per-package copy
+  because Go test helpers are not importable across packages. Cards 15 and 18 use this same helper.
+
+  Create `internal/cli/root_test.go` in `package cli`, building every fixture with
+  `writeScratchTree` and never calling `t.TempDir()`, `t.Chdir`, or `os.Chdir`.
   Cover `discoverRoot` finding a `.git` **directory** from a nested subdirectory several levels
-  down; finding a `.git` **file** (the worktree case) the same way; returning the nearest root when
-  two are nested; and returning a `usageError` naming `--root` when the walk reaches the filesystem
-  root with no hit — for that case start the walk inside a temp tree that has no `.git` anywhere and
-  assert on the error's type and on the message containing `pass --root`, rather than asserting the
-  walk terminates at a specific absolute path, which is machine-dependent.
+  down; finding a `.git` **file** (the worktree case) the same way; and returning the nearest root
+  when two are nested — in each case the fixture creates its own `.git` entry inside the tree
+  `writeScratchTree` returns, so it is found before the walk can reach any real ancestor.
+
+  The no-root-found case needs care and gets its own named test rather than a table row: a fixture
+  under `.scratch/` is inside this repository, so a walk from it always finds this repository's own
+  `.git` and the branch is unreachable from there. Test it instead by calling `discoverRoot` on the
+  filesystem root path itself, which has no `.git` on a normal machine, and assert the error's
+  concrete type is `usageError` and its message contains `pass --root`. Guard the case with a
+  `t.Skip` naming the reason when a `.git` entry does exist at the filesystem root, so the test
+  reports "not applicable here" rather than failing on an unusual machine. Do not assert the walk
+  terminates at a specific absolute path — that is machine-dependent.
+  State in the test's comment why `t.TempDir()` is not used to get an out-of-repository directory:
+  the system temp directory is banned for this repository's tests, and the filesystem-root call
+  exercises the same terminating branch without one.
   Cover `resolveRoot` short-circuiting the walk when `flagRoot` is given, even inside a tree that
   does contain a `.git`; accepting a relative `flagRoot` by joining it onto `cwd`; returning a
   `usageError` when `flagRoot` names a file rather than a directory, and when it names nothing at
@@ -263,14 +298,17 @@ exit codes:
 
 - **Context:**
   - `internal/cli/target.go`
+  - `internal/cli/scratchtree_test.go`
   - `quarry/quarry.go`
 - **Edits:** none
 - **Creates:**
   - `internal/cli/target_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `internal/cli/target_test.go` in `package cli`, using `t.TempDir()` for
-  the one symlink case and pure string inputs elsewhere.
+- **Requirements:** Create `internal/cli/target_test.go` in `package cli`, using card 14's
+  `writeScratchTree` for the one symlink case — creating the symlink itself on the returned path,
+  since the helper writes regular files only — and pure string inputs elsewhere. Do not call
+  `t.TempDir()`.
   Cover that a cwd-relative target and the equivalent absolute target convert to the same
   repository-relative path; that a target naming the root itself converts to `.`; that a nested
   target converts to a forward-slash path with no leading `./`.
@@ -289,8 +327,10 @@ exit codes:
 
 ## Batch Tests
 
-`verify: go test ./internal/cli/...` runs the three new test files. Scoped to `internal/cli`, the
-only package this batch touches; the module-wide `go build ./...` at the batch boundary catches a
-cross-package compile break. Every test here is Loomyard-free and runs on any machine: fixtures are
-`t.TempDir()` trees or plain strings, and no test changes the process working directory, so the
-package's tests remain safe to run in parallel with each other.
+`verify: go test ./internal/cli/...` runs the three new test files over the `writeScratchTree`
+helper card 14 adds. Scoped to `internal/cli`, the only package this batch touches; the module-wide
+`go build ./...` at the batch boundary catches a cross-package compile break. Every test here is
+Loomyard-free and runs on any machine: fixtures are `.scratch/cli-tests/` trees or plain strings,
+and no test changes the process working directory, so the package's tests remain safe to run in
+parallel with each other. The one environment-dependent case — no repository root above the
+filesystem root — skips with a reason rather than failing when the machine is unusual.
