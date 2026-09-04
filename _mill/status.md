@@ -50,7 +50,9 @@ batches:
     commit_sha: ffa84a2cfb8879f15525ad53f3b9fef62e4a1425
     verify_baseline_failures: []
   - name: ladder-d-task-06
-    state: pending
+    state: running
+    implementer_session: e3467db0-2f60-4023-8023-3a210e24dc7a
+    start_sha: 19bf419e1bff7d9490ee31937b8fcddc5aa68fac
     verify_baseline_failures: []
   - name: ladder-file-and-pre-matrix-gates
     state: pending
