@@ -71,8 +71,8 @@ after that is a change to a published contract rather than a choice.
   2. **`internal/engine/loomyard_test.go`** — widening T3's `loomyardRepo(t *testing.T)` gate helper
      to `loomyardRepo(t testing.TB)` so D16's benchmark can call it. **The parameter keeps the name
      `t`**, which is what makes this genuinely one line: the body calls `t.Helper`, `t.Skip`,
-     `t.Skipf` and `t.Fatalf` seven times over, every one of them a `testing.TB` method, so renaming
-     it to `tb` would rewrite the whole body for nothing. No behaviour change, and every existing
+     `t.Skipf` twice and `t.Fatalf` — five calls, every one of them a `testing.TB` method — so
+     renaming it to `tb` would rewrite the whole body for nothing. No behaviour change, and every existing
      caller still compiles.
 
   **Nothing else under `internal/engine` changes behaviour.** Adding `Resolve`, `Expand` and their
@@ -314,8 +314,14 @@ asserted about them are now read from code, not from a plan:
 
 ### D5 — `multipart` is `init` and nothing else in Go; every other multi-match is `ambiguous`
 
-- Decision: after collecting matches for a glyph, with `n = len(matches)`:
-  - `n == 0` → `not_found` (plus D10's `unit`).
+- Decision: after collecting matches for a glyph, with `n = len(matches)`. **The rows are tested in
+  this order, and D6's collision check sits between the first and the second** — the same order D14
+  states for `Expand`, so the two verbs cannot diverge:
+  - `n == 0` → `not_found` (plus D10's `unit`), tested first, so a collision with no match anywhere
+    is `not_found` with `unit: found` rather than an empty `ambiguous`.
+  - **`collision` and `n >= 1` → `ambiguous` (D6), tested before every row below.** Several `init`
+    under a collision is therefore `ambiguous`, not `multipart`: the glyph does not unambiguously
+    name one unit, and `multipart` would assert that it does.
   - `n == 1` → `found`.
   - `n > 1` and the glyph is a bare package-level `init` (`len(g.Owner) == 0 && g.Name == "init"`) →
     `multipart`, every declaration returned in `Symbols`, file-then-line order.
@@ -340,7 +346,9 @@ asserted about them are now read from code, not from a plan:
 
 - Decision: when `unitDirs(unit)` returns `collision == true`:
   - with at least one match across the two directories → `ambiguous`, `Candidates` holding the union
-    in file-then-line order, whatever `n` is. A single match under a collision is still `ambiguous`.
+    in file-then-line order, whatever `n` is, and **whatever the glyph's name is**. This check runs
+    after D5's zero-match row and before all its others, so a single match under a collision is
+    `ambiguous`, and so is a several-`init` match D5 would otherwise call `multipart`.
   - with no match in either → `not_found` with `unit: found`.
 - Rationale: T3's D16 records this in as many words — "T4 promotes that second return into the
   `ambiguous` status when it builds the status vocabulary" — and this task's own brief carries it as
@@ -539,8 +547,8 @@ asserted about them are now read from code, not from a plan:
   `error` — **including a target with no `#`**, which the grammar already rejects as
   `ReasonNoSeparator`. `Expand` writes no separator check of its own: the constraint is that every
   alphabet question is one `glyph.Parse` call, and a hand-rolled "missing `#`" error would be a
-  second implementation of a rule the grammar owns, returning a different error type for one
-  rejection reason than for the other fourteen. Unlike `Resolve`, `Expand` answers one target, so
+  second implementation of a rule the grammar owns, returning a different error type for one of
+  `glyph`'s fifteen rejection reasons than for the other fourteen. Unlike `Resolve`, `Expand` answers one target, so
   there is no other answer to protect and no reason to move the failure into the payload; D8's
   argument is about not losing thirty-nine good answers and does not apply here. `toc` never takes a
   glyph and `expand` never takes a path — plan §5 states both.
@@ -712,8 +720,8 @@ asserted about them are now read from code, not from a plan:
   binary is missing or errors). **The gate is T3's helper, widened, not a copy of it:** T3's
   `loomyardRepo(t *testing.T)` in `loomyard_test.go` cannot be called from a `*testing.B`, so T4
   changes its parameter type to `testing.TB` while **keeping the name `t`** — one line, body
-  untouched (its seven `t.Helper`/`t.Skip`/`t.Skipf`/`t.Fatalf` calls are all `testing.TB`
-  methods), every existing caller still compiling. That is Scope's second named exception. Duplicating the pin check into T4's own
+  untouched (its five `t.Helper`/`t.Skip`/`t.Skipf`/`t.Fatalf` calls are all `testing.TB` methods),
+  every existing caller still compiling. That is Scope's second named exception. Duplicating the pin check into T4's own
   file was rejected: two implementations of "is this the right Loomyard" is exactly the drift that
   makes a done-criterion silently unverifiable when one of them is updated and the other is not.
   1. `TestResolve_TwentyGlyphsUnder150ms` — skipped under `-short`. It first asserts that all twenty
@@ -761,11 +769,21 @@ asserted about them are now read from code, not from a plan:
   | `not_found` + `unit: found` | `testdata/tree/pkg`, a name not in it | Testing 7 | no fixture needed |
   | `not_found` + `unit: not_found` | a unit whose directory does not exist | Testing 7, 15b | no fixture needed |
   | `ambiguous`, unit collision | `.scratch/` tree: `foo/` with an external test package **and** a literal `foo_test/` | Testing 6, 15c | T3's `TestSpansOf_LiteralFirst` asserts `collision == false` for `testdata/foo_test`; committing the `testdata/foo/` sibling would flip it and break that test |
+  | `expand` interface | `testdata/glyphs/iface.go` (existing: `Iface`, two documented methods) | Testing 13 | read-only reuse — no file added, so T3's `glyph_test.go` symbol-list assertions over that package are untouched |
+  | `expand` member-less type | `testdata/glyphs/decls.go` (existing: `Weekday`, a defined scalar with no methods) | Testing 14 | same: read-only reuse |
+  | `expand` non-type glyphs | `testdata/glyphs/decls.go` (`UngroupedConst`) and `inits.go` (`init`) | Testing 15 | same: read-only reuse, covering D14's `*NotATypeError` rows for `const` and for several `init` |
   | path targets | `testdata/tree/` (existing: `README.md`, `config.yaml`, `Makefile`, `notes.rst`, `sub/`) | Testing 10 | already committed, and already covers a code file, several non-code files and a subdirectory |
   | gitignored path target | `.scratch/` tree with a `.gitignore` | Testing 10 | a committed tree cannot hold a tracked file its own `.gitignore` excludes |
   | unreadable directory | `.scratch/` tree, chmod'd mid-test | Testing 15a | cannot be committed at all; skipped when the host cannot revoke read permission |
-  | ordering, collision union | the same `.scratch/` collision tree | Testing 16 | the one place the engine's sort is load-bearing: `symbolsOfUnit` appends the two directories in `unitDirs` order and only its closing `sort.SliceStable` restores file order. `os.ReadDir` is already sorted by filename, so a read-order fixture would assert nothing |
+  | ordering, collision union (`Candidates` on both verbs) | the same `.scratch/` collision tree | Testing 16 | the one place the engine's sort is load-bearing: `symbolsOfUnit` appends the two directories in `unitDirs` order and only its closing `sort.SliceStable` restores file order. `os.ReadDir` is already sorted by filename, so a read-order fixture would assert nothing. `Expand` yields no `Members` here (D14's collision row), so both verbs are asserted on `Candidates` |
   | ordering, members across files | `testdata/methods/` — two files whose names sort opposite to declaration order | Testing 16 | exercises `Expand`'s member sort independently of the collision |
+
+  **Reusing `testdata/glyphs/` is sanctioned where the assertion is read-only**, which is not in
+  tension with the rejected alternative below: what is rejected is *adding a file* to that package,
+  because T3's `glyph_test.go` asserts on its whole symbol list. Reading declarations already in it
+  adds no package to any tree T3 asserts on and cannot perturb one of those assertions. The
+  `methods/` fixture is new only because no committed package has a type whose methods span two
+  files.
 
   The ignore-filter case T3 already covers in `TestSpansOf_IgnoreFilter` is **not** rebuilt here:
   D9's memo passes the same `ignoreSet` down to the same `symbolsOfUnit`, so T4 adds no filtering of
@@ -782,8 +800,9 @@ asserted about them are now read from code, not from a plan:
   the test (a fixture nobody can open and read is a worse fixture); putting the new `methods/` and
   `tags/` packages under `testdata/tree/` (T3's walk assertions enumerate that directory);
   committing the collision's `testdata/foo/` sibling (breaks `TestSpansOf_LiteralFirst`, for a case a `.scratch/` tree covers exactly as
-  well); reusing `testdata/glyphs/` for the method-across-files case (its files are one package by
-  design and T3's `glyph_test.go` asserts on the whole symbol list).
+  well); **adding a file to** `testdata/glyphs/` for the method-across-files case (T3's
+  `glyph_test.go` asserts on that package's whole symbol list — whereas *reading* its existing
+  declarations, as Testing 13/14/15 do, cannot perturb it and is sanctioned above).
 
 ### D18 — Three contract gaps are recorded, none is closed
 
@@ -909,9 +928,11 @@ chose, not the layout its discussion assumed.
 **TDD candidates** (pure decision functions over data, no tree-sitter, write the table first):
 
 1. The status rule of D5/D6 — a function from `(glyph, matches, collision)` to a `Status`. Table:
-   zero matches; one match; one match under a collision; several `init`; several non-`init`; several
-   under a collision; an owned name (`T.M`) with several matches. This is the decision the whole
-   verb turns on and it needs no parse to test.
+   zero matches; zero matches **under a collision** (`not_found`, not `ambiguous`); one match; one
+   match under a collision; several `init`; **several `init` under a collision** (`ambiguous`, not
+   `multipart` — the row that pins the check order); several non-`init`; several under a collision;
+   an owned name (`T.M`) with several matches. This is the decision the whole verb turns on, it
+   needs no parse to test, and its rows are the order D14's table states for `Expand`.
 2. The target split — a function from a target string to glyph-or-path. Table: `a/b#C`, `a/b`,
    `#x`, `a#b#c`, `README.md`, `` (empty), `.`.
 
@@ -979,10 +1000,12 @@ chose, not the layout its discussion assumed.
     collision union — `symbolsOfUnit` appends the literal `foo_test/` directory's symbols before the
     stripped `foo/` directory's, in `unitDirs` order rather than file order, and only its closing
     `sort.SliceStable` restores file-then-line. Over the `.scratch/` collision tree, assert that
-    `Resolve`'s `Candidates` and `Expand`'s `Members` come back file-then-line even though the two
-    directories were read in the other order, and that the two verbs agree. Add a second unit whose
-    members span two files with names that sort opposite to their declaration order, so `Expand`'s
-    member sort is exercised independently of the collision.
+    `Resolve`'s `Candidates` and **`Expand`'s `Candidates`** come back file-then-line even though
+    the two directories were read in the other order, and that the two verbs agree. It is
+    `Candidates` on both sides, not `Members`: D14's collision row gives `Expand` no `Head` and no
+    `Members` for any collision with a match, which is what Testing 15c asserts on this same tree.
+    `Expand`'s **member** sort is therefore exercised separately, over `testdata/methods/`, whose two
+    files are named so they sort opposite to their declaration order.
 
 **Loomyard, env-gated per T3's D17 skip/fail rule, skipped under `-short`:**
 
