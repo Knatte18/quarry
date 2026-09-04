@@ -6,6 +6,7 @@ slug: facade-cli-resolve-expand
 branch: facade-cli-resolve-expand
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Facade + CLI, resolve + expand (T5b)
 task_description: |
   Facade + CLI, resolve + expand (T5b)
@@ -39,11 +40,17 @@ implementing  '2026-09-04T09:44:59Z'
 ```yaml
 batches:
   - name: facade-surface
-    state: pending
+    state: running
+    implementer_session: 86254a28-ec70-4590-9671-2489aa3140f6
+    start_sha: 031783dbec3e63845ea6dd7fc7587980c653cc99
+    verify_baseline_failures: []
   - name: cli-argument-layer
     state: pending
+    verify_baseline_failures: []
   - name: cli-pipelines
     state: pending
+    verify_baseline_failures: []
   - name: evidence-and-status-gate
     state: pending
+    verify_baseline_failures: []
 ```
