@@ -114,6 +114,60 @@ func TestRepoRelTarget_NativeSeparatorsToForwardSlash(t *testing.T) {
 	}
 }
 
+// TestRepoRelPath_LeadingDotDotNotRejected pins that repoRelPath is arithmetic only: a target
+// that leaves the root comes back as a leading-".." relative path rather than an error, for a
+// sibling directory of the root and for a parent of the root.
+func TestRepoRelPath_LeadingDotDotNotRejected(t *testing.T) {
+	tests := []struct {
+		name   string
+		root   string
+		base   string
+		target string
+		want   string
+	}{
+		{"sibling-directory", "/repo", "/repo", "../sibling/file.go", "../sibling/file.go"},
+		{"parent-of-root", "/repo/sub", "/repo/sub", "..", ".."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repoRelPath(tt.root, tt.base, tt.target)
+			if err != nil {
+				t.Fatalf("repoRelPath(%q) = _, %v; want nil error", tt.target, err)
+			}
+			if got != tt.want {
+				t.Errorf("repoRelPath(%q) = %q; want %q", tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRepoRelPath_AgreesWithRepoRelTarget pins that repoRelPath and repoRelTarget agree on every
+// input that does not escape the root, including the root itself and a nested path.
+func TestRepoRelPath_AgreesWithRepoRelTarget(t *testing.T) {
+	tests := []struct {
+		name   string
+		root   string
+		base   string
+		target string
+	}{
+		{"root-itself", "/repo", "/repo", "."},
+		{"nested-path", "/repo", "/repo", "a/b/c.go"},
+		{"cwd-relative", "/repo", "/repo/internal/logger", "file.go"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pathGot, pathErr := repoRelPath(tt.root, tt.base, tt.target)
+			targetGot, targetErr := repoRelTarget(tt.root, tt.base, tt.target)
+			if pathErr != nil || targetErr != nil {
+				t.Fatalf("repoRelPath/repoRelTarget(%q) errors = %v, %v; want both nil", tt.target, pathErr, targetErr)
+			}
+			if pathGot != targetGot {
+				t.Errorf("repoRelPath(%q) = %q; repoRelTarget(%q) = %q; want equal", tt.target, pathGot, tt.target, targetGot)
+			}
+		})
+	}
+}
+
 func TestRepoRelTarget_SymlinkNotResolvedThrough(t *testing.T) {
 	root := writeScratchTree(t, "target-symlink", map[string]string{
 		"realdir/file.go": "package realdir\n",
