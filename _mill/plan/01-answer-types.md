@@ -45,13 +45,15 @@ four `Status` constants.
   shared by `ResolveResult`'s `Status` and `Unit` keys and by `ExpandAnswer`'s. State in the type doc
   comment that the `Unit` key of both result types draws from this same type but only ever carries
   `StatusFound` or `StatusNotFound`, so the package holds one vocabulary rather than two overlapping
-  ones. Change no existing declaration, tag or comment in this file.
+  ones. Change no existing declaration and no existing JSON tag in this file. The file's own header
+  comment is the one exception, and card 2 owns it — leave it alone here.
 - **Commit:** `feat(engine): add the closed Status vocabulary to answer.go`
 
 ### Card 2: ResolveResult and ExpandAnswer
 
 - **Context:**
   - `docs/glyph.md`
+  - `docs/rewrite-plan.md`
   - `internal/engine/repo.go`
 - **Edits:**
   - `internal/engine/answer.go`
@@ -94,9 +96,23 @@ four `Status` constants.
   never an engine read failure, and that `Status` is empty whenever `Error` is set. Record on
   `ExpandAnswer.Status` that it is `found`, `not_found` or `ambiguous` and never `multipart`, because
   the kind gate sends every match set holding no type to the `*NotATypeError` batch 4 adds — which is
-  where a several-declaration `init` glyph lands, however many declarations it has — and docs/glyph.md
-  §5's rule that a Go type never splits closes the remaining type-only cases; a language with partial
-  types adds its row then, not now. Change no existing declaration, tag or comment in this file.
+  where a several-declaration `init` glyph lands, however many declarations it has — and
+  docs/rewrite-plan.md's rule that a Go type never splits, only `init` does, closes the remaining
+  type-only cases; a language with partial types adds its row then, not now. Cite the two documents by
+  the right name throughout: the four statuses, the `unit` key's two values, the ordering rule and the
+  candidates-marked-by-language sentence are docs/glyph.md §5's, while the `expand` verb's own rules —
+  that the glyph must name a type, that the answer names the kind on any other, and that a Go type
+  never splits — are docs/rewrite-plan.md's three-queries section. Reading the wrong file's name into a
+  shipped doc comment sends the next reader to a section that does not contain the sentence.
+
+  Change no existing declaration and no existing JSON tag in this file. Two existing comments do
+  change, for the same reason card 23 corrects one stale sentence in the Go extractor and card 9
+  rewrites the resolve file's own header: leaving a comment that describes this file wrongly is
+  worse than the churn of fixing it. Extend the file's header comment so its enumeration of the file's
+  contents names `Status`, `ResolveResult` and `ExpandAnswer` alongside the types it already lists, and
+  reword `Symbol.HeadStart`'s "consumed by the later expand verb" so it names the verb in the present
+  tense, without touching the rest of that comment's substance — the head fields stay JSON-hidden and
+  `KindType`-only, and the sentence about the subtraction being the consumer's job stays as it is.
 - **Commit:** `feat(engine): add ResolveResult and ExpandAnswer payload types`
 
 ## Batch Tests

@@ -13,15 +13,20 @@ depends-on: []
 
 This batch commits the two new fixture packages the status and expand tests read: a type whose
 methods span two files, and a build-tag pair declaring the same names twice. Both are new sibling
-directories under `internal/engine/testdata/`, which no existing test enumerates — the walk
-assertions that do enumerate a directory enumerate `internal/engine/testdata/tree/`, and nothing in
-this batch adds a file there. Every other fixture this plan needs is either an existing committed
-package read without modification, or a run-time tree built under `.scratch/` by the tests
-themselves; both are batch 3's and batch 4's business, not this one's.
+directories under `internal/engine/testdata/`. Every other fixture this plan needs is either an
+existing committed package read without modification, or a run-time tree built under `.scratch/` by
+the tests themselves; both are batch 3's and batch 4's business, not this one's.
 
-It is one batch because both cards are pure fixture data with one shared risk — perturbing a T3
-assertion — and one shared gate: the whole engine test suite must still pass untouched after they
-land.
+It is one batch because both cards are pure fixture data with one shared risk — perturbing an
+existing assertion — and one shared gate: the whole engine test suite must still pass untouched after
+they land. Two existing tests see these new packages and both are argued through rather than assumed
+safe. `TestRoundTrip_QuarryItself` walks this module's own root with `DepthAll` and symbols on, so it
+does enumerate both new packages; it compares the walk's spans against `symbolsOfUnit`'s through
+`tupleSetDiff`, a multiset diff that counts duplicates rather than collapsing them, so the build-tag
+pair's two identical-named declarations round-trip cleanly — both sides list both, and neither side
+evaluates a build constraint. The assertions that enumerate a *specific* directory's children are the
+walk's, over `internal/engine/testdata/tree/`, and the symbol-list assertions over
+`internal/engine/testdata/glyphs/`; nothing in this batch adds a file to either.
 
 ## Cards
 
@@ -169,9 +174,12 @@ func Mixed() {}
 
 `verify:` runs the whole `internal/engine` package test suite — under half a second on this host,
 so there is no reason to scope it narrower — and its job here is regression, not new coverage: these
-two cards add committed fixture packages, and the one thing that could go wrong is perturbing a T3
-assertion that enumerates a directory or a package's symbol list. Both new packages are siblings
-under `internal/engine/testdata/`, not children of `internal/engine/testdata/tree/` and not new files
-in `internal/engine/testdata/glyphs/`, which are the two places T3's tests do enumerate. Passing the
-existing suite unchanged is the assertion. The fixtures' own content is asserted by batch 3's cards
-11 and 13 and batch 4's cards 16 through 18.
+two cards add committed fixture packages, and the two things that could go wrong are perturbing an
+assertion that enumerates a directory or a package's symbol list, and perturbing the whole-repository
+round trip. Both are argued through in the Batch Scope above: the enumerating assertions cover
+`internal/engine/testdata/tree/` and `internal/engine/testdata/glyphs/`, and neither gains a file
+here; `TestRoundTrip_QuarryItself` does walk both new packages, and `tupleSetDiff`'s multiset
+semantics are what let the build-tag pair's duplicate declarations pass it. Both arguments are
+predictions, and `verify:` is what checks them — a round-trip failure on the `tags` fixture would mean
+the multiset reading is wrong, and the implementer must report that rather than deleting the fixture.
+The fixtures' own content is asserted by batch 3's cards 11 and 13 and batch 4's cards 16 through 18.

@@ -36,8 +36,10 @@ invite branching on a condition that must never occur.
 
 - **Context:**
   - `docs/glyph.md`
+  - `docs/rewrite-plan.md`
   - `internal/engine/answer.go`
   - `internal/engine/errors.go`
+  - `internal/engine/repo.go`
 - **Edits:** none
 - **Creates:**
   - `internal/engine/expand.go`
@@ -51,9 +53,12 @@ invite branching on a condition that must never occur.
   `func (e *NotATypeError) Error() string` producing the message
   `engine: expand <id>: not a type, kind <kind>` with the struct's two fields substituted.
 
-  Document why it is a struct rather than a bare sentinel: docs/glyph.md §5 requires the answer to
-  name the kind, and a caller mapping engine failures to a status word and an exit code needs the kind
-  without parsing a message — the same argument that split the two target sentinels in `repo.go`.
+  Document why it is a struct rather than a bare sentinel: docs/rewrite-plan.md's `expand` rule —
+  the glyph must name a type, and on any other kind the answer names the kind — is what requires the
+  kind to be carried, and a caller mapping engine failures to a status word and an exit code needs it
+  without parsing a message. That is the same argument that split `ErrTargetOutsideRepo` from
+  `ErrTargetNotFound` in `internal/engine/repo.go`. Cite docs/rewrite-plan.md, not docs/glyph.md,
+  for that rule: glyph.md §5 is the status vocabulary and says nothing about `expand`'s kind gate.
   Document that it is returned as the verb's `error` and never carried inside `ExpandAnswer`: an
   `ok`-plus-kind pair inside the payload would duplicate the envelope a later task owns, inside the
   data. Document that it is never returned under a unit collision, because the glyph does not
@@ -66,6 +71,7 @@ invite branching on a condition that must never occur.
 
 - **Context:**
   - `docs/glyph.md`
+  - `docs/rewrite-plan.md`
   - `glyph/errors.go`
   - `glyph/glyph.go`
   - `glyph/parse.go`
@@ -92,31 +98,47 @@ invite branching on a condition that must never occur.
   `resolve`, `expand` answers one target, so there is no other answer to protect and no reason to move
   the failure into the payload.
 
-  It then sets `ID` to the parsed glyph's `String()`, reads `m.dirsOf(g.Unit)` and `m.symbolsOf(g.Unit)`
-  — an error from the latter is returned as the call's error — and filters with `matchesFor`. The
-  disposition of the match set is decided in exactly this order, and the order is the rule:
+  It then sets `ID` to the parsed glyph's `String()`, reads `m.dirsOf(g.Unit)` for the directory list
+  and the collision flag, reads `m.symbolsOf(g.Unit)` — an error from which is returned as the call's
+  error — and filters with `matchesFor`.
 
-  1. No match: `Status` is `StatusNotFound`, `Unit` is `StatusFound` when the memoised directory list
-     is non-empty and `StatusNotFound` when it is empty, and the answer carries no head, members or
-     candidates. Evaluated before the collision row, so a collision with no match in either directory
-     answers `not_found` with `unit: found` — `ambiguous` with an empty `Candidates` would have
+  It then calls `statusForMatches(g, matches, dirs.collision)`. That call is not optional and no row
+  of it is restated here: it is the one place a match set becomes a status, and `expand` calling it is
+  what stops the two verbs disagreeing about what a glyph resolves to. `expand` adds a kind gate
+  *between* that function's zero-and-collision rows and its remaining ones, and maps the four returned
+  values onto its own answer like this, in exactly this order:
+
+  1. `StatusNotFound`: `Status` is `StatusNotFound`, `Unit` is `StatusFound` when the memoised
+     directory list is non-empty and `StatusNotFound` when it is empty, and the answer carries no head,
+     members or candidates. This is the shared function's own first row, evaluated before its collision
+     row, which is why a collision with no match in either directory answers `not_found` with
+     `unit: found` here as it does in `resolve` — `ambiguous` with an empty `Candidates` would have
      nothing to be ambiguous between and would hide the `unit: found` a card creating the first
      declaration of an existing unit needs.
-  2. At least one match under a collision: `Status` is `StatusAmbiguous`, `Candidates` is the match
-     set, and there is no head and no members. Checked before every kind row below, so a single type
-     match under a collision answers `ambiguous` here exactly as it does in `resolve`. `expand` reads
-     the collision from `dirsOf` itself and never infers it from the match set, which cannot show it:
-     `symbolsOfUnit` returns the union either way.
-  3. No match in the set is `KindType`, whatever the count: return the zero `ExpandAnswer` and a
-     `*NotATypeError` carrying the glyph's string form and the kind of the first match in file-then-line
-     order. Keying the gate on no match being a type rather than on the match count is what gives the
-     several-declaration `init` glyph a defined answer — its kind is function, and a unique-match gate
-     would leave the case reaching for a status `ExpandAnswer` does not admit.
-  4. More than one match, at least one of them a type: `Status` is `StatusAmbiguous` and `Candidates`
-     is the match set. This covers both several type declarations under one glyph, which docs/glyph.md
-     §5 makes build-tag duplicates because a Go type never splits, and a mixed set naming a type and
-     something else, where choosing between them would be a silent pick.
-  5. Exactly one match and it is a type: `Status` is `StatusFound`, with the head and members below.
+  2. `StatusAmbiguous` **and** the collision flag is set: `Status` is `StatusAmbiguous`, `Candidates`
+     is the match set, and there is no head and no members. Checked before the kind gate below, so a
+     single type match under a collision answers `ambiguous` here exactly as it does in `resolve`, and
+     `*NotATypeError` is never returned under a collision — the glyph does not unambiguously name
+     anything, so naming a kind would be a claim the answer cannot support. Testing the flag rather
+     than the status alone is what separates this row from row 4: the shared function returns
+     `StatusAmbiguous` for a collision and for a plain multi-match alike, and only the collision case
+     short-circuits the kind gate. `expand` reads the flag from `dirsOf` itself and never infers it
+     from the match set, which cannot show it: `symbolsOfUnit` returns the union either way.
+  3. The kind gate, applied to whatever the shared function returned other than the two rows above —
+     `StatusFound`, `StatusMultipart`, or a non-collision `StatusAmbiguous`. When no match in the set
+     is `KindType`, whatever the count, return the zero `ExpandAnswer` and a `*NotATypeError` carrying
+     the glyph's string form and the kind of the first match in file-then-line order. Keying the gate
+     on no match being a type rather than on the match count is what gives the several-declaration
+     `init` glyph a defined answer: the shared function calls that set `StatusMultipart`, a status
+     `ExpandAnswer` does not admit, and the gate catches it because `init`'s kind is function. It also
+     catches a single non-type match, which the shared function calls `StatusFound`.
+  4. The set holds at least one type and the shared function did not return `StatusFound`: `Status` is
+     `StatusAmbiguous` and `Candidates` is the match set. This covers both several type declarations
+     under one glyph — docs/glyph.md §5's build-tag duplicates, which are the only way a Go type
+     multiplies, since docs/rewrite-plan.md says a Go type never splits and only `init` does — and a
+     mixed set naming a type and something else, where choosing between them would be a silent pick.
+  5. `StatusFound` and the single match is a type: `Status` is `StatusFound`, with the head and
+     members below.
 
   The head is the matched type's own `Symbol`, copied by value, with two substitutions and nothing
   else: `Start` becomes the symbol's `HeadStart` and `End` becomes its `HeadEnd`. Every other field —
@@ -144,8 +166,9 @@ invite branching on a condition that must never occur.
   external test unit is a different unit and cannot declare methods on this unit's types. Document, on
   the head, why the span is read from the head fields rather than re-derived: for Go the two pairs are
   identical so nothing observable changes today, and for the first language whose head is a strict
-  subset of its declaration `expand` needs no edit. Document that docs/glyph.md §5's "the class span
-  minus its member spans" describes what a reader ends up reading, not arithmetic this verb performs —
+  subset of its declaration `expand` needs no edit. Document that docs/rewrite-plan.md's "the class
+  span minus its member spans" — its phrase, in the three-queries section, not docs/glyph.md's —
+  describes what a reader ends up reading, not arithmetic this verb performs —
   for a Go struct the subtraction is empty, and for an interface the answer already carries every
   member's start and end, so a consumer wanting only the non-member lines has what it needs and the
   engine emits one contiguous head entry rather than a discontiguous span type the closed symbol shape
