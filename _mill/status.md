@@ -71,5 +71,7 @@ batches:
     commit_sha: 60b9fb4d5c5dc5972224377b18f9a070fc28dcee
     verify_baseline_failures: []
   - name: doc-propagation
-    state: pending
+    state: running
+    implementer_session: 06177a27-2a99-47b6-8b2c-7962d5c07143
+    start_sha: a80fd85fbc1b16c64e99b3334fba519c1c29929b
 ```
