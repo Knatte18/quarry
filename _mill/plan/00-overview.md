@@ -3,7 +3,7 @@
 ```yaml
 task: "Facade + CLI, resolve + expand (T5b)"
 slug: "facade-cli-resolve-expand"
-approved: false
+approved: true
 started: "20260904-085953"
 parent: "main"
 root: ""

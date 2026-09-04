@@ -62,6 +62,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   - `internal/cli/flags.go`
   - `internal/cli/target.go`
   - `internal/cli/root.go`
+  - `internal/engine/answer.go`
   - `internal/engine/resolve.go`
   - `quarry/repo.go`
   - `quarry/render.go`
@@ -126,6 +127,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Context:**
   - `internal/cli/flags.go`
   - `internal/cli/root.go`
+  - `internal/engine/answer.go`
   - `internal/engine/expand.go`
   - `glyph/errors.go`
   - `quarry/repo.go`
