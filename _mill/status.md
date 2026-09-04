@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -43,6 +43,7 @@ holistic-reviewing  '2026-09-04T14:59:08Z'
 holistic-fixing  '2026-09-04T15:04:05Z'
 self-resolved-verify-logic  '2026-09-04T15:10:50Z'
 holistic-fixing  '2026-09-04T15:11:25Z'
+holistic-reviewing  '2026-09-04T15:14:06Z'
 ```
 
 ## Batches
