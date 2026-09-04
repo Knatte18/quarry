@@ -215,6 +215,9 @@ func writeCellStream(stream string) {
 		writeAssistant(w, "call-1", "partial output before a simulated infrastructure failure")
 		w.Flush()
 		os.Exit(1)
+	case "result_error":
+		writeAssistant(w, "call-1", "I finished, but the result record itself reports an error.")
+		writeResult(w, "error_during_execution", "end_turn", true)
 	default:
 		fail(fmt.Sprintf("unrecognised %s value %q", fakeClaudeStreamEnv, stream))
 	}

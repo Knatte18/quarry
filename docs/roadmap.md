@@ -1,40 +1,42 @@
 # Quarry roadmap
 
-What happens next, in order. Updated 2026-09-04, after T7. The build record — what was made,
-by which task, in which wave — is git history (`archive/<slug>` tags) and `HANDOFF.md`; this
-file only ever says what is ahead.
+What happens next, in order. Updated 2026-09-04, after this task's breadth matrix (M1). The
+build record — what was made, by which task, in which wave — is git history (`archive/<slug>`
+tags) and `HANDOFF.md`; this file only ever says what is ahead.
 
-**The standing rule:** nothing is built without a measured win behind it. T7 enforced it: the
-August `toc` cost win did not reproduce cleanly (`results/2026-09-04-toc`, flat-to-reversed at
-n=5, tool demonstrably used, correctness unchanged), so the build queue stops until measurement
-says where — or whether — the surface pays.
-
-## Next wave: measure
-
-| task | scope | done when |
-|---|---|---|
-| **M1 ladder breadth** | run ladder b (`ladder-toc.yaml` task 04, the negative control, cells `b0-none`/`b8-toc-dir`); add one or two new task shapes where a toc plausibly pays (multi-package navigation, cold-start orientation on a tree the agent has never seen); if the OSL-1033 host is still available, one same-config rerun there to isolate the host variable | every measured cell is a real MCP cell completing end to end (the third harness rule); `conclusion.md` names where toc separates, or states that it nowhere does |
-| **M2 harness observability** | persist the invalidation cause (runner error or exit code) into a discarded attempt's directory before `InvalidateRep` renames it — T7's a0 retries left nothing on disk saying why | an artificially failed attempt's `N.invalid-1/` carries a readable reason file |
-
-M2 is small and independent; it can run as `mill-quick` or fold into M1's pre-matrix work.
+**The standing rule:** nothing is built without a measured win behind it. M1 enforced it further:
+a breadth matrix across three shapes — the negative control, multi-package exploration, and
+whole-repo cold-start orientation — found no shape where directory-level `toc` separates from its
+control on any cost metric at n=5
+(`bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md`), so the build queue stops
+until measurement says where — or whether — the surface pays.
 
 ## Parked
 
 **T8, the type checker** (`impact`, `assert-no-callers`, `verified`, the DAG tightening) is
 parked, not cancelled. It unparks on either of:
 
-- a measured win from M1 that re-establishes the surface's value to an agent, or
+- a measured win from M1 that re-establishes the surface's value to an agent — the breadth
+  matrix does not supply one:
+  `bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md` finds toc separating from
+  its control on no cost metric, in either direction, across all three shapes it measured, at
+  n=5, or
 - an explicit re-justification by *function* — the §8.1 validator's Delete gate needs
   `assert-no-callers` regardless of agent token costs — recorded here as the reason, in its own
   words, before the task is written.
 
-Its open decision (gopls vs `go/packages` in-process) is decided when it unparks, not before.
+Whether that leaves T8 parked, or whether the second condition is enough on its own, is the
+operator's call — not decided here. Its open decision (gopls vs `go/packages` in-process) is
+decided when it unparks, not before.
 
 ## Small and independent, any time
 
 - Move the `docs/research/output-formats/after/` goldens to `internal/cli/testdata/` — they are
   living test fixtures; the research directory stays a frozen record. `mill-quick` candidate.
 - Wiki grooming: the completed rewrite tasks' `[done]` entries.
+- A same-config rerun of ladder a (task 01) on the OSL-1033 host, if and when it becomes
+  available again — operator-coordinated; the one remaining way to isolate the host variable
+  behind T7's task-01 discrepancy. Deferred by M1, not resolved.
 
 ## External (not tasks in this repository)
 

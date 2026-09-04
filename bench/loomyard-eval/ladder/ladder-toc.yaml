@@ -7,7 +7,7 @@
 # cost win, not a correctness win, measured on one task at reps 3. Every other rung was flat or worse.
 # This ladder isolates that one signal and adds the missing scope contrast.
 #
-# Design: four surviving cells, run by the T2 headless harness (bench/loomyard-eval/ladder/cmd/ladder)
+# Design: eight cells, run by the T2 headless harness (bench/loomyard-eval/ladder/cmd/ladder)
 # against the quarry MCP server.
 #
 #   ladder a -- task 01, exploration over an unfamiliar two-package scope. The condition where toc won.
@@ -21,15 +21,31 @@
 #       b0-none      control (id identical to the main matrix's)
 #       b8-toc-dir   new id (b1..b7 are taken by the main matrix)
 #
+#   ladder c -- task 02, exploration over a three-package scope (internal/shedbuild, internal/shedadapters,
+#   internal/shedcheck), with shedadapters alone ~8.4k lines -- large enough to stress-test toc dir on a
+#   directory too big to comfortably read file-by-file. This is the scope-axis midpoint between ladder a's
+#   two packages and ladder d's whole repository. A toc win here at unchanged recall/precision would say
+#   the effect generalises past two packages; a flat or worse result would say it does not.
+#
+#       c0-none      control
+#       c1-toc-dir   directory-level toc only
+#
+#   ladder d -- task 06, a whole-repo, no-scope-hint exploration (config-file reconciliation against
+#   templates). The prompt names no package at all, so this is the scope axis's other end: does a
+#   cheap directory-level survey pay for itself most when the agent has no idea where to look? A toc
+#   win here at unchanged recall/precision is the strongest form of the hypothesis this ladder tests.
+#
+#       d0-none      control
+#       d1-toc-dir   directory-level toc only
+#
 # Deliberately NOT here:
 #   - the file-level toc tool: it has no successor in the quarry MCP server's shipped surface, so
 #     August's toc_dir+toc_file contrast (a3-toc-pair, 120k cache_read vs 71k for toc_dir alone) has no
 #     cell to reconstruct here.
-#   - a one-package exploration task and a whole-repo, no-scope-hint task, the two ends of the scope
-#     axis. Both need an exploration fasit (a reference-agent run, see results/2026-08-28's c.json
-#     files), which does not exist yet. Task 02 (three packages) has no fasit either. Add them to
-#     `tasks:` and a third/fourth config group when a fasit lands -- the ladder letters allow only two
-#     task groups per file, so that is a second toc file, not more rows here.
+#   - a one-package exploration task, the scope axis's remaining gap between ladder a's two packages
+#     and ladder c's three. It needs an exploration fasit (a reference-agent run) that does not exist
+#     yet; `validate` imposes no cap on the number of ladder letters a file may carry, so adding it
+#     later is a fifth `tasks:` entry and config group in this same file, not a second toc file.
 #   - a "grep-toc" control: a no-tool cell whose prompt says `grep -n '^func\|^type' *.go` is fine.
 #     That is the real competitor to toc and the cleanest test of whether the win is Quarry's output or
 #     the map-first strategy. The harness renders one identical preamble for every cell and allows one
@@ -55,7 +71,8 @@
 # Run with:
 #   go run ./bench/loomyard-eval/ladder/cmd/ladder run \
 #     --config bench/loomyard-eval/ladder/ladder-toc.yaml \
-#     --results bench/loomyard-eval/ladder/results/<date>-toc
+#     --results bench/loomyard-eval/ladder/results/<date>-breadth \
+#     --cells b0-none,b8-toc-dir,c0-none,c1-toc-dir,d0-none,d1-toc-dir
 
 run_model: claude-sonnet-5
 reps: 5
@@ -84,6 +101,16 @@ tasks:
     pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
     schema: impact
     fasit: bench/loomyard-eval/tasks/04-shedadapters-shuttle-impact.fasit.json
+  02-shedadapters-exploration:
+    task_file: bench/loomyard-eval/tasks/02-shedadapters-exploration.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    schema: exploration
+    fasit: bench/loomyard-eval/tasks/02-shedadapters-exploration.fasit.json
+  06-loomyard-cold-start-orientation:
+    task_file: bench/loomyard-eval/tasks/06-loomyard-cold-start-orientation.md
+    pinned_sha: 975578cda8d6f3a81580bd4e73725e060211b766
+    schema: exploration
+    fasit: bench/loomyard-eval/tasks/06-loomyard-cold-start-orientation.fasit.json
 
 # The harness itself resolves this environment variable at startup, falling back to the scratch env
 # file when it is unset in the process environment.
@@ -108,4 +135,24 @@ configs:
   - id: b8-toc-dir
     ladder: b
     task: 04-shedadapters-shuttle-impact
+    allowed: [toc]
+
+  # Ladder c -- task 02, three-package exploration (scope-axis midpoint)
+  - id: c0-none
+    ladder: c
+    task: 02-shedadapters-exploration
+    allowed: []
+  - id: c1-toc-dir
+    ladder: c
+    task: 02-shedadapters-exploration
+    allowed: [toc]
+
+  # Ladder d -- task 06, whole-repo exploration with no scope hint (scope-axis far end)
+  - id: d0-none
+    ladder: d
+    task: 06-loomyard-cold-start-orientation
+    allowed: []
+  - id: d1-toc-dir
+    ladder: d
+    task: 06-loomyard-cold-start-orientation
     allowed: [toc]

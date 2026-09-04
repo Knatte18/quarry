@@ -58,6 +58,64 @@ const task04SchemaBlock = "```json\n" +
 	"}\n" +
 	"```"
 
+const task02TaskText = "Map how a build artifact flows through the \"shed\" pipeline: from\n" +
+	"`internal/shedbuild`, through `internal/shedadapters`, to\n" +
+	"`internal/shedcheck`. Your answer must identify:\n\n" +
+	"1. The type(s) that represent a build artifact as it crosses each package\n" +
+	"   boundary — same type reused throughout, or does each package have its\n" +
+	"   own representation with a conversion step?\n" +
+	"2. The specific function(s) at each handoff point (shedbuild →\n" +
+	"   shedadapters, shedadapters → shedcheck).\n" +
+	"3. What `shedadapters` actually contributes to the pipeline — its role,\n" +
+	"   not just its existence.\n\n" +
+	"Scope your answer to these three packages."
+
+// task02SchemaBlock and task06SchemaBlock carry the exploration schema block with the placeholder
+// example value, per the overview's neutral-schema-example-values-in-the-new-task-files decision --
+// they must stay byte-identical to each other and must never carry a real Loomyard package path.
+const task02SchemaBlock = "```json\n" +
+	"{\n" +
+	"  \"relevant_files\": [\"path/to/file.go\", \"...\"],\n" +
+	"  \"key_symbols\": [\n" +
+	"    {\"name\": \"FuncOrTypeName\", \"file\": \"path/to/file.go\", \"role\": \"one sentence\"}\n" +
+	"  ],\n" +
+	"  \"summary\": \"3-6 sentences explaining how the mechanism works end to end\",\n" +
+	"  \"confidence\": \"high|medium|low\",\n" +
+	"  \"open_questions\": [\"anything left uncertain, if any\"]\n" +
+	"}\n" +
+	"```"
+
+const task06TaskText = "This repository is unfamiliar to you. Somewhere in it, each module keeps an\n" +
+	"on-disk YAML configuration file that must stay in sync with that module's\n" +
+	"built-in template as the template's own set of keys changes over time --\n" +
+	"keys can be added to or removed from a template between releases, and an\n" +
+	"existing on-disk file must be reconciled against that change rather than\n" +
+	"silently drifting from it.\n\n" +
+	"Find this mechanism and explain how it works. Your explanation must cover:\n\n" +
+	"1. Which package(s) implement the actual reconciliation logic -- computing\n" +
+	"   which keys were added to or removed from the template relative to an\n" +
+	"   existing on-disk file -- and which package(s) own the registry of module\n" +
+	"   names and their default templates.\n" +
+	"2. What entry points (CLI commands, or exported functions a CLI command\n" +
+	"   calls) trigger this reconciliation, and which package(s) those entry\n" +
+	"   points live in.\n" +
+	"3. Any module whose config is handled as a special case rather than by the\n" +
+	"   ordinary per-module logic, and why.\n" +
+	"4. Which files and functions form this path end to end, from an entry point\n" +
+	"   down to the lowest-level key-comparison logic."
+
+const task06SchemaBlock = "```json\n" +
+	"{\n" +
+	"  \"relevant_files\": [\"path/to/file.go\", \"...\"],\n" +
+	"  \"key_symbols\": [\n" +
+	"    {\"name\": \"FuncOrTypeName\", \"file\": \"path/to/file.go\", \"role\": \"one sentence\"}\n" +
+	"  ],\n" +
+	"  \"summary\": \"3-6 sentences explaining how the mechanism works end to end\",\n" +
+	"  \"confidence\": \"high|medium|low\",\n" +
+	"  \"open_questions\": [\"anything left uncertain, if any\"]\n" +
+	"}\n" +
+	"```"
+
 func TestLoadTaskFile_RealTaskFiles(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -92,6 +150,32 @@ func TestLoadTaskFile_RealTaskFiles(t *testing.T) {
 				"bouncer.go:466",                           // scorer-notes section
 			},
 		},
+		{
+			name:            "exploration task 02",
+			path:            "../../../tasks/02-shedadapters-exploration.md",
+			wantTaskText:    task02TaskText,
+			wantSchemaBlock: task02SchemaBlock,
+			droppedSubstrings: []string{
+				"worktree add /tmp/loomyard-eval-02",       // setup section
+				"975578cda8d6f3a81580bd4e73725e060211b766", // setup section
+				"8.4k lines",      // scope section
+				"genuinely open",  // notes section
+				"degenerate case", // notes section
+			},
+		},
+		{
+			name:            "exploration task 06",
+			path:            "../../../tasks/06-loomyard-cold-start-orientation.md",
+			wantTaskText:    task06TaskText,
+			wantSchemaBlock: task06SchemaBlock,
+			droppedSubstrings: []string{
+				"worktree add /tmp/loomyard-eval-06",       // setup section
+				"975578cda8d6f3a81580bd4e73725e060211b766", // setup section
+				"value under test",                         // scope section
+				"internal/configsync",                      // notes section
+				"No subject swap was needed",               // notes section
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -114,6 +198,25 @@ func TestLoadTaskFile_RealTaskFiles(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestLoadTaskFile_NewFilesShareANeutralSchemaBlock asserts the overview's
+// neutral-schema-example-values-in-the-new-task-files decision: task 02's and task 06's schema
+// blocks are byte-identical to each other, and neither carries the substring "internal/" -- the
+// standing guard that no real Loomyard package path re-enters either new prompt through the schema
+// block, whether by a later edit or by a subject swap.
+func TestLoadTaskFile_NewFilesShareANeutralSchemaBlock(t *testing.T) {
+	if task02SchemaBlock != task06SchemaBlock {
+		t.Errorf("task02SchemaBlock != task06SchemaBlock:\n%q\n%q", task02SchemaBlock, task06SchemaBlock)
+	}
+	for name, block := range map[string]string{
+		"task02SchemaBlock": task02SchemaBlock,
+		"task06SchemaBlock": task06SchemaBlock,
+	} {
+		if strings.Contains(block, "internal/") {
+			t.Errorf("%s contains \"internal/\"; want a neutral placeholder path only", name)
+		}
 	}
 }
 

@@ -1,0 +1,103 @@
+{
+  "_meta": {
+    "task": "02-shedadapters-exploration",
+    "type": "exploration",
+    "pinned_sha": "975578cda8d6f3a81580bd4e73725e060211b766",
+    "scope": [
+      "internal/shedbuild",
+      "internal/shedadapters",
+      "internal/shedcheck"
+    ],
+    "date": "2026-09-04",
+    "arm": "C",
+    "role": "reference/fasit agent -- unlimited time/token budget, produces the ground-truth answer the other two arms are scored against; cross-checked the reads above with a second independent method, a grep sweep over the wider tree for every production call site of shedbuild.Build, shedadapters constructors, and shedcheck.Check (internal/loomrecipe/loomrecipe.go and internal/shedrecipe/entries_*.go), plus go doc-equivalent reads of shedengine.ProducerDef/ShedProducer/Outcome/OutputPointer to confirm the exact boundary shapes named below"
+  },
+  "relevant_files": [
+    "internal/shedbuild/build.go",
+    "internal/shedbuild/check.go",
+    "internal/shedbuild/doc.go",
+    "internal/shedbuild/parse.go",
+    "internal/shedbuild/recipe.go",
+    "internal/shedadapters/doc.go",
+    "internal/shedadapters/singlellm.go",
+    "internal/shedadapters/webster.go",
+    "internal/shedadapters/burler.go",
+    "internal/shedadapters/bouncer.go",
+    "internal/shedadapters/bouncerfiles.go",
+    "internal/shedadapters/round.go",
+    "internal/shedadapters/archive.go",
+    "internal/shedadapters/focus.go",
+    "internal/shedadapters/ctx.go",
+    "internal/shedcheck/doc.go",
+    "internal/shedcheck/check.go",
+    "internal/shedcheck/finding.go",
+    "internal/shedengine/producer.go",
+    "internal/loomrecipe/loomrecipe.go",
+    "internal/shedrecipe/entries_singlellm.go",
+    "internal/shedrecipe/entries_burler.go",
+    "internal/shedrecipe/entries_bouncer.go"
+  ],
+  "key_symbols": [
+    {
+      "name": "shedbuild.Build",
+      "file": "internal/shedbuild/build.go",
+      "role": "Resolves each recipe row's engine through the shedrecipe registry, calls the returned constructor, and assembles the []shedengine.ProducerDef -- the artifact type that crosses from shedbuild into shedengine unchanged; shedbuild never constructs a shedadapters value directly, only through shedrecipe.Lookup's returned constructor."
+    },
+    {
+      "name": "shedrecipe.Lookup / registry constructors",
+      "file": "internal/shedrecipe/entries_singlellm.go",
+      "role": "The actual shedbuild -> shedadapters handoff function(s): each registry entry (entries_singlellm.go, entries_burler.go, entries_bouncer.go, entries_planwrite.go, entries_discussionwrite.go) is a Constructor that shedbuild.Build calls per row, and each one calls exactly one shedadapters.New*Producer / NewBouncer constructor to build that row's producer."
+    },
+    {
+      "name": "shedengine.ProducerDef / shedengine.ShedProducer",
+      "file": "internal/shedengine/producer.go",
+      "role": "The pinned boundary types both handoffs cross through: ProducerDef is the flat row shedbuild.Build emits and shedengine.Shed consumes unchanged; ShedProducer is the Call(ctx) (Outcome, OutputPointer, error) interface every shedadapters adapter (SingleLLMProducer, WebsterProducer, BurlerProducer, Bouncer) implements -- no conversion step exists at this boundary, only construction."
+    },
+    {
+      "name": "SingleLLMProducer.Call / mapOutcome",
+      "file": "internal/shedadapters/singlellm.go",
+      "role": "One shedengine.ShedProducer adapter: probes shuttleengine's Attach seam for a still-live matching run before archiving anything, then runs one shuttle spec and maps shuttleengine.Result.Outcome onto shedengine.Done/Stuck, never producing or consuming a shedcheck type."
+    },
+    {
+      "name": "WebsterProducer.Call",
+      "file": "internal/shedadapters/webster.go",
+      "role": "The websterengine-backed adapter: invokes websterengine.Run once with Fresh:false and maps its RunResult.Outcome (done/stuck/paused) plus a possible ErrMasterAsking onto shedengine's two-value contract."
+    },
+    {
+      "name": "BurlerProducer.Call",
+      "file": "internal/shedadapters/burler.go",
+      "role": "Resolves the round to run from the on-disk round-<N>-review.md/round-<N>-fixer-report.md pair, runs one burlerengine round with a bounded died/timeout retry, and always maps a completed round to shedengine.Stuck (never Done) as a routine hand-off to the segment's Bouncer via OnStuck."
+    },
+    {
+      "name": "Bouncer.Call / settle / judgeCall",
+      "file": "internal/shedadapters/bouncer.go",
+      "role": "The one shedadapters member that is new logic rather than a translated engine: composes its own seed/judge prompts from a rubric stencil, drives them through the same Shuttle seam SingleLLMProducer uses, and maps a harvested APPROVED/BLOCKING verdict onto shedengine.Done/Stuck -- this producer, not shedcheck, is what gates a segment's real (behavioural) correctness at run time."
+    },
+    {
+      "name": "shedbuild.Check",
+      "file": "internal/shedbuild/check.go",
+      "role": "The one function in the whole path that hands producers to shedcheck: a thin forward of an already-built []shedengine.ProducerDef plus the recipe's told Entry/Terminals into shedcheck.Check's exact argument order, called from a caller's own test suite at authoring time, never from shedbuild.Build or from production."
+    },
+    {
+      "name": "shedcheck.Check",
+      "file": "internal/shedcheck/check.go",
+      "role": "Reads only Name/OnDone/OnStuck off each ProducerDef -- never dereferences Producer and never calls one -- and reports up to eight structural-defect Finding kinds (bad-entry, no-terminals, bad-terminal, dangling-target, unreachable, unexpected-terminal, done-cycle, blind-gate) over the routing graph, in a fixed order; it validates graph shape only, never behaviour, and is never reached by a live run."
+    },
+    {
+      "name": "shedcheck.Finding",
+      "file": "internal/shedcheck/finding.go",
+      "role": "The value type shedcheck.Check reports its findings in (Kind, Producer, Target, Message); shedbuild.Check returns this slice unaltered to its caller."
+    },
+    {
+      "name": "loomrecipe.New",
+      "file": "internal/loomrecipe/loomrecipe.go",
+      "role": "The real, only production caller of the shedbuild boundary: calls shedbuild.Parse then shedbuild.Build(recipe, env) and wraps the resulting []shedengine.ProducerDef into a *shedengine.Shed; deliberately never calls shedbuild.Check, matching shedcheck/doc.go's authoring-time-only claim."
+    }
+  ],
+  "summary": "The shed pipeline has two handoffs, and they are asymmetric in kind. shedbuild -> shedadapters is a construction step, not a type conversion: shedbuild.Build walks a decoded Recipe's rows, resolves each row's named engine through the shedrecipe registry (internal/shedrecipe/entries_*.go), and calls that entry's Constructor, which itself calls exactly one shedadapters.New*Producer/NewBouncer function; there is no separate 'shed-side' artifact type that a shedadapters value gets converted from -- each row is built directly as a shedengine.ProducerDef whose Producer field already holds the finished shedadapters value. The shared representation both packages agree on is shedengine.ProducerDef (a flat struct: Name, Producer, OnDone, OnStuck, Segment, MaxBounces) and the shedengine.ShedProducer interface every shedadapters type (SingleLLMProducer, WebsterProducer, BurlerProducer, Bouncer) implements via Call(ctx) (Outcome, OutputPointer, error) -- shedengine.Shed consumes that list unchanged. shedadapters -> shedcheck is a much narrower, optional handoff: only shedbuild.Check (a thin forwarding wrapper, not shedbuild.Build) ever calls shedcheck.Check, passing it the already-built producer list plus the recipe's told Entry/Terminals; nothing in production (loomrecipe.New explicitly does not) ever calls it, because shedcheck answers a purely structural, authoring-time question -- is every row reachable, does routing dangle, is there a routing cycle or a blind gate -- by reading only each ProducerDef's Name/OnDone/OnStuck and never dereferencing or calling Producer. Within that pipeline, shedadapters contributes the actual runtime behaviour shedbuild's construction and shedcheck's structural analysis both deliberately stay silent about: it is where four different already-shipped engines (shuttleengine, websterengine, burlerengine, and shuttleengine again under new Bouncer logic) get translated into the one shared two-outcome contract, where the archive-before-probe discipline that prevents two live agents writing one artifact lives, and where the Bouncer's own rubric-driven review gate -- the package's one piece of genuinely new logic -- decides whether a segment's artifact is actually correct, a question neither shedbuild nor shedcheck ever asks.",
+  "confidence": "high",
+  "open_questions": [
+    "shedcheck.Check is exercised in production-adjacent code only via a caller's own test suite (per its doc.go); this fasit did not locate a concrete test file in this tree that actually invokes shedbuild.Check against the real embedded LoomRecipe, so whether the pipeline's own recipe is currently checked at all (versus only checkable) was not confirmed beyond the doc comment's own claim.",
+    "The three packages barely share code with each other directly -- shedbuild and shedcheck each import internal/shedengine but not each other except through shedbuild.Check's one forwarding call, and shedadapters imports neither -- so 'the pipeline' is really two independent, one-directional dependencies converging on shedengine.ProducerDef/ShedProducer rather than a chain of three packages calling each other in sequence; this is stated as the answer to question 3 above, not flagged as a swap-worthy degenerate case, since the task's own three questions are all still answerable with a real, non-trivial answer."
+  ]
+}
