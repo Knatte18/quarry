@@ -82,6 +82,13 @@ Batch-local decisions live in each batch file._
 - **Rationale:** exit 2 keeps its existing meaning, "the caller asked wrong about the CLI"; a well-formed invocation naming an unspellable glyph is not that, because the CLI ran it to a definite conclusion and has a payload with a reason word to show for it. Exit 1 keeps its existing meaning, "the invocation was well formed and ran to a definite, negative conclusion", and `ambiguous` is negative in that sense: nothing was chosen.
 - **Applies to:** all batches
 
+### Decision: the payload's error field is engine text, emitted verbatim
+
+- **Decision:** the existing rule that forbids leaking the engine's package-name prefix through an exit-1 or exit-2 message binds the sentences quarry itself authors — the failure path's message, and therefore both the error envelope on stdout and the same sentence on stderr. It does not bind a result payload's own error field, which is a data field of the answer, populated by the engine, and carried to stdout unchanged. So a resolve of a path that escapes the root prints the engine's own doubled-prefix string inside its payload and exits 1, and the text view renders that same string as prose after normalisation. The evidence goldens and the end-to-end tests pin that exact string byte for byte.
+- **Rationale:** the alternative is for the command line to overwrite a payload field the engine authored, which would be a second implementation of the outside-repository disposition — the very thing routing that case through the engine avoids. The rule's purpose is that quarry's own prose not name an internal package; a data field echoing the producer's text is a different thing, and rewriting it would make the command line's payload disagree with the facade's, which returns the engine value untouched.
+- **Consequence for the implementer:** the doubled prefix in that string is the engine's own wording and is a known defect handed to the operator as a follow-up, not something any card here tightens. Do not rewrite, trim, or re-prefix a payload error field anywhere in this plan.
+- **Applies to:** cli-pipelines, evidence-and-status-gate
+
 ### Decision: no new file is added to quarry/
 
 - **Decision:** the two JSON renderers and the shared unexported encoder go into `quarry/render.go`; the two text renderers go into `quarry/text.go` beside the grammar helpers they reuse. The aliases and constants go into `quarry/quarry.go`, the two methods into `quarry/repo.go`.

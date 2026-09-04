@@ -84,7 +84,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   func runTOC(req request, root, base string, stdout, stderr io.Writer) int
   ```
 
-  moving the existing body verbatim, with no behavioural change: the same path conversion, the same stat, the same open, the same query, the same mapping through `codeForTOCError`, the same two render branches, the same messages. Then have `Run` switch on `req.verb` and call `runTOC`, `runResolve` or `runExpand`. The switch's default is unreachable, because the parser already rejects every other verb; return `exitInternal` there with an internal-error message rather than falling through to a zero exit code.
+  moving the existing body verbatim, with no behavioural change: the same path conversion, the same stat, the same open, the same query, the same mapping through `codeForTOCError`, the same two render branches, the same messages. Then have `Run` switch on `req.verb` and call `runTOC` or `runResolve`. This card's switch carries those two arms only — the expand arm and its own differently-shaped signature are added by the next card, so this card's commit compiles on its own. The switch's default returns `exitInternal` with an internal-error message rather than falling through to a zero exit code; that default is what the expand verb reaches until the next card lands, and it is unreachable for every other word because the parser already rejects them.
 
   Add:
 
@@ -105,7 +105,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
 
   Extend `Run`'s doc comment: keep the existing numbered pipeline description for the table-of-contents verb, now describing `runTOC`, and add the resolve verb's own numbered steps as above, stating that it performs no stat and why — the target not existing is the engine's own answer with a payload, and pre-empting it would destroy it.
 
-  In `internal/cli/cli_test.go`, extend the fixture the pipeline tests share so it also carries a package declaring one free function, one type with a method, and a second file declaring the same function name under a different build tag, so the resolve verb has something spellable to answer about. Add end-to-end cases running the resolve verb with explicit root flags and buffer sinks, asserting exit code, stdout bytes and stderr bytes together:
+  In `internal/cli/cli_test.go`, extend the fixture the pipeline tests share so it also carries a package declaring one free function and one type with a method, so the resolve verb has something spellable to answer about. Add no build-tag-duplicated declaration to this fixture: two declarations of one name resolve to the ambiguous status, which would contradict this card's own first case, and the ambiguous status is covered by the self-built tree in batch 4 instead. Add end-to-end cases running the resolve verb with explicit root flags and buffer sinks, asserting exit code, stdout bytes and stderr bytes together:
 
   - a glyph naming the free function: exit 0, a payload whose status is found, empty stderr;
   - a glyph whose unit exists but whose member does not: exit 1, a payload whose status is not-found and whose unit is found, empty stderr;
@@ -144,7 +144,9 @@ Batch-local decisions beyond the overview's Shared Decisions:
   func runExpand(req request, root string, stdout, stderr io.Writer) int
   ```
 
-  It takes no base directory, because this verb accepts a glyph only and performs no path work at all. Its steps, in this fixed order:
+  It takes no base directory, because this verb accepts a glyph only and performs no path work at all. Add the third arm to `Run`'s switch in this same card, calling it with that shorter argument list.
+
+  Its steps, in this fixed order:
 
   1. Open the repository. A failure is `exitInternal` with the internal-error prefix.
   2. Call the facade's expand method with the target verbatim. The parser has already guaranteed the target contains a separator.
