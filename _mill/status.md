@@ -55,7 +55,9 @@ batches:
     commit_sha: cbcc7ab90459b879aba6ec67ee5383dd18c23b14
     verify_baseline_failures: []
   - name: matrix-run
-    state: pending
+    state: running
+    implementer_session: 08b21f1c-5144-42e3-bef7-3354bd475fd3
+    start_sha: b793e4657ac353ddc5dae6520a18f82efc2bd861
     verify_baseline_failures: []
   - name: write-up
     state: pending
