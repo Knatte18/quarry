@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: facade-cli-toc
 branch: facade-cli-toc
-plan: null
+plan: _mill/plan
 parent: main
 task: Facade + CLI, toc (T5a)
 task_description: |
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-09-04T05:56:58Z'
 discussion-fix-r2  '2026-09-04T06:04:01Z'
 discussion-fix-r3  '2026-09-04T06:09:40Z'
 discussed  '2026-09-04T06:09:40Z'
+planning  '2026-09-04T06:20:05Z'
 ```
