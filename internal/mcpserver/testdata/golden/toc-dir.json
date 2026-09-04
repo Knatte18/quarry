@@ -1,0 +1,22 @@
+{
+  "dir": "alpha",
+  "package": "alpha",
+  "language": "go",
+  "doc": "Package alpha is the mcpserver test fixture package: a small package with a doc comment, one\ntype, one method, one function, one const and one var, used by every test in this batch.",
+  "files": [
+    {
+      "name": "alpha.go"
+    },
+    {
+      "name": "doc.go",
+      "header": "Package alpha is the mcpserver test fixture package: a small package with a doc comment, one\ntype, one method, one function, one const and one var, used by every test in this batch."
+    }
+  ],
+  "dirs": [
+    {
+      "dir": "alpha/sub",
+      "package": "sub",
+      "doc": "Package sub exists so the depth cases have a nested subdirectory to recurse into."
+    }
+  ]
+}
