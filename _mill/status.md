@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r6
+phase: plan-fix-r6
 slug: resolve-expand
 branch: resolve-expand
 plan: _mill/plan
@@ -31,4 +31,5 @@ plan-fix-r4  '2026-09-04T06:03:10Z'
 plan-review-r5  '2026-09-04T06:09:41Z'
 plan-fix-r5  '2026-09-04T06:10:59Z'
 plan-review-r6  '2026-09-04T06:16:34Z'
+plan-fix-r6  '2026-09-04T06:18:50Z'
 ```

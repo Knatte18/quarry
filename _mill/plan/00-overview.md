@@ -3,7 +3,7 @@
 ```yaml
 task: "resolve + expand (T4)"
 slug: "resolve-expand"
-approved: false
+approved: true
 started: "20260904-051705"
 parent: "main"
 root: ""
