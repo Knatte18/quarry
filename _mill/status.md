@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-m2-invalidation-reason-file
 slug: ladder-breadth
 branch: ladder-breadth
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r4  '2026-09-04T17:34:19Z'
 plan-fix-r4  '2026-09-04T17:35:19Z'
 planned  '2026-09-04T17:35:48Z'
 implementing  '2026-09-04T17:36:22Z'
+approved-m2-invalidation-reason-file  '2026-09-04T17:44:17Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-09-04T17:36:22Z'
 ```yaml
 batches:
   - name: m2-invalidation-reason-file
-    state: running
+    state: approved
     implementer_session: f3244622-fec3-4a2e-994f-e4ba945531f7
     start_sha: ec52f2e500c1fff4d7f1a8e353804f5901551008
+    commit_sha: abe60714701c8cbccd0fe082fd268cb7c784dd9e
     verify_baseline_failures: []
   - name: ladder-c-task-02
     state: pending
