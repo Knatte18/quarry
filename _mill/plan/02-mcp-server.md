@@ -13,8 +13,8 @@ depends-on: [1]
 
 This batch delivers the server itself: the module dependency on the official MCP Go SDK, the
 `internal/mcpserver` package (startup root resolution, server construction, the single `toc` tool and
-its handler), the thin `cmd/quarry-mcp` binary, and the layering test that mechanically enforces the
-facade-only rule for both new packages. It is one batch because none of these compile without the
+its handler), the thin `cmd/quarry-mcp` binary, and the test file that mechanically enforces the
+facade-only and stdout rules for both new packages. It is one batch because none of these compile without the
 others, and because the whole surface is ~350 lines over a facade the implementer does not have to
 read the engine to understand.
 
@@ -25,14 +25,14 @@ handler directly.
 
 Batch-local decisions:
 
-- The handler's decision logic lives in an unexported function returning a `*mcp.CallToolResult`,
-  separate from the SDK-facing closure, so batch 3 can exercise it through the protocol without the
-  logic being tangled with SDK plumbing.
+- The handler's decision logic lives in an unexported function, `tocResult`, returning a
+  `*mcp.CallToolResult` and separate from the SDK-facing closure, so batch 3 can exercise it through
+  the protocol without the logic being tangled with SDK plumbing.
 - Every `_test.go` file this batch and batch 3 add to `internal/mcpserver` is an **in-package** test
   (`package mcpserver`, not `package mcpserver_test`), matching how `internal/cli` and
   `internal/engine` test themselves. Two consequences the cards below rely on: the layering test can
-  walk this package's own files including its tests, and batch 3 card 15 can call the unexported
-  handler function directly for the one assertion that cannot be made through the protocol.
+  walk this package's own files including its tests, and batch 3 card 15 can call `tocResult` directly
+  for the one assertion that cannot be made through the protocol.
 - `NewServer` takes the already-opened `*quarry.Repo` and the already-resolved absolute root rather
   than resolving either itself. Both are resolved exactly once, in `main`, before the transport
   starts (discussion D17): a failure to open is a startup failure, never a per-call error.
@@ -51,8 +51,8 @@ Batch-local decisions:
 - **Moves:** none
 - **Requirements:**
   Add `github.com/modelcontextprotocol/go-sdk` at exactly `v1.7.0` and
-  `github.com/google/jsonschema-go` at exactly `v0.4.3` as direct requirements, with their transitive
-  requirements recorded as indirect.
+  `github.com/google/jsonschema-go` at exactly `v0.4.3` as module requirements. Whether they are
+  recorded as direct or indirect is settled by the deferred-tidy paragraphs below, not here.
   The SDK version is pinned by discussion D1: V1 used this SDK at this version and plan §9a's probe
   was verified against a server built on it, so protocol compatibility is not part of this task's
   risk surface. The `jsonschema-go` version is **not** pinned by D1, which does not mention that
@@ -92,14 +92,22 @@ Batch-local decisions:
   what the package is, that it binds the `quarry` facade onto MCP tools, that the facade is its only
   route to the engine, and that nothing in it writes to standard output because that stream is
   reserved for the framed MCP transport.
-  In `root.go`, declare `ResolveRoot(flagRoot, cwd string) (string, error)`. It delegates to
-  `repopath.ResolveRoot` and, on failure, formats this surface's own startup-failure wording from the
-  sentinel rather than echoing the `repopath` error text: `errors.Is` against
-  `repopath.ErrNoRepositoryRoot` yields `quarry-mcp: no repository root found above <cwd>; pass --root`,
-  `errors.Is` against `repopath.ErrRootNotDirectory` yields
-  `quarry-mcp: --root is not a directory: <flagRoot as given>`, and anything else is returned wrapped
-  behind a `quarry-mcp: ` prefix. On success it returns `repopath.ResolveRoot`'s value unchanged,
-  which is always absolute.
+  In `root.go`, declare two functions.
+  `rootErrorMessage(err error, flagRoot, cwd string) (string, bool)` maps a `repopath` failure to this
+  surface's own startup-failure wording, formatted from the sentinel rather than echoed from the
+  `repopath` error text: `errors.Is` against `repopath.ErrNoRepositoryRoot` returns
+  `("quarry-mcp: no repository root found above " + cwd + "; pass --root", true)`, `errors.Is` against
+  `repopath.ErrRootNotDirectory` returns
+  `("quarry-mcp: --root is not a directory: " + flagRoot, true)` — the path as given, not the
+  absolutised form — and anything else returns `("", false)`.
+  It is a named function for the same reason batch 1's `rootUsageMessage` is: the no-repository-root
+  sentence is unreachable from inside a repository without changing the process working directory,
+  which these tests never do, so a table test over the formatter is the only way to pin it. Card 7
+  pins both sentences through it.
+  `ResolveRoot(flagRoot, cwd string) (string, error)` delegates to `repopath.ResolveRoot`; on failure
+  it returns an error carrying `rootErrorMessage`'s string when that function reports `true`, and
+  otherwise the underlying error wrapped behind a `quarry-mcp: ` prefix. On success it returns
+  `repopath.ResolveRoot`'s value unchanged, which is always absolute.
   This function exists as a named exported symbol, rather than inline in `main`, for one stated
   reason: it is the `--root` path, which is what rescues a falsified cwd-inheritance assumption
   (discussion D3), the live probe does not exercise it, and `cmd/quarry-mcp` must stay untestable-by-
@@ -125,6 +133,13 @@ Batch-local decisions:
   absolutised; the flag given as an absolute path, taken as is; and the flag naming a file or a
   missing path, producing an error whose message carries the `quarry-mcp: --root is not a directory: `
   wording and echoes the path exactly as given.
+  Table-test `rootErrorMessage` separately, asserting **both** startup sentences as exact strings, not
+  substrings — the not-a-directory one and the no-repository-root one — plus a third case where an
+  unrelated error returns no message. Build the input errors by wrapping the two `repopath` sentinels
+  with `fmt.Errorf` and `%w`, mirroring how `repopath` returns them. The no-repository-root sentence
+  is what a client sees when discovery fails, and it is unreachable through `ResolveRoot` from inside
+  a repository, so without this case it ships unasserted — the same gap batch 1 card 4 closes for the
+  CLI's structurally identical sentence.
   Build fixture trees with a per-package copy of the `writeScratchTree` helper, declared in this same
   file rather than as a separate one — this package needs a fixture tree in exactly one test file, so
   a standalone helper file would be a copy with a single caller. Use `.scratch/mcpserver-tests/` as
@@ -190,9 +205,11 @@ Batch-local decisions:
   declares an output schema. Leave `OutputSchema` unset. Say this in the function's doc comment,
   because it is the one place the payload-shape decision can be violated silently.
 
-  Declare the decision logic as a separate unexported function taking the repo, the absolute root and
-  a `tocInput`, and returning a `*mcp.CallToolResult`. It performs the CLI's pipeline minus flag
-  parsing and exit codes, in this fixed order:
+  Declare the decision logic as a separate unexported function named `tocResult`, taking the repo, the
+  absolute root and a `tocInput`, and returning a `*mcp.CallToolResult`. Use that name: it is what
+  batch 3 card 15 calls directly for the one assertion it cannot make through the protocol, and what
+  cards 12 through 16 name when they refer to this layer.
+  `tocResult` performs the CLI's pipeline minus flag parsing and exit codes, in this fixed order:
   1. Reject a depth below `-1`. The message is exactly
      `--depth must be -1 (whole tree) or a non-negative integer, got <n>` with the offending integer
      substituted. This is the one place this surface's wording deliberately diverges from the CLI's,
@@ -227,9 +244,10 @@ Batch-local decisions:
   verbatim, with `IsError` unset, no `StructuredContent`, and no wrapper object, echoed target or
   status field.
 
-  Declare one unexported helper producing the failure result: `IsError` set, exactly one text content
-  block whose text is `string(quarry.RenderErrorJSON(msg))`. Every failure path above returns through
-  it, so the failure envelope is written once. The internal-error form is that helper called with
+  Declare one unexported helper named `errorResult`, taking the message string and producing the
+  failure result: `IsError` set, exactly one text content block whose text is
+  `string(quarry.RenderErrorJSON(msg))`. Every failure path above returns through it, so the failure
+  envelope is written once. The internal-error form is `errorResult` called with
   `"internal error: " + err.Error()`, matching the CLI's own prefix.
 
   Never return a non-nil error from the SDK handler for a query outcome: that channel is for protocol
@@ -293,7 +311,7 @@ Batch-local decisions:
   output-format override — those were V1's surface and this task deletes them by not rebuilding them.
 - **Commit:** `feat(quarry-mcp): add the stdio MCP server binary`
 
-### Card 10: layering test for both MCP packages
+### Card 10: mechanical guards for the facade-only and stdout rules
 
 - **Context:**
   - `internal/mcpserver/mcpserver.go`
@@ -311,17 +329,39 @@ Batch-local decisions:
   `github.com/Knatte18/quarry/internal/engine` or carrying it as a path prefix.
   Locate both directories from `runtime.Caller(0)` rather than from the working directory, so the
   test does not depend on where it is run from.
-  Fail the test when it parsed zero files: a layering check that goes green by finding nothing to
-  check is worse than no check at all.
-  Explain in the file header why this test exists rather than relying on review, and state the
+  Be precise about what this check is and is not: it scans each file's own import block, so it catches
+  a direct engine import only. It cannot catch the engine reached through an intermediate package,
+  and it deliberately does not try — a transitive check would fail immediately and permanently, since
+  the `quarry` facade these packages are *required* to depend on imports the engine itself, which is
+  the whole point of the facade. Say this in the required file header rather than claiming the test
+  enforces the layering rule outright, and say what the residual gap is: an engine dependency
+  introduced through some future intermediate `internal/` package would pass.
+
+  Add a second check in the same file, over the same two directories, for the stdout rule. Fail on any
+  reference to `os.Stdout`, and on any call to `fmt`'s printing family that writes to standard output
+  rather than to a named writer — `fmt.Print`, `fmt.Println`, `fmt.Printf` — plus the builtins `print`
+  and `println`. Scan production files only for this one; a test file is not part of the shipped
+  binary's output behaviour. This check needs the whole file, not just its imports, so parse it fully
+  rather than under the imports-only mode the first check uses.
+  It exists because the plan calls a stray stdout write the one way this binary fails catastrophically
+  and silently, and the sibling facade-only rule already gets a mechanical guard on the stated ground
+  that review is not a mechanism. Two rules of the same weight get the same kind of enforcement.
+  Note in the header that the check is deliberately blunt — it matches on the identifiers, not on
+  reachability — so a legitimate future need to name `os.Stdout` (there is none today) is expected to
+  argue with this test rather than slip past it.
+
+  Fail the test when it parsed zero files: a check that goes green by finding nothing to check is
+  worse than no check at all.
+  Explain in the file header why these checks exist rather than relying on review, and state the
   situation as it actually is: this tree carries no import check of any kind today — the facade-only
   rule holds by convention everywhere it holds, including in `internal/cli` — so this file is the
   first place the rule is mechanical rather than one row added to an existing mechanism. Do not
   claim an engine-side layering test exists and merely lacks a row for these packages; it does not
   exist in this tree. The predecessor the header may name is V1's, on the frozen branch, which is
   reference material rather than something this test extends.
-  Do not exclude `_test.go` files from the walk — the rule binds the test files too.
-- **Commit:** `test(mcpserver): enforce the facade-only layering rule mechanically`
+  Do not exclude `_test.go` files from the import walk — the facade-only rule binds the test files
+  too. The stdout scan is the one that skips them, for the reason given above.
+- **Commit:** `test(mcpserver): enforce the facade-only and stdout rules mechanically`
 
 ## Batch Tests
 

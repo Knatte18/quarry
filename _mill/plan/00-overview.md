@@ -3,7 +3,7 @@
 ```yaml
 task: "MCP, thin (T6)"
 slug: "mcp-thin"
-approved: false
+approved: true
 started: "20260904-085038"
 parent: "main"
 root: ""
@@ -123,6 +123,20 @@ batches:
 - **Rationale:** discussion Scope Out and the Constraints section. Any other spelling means the
   granted cell's tool is never allowed and T7 measures nothing.
 - **Applies to:** all batches
+
+### Decision: a target that is a broken symbolic link succeeds
+
+- **Decision:** a `toc` call naming a broken symbolic link is answered, not refused: the answer carries
+  the link as a name-only file entry and the error flag is unset. Batch 3 card 16 asserts that shape.
+- **Rationale:** this contradicts discussion Testing, which lists the broken-symlink case among the
+  error paths and asks for a failure envelope with the CLI's own wording — that expectation is simply
+  wrong about the code. Both the handler and the engine stat with `os.Lstat` and never `os.Stat`, and
+  `internal/engine/toc.go` emits a symbolic-link target as a name-only entry with a nil error, which is
+  the deliberate never-follow rule. Making the surface fail here would mean following the link, which
+  is the opposite of what the discussion actually wants protected. It is recorded here, next to the
+  `depth`-wording divergence, because a departure from the discussion belongs where a reviewer reads
+  decisions rather than buried in a card body.
+- **Applies to:** mcp-server, mcp-server-tests
 
 ### Decision: the repo-wide gate runs once, at the end, not at every batch boundary
 

@@ -18,14 +18,14 @@ silently — the tool count and its schema, the four fixed prose strings, the ab
 and the failure wording. It is one batch because every card shares the same committed fixture
 repository and the same client-session helper, and because none of it changes production code.
 
-Every test here goes through the protocol rather than calling the handler function directly, with one
-stated exception (card 15's negative-depth wording). The properties being pinned are wire properties,
-and a test that called the handler in-process would not catch an `outputSchema` the SDK derived or a
-`structuredContent` it attached. The exception exists because the SDK validates arguments against the
-input schema before the handler runs, so the handler's own negative-depth rejection is unreachable
-over the protocol while the schema carries its `minimum` — the assertion that pins that message
-therefore has to call the function. Both files here are in-package tests (`package mcpserver`), per
-batch 2's scope note, so that call needs no export.
+Every test here goes through the protocol rather than calling `tocResult` — batch 2 card 8's handler
+decision function — with one stated exception, card 15's negative-depth wording. The properties being
+pinned are wire properties, and a test that called `tocResult` in-process would not catch an
+`outputSchema` the SDK derived or a `structuredContent` it attached. The exception exists because the
+SDK validates arguments against the input schema before the handler runs, so `tocResult`'s own
+negative-depth rejection is unreachable over the protocol while the schema carries its `minimum` —
+the assertion that pins that message therefore has to call the function. Every file here is an
+in-package test (`package mcpserver`), per batch 2's scope note, so that call needs no export.
 
 Batch-local decision: the fixture is a committed tree under this package's own `testdata/`, following
 `internal/engine/testdata/`'s precedent rather than `internal/cli`'s programmatic `writeScratchTree`
@@ -187,8 +187,8 @@ inert.
   validation, which runs before the handler, so the text is the SDK's arguments-validation message
   and not this server's — pinning it would pin a dependency's private wording, and it is not what
   the surface promises.
-  Assert the wording instead by calling the handler's decision function directly, in this same file,
-  for depth -2 and depth -7: the returned result has the error flag set, carries exactly one text
+  Assert the wording instead by calling `tocResult` directly, in this same file, for depth -2 and
+  depth -7: the returned result has the error flag set, carries exactly one text
   block, and its text equals the facade's failure envelope built from the message
   `--depth must be -1 (whole tree) or a non-negative integer, got <n>` with the offending integer
   substituted. This is the batch's one deliberate departure from protocol-only testing, for the

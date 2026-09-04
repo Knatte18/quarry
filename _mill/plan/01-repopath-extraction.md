@@ -121,6 +121,13 @@ stays exactly where it is and only its header sentence naming its callers is cor
   same `codeForTOCError` mapping, the same exit codes, the same rendering.
   Update `Run`'s doc-comment step list only where it names the moved helpers; the step ordering and
   every stated exit-code disposition stay as they are.
+  Two stale references inside the function body need correcting too, and this card owns both. The
+  inline comment on the root-resolution failure branch asserts that the two moved helpers are
+  contracted to return only a `usageError` — false after this card, since they now return wrapped
+  sentinels — and it cites a card number belonging to a previous task's plan, which means nothing
+  here. Restate what that branch is actually guarding after the change and drop the stale card
+  citation. Do not delete the branch itself: its point is that every step of this pipeline spells both
+  dispositions, and that point survives the refactor.
 - **Commit:** `refactor(cli): call internal/repopath and format the root-resolution messages locally`
 
 ### Card 3: re-land the moved tests in `internal/repopath`
