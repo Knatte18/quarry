@@ -71,9 +71,9 @@ readings and the invocation count.
   when it is not. The same `env -u` prefix the matrix uses is mandatory here: the test exists to make
   a claim about the `claude -p` seam under the conditions the matrix runs in, and running it under
   the very markers the matrix strips would test something else. Because this test is slow and
-  expensive, run it in the background with its output tee'd to a log under .scratch/ and poll that
-  log, rather than blocking a foreground call on it. A failure blocks the matrix — do not proceed to
-  card 4.
+  expensive, run it in the background with its output tee'd to the fixed path
+  .scratch/ladder-live-test.log and poll that file, rather than blocking a foreground call on it. A
+  failure blocks the matrix — do not proceed to card 4.
   (5) **No baseline server hash is taken here, and any binary already present is stale.** `run.go`
   builds `<ladder-worktree-root>/bin/<server-name>` through `BuildServer` *inside* each invocation,
   and the guarded live test passes an empty server-binary path and never builds it, so at this point
@@ -104,8 +104,9 @@ readings and the invocation count.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Drive the matrix to a terminal state, then commit the three artifacts it wrote.
-  **The invocation**, run from the repository root, detached, with stdout and stderr tee'd to a log
-  under .scratch/, and polled rather than blocked on:
+  **The invocation**, run from the repository root, detached, with stdout and stderr tee'd — appended,
+  never truncated, so all three invocations share one file — to the fixed path
+  .scratch/ladder-toc-run.log, and polled rather than blocked on:
 
   ```
   env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT \
@@ -167,8 +168,10 @@ readings and the invocation count.
   It is the only card that knows all three facts. That file is listed in `Creates:` as a
   **conditional** artifact: on the ordinary path, where no restart happens, it is never written and
   the card creates three files rather than four. The `Creates:` paths above name this root; on the
-  restart path the three machine artifacts land in the `-r2` root instead, and `ABANDONED.md` is the
-  one that stays here.
+  restart path the three machine artifacts land in the `-r2` root instead, per the substitution rule
+  in `## Shared Decisions`, and `ABANDONED.md` is the one file that stays here. Also copy `probe.md`
+  into the fresh root unchanged, so that root satisfies the five-file list on its own — the operator
+  report is about the server, not about which root measured it, and re-deriving it is not possible.
   **When the run terminates**, record in the run log: the number of invocations made, every
   server-hash reading, the final incomplete and invalid lists, the per-invocation `quarry_dirty`
   file lists, and the per-cell repetition counts. Then `git add` exactly the artifacts named in
