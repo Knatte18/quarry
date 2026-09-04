@@ -94,3 +94,26 @@ func TestResolve_TwentyGlyphsUnder150ms(t *testing.T) {
 		t.Errorf("min Resolve time over %d runs = %v; want < 150ms; all runs: %v", runs, min, durations)
 	}
 }
+
+// BenchmarkResolveTwentyGlyphs is kept beside TestResolve_TwentyGlyphsUnder150ms so a regression is
+// measurable, not merely detectable — go test does not run benchmarks, so a criterion asserted only
+// here would never be checked by the verify gate. It calls the same loomyardRepo gate, passing a
+// *testing.B, which is the reason card 19 widened that helper's parameter to testing.TB. It opens the
+// checkout once outside the timed loop with Open directly — not the openRepo helper, which takes a
+// *testing.T a benchmark does not have — and fails on Open's error with b.Fatalf. It then calls
+// b.ResetTimer and calls Resolve over loomyardTwentyGlyphs once per iteration, failing the benchmark
+// on any error. It reuses the package-level glyph list declared above rather than restating it.
+func BenchmarkResolveTwentyGlyphs(b *testing.B) {
+	repoRoot := loomyardRepo(b)
+	r, err := Open(repoRoot)
+	if err != nil {
+		b.Fatalf("Open(%q) failed: %v", repoRoot, err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := r.Resolve(loomyardTwentyGlyphs); err != nil {
+			b.Fatalf("Resolve(loomyardTwentyGlyphs) failed: %v", err)
+		}
+	}
+}
