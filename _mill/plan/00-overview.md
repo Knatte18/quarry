@@ -135,7 +135,9 @@ batches:
 
 - **Decision:** no line of `docs/glyph.md` or `docs/rewrite-plan.md` changes. Four gaps are recorded
   as comments where the rule they affect is implemented: the external test unit versus a real
-  directory of the same name (recorded where the collision is promoted to `ambiguous`); `ambiguous`
+  directory of the same name (recorded in the glyph branch, where the collision flag is read from the
+  memo — not on the decision function that promotes it, which sees a bare bool and knows nothing about
+  unit directories); `ambiguous`
   candidates carrying no language marker (recorded on the `Candidates` key); a unit reached
   through an intermediate symlinked directory resolving here while the walk never lists it (recorded
   where the unit-existence key is derived); and the type's full declaration span being unrecoverable
@@ -181,7 +183,11 @@ batches:
 ### Decision: verify commands are cgo-enabled and scoped to the engine package
 
 - **Decision:** every batch's `verify:` is a native `go` invocation with `CGO_ENABLED=1`, scoped to
-  `./internal/engine/`. The module-wide `verify:` is `CGO_ENABLED=1 go vet ./...`.
+  `./internal/engine/`, with one deliberate exception: batch 1's `verify:` opens with a module-wide
+  `go build ./...` before its engine-scoped vet. That batch adds exported types to a package the rest
+  of the module compiles against and has no test of its own to run, so a module-wide build is the only
+  thing that can fail there and is what makes the batch verifiable at all. The module-wide `verify:`
+  is `CGO_ENABLED=1 go vet ./...`.
 - **Rationale:** the tree-sitter binding needs cgo, so a verify without it does not build. Scoping the
   test run to the one package every card in this plan touches is the right scope and not an over-broad
   one: the package's whole suite runs in well under a second on this host, and every existing test in

@@ -226,7 +226,14 @@ invite branching on a condition that must never occur.
 
   `TestExpand_TypeWithoutMembers` expands the defined scalar type of the glyphs fixture package.
   Assert `Status` equal to `StatusFound`, `Head` non-nil, and `Members` nil — a type that consists of
-  its head is a found answer, not a miss.
+  its head is a found answer, not a miss. Marshal that same answer with `encoding/json` and assert on
+  the emitted JSON as well as on the struct: `id`, `status` and `head` present, `status` spelled
+  `found`, and `unit`, `members` and `candidates` all absent. `ExpandAnswer` is a wire contract with
+  six tags and this is the one assertion that pins their spelling and their `omitempty` — `go vet`
+  checks tag *syntax*, never whether a key is named or omitted correctly. The member-less type is the
+  right answer to marshal here because it is the only `found` case where `members` is legitimately
+  absent, so one marshal pins both a present key set and an omitted one. Card 17 marshals the
+  `not_found` shape, which is where `unit` is the present key.
 - **Commit:** `test(engine): assert expand's head and member collection`
 
 ### Card 17: expand's failure rows
@@ -276,7 +283,11 @@ invite branching on a condition that must never occur.
   `TestExpand_NotFound` asserts that a name that does not exist inside an existing unit answers
   `StatusNotFound` with `Unit` equal to `StatusFound` and a nil error, and that a glyph whose unit
   directory does not exist answers `StatusNotFound` with `Unit` equal to `StatusNotFound` and a nil
-  error. A miss is a legitimate answer with a status, never a failure.
+  error. A miss is a legitimate answer with a status, never a failure. Marshal one of the two with
+  `encoding/json` and assert on the emitted JSON: `id`, `status` and `unit` present, `status` spelled
+  `not_found` and `unit` spelled with its own value, and `head`, `members` and `candidates` all
+  absent. Together with card 16's marshal of a member-less `found` answer, that covers every one of
+  `ExpandAnswer`'s six keys in both its present and its omitted state.
 - **Commit:** `test(engine): assert expand's not-a-type, ambiguous and miss rows`
 
 ### Card 18: expand under a collision, and the two verbs agreeing
