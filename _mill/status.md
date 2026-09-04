@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -48,6 +48,7 @@ holistic-fixing  '2026-09-04T15:18:21Z'
 holistic-approved  '2026-09-04T15:19:54Z'
 nits-fixed-holistic  '2026-09-04T15:20:23Z'
 done  '2026-09-04T15:21:03Z'
+pr-pending  '2026-09-04T15:21:54Z'
 ```
 
 ## Batches
