@@ -89,7 +89,7 @@ func Run(ctx context.Context, opts RunOptions) (exitNonZero bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	existing, err := ReadProvenance(opts.ResultsRoot)
 	if err != nil {
