@@ -46,6 +46,11 @@ the V1 surface and kept the README as a stub; a one-tool server needs a section,
   Use no absolute path and no machine-specific path anywhere in the section — a tracked file must
   carry none. The pre-built variant's command is repository-relative.
   Fit the existing document's voice and heading level; do not restructure the sections already there.
+  One existing sentence does need correcting, and this card owns it: the Building section still says
+  there is no command to build yet, which was true when the rewrite had no binary and is false the
+  moment this task lands — the new section's own pre-built variant contradicts it directly. Replace
+  that clause with an accurate one naming the two commands the repository now builds, and leave the
+  rest of that section, including its statement of the cgo and C-toolchain requirement, untouched.
 - **Commit:** `docs(readme): document the quarry-mcp server and its shipped configuration`
 
 ### Card 18: tracked `.mcp.json` at the repository root

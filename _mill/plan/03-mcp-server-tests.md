@@ -18,9 +18,14 @@ silently — the tool count and its schema, the four fixed prose strings, the ab
 and the failure wording. It is one batch because every card shares the same committed fixture
 repository and the same client-session helper, and because none of it changes production code.
 
-Every test here goes through the protocol, not through the handler function directly: the properties
-being pinned are wire properties, and a test that called the handler in-process would not catch an
-`outputSchema` the SDK derived or a `structuredContent` it attached.
+Every test here goes through the protocol rather than calling the handler function directly, with one
+stated exception (card 15's negative-depth wording). The properties being pinned are wire properties,
+and a test that called the handler in-process would not catch an `outputSchema` the SDK derived or a
+`structuredContent` it attached. The exception exists because the SDK validates arguments against the
+input schema before the handler runs, so the handler's own negative-depth rejection is unreachable
+over the protocol while the schema carries its `minimum` — the assertion that pins that message
+therefore has to call the function. Both files here are in-package tests (`package mcpserver`), per
+batch 2's scope note, so that call needs no export.
 
 Batch-local decision: the fixture is a committed tree under this package's own `testdata/`, following
 `internal/engine/testdata/`'s precedent rather than `internal/cli`'s programmatic `writeScratchTree`
@@ -53,11 +58,14 @@ inert.
   short and ASCII — these bytes end up inside every golden in card 13, so a long comment makes the
   goldens harder to review for no gain. Keep the fixture stable: no build tags, no generated code, no
   imports beyond the standard library, and preferably no imports at all.
-  In `fixture_test.go`, declare two helpers. The first returns the fixture repository's absolute
-  path, resolved from `runtime.Caller(0)` so it does not depend on the working directory, and fails
-  the test if the directory is missing. The second opens the fixture with `quarry.Open`, constructs a
-  server with `mcpserver.NewServer`, wires it to a client over `mcp.NewInMemoryTransports`, connects
-  both sides, registers `t.Cleanup` closing both sessions, and returns the connected client session.
+  Write `fixture_test.go` as an in-package test (`package mcpserver`), per batch 2's scope note, and
+  declare two helpers in it. The first returns the fixture repository's absolute path, resolved from
+  `runtime.Caller(0)` so it does not depend on the working directory, and fails the test if the
+  directory is missing. The second takes a repository root as a parameter, opens it with
+  `quarry.Open`, constructs a server with `NewServer`, wires it to a client over
+  `mcp.NewInMemoryTransports`, connects both sides, registers `t.Cleanup` closing both sessions, and
+  returns the connected client session. It takes the root as a parameter rather than hard-coding the
+  fixture because card 16 runs one case against a scratch tree the committed fixture cannot hold.
   Every later card calls the second helper; none of them repeats the wiring.
   State in the file header why the fixture is committed rather than built at test time, naming the
   engine's `testdata/` precedent and the golden-stability reason.
@@ -171,45 +179,66 @@ inert.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Assert that depth -1 is accepted and recurses to the bottom of the fixture tree — the nested
-  subdirectory's file appears in the answer.
-  Assert that depth -2 and depth -7 are each rejected: the error flag is set, the result carries
-  exactly one text block, and its text equals the facade's failure envelope built from the message
+  Assert through the client session that depth -1 is accepted and recurses to the bottom of the
+  fixture tree — the nested subdirectory's file appears in the answer.
+  Assert through the client session that depth -2 and depth -7 are each rejected: the error flag is
+  set and the result carries exactly one text block whose text is not a table-of-contents answer.
+  Do not assert the rejection wording here. This rejection comes from the SDK's own schema
+  validation, which runs before the handler, so the text is the SDK's arguments-validation message
+  and not this server's — pinning it would pin a dependency's private wording, and it is not what
+  the surface promises.
+  Assert the wording instead by calling the handler's decision function directly, in this same file,
+  for depth -2 and depth -7: the returned result has the error flag set, carries exactly one text
+  block, and its text equals the facade's failure envelope built from the message
   `--depth must be -1 (whole tree) or a non-negative integer, got <n>` with the offending integer
-  substituted. Assert the wording, not only the flag.
-  State in the file header why this is the load-bearing one of this batch's schema tests: the engine's
-  directory walk decrements depth without a floor and stops only at zero or at the whole-tree
-  sentinel, so an unvalidated negative depth is an unbounded walk that returns a plausible-looking
-  answer rather than an error — a defect that would reach T7 as a cost measurement rather than as a
-  failure.
+  substituted. This is the batch's one deliberate departure from protocol-only testing, for the
+  reason stated in Batch Scope; keep it to this one assertion.
+  State in the file header why this is the load-bearing one of this batch's schema tests, and be
+  accurate about the two layers: the schema's minimum is what rejects a protocol call, the handler's
+  own check is what owns the wording and what would still reject if the minimum were ever dropped,
+  and the reason either is needed at all is that the engine's directory walk decrements depth without
+  a floor and stops only at zero or at the whole-tree sentinel — so an unvalidated negative depth is
+  an unbounded walk that returns a plausible-looking answer rather than an error, a defect that would
+  reach T7 as a cost measurement rather than as a failure.
 - **Commit:** `test(mcpserver): pin depth -1 and the negative-depth rejection`
 
-### Card 16: error paths and their wording
+### Card 16: error paths, their wording, and the never-follow rule
 
 - **Context:**
   - `internal/mcpserver/toc.go`
   - `internal/mcpserver/fixture_test.go`
+  - `internal/mcpserver/root_test.go`
   - `internal/cli/cli.go`
+  - `internal/engine/repo.go`
+  - `internal/engine/toc.go`
   - `quarry/render.go`
+  - `quarry/repo.go`
 - **Edits:** none
 - **Creates:**
   - `internal/mcpserver/toc_errors_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Assert three failure cases against the fixture repository: a target that does not exist, a target
-  that escapes the repository, and a target that is a broken symbolic link.
+  Assert two failure cases against the committed fixture repository: a target that does not exist, and
+  a target that escapes the repository.
   For each, assert the error flag is set, the result carries exactly one text block, and its text
   equals the facade's failure envelope built from the CLI's own wording for that condition — the
   not-found sentence naming the repository-relative path, and the outside-repository sentence naming
   the target exactly as the caller gave it. Assert the wording, not just the flag: the whole claim
   being tested is that the two surfaces say the same thing.
-  The broken-symbolic-link case needs a link the committed fixture cannot carry portably, so create it
+  Then assert a third case which is deliberately **not** a failure: a target that is a broken symbolic
+  link. It succeeds. Both the handler and the engine stat with `os.Lstat` and never `os.Stat`, so a
+  symbolic link named directly as the target is answered as a file rather than followed, and the
+  engine emits it as a name-only file entry with no error. Assert that shape: the error flag is unset,
+  and the answer carries the link as an entry under its own name. Do not assert a failure envelope
+  here — an implementation that returned one would be following the link, which is the rule this case
+  exists to pin.
+  A symbolic link is something the committed fixture cannot carry portably, so build this case's tree
   under the repository's gitignored scratch directory with the same per-package `writeScratchTree`
-  approach card 7 uses, open that tree as its own repository, and run the case against it. Never call
-  `t.TempDir()`.
+  approach card 7 uses, open it with `quarry.Open` as its own repository, and construct a server over
+  it with the session helper. Never call `t.TempDir()`.
   Skip the symbolic-link case on a platform that cannot create one, rather than failing.
-- **Commit:** `test(mcpserver): pin the three failure paths and their wording`
+- **Commit:** `test(mcpserver): pin the two failure paths and the never-follow symlink rule`
 
 ## Batch Tests
 

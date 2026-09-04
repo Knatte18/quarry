@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r1
+phase: plan-fix-r1
 slug: mcp-thin
 branch: mcp-thin
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussion-fix-r4  '2026-09-04T08:46:40Z'
 discussed  '2026-09-04T08:46:40Z'
 planning  '2026-09-04T08:55:24Z'
 plan-review-r1  '2026-09-04T09:00:25Z'
+plan-fix-r1  '2026-09-04T09:03:06Z'
 ```
