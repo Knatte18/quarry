@@ -1,7 +1,0 @@
-{"status":"success","commit_sha":"2bc5f5b77a82e51b434b5758e5ca76eef4253abc","session_id":"c96c7544-75a0-4a51-bd90-6aa55ce92617","cards_done":[8,9,10,11]}
-
-Summary: All 4 cards of batch `04-write-up` are complete — 4 of 4 committed/done. Card 8 (Commit: none, hand-verification) was performed and written to `/home/knatte/Code/quarry/wts/ladder-toc-rerun/.scratch/hand-verify.md` (agreement found, no discrepancy). Card 9 created `/home/knatte/Code/quarry/wts/ladder-toc-rerun/bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` (commit `3568bea`) — the headline finding is that the August `a2-toc-dir` cost separation did **not** reproduce cleanly at this root's n=5 (every comparison except `quarry_tool_uses` reads `separated: false`, and most cost medians ran equal-or-higher for `a2-toc-dir` rather than lower), while correctness metrics stayed consistent with the prior root. Card 10 edited `/home/knatte/Code/quarry/wts/ladder-toc-rerun/docs/rewrite-plan.md` §11 (commit `870a567`) to settle the raw-tree open decision. Card 11 edited `/home/knatte/Code/quarry/wts/ladder-toc-rerun/HANDOFF.md` (commit `2bc5f5b`) across the five named sections (§1, §2, §3, §4, §5) to bring it in line with the merged state and T7's actual result.
-
-`verify: null` for this batch, so no verify command was run. Working tree is clean; nothing uncommitted.
-
-{"status":"success","commit_sha":"2bc5f5b77a82e51b434b5758e5ca76eef4253abc","session_id":"c96c7544-75a0-4a51-bd90-6aa55ce92617","cards_done":[8,9,10,11]}
