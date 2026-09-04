@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
@@ -133,29 +135,62 @@ func codeForExpandError(err error) int {
 	return exitInternal
 }
 
-// Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes the
-// request pipeline in this fixed order — the step that decides an exit code is the step that
-// decides the message, so the two things are never allowed to drift apart:
+// Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes the four
+// steps every verb shares, then dispatches to that verb's own pipeline — the step that decides an
+// exit code is the step that decides the message, so the two things are never allowed to drift
+// apart within any one pipeline:
 //
 //  1. Parse flags and the verb. A usage error is exit 2; anything else is exit 3.
 //  2. When help was requested, write usageText to stdout and return exit 0 — help is a successful
 //     query about the CLI, not a usage error, so it never touches stderr or exit 2.
 //  3. Read the working directory. This is the one place in the package that does.
-//  4. Resolve the repository root, --root or discovery.
-//  5. Convert the target to a clean, repository-relative path. Escaping the root is exit 1, named
+//  4. Resolve the repository root, --root or discovery, then the base directory a relative target
+//     is interpreted against: the root when --root was given, the working directory otherwise.
+//
+// Run then switches on req.verb and calls one of runTOC, runResolve, or runExpand. The default
+// case returns exitInternal with an internal-error message rather than falling through to a zero
+// exit code; it is unreachable for every word other than the three verbs, because parseArgs
+// already rejects any other verb as a usage error before Run ever sees it.
+//
+// runTOC's own pipeline, continuing from step 4 above:
+//
+//  1. Convert the target to a clean, repository-relative path. Escaping the root is exit 1, named
 //     with the target exactly as given, since a target that escaped the root has no meaningful
 //     repository-relative form.
-//  6. Lstat the resolved target: not found is exit 1, named with the repository-relative path; any
+//  2. Lstat the resolved target: not found is exit 1, named with the repository-relative path; any
 //     other stat error is exit 3. Lstat, never Stat, so a symlink named as the target is treated as
 //     a file and not followed, the same rule engine.resolveTarget already follows.
-//  7. Open the repository.
-//  8. Run the query, and map its error through codeForTOCError rather than an inline errors.Is
-//     chain at this call site, so the mapping stays table-testable. Steps 5 and 6 have already
+//  3. Open the repository.
+//  4. Run the query, and map its error through codeForTOCError rather than an inline errors.Is
+//     chain at this call site, so the mapping stays table-testable. Steps 1 and 2 have already
 //     excluded both sentinel errors in the common case; these branches exist because the target can
-//     be removed between the stat and the walk, and Run must not report that race as success.
-//  9. Render: quarry.RenderText under --text, quarry.RenderJSON otherwise. A render error, or a
+//     be removed between the stat and the walk, and runTOC must not report that race as success.
+//  5. Render: quarry.RenderText under --text, quarry.RenderJSON otherwise. A render error, or a
 //     failed write of its bytes to stdout, is exit 3 — that is an I/O failure, which is what exit 3
 //     already means.
+//
+// runResolve's own pipeline, continuing from step 4 above, performs no stat at all: the target not
+// existing is the engine's own answer with a payload, and pre-empting it with the failure path
+// would destroy exactly that answer.
+//
+//  1. Classify the target with strings.Contains(req.target, "#"). A glyph target is passed to the
+//     facade verbatim — no path conversion, no rebasing, no stat — because a glyph's unit is
+//     repository-relative by the grammar's own definition. A path target is converted with
+//     repoRelPath, the arithmetic-only helper, and the converted form is passed through
+//     unconditionally, including one that begins with "..". Only repoRelPath erroring is a failure
+//     here, and it is exit 1, named "target outside repository: " followed by the target as given —
+//     the same message and code runTOC already emits for the same condition.
+//  2. Open the repository. A failure is exit 3.
+//  3. Call the facade's Resolve method with a one-element slice holding the target from step 1. A
+//     non-nil error is exit 3: an engine read failure is not an answer about a glyph.
+//  4. A returned slice whose length is not exactly one is exit 3, named with the count — the facade
+//     contracts a positional one-to-one mapping, so this is unreachable and is stated so a contract
+//     change cannot silently produce a zero exit code.
+//  5. Render the single result: quarry.RenderResolveText under --text, quarry.RenderResolveJSON
+//     otherwise. A render error, or a failed write of its bytes to stdout, is exit 3. The payload is
+//     written before the code is computed, in the next step, so a negative answer is rendered
+//     rather than replaced by the failure envelope.
+//  6. Return codeForResolveResult of that result.
 //
 // The error value returned to a caller never carries the engine's wrapped chain for exit 1 or
 // exit 2: those name conditions quarry itself defines, so quarry spells them, and passing
@@ -189,9 +224,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if errors.As(err, &uerr) {
 			return fail(stdout, stderr, exitUsage, uerr.Error(), true)
 		}
-		// Unreachable today: resolveRoot and discoverRoot are contracted (card 11) to return only
-		// a usageError. Stated anyway, so every step of this pipeline spells both dispositions and
-		// a later change to that contract cannot silently fall through to a zero exit code.
+		// Unreachable today: resolveRoot and discoverRoot are contracted to return only a
+		// usageError. Stated anyway, so every step of this pipeline spells both dispositions and a
+		// later change to that contract cannot silently fall through to a zero exit code.
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 
@@ -199,6 +234,23 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if req.root != "" {
 		base = root
 	}
+
+	switch req.verb {
+	case "toc":
+		return runTOC(req, root, base, stdout, stderr)
+	case "resolve":
+		return runResolve(req, root, base, stdout, stderr)
+	default:
+		// Unreachable for every word other than the three verbs parseArgs accepts; "expand" reaches
+		// this arm until its own pipeline lands.
+		return fail(stdout, stderr, exitInternal, "internal error: unknown verb: "+req.verb, false)
+	}
+}
+
+// runTOC is the table-of-contents verb's own pipeline, continuing from Run's shared four steps.
+// Its behaviour is unchanged from Run's own body before this pipeline was extracted from it; see
+// Run's doc comment for the numbered steps.
+func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
 	rel, err := repoRelTarget(root, base, req.target)
 	if err != nil {
 		if errors.Is(err, quarry.ErrTargetOutsideRepo) {
@@ -222,9 +274,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	answer, err := repo.TOC(rel, quarry.TOCOptions{Depth: req.depth, Symbols: req.symbols})
-	// The two sentinel branches below are race-only in the common case: steps 5 and 6 have already
-	// excluded both errors, so they fire only when the target is removed between step 6's stat and
-	// the engine's own walk. Reporting that race as exitOK would be a false positive.
+	// The two sentinel branches below are race-only in the common case: the stat above has already
+	// excluded both errors, so they fire only when the target is removed between that stat and the
+	// engine's own walk. Reporting that race as exitOK would be a false positive.
 	if code := codeForTOCError(err); code != exitOK {
 		switch code {
 		case exitNegative:
@@ -252,4 +304,47 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 	return exitOK
+}
+
+// runResolve is the resolve verb's own pipeline, continuing from Run's shared four steps. See
+// Run's doc comment for the numbered steps this function executes in fixed order.
+func runResolve(req request, root, base string, stdout, stderr io.Writer) int {
+	target := req.target
+	if !strings.Contains(target, "#") {
+		rel, err := repoRelPath(root, base, target)
+		if err != nil {
+			return fail(stdout, stderr, exitNegative, "target outside repository: "+req.target, false)
+		}
+		target = rel
+	}
+
+	repo, err := quarry.Open(root)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+
+	results, err := repo.Resolve([]string{target})
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	if len(results) != 1 {
+		return fail(stdout, stderr, exitInternal, "internal error: resolve returned "+strconv.Itoa(len(results))+" results for one target", false)
+	}
+	result := results[0]
+
+	if req.text {
+		if _, err := io.WriteString(stdout, quarry.RenderResolveText(result)); err != nil {
+			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+		}
+		return codeForResolveResult(result)
+	}
+
+	out, err := quarry.RenderResolveJSON(result)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	if _, err := stdout.Write(out); err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	return codeForResolveResult(result)
 }
