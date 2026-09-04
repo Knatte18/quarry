@@ -8,4 +8,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require github.com/mattn/go-pointer v0.0.1 // indirect
+require (
+	github.com/google/jsonschema-go v0.4.3 // indirect
+	github.com/mattn/go-pointer v0.0.1 // indirect
+	github.com/modelcontextprotocol/go-sdk v1.7.0 // indirect
+)
