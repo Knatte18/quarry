@@ -6,6 +6,7 @@ slug: resolve-expand
 branch: resolve-expand
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: resolve + expand (T4)
 task_description: |
   resolve + expand (T4)
@@ -41,13 +42,20 @@ implementing  '2026-09-04T06:19:21Z'
 ```yaml
 batches:
   - name: answer-types
-    state: pending
+    state: running
+    implementer_session: 2f044bfa-2c59-4b0a-8c45-76fa93a026f3
+    start_sha: 6b1dde4f09807346706927dad7dc3b86006adcf9
+    verify_baseline_failures: []
   - name: fixtures
     state: pending
+    verify_baseline_failures: []
   - name: resolve
     state: pending
+    verify_baseline_failures: []
   - name: expand
     state: pending
+    verify_baseline_failures: []
   - name: loomyard-timing
     state: pending
+    verify_baseline_failures: []
 ```
