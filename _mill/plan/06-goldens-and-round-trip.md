@@ -108,6 +108,7 @@ leaving no diff, which drops the two unused indirect grammar requirements.
   - `docs/rewrite-plan.md`
 - **Edits:**
   - `internal/engine/golden_test.go`
+  - `internal/engine/walk.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -116,6 +117,13 @@ leaving no diff, which drops the two unused indirect grammar requirements.
   point is a shape rather than prose — the subdirectory entry in `dirs` carries `dir`, `package` and
   `doc` and **no other key**, which is what the plan's second example shows. Assert it on the
   marshalled JSON of that one entry so an accidentally-populated `files` or `language` fails.
+
+  Against the real Loomyard checkout this test caught a defect in `walkDir` (batch 3): the
+  `identityOnly` branch's own doc comment already promises "fills only Dir, Package and Doc", but the
+  code sets `answer.Language` unconditionally alongside `answer.Package`, before the `identityOnly`
+  early return, so an identity-only entry with a package still carries `language` too. Fix `walkDir`
+  to set `Language` only on the non-identity-only path, matching its own doc comment and the plan's
+  example.
 - **Commit:** `test(engine): assert the depth-zero subdirectory shape`
 
 ### Card 38: The round trip over quarry itself
