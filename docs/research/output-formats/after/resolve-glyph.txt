@@ -1,0 +1,19 @@
+$ quarry resolve internal/logger#stderrHandlerSnapshot
+
+{
+  "target": "internal/logger#stderrHandlerSnapshot",
+  "id": "internal/logger#stderrHandlerSnapshot",
+  "status": "found",
+  "symbols": [
+    {
+      "id": "internal/logger#stderrHandlerSnapshot",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 155,
+      "sigend": 158,
+      "end": 163,
+      "signature": "func stderrHandlerSnapshot() slog.Handler",
+      "doc": "stderrHandlerSnapshot returns the current stderr-half handler under a\nnarrow critical section; caller must not hold sinkMu across the following\nHandle call to avoid deadlock."
+    }
+  ]
+}
