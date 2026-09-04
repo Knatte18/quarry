@@ -46,8 +46,10 @@ readings and the invocation count.
   (1) **The offline suite.** `go test ./... && golangci-lint run`, with `LADDER_LIVE_TEST` unset so
   the guarded live test skips. The tree is green today, so any failure is something this task
   introduced.
-  (2) **The clean tree.** `git status --porcelain` must be empty. A non-empty tree means the matrix
-  would record `quarry_dirty` true and describe something that is not in git.
+  (2) **The clean tree.** `git status --porcelain` must be empty, with the one carve-out in
+  `## Shared Decisions`' `clean-tree-and-no-edits-mid-matrix`: this batch's own untracked
+  `_mill/briefs/implement-matrix-run-*.md` does not count. Any other non-empty entry means the matrix
+  would record `quarry_dirty` true and describe something that is not in git — stop and report it.
   (3) **The environment preconditions**, each read and reported, none of them written into a
   committed file: `LADDER_LOOMYARD_REPO` is either unset in the invoking environment, or set to a
   value matching what the ladder env file under .scratch/ holds — `ResolveLoomyardRepo` reads the
