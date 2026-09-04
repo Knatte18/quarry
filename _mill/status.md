@@ -56,7 +56,9 @@ batches:
     commit_sha: b16da596b33c54fcc495cd1984f987cdac47ffdf
     verify_baseline_failures: []
   - name: resolve
-    state: pending
+    state: running
+    implementer_session: bbc75a40-2495-4c1d-ad39-0f582af7d770
+    start_sha: 23d1b7df640df4917e5e93434703925c523182fa
     verify_baseline_failures: []
   - name: expand
     state: pending
