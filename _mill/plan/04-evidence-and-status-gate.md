@@ -40,7 +40,15 @@ Batch-local decisions beyond the overview's Shared Decisions:
 - **Requirements:**
   Create `internal/cli/glyph5_test.go`. It builds its own repository with the package's existing `writeScratchTree` helper — never the system temp directory — and drives `Run` end to end with buffer sinks and an explicit root flag, asserting both the exit code and the decoded payload for each case below. Decode the payload with the standard library's JSON decoder into a local struct or a generic map; do not import the engine.
 
-  The fixture tree needs, at minimum: a package directory holding one free function and one type with at least one method; a second file in that same package declaring the same function name under a different build tag from the first, so one glyph matches two different declarations; a third file declaring a *type* under a build tag, duplicating a type declared in the first file, so one glyph matches two different type declarations; and a file declaring two package-level initialiser functions, so one glyph matches several parts of one symbol.
+  The fixture tree needs, at minimum, one package directory — never the fixture root, since a file directly under the root has the empty unit that no glyph can spell — holding:
+
+  - one free function whose name is declared exactly once in the package, for the found row;
+  - one type with at least one method, declared exactly once, for the expand found row;
+  - a **second, differently named** free function, declared twice across two files under different build tags, for the resolve ambiguous row. It must not be the same function the found row queries: two declarations of one name resolve to the ambiguous status, so reusing the found row's function would make that row impossible;
+  - a **second, differently named** type, likewise declared twice across two files under different build tags, for the expand ambiguous row, and distinct from the type the expand found row queries for the same reason;
+  - a file declaring two package-level initialiser functions, so one glyph matches several parts of one symbol.
+
+  Every duplicated declaration is distinct from every singly-declared one. Spell each row's glyph against the declaration intended for it.
 
   The duplicated type is what makes the expand verb's own ambiguous branch reachable at all. A duplicated *function* does not reach it: the kind gate turns a match set holding no type into the not-a-type failure before any ambiguous answer is produced, so without a duplicated type the expand-ambiguous status, its exit code and its text branch would be table-tested only and never exercised end to end.
 
@@ -51,7 +59,7 @@ Batch-local decisions beyond the overview's Shared Decisions:
   | found | the resolve verb on a glyph naming the free function | exit 0, status found, one symbol |
   | not_found, unit found | the resolve verb on a glyph whose unit exists and whose member does not | exit 1, status not-found, unit found |
   | not_found, unit not_found | the resolve verb on a glyph whose unit directory does not exist | exit 1, status not-found, unit not-found |
-  | ambiguous | the resolve verb on the build-tag-duplicated function's glyph | exit 1, status ambiguous, candidates present, symbols absent |
+  | ambiguous | the resolve verb on the build-tag-duplicated function's glyph, which is not the found row's function | exit 1, status ambiguous, candidates present, symbols absent |
   | multipart | the resolve verb on the initialiser glyph | exit 0, status multipart, every part present in the symbols list |
   | not a type | the expand verb on the free function's glyph | exit 1, the failure envelope on stdout, and the exact sentence on stderr with no usage text |
   | expand, ambiguous | the expand verb on the build-tag-duplicated type's glyph | exit 1, status ambiguous, candidates present, head and members absent |
