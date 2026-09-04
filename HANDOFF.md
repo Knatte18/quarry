@@ -9,12 +9,13 @@ contract. Neither is summarised here — read them.
 ## 1. Where things stand
 
 Quarry is rewritten around one identifier, the glyph, and three queries: `toc`, `resolve`,
-`expand`. Tree-sitter only, Go only. **Waves 0–4 are merged on `main`:** T0 (the V1 deletion),
+`expand`. Tree-sitter only, Go only. **Waves 0–5 are merged on `main`:** T0 (the V1 deletion),
 T1 (`glyph/`), T2 (the ladder harness), T3 (the engine), T4 (`resolve` + `expand` in the engine),
 T5a (the `quarry/` facade, `internal/cli`, and `cmd/quarry` with the verb `toc`), T5b (`resolve`
-+ `expand` joining the facade and the CLI), T6 (`cmd/quarry-mcp`, the thin MCP server). Each
-landed as one squash commit titled by its task; each task branch's full history, `_mill/`
-artifacts included, is under its `archive/<slug>` tag.
++ `expand` joining the facade and the CLI), T6 (`cmd/quarry-mcp`, the thin MCP server), T7 (the
+regression-gate rerun of the toc-dir finding against the merged rewrite; see §3). Each landed as
+one squash commit titled by its task; each task branch's full history, `_mill/` artifacts
+included, is under its `archive/<slug>` tag.
 
 The engine is `internal/engine` (with `internal/engine/treesitter` as the grammar seam,
 `internal/cgoguard` for `CGO_ENABLED=0` builds). The public surface is the `quarry/` facade over
