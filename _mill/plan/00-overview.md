@@ -124,26 +124,32 @@ batches:
   `Start` and `End` substituted from `HeadStart` and `HeadEnd`, not a shape of its own and not
   rendered source text.
 - **Rationale:** all three verbs return one symbol entry and nothing else for a symbol. Reading the
-  head span from the head fields rather than re-deriving it is what gives those fields their consumer:
-  for Go the two pairs are identical so nothing observable changes today, and for the first language
-  whose head is a strict subset of its declaration `expand` needs no edit.
+  head span from the head fields rather than re-deriving it is what gives those fields their consumer,
+  and for Go the two pairs are identical so nothing observable changes today. The substitution does
+  mean the type's full declaration span is not recoverable from an `ExpandAnswer` for a language whose
+  head is a strict subset of its declaration — recorded as the fourth contract gap below rather than
+  answered here, since with Go the only alphabet the case is unreachable.
 - **Applies to:** answer-types, expand
 
-### Decision: three contract gaps are recorded in code comments, none is closed
+### Decision: contract gaps are recorded in code comments, none is closed
 
-- **Decision:** no line of `docs/glyph.md` or `docs/rewrite-plan.md` changes. Three gaps are recorded
+- **Decision:** no line of `docs/glyph.md` or `docs/rewrite-plan.md` changes. Four gaps are recorded
   as comments where the rule they affect is implemented: the external test unit versus a real
   directory of the same name (recorded where the collision is promoted to `ambiguous`); `ambiguous`
-  candidates carrying no language marker (recorded on the `Candidates` key); and a unit reached
+  candidates carrying no language marker (recorded on the `Candidates` key); a unit reached
   through an intermediate symlinked directory resolving here while the walk never lists it (recorded
-  where the unit-existence key is derived).
+  where the unit-existence key is derived); and the type's full declaration span being unrecoverable
+  from an `ExpandAnswer` once the head span is substituted, for a language whose head is a strict
+  subset of its declaration (recorded at that substitution). The first three are the discussion's own;
+  the fourth surfaced during plan review and is recorded on the same footing, since the discussion's
+  position is that this task records the gaps it runs into and closes none of them.
 - **Rationale:** a single task changing the shared identifier contract is the coupling the plan's
   task ordering avoids, and both candidate answers for a gap should be decided against a repository
   that needs one. Recording a gap where the behaviour is implemented is what keeps it findable;
   recording it only in a discussion file would lose it. The third gap in particular is inherited
   unchanged rather than narrowed — changing `dirExists` would be a change to the walk's inverse, which
   this task's scope excludes.
-- **Applies to:** resolve
+- **Applies to:** resolve, expand
 
 ### Decision: fixtures are committed unless a named T3 assertion forbids it
 
