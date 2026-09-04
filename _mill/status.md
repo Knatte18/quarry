@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-fixing
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -40,6 +40,7 @@ approved-harness-mcp-init-fix  '2026-09-04T14:29:12Z'
 approved-matrix-run  '2026-09-04T14:49:19Z'
 approved-write-up  '2026-09-04T14:58:46Z'
 holistic-reviewing  '2026-09-04T14:59:08Z'
+holistic-fixing  '2026-09-04T15:04:05Z'
 ```
 
 ## Batches
