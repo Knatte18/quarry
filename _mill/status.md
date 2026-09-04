@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-goldens-and-after
+phase: holistic-reviewing
 slug: facade-cli-toc
 branch: facade-cli-toc
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-facade-renderers  '2026-09-04T07:01:24Z'
 approved-cli-parsing  '2026-09-04T07:09:52Z'
 approved-cli-pipeline  '2026-09-04T07:16:42Z'
 approved-goldens-and-after  '2026-09-04T07:22:46Z'
+holistic-reviewing  '2026-09-04T07:23:19Z'
 ```
 
 ## Batches
