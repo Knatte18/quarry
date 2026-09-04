@@ -1,6 +1,6 @@
 // scratchtree_test.go provides writeScratchTree, the shared helper for tests that need a fixture
-// tree on disk rather than pure strings — chiefly root_test.go's .git-entry cases and
-// target_test.go's symlink case. Cards 15 and 18 use this same helper.
+// tree on disk rather than pure strings. cli_test.go's pipeline fixture is this package's user of
+// it now that root_test.go and target_test.go have moved to internal/repopath.
 
 package cli
 

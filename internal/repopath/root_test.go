@@ -1,9 +1,10 @@
-// root_test.go pins discoverRoot and resolveRoot, building every fixture with writeScratchTree
+// root_test.go pins DiscoverRoot and ResolveRoot, building every fixture with writeScratchTree
 // and never calling t.TempDir(), t.Chdir, or os.Chdir.
 
-package cli
+package repopath
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,12 +21,12 @@ func TestDiscoverRoot_GitDirectory(t *testing.T) {
 	}
 
 	start := filepath.Join(root, "a", "b", "c")
-	got, err := discoverRoot(start)
+	got, err := DiscoverRoot(start)
 	if err != nil {
-		t.Fatalf("discoverRoot(%q) = _, %v; want nil error", start, err)
+		t.Fatalf("DiscoverRoot(%q) = _, %v; want nil error", start, err)
 	}
 	if got != root {
-		t.Errorf("discoverRoot(%q) = %q; want %q", start, got, root)
+		t.Errorf("DiscoverRoot(%q) = %q; want %q", start, got, root)
 	}
 }
 
@@ -36,12 +37,12 @@ func TestDiscoverRoot_GitFile(t *testing.T) {
 	})
 
 	start := filepath.Join(root, "a", "b", "c")
-	got, err := discoverRoot(start)
+	got, err := DiscoverRoot(start)
 	if err != nil {
-		t.Fatalf("discoverRoot(%q) = _, %v; want nil error", start, err)
+		t.Fatalf("DiscoverRoot(%q) = _, %v; want nil error", start, err)
 	}
 	if got != root {
-		t.Errorf("discoverRoot(%q) = %q; want %q", start, got, root)
+		t.Errorf("DiscoverRoot(%q) = %q; want %q", start, got, root)
 	}
 }
 
@@ -58,12 +59,12 @@ func TestDiscoverRoot_NearestOfNested(t *testing.T) {
 	}
 
 	start := filepath.Join(root, "a", "b")
-	got, err := discoverRoot(start)
+	got, err := DiscoverRoot(start)
 	if err != nil {
-		t.Fatalf("discoverRoot(%q) = _, %v; want nil error", start, err)
+		t.Fatalf("DiscoverRoot(%q) = _, %v; want nil error", start, err)
 	}
 	if got != nested {
-		t.Errorf("discoverRoot(%q) = %q; want nearest root %q", start, got, nested)
+		t.Errorf("DiscoverRoot(%q) = %q; want nearest root %q", start, got, nested)
 	}
 }
 
@@ -82,16 +83,15 @@ func TestDiscoverRoot_NoneFound(t *testing.T) {
 		t.Skip("a .git entry exists at the filesystem root on this machine; not applicable here")
 	}
 
-	_, err := discoverRoot(fsRoot)
+	_, err := DiscoverRoot(fsRoot)
 	if err == nil {
-		t.Fatalf("discoverRoot(%q) = _, nil; want error", fsRoot)
+		t.Fatalf("DiscoverRoot(%q) = _, nil; want error", fsRoot)
 	}
-	ue, ok := err.(usageError)
-	if !ok {
-		t.Fatalf("discoverRoot(%q) error type = %T; want usageError", fsRoot, err)
+	if !errors.Is(err, ErrNoRepositoryRoot) {
+		t.Fatalf("DiscoverRoot(%q) error = %v; want errors.Is(_, ErrNoRepositoryRoot)", fsRoot, err)
 	}
-	if !strings.Contains(string(ue), "pass --root") {
-		t.Errorf("discoverRoot(%q) error = %q; want it to contain %q", fsRoot, string(ue), "pass --root")
+	if !strings.Contains(err.Error(), "pass --root") {
+		t.Errorf("DiscoverRoot(%q) error = %q; want it to contain %q", fsRoot, err.Error(), "pass --root")
 	}
 }
 
@@ -116,12 +116,12 @@ func TestResolveRoot_FlagRootShortCircuitsDiscovery(t *testing.T) {
 		"keep.txt": "x",
 	})
 
-	got, err := resolveRoot(other, root)
+	got, err := ResolveRoot(other, root)
 	if err != nil {
-		t.Fatalf("resolveRoot(%q, %q) = _, %v; want nil error", other, root, err)
+		t.Fatalf("ResolveRoot(%q, %q) = _, %v; want nil error", other, root, err)
 	}
 	if got != filepath.Clean(other) {
-		t.Errorf("resolveRoot(%q, %q) = %q; want %q", other, root, got, other)
+		t.Errorf("ResolveRoot(%q, %q) = %q; want %q", other, root, got, other)
 	}
 }
 
@@ -130,13 +130,13 @@ func TestResolveRoot_RelativeFlagRoot(t *testing.T) {
 		"sub/keep.txt": "x",
 	})
 
-	got, err := resolveRoot("sub", root)
+	got, err := ResolveRoot("sub", root)
 	if err != nil {
-		t.Fatalf("resolveRoot(%q, %q) = _, %v; want nil error", "sub", root, err)
+		t.Fatalf("ResolveRoot(%q, %q) = _, %v; want nil error", "sub", root, err)
 	}
 	want := filepath.Join(root, "sub")
 	if got != want {
-		t.Errorf("resolveRoot(%q, %q) = %q; want %q", "sub", root, got, want)
+		t.Errorf("ResolveRoot(%q, %q) = %q; want %q", "sub", root, got, want)
 	}
 }
 
@@ -154,16 +154,15 @@ func TestResolveRoot_FlagRootErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := resolveRoot(tt.flagRoot, root)
+			_, err := ResolveRoot(tt.flagRoot, root)
 			if err == nil {
-				t.Fatalf("resolveRoot(%q, _) = _, nil; want error", tt.flagRoot)
+				t.Fatalf("ResolveRoot(%q, _) = _, nil; want error", tt.flagRoot)
 			}
-			ue, ok := err.(usageError)
-			if !ok {
-				t.Fatalf("resolveRoot(%q, _) error type = %T; want usageError", tt.flagRoot, err)
+			if !errors.Is(err, ErrRootNotDirectory) {
+				t.Fatalf("ResolveRoot(%q, _) error = %v; want errors.Is(_, ErrRootNotDirectory)", tt.flagRoot, err)
 			}
-			if !strings.Contains(string(ue), tt.flagRoot) {
-				t.Errorf("resolveRoot(%q, _) error = %q; want it to echo the given path", tt.flagRoot, string(ue))
+			if !strings.Contains(err.Error(), tt.flagRoot) {
+				t.Errorf("ResolveRoot(%q, _) error = %q; want it to echo the given path", tt.flagRoot, err.Error())
 			}
 		})
 	}
