@@ -137,7 +137,16 @@ recorded below as Decisions D2, D3 and D10 and flagged for the round-1 reviewer.
   | `expand` | `*NotATypeError` | 1 | the error envelope (D4) |
   | both | unparseable flag, wrong target count, unknown verb, toc-only flag on this verb, `--root` that is not a directory | 2 | the error envelope + `usageText` on stderr |
   | `expand` | target containing no `#` (D10) | 2 | the error envelope + `usageText` on stderr |
-  | both | engine read failure, `len(results) != 1`, render failure, stdout write failure | 3 | the error envelope |
+  | `expand` | `glyph.Parse` rejection of a target that *does* contain `#` (`#x`, `member_keyword`, `unit_bad_rune`, …) | 1 | the error envelope, message `expand <target>: <reason>` (D10) |
+  | `expand` | the `HeadStart == 0` invariant error (a matched `KindType` symbol carrying no head span) | 3 | the error envelope |
+  | both | any remaining error: engine read failure, `len(results) != 1`, render failure, stdout write failure | 3 | the error envelope |
+
+  The rows are checked in table order and the final row is the catch-all: a mapping function written
+  from this table must test the named conditions first and fall through to 3, never the reverse. The
+  `HeadStart == 0` row is exit 3 because `internal/engine/expand.go` returns it as a plain
+  `fmt.Errorf` naming an invariant violation in the walk — an internal failure with no answer behind
+  it, which is exactly what exit 3 means — and it is reached with `errors.As` failing for both
+  `*NotATypeError` and `*glyph.ParseError`, so no message parsing is needed to tell it apart.
 
 - **Rationale:** exit 2 keeps its T5a meaning exactly — "the caller asked wrong about the CLI" — and
   a well-formed invocation naming an unspellable glyph is not that: quarry ran it to a definite
@@ -343,7 +352,7 @@ rule already says there is no text rendering of a failure.
   separator check" purity argument by giving the CLI that exact check, so there is no purity left to
   preserve by routing this through the engine, and `errors.As(err, &parseErr) && parseErr.Reason ==
   glyph.ReasonNoSeparator` would be a second, later, more expensive spelling of a decision the CLI
-  has already made. `internal/cli` therefore needs no import of `glyph/`.
+  has already made. **This routing needs no `glyph/` import; the last bullet below does — see D10a.**
 - **Rationale for exit 2 rather than 1:** unlike `resolve`, where the same string is a legitimate
   *path* target and the grammar rejection is a real answer about a real argument class, `expand`
   accepts one argument class only. A target with no `#` is the caller having asked the wrong verb,
@@ -354,9 +363,54 @@ rule already says there is no text rendering of a failure.
   glyph at all is a different thing from one naming an unspellable glyph).
 - **Every other `glyph.Parse` rejection under `expand`** — a target that *does* contain `#` but that
   the grammar still rejects, `#x` or `member_keyword` or `unit_bad_rune` — is unaffected by this
-  routing and takes D4's path: error envelope, exit 1, message `expand <target>: <reason>`, no usage
-  text. It is a well-formed invocation naming an unspellable glyph, and the CLI never parses it
-  itself.
+  routing and takes D4's path: error envelope, exit 1, no usage text. It is a well-formed invocation
+  naming an unspellable glyph, and the CLI never parses it itself. Its message and how the CLI gets
+  the reason word are D10a.
+
+### D10a — `internal/cli` imports `glyph/` to reach the rejection reason
+
+- **Decision:** for `expand`'s exit-1 grammar rejections, the CLI's message is
+  `expand <target>: <reason>` where `<reason>` is `string(parseErr.Reason)`, obtained with
+  `errors.As(err, &parseErr)` against `*glyph.ParseError`. **`internal/cli` imports `glyph/`
+  directly** to name that type. No alias is added to the facade.
+- **Rationale:** `Expand` wraps the parse failure as `engine: expand %s: %w`
+  (`internal/engine/expand.go`), so `err.Error()` is barred by D4's no-`engine:`-prefix rule and the
+  CLI must spell its own sentence — which needs the reason word, which needs the concrete error
+  type. `glyph/` is a **public** package of this module, pure Go with no dependencies and no cgo (T1's
+  own done-when: `go list -deps` shows no cgo), so `internal/cli` may import it and pays nothing for
+  doing so. The facade's aliases exist for exactly one reason, stated in `quarry/quarry.go`'s header:
+  `internal/engine` is unreachable from outside the module. `glyph/` is reachable, so aliasing
+  `ParseError` and `Reason` into `quarry/` would be a second spelling of the grammar's own error
+  type — which `docs/glyph.md` §6's one-implementation-of-the-grammar rule forbids, and which is the
+  drift `Symbol` was given its own `Glyph` field to prevent.
+- **Rejected:** aliasing `ParseError`/`Reason` into the facade (a second spelling of a public type,
+  against `docs/glyph.md` §6); dropping `<reason>` from the message (the reason word is the only part
+  of the rejection a caller can act on, and the engine deliberately surfaces it as a closed
+  vocabulary — the same word `resolve` puts in its payload's `reason` key, so dropping it here would
+  make the two verbs disagree about the same rejection).
+- **Consequence:** Technical context's "`glyph/errors.go` — needed by D10" line is correct as
+  written, and `internal/cli`'s import block grows by one public, cgo-free package. A future second
+  alphabet changes nothing here: the CLI reads `parseErr.Reason` and never calls `glyph.Parse`.
+
+### D10b — the payload's `error` field is engine text, emitted verbatim
+
+- **Decision:** T5a's no-`engine:`-prefix rule binds **the sentence quarry authors** — `fail()`'s
+  message, and therefore stdout's error envelope and stderr alike. It does **not** bind
+  `ResolveResult.Error`, which is a data field of the answer, populated by the engine, and carried to
+  stdout unchanged by the JSON contract. So `quarry resolve ../x` prints
+  `"error": "engine: resolve target \"../x\": engine: target outside repository"` inside its payload
+  and exits 1, and D7's text form renders that same string as prose after `normalizeProse`. The
+  `after/` goldens and the end-to-end tests pin that exact string byte for byte.
+- **Rationale:** the alternative is for the CLI to overwrite a payload field the engine authored,
+  which is a second implementation of the outside-repo disposition — precisely what D8 routed through
+  the engine to avoid. The rule's purpose is that quarry's *own* prose not name an internal package;
+  a data field echoing the producer's error text is a different thing, and rewriting it would make the
+  CLI's payload disagree with the facade's, which returns the engine value untouched (D5).
+- **Noted defect, not fixed here:** the doubled prefix (`engine: resolve target …: engine: target
+  outside repository`) is `internal/engine`'s own wording — `resolveTarget` wraps a sentinel whose
+  text already carries the prefix. It is worth tightening, but `internal/engine/` is out of scope for
+  this task (Scope/Out), so it is handed to the operator as a follow-up on `main` rather than
+  papered over here. The goldens pin today's string; a later engine-wording change regenerates them.
 
 ### D11 — flags: `--text` and `--root` only; `--depth` and `--symbols` are rejected
 
@@ -424,7 +478,8 @@ rule already says there is no text rendering of a failure.
 
   Each file keeps T5a's exact format: the invocation line `$ quarry <verb> <args>`, a blank line, and
   stdout verbatim, **with no exit-code trailer**. The expected exit code moves into the test table
-  and into `INDEX.md`'s own column.
+  and into `INDEX.md`'s own column. `afterGoldenCase` therefore gains a `verb` field as well as an
+  exit-code field: today both the argv it builds and the invocation line it records hardcode `toc`.
 - **Rationale:** the format is a T5a decision, stated in `after/INDEX.md` and contrasted there
   against the before side's untrue claim about its own trailers; changing it now would regenerate
   four committed goldens for a cosmetic reason. The exit code is still recorded in a tracked file
@@ -516,7 +571,22 @@ renderer choice) → `cmd/quarry` (one line).
   `internal/cli/target.go` (split into `repoRelPath` + `repoRelTarget`), `internal/cli/cli.go` (two
   new pipelines beside `Run`'s existing one; `codeForTOCError` stays as-is and gains siblings for the
   two new verbs so each mapping stays table-testable), `internal/cli/usage.go`, `internal/cli/doc.go`.
-- `internal/cli/after_test.go` (eight rows + an expected-exit-code field on `afterGoldenCase`).
+  `internal/cli` gains one import: `glyph/` (D10a).
+- `internal/cli/after_test.go` — eight new rows, and `afterGoldenCase` gains **two** fields: a `verb`
+  (today `after_test.go` hardcodes `"toc"` into argv and `"$ quarry toc "` into the recorded
+  invocation line, so both sites become `tc.verb`) and an expected exit code. `TestAfterGoldens`'s
+  two blanket assertions — exit 0 and empty stderr — become per-case expectations at the same time
+  (gotcha 1 below).
+- **Existing test files this task edits**, all named by the Testing section and each an edit rather
+  than a new file: `internal/cli/flags_test.go` (the parser table gains the three-verb gate, the
+  per-verb flag-validity rejections, both arity messages, and D10's `#` check),
+  `internal/cli/target_test.go` (the `repoRelPath`/`repoRelTarget` split must leave every existing
+  row passing, plus new leading-`..` rows), `internal/cli/cli_test.go` (the two new pipelines and the
+  new exit-code mappings), `quarry/render_test.go` (the two new JSON renderers and the shared-encoder
+  extraction), `quarry/text_test.go` (the two new text renderers plus the `writeSymbolLine`
+  no-regression golden), `quarry/repo_test.go` (the two new delegating methods and the
+  `errors.As`-through-the-facade test).
+- **New test files:** `internal/cli/glyph5_test.go` (D16).
 - `docs/research/output-formats/after/INDEX.md` + eight new `.txt` files.
 
 **Gotchas found during exploration:**
@@ -631,3 +701,4 @@ renderer choice) → `cmd/quarry` (one line).
 - **Q:** Are `ambiguous` and `multipart` covered by `after/` goldens? **A:** [auto-pick] No — by a self-built fixture tree in `internal/cli/glyph5_test.go`. **Why:** the `after/` goldens skip wherever `LADDER_LOOMYARD_REPO` is unset, and Loomyard is not known to contain a build-tag-duplicated declaration or a several-`init` unit; a golden that silently is not the case it claims is worse than none.
 - **Q:** How is "`after/` covers the same command set — nothing missing" made checkable, given `impact`, `refs` and `assert-no-callers` have no phase-1 successor? **A:** [auto-pick] `INDEX.md`'s mapping table gets a row for every before-side file, each naming a successor or stating "no successor, by design" with its plan citation. **Why:** T5a set exactly this precedent for the two compact-view files.
 - **Q:** Is `RenderJSON` generalised to `any`, or are there per-type renderers? **A:** [auto-pick] Per-type exported renderers over one shared unexported `renderJSON(v any)`. **Why:** T6 is being written against `RenderJSON`'s current signature in parallel, and a generic exported renderer would let any type reach a function contracted to emit plan §4's key set.
+- **Q:** How does the CLI obtain the `<reason>` word for `expand`'s exit-1 grammar rejections, given `Expand` wraps the parse error behind an `engine:` prefix D4 forbids passing through? **A:** [round-2 gap resolution] `internal/cli` imports `glyph/` directly and reaches `parseErr.Reason` with `errors.As` against `*glyph.ParseError`; no facade alias is added (D10a). **Why:** `glyph/` is a public, cgo-free, dependency-free package, so the import costs nothing; the facade's aliases exist only because `internal/engine` is unreachable, and aliasing a reachable public type would be a second spelling of the grammar's own error type, which `docs/glyph.md` §6 forbids. Dropping `<reason>` was rejected because it is the only actionable part of the rejection and is the same word `resolve` puts in its payload's `reason` key.
