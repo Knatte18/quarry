@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-matrix-and-conclusion
+phase: approved-doc-propagation
 slug: ladder-breadth
 branch: ladder-breadth
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-ladder-c-task-02  '2026-09-04T17:48:55Z'
 approved-ladder-d-task-06  '2026-09-04T17:54:36Z'
 approved-ladder-file-and-pre-matrix-gates  '2026-09-04T18:01:13Z'
 approved-matrix-and-conclusion  '2026-09-04T18:36:27Z'
+approved-doc-propagation  '2026-09-04T18:39:56Z'
 ```
 
 ## Batches
@@ -71,7 +72,8 @@ batches:
     commit_sha: 60b9fb4d5c5dc5972224377b18f9a070fc28dcee
     verify_baseline_failures: []
   - name: doc-propagation
-    state: running
+    state: approved
     implementer_session: 06177a27-2a99-47b6-8b2c-7962d5c07143
     start_sha: a80fd85fbc1b16c64e99b3334fba519c1c29929b
+    commit_sha: c50b81d2954550417206a4bc855babe6e1a3debd
 ```
