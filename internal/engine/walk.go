@@ -1,5 +1,6 @@
 // walk.go holds the per-directory work Repo.TOC drives, as unexported methods on *Repo:
-// dirPackage, dirDoc, fileEntry, and the recursion itself, walkDir.
+// dirPackage, dirDoc, fileEntry, unitSpellable, and the recursion itself, walkDir; and the
+// unexported free function unitFor.
 //
 // How many times a file is parsed, and why. A directory is walked in exactly two parse passes
 // over its files, never three. Pass one is dirPackage, which reads package clauses only. Pass two
@@ -28,6 +29,7 @@ import (
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
@@ -47,6 +49,53 @@ func joinRel(parent, child string) string {
 		return child
 	}
 	return parent + "/" + child
+}
+
+// unitFor derives the glyph unit a file belongs to, from the directory's own repository-relative
+// path dirRel, the directory's dominant package clause dirPkg, and this file's own package clause
+// fileClause.
+//
+// A file whose clause is exactly dirPkg+"_test" belongs to the external-test unit dirRel+"_test";
+// every other file belongs to dirRel itself. The discriminator is the clause, never the filename:
+// keying on the literal "_test" suffix instead would split a package legitimately named mytest or
+// httptest into two units it never actually has, and a same-package "_test.go" file (one whose
+// clause is dirPkg, not dirPkg+"_test") belongs to the package's own unit, not a second one, even
+// though its filename carries "_test" too.
+//
+// dirRel == "." — the repository root — is an exception to the suffix rule: unitFor returns "" for
+// both branches there, never "._test". Left unhandled, a root-level external test package would
+// become the unit "._test", which glyph.Parse accepts as a legal segment; root-level "_test" files
+// would then be emitted under a spellable unit while their non-test siblings in the same directory
+// are excluded as unspellable (the root's own unit is ""), an inconsistency with no upside. The
+// empty string keeps the whole root out uniformly instead, which is the same open gap
+// unitSpellable's doc comment records, not a second rule.
+func unitFor(dirRel, dirPkg, fileClause string) string {
+	if dirRel == "." {
+		return ""
+	}
+	if fileClause == dirPkg+"_test" {
+		return dirRel + "_test"
+	}
+	return dirRel
+}
+
+// unitSpellable reports whether glyph.Parse accepts unit as a Go unit, by attempting to parse
+// unit+"#x" — an arbitrary well-formed member appended solely so Parse has a complete glyph to
+// check; only the unit half of the result matters here. Called once per distinct unit encountered
+// in a directory, before any extraction from that directory, so its cost is at most a couple of
+// Parse calls per directory rather than one per file.
+//
+// A directory whose unit the Go alphabet cannot spell is still listed — its files still get Name,
+// Header, Test and Generated like any other file — but no file entry in it carries Symbols. This
+// one rule covers every rejection the alphabet makes: the repository root's empty unit, a "." or
+// ".." segment, and a segment holding a space, a backslash, or an ASCII control rune. Emitting
+// nothing is the honest answer to a name the contract cannot spell; the alternative would be
+// minting a unit spelling glyph.Parse itself rejects. What the repository root's own unit should
+// spell is an open gap in the identifier contract (docs/glyph.md §2), not something this engine
+// decides on the contract's behalf.
+func (r *Repo) unitSpellable(unit string) bool {
+	_, err := glyph.Parse(glyph.Go, unit+"#x")
+	return err == nil
 }
 
 // dirPackage reads every .go file's package clause in the directory dirRel, whose entries have
@@ -172,7 +221,15 @@ func (r *Repo) dirDoc(clauses map[string]string, docs map[string]string, pkg str
 // wantSymbols says. A read failure or invalid UTF-8 sets Error and leaves Header, Lossy and
 // Symbols unset; the file is still listed, never skipped. A parse that reports an error sets
 // Lossy. Error and Lossy are never both set.
-func (r *Repo) fileEntry(dirRel, base string, dirPkg, dirLang string, clause string, wantSymbols bool) (FileEntry, string) {
+//
+// spellable is the caller's per-directory cache of unit -> unitSpellable(unit), populated lazily
+// here on first use of a given unit and reused for every later file sharing it — at most two
+// distinct units exist per directory (the directory's own, and its "_test" external-test
+// counterpart), so this keeps unitSpellable's glyph.Parse call to at most two per directory rather
+// than one per file. When wantSymbols is true but this file's own unit (derived by unitFor from
+// dirRel, dirPkg, and clause) is unspellable, Symbols is left nil regardless — the directory is
+// still listed, just without symbols, per unitSpellable's own doc comment.
+func (r *Repo) fileEntry(dirRel, base string, dirPkg, dirLang string, clause string, wantSymbols bool, spellable map[string]bool) (FileEntry, string) {
 	entry := FileEntry{Name: base}
 
 	fullPath := filepath.Join(r.absDir(dirRel), base)
@@ -206,8 +263,16 @@ func (r *Repo) fileEntry(dirRel, base string, dirPkg, dirLang string, clause str
 			entry.Language = lang
 		}
 		if wantSymbols {
-			symbols := strategy.Symbols(root, src)
-			entry.Symbols = &symbols
+			unit := unitFor(dirRel, dirPkg, clause)
+			ok, cached := spellable[unit]
+			if !cached {
+				ok = r.unitSpellable(unit)
+				spellable[unit] = ok
+			}
+			if ok {
+				symbols := strategy.Symbols(unit, root, src)
+				entry.Symbols = &symbols
+			}
 		}
 		packageDoc = strategy.PackageDoc(root, src)
 		return nil
@@ -289,10 +354,11 @@ func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool
 	}
 
 	docs := make(map[string]string)
+	spellable := make(map[string]bool)
 	files := make([]FileEntry, 0, len(fileEntries)+len(symlinkEntries))
 	for _, entry := range fileEntries {
 		base := entry.Name()
-		fe, doc := r.fileEntry(dirRel, base, dirPkg, dirLang, clauses[base], wantSymbols)
+		fe, doc := r.fileEntry(dirRel, base, dirPkg, dirLang, clauses[base], wantSymbols, spellable)
 		files = append(files, fe)
 		if doc != "" {
 			docs[base] = doc
