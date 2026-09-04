@@ -380,16 +380,22 @@ configs:
 	}
 }
 
-// TestLoadLadder_RealTocFile loads the tracked, migrated ladder-toc.yaml and asserts the shape T7
-// depends on: the four surviving cell ids, the single-entry tool list, the two controls, and the MCP
-// prefix with and without a declared server block.
+// TestLoadLadder_RealTocFile loads the tracked, migrated ladder-toc.yaml and asserts the shape the
+// breadth matrix depends on: all eight cell ids, the single-entry tool list, the four controls, the
+// two new task entries' schema and shared pin, and the MCP prefix with and without a declared server
+// block.
 func TestLoadLadder_RealTocFile(t *testing.T) {
 	l, err := LoadLadder("../../ladder-toc.yaml")
 	if err != nil {
 		t.Fatalf("LoadLadder(ladder-toc.yaml) = %v; want no error", err)
 	}
 
-	wantIDs := map[string]bool{"a0-none": true, "a2-toc-dir": true, "b0-none": true, "b8-toc-dir": true}
+	wantIDs := map[string]bool{
+		"a0-none": true, "a2-toc-dir": true,
+		"b0-none": true, "b8-toc-dir": true,
+		"c0-none": true, "c1-toc-dir": true,
+		"d0-none": true, "d1-toc-dir": true,
+	}
 	if len(l.Configs) != len(wantIDs) {
 		t.Fatalf("len(Configs) = %d; want %d", len(l.Configs), len(wantIDs))
 	}
@@ -408,6 +414,27 @@ func TestLoadLadder_RealTocFile(t *testing.T) {
 	}
 	if c, ok := l.ControlFor("b"); !ok || c.ID != "b0-none" {
 		t.Errorf(`ControlFor("b") = %+v, %v; want b0-none, true`, c, ok)
+	}
+	if c, ok := l.ControlFor("c"); !ok || c.ID != "c0-none" {
+		t.Errorf(`ControlFor("c") = %+v, %v; want c0-none, true`, c, ok)
+	}
+	if c, ok := l.ControlFor("d"); !ok || c.ID != "d0-none" {
+		t.Errorf(`ControlFor("d") = %+v, %v; want d0-none, true`, c, ok)
+	}
+
+	const sharedPin = "975578cda8d6f3a81580bd4e73725e060211b766"
+	for _, taskID := range []string{"02-shedadapters-exploration", "06-loomyard-cold-start-orientation"} {
+		task, ok := l.Tasks[taskID]
+		if !ok {
+			t.Errorf("Tasks[%q] not found", taskID)
+			continue
+		}
+		if task.Schema != "exploration" {
+			t.Errorf("Tasks[%q].Schema = %q; want %q", taskID, task.Schema, "exploration")
+		}
+		if task.PinnedSHA != sharedPin {
+			t.Errorf("Tasks[%q].PinnedSHA = %q; want %q", taskID, task.PinnedSHA, sharedPin)
+		}
 	}
 
 	if got := l.MCPPrefix(); got != "mcp__quarry__" {

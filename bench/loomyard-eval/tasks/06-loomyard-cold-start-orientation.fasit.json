@@ -1,0 +1,86 @@
+{
+  "_meta": {
+    "task": "06-loomyard-cold-start-orientation",
+    "type": "exploration",
+    "pinned_sha": "975578cda8d6f3a81580bd4e73725e060211b766",
+    "scope": [
+      "whole repository -- no package named in the prompt"
+    ],
+    "date": "2026-09-04",
+    "arm": "C",
+    "role": "reference/fasit agent -- unlimited time/token budget, produces the ground-truth answer the other two arms are scored against; cross-checked the package graph with a second independent method, `go build ./...` at the pinned SHA, which succeeds cleanly and confirms every symbol named below is present and referenced exactly as described",
+    "see_also": "scorecard.md (scoring/analysis), usage.json (tokens/tool-calls/duration, revision notes)"
+  },
+  "relevant_files": [
+    "internal/configsync/configsync.go",
+    "internal/configreg/configreg.go",
+    "internal/configengine/config.go",
+    "internal/yamlengine/reconcile.go",
+    "internal/configcli/configcli.go",
+    "internal/fabriccli/clone.go",
+    "internal/fabriccli/fabric.go"
+  ],
+  "key_symbols": [
+    {
+      "name": "configsync.ReconcileAll",
+      "file": "internal/configsync/configsync.go",
+      "role": "Iterates configreg.Modules(), reads each module's on-disk file, and calls yamlengine.Reconcile against that module's template, writing the merged result when apply is true; skips the fabric module entirely, since it is repo-wide rather than per-worktree."
+    },
+    {
+      "name": "configsync.ReconcileFabricAt",
+      "file": "internal/configsync/configsync.go",
+      "role": "The repo-wide counterpart to ReconcileAll for the one module ReconcileAll skips: reconciles the single fabric.yaml at a board directory, folding in pre-cutover legacy warp.yaml/weft.yaml values on first materialization."
+    },
+    {
+      "name": "configsync.legacyFabricConfig",
+      "file": "internal/configsync/configsync.go",
+      "role": "Reads any pre-cutover warp.yaml/weft.yaml still on disk and concatenates their values so ReconcileFabricAt can migrate them into the new fabric.yaml on first run."
+    },
+    {
+      "name": "configreg.Modules",
+      "file": "internal/configreg/configreg.go",
+      "role": "Returns the ordered registry of every known config module (name + template function + SeedOnly flag); this is the list configsync.ReconcileAll walks."
+    },
+    {
+      "name": "configreg.Module.SeedOnly",
+      "file": "internal/configreg/configreg.go",
+      "role": "Marks a module (e.g. models, burler) whose key set is operator-owned open-ended data; ReconcileAll materializes its template only when the file is absent and never adds/removes keys from a present file, unlike the default per-key reconcile every other module gets."
+    },
+    {
+      "name": "configengine.ConfigFile",
+      "file": "internal/configengine/config.go",
+      "role": "Joins a baseDir and module name into that module's config YAML path; both configsync and the CLI resolve every config path through this one function."
+    },
+    {
+      "name": "yamlengine.Reconcile",
+      "file": "internal/yamlengine/reconcile.go",
+      "role": "The actual key-diffing engine: parses template and existing YAML into node trees, computes added/removed leaf key-paths by set difference, overlays existing values onto the template's structure, and remarshals -- this is what configsync.ReconcileAll and ReconcileFabricAt both call to do the real comparison."
+    },
+    {
+      "name": "yamlengine.MissingKeys",
+      "file": "internal/yamlengine/reconcile.go",
+      "role": "A read-only sibling of Reconcile used by configengine.Load to detect a config file missing keys its template requires, without merging or writing anything."
+    },
+    {
+      "name": "configcli.runReconcile",
+      "file": "internal/configcli/configcli.go",
+      "role": "Handler for the `lyx config reconcile` subcommand -- the primary user-facing entry point -- which resolves the worktree's baseDir and calls configsync.ReconcileAll, then reports each module's added/removed/applied/migratedFrom fields as JSON."
+    },
+    {
+      "name": "fabriccli.CloneAndWire",
+      "file": "internal/fabriccli/clone.go",
+      "role": "The clone-time entry point: after fabricengine.CloneHub, calls configsync.ReconcileFabricAt for the repo-wide fabric.yaml and then configsync.ReconcileAll for every per-worktree module config, committing whatever each call materializes."
+    },
+    {
+      "name": "fabriccli.runReconcile",
+      "file": "internal/fabriccli/fabric.go",
+      "role": "The `lyx fabric reconcile` handler, which also calls configsync.ReconcileFabricAt before its own fabric-specific reconcile logic runs, since a stale fabric.yaml would otherwise be read by the rest of the command."
+    }
+  ],
+  "summary": "The reconciliation mechanism spans four packages plus two CLI entry points. internal/configreg owns the registry: Modules() returns every known module's name, template function, and a SeedOnly flag marking modules whose key set is operator-owned rather than template-derived. internal/yamlengine owns the actual comparison: Reconcile parses a template and an existing file into YAML node trees, computes added and removed leaf key-paths by set difference, overlays existing values onto the template's structure, and remarshals the result; MissingKeys is a read-only sibling used only to detect absence, never to merge. internal/configsync is the orchestration layer sitting between them: ReconcileAll walks configreg.Modules() (skipping the repo-wide fabric module and special-casing SeedOnly modules to materialize-only-when-absent) and calls yamlengine.Reconcile per module, while ReconcileFabricAt handles the one module ReconcileAll skips, additionally folding in values from two pre-cutover config files on first materialization. internal/configengine supplies the shared path-joining (ConfigFile) every one of these packages resolves a config path through, and its own Load/LoadOrTemplate functions call yamlengine.MissingKeys (not Reconcile) to fail or degrade a strict load. Two independent entry points trigger the mechanism: internal/configcli's `lyx config reconcile` command calls ReconcileAll directly, and internal/fabriccli's clone (CloneAndWire) and `fabric reconcile` handlers call both ReconcileFabricAt and ReconcileAll as part of a larger wiring sequence.",
+  "confidence": "high",
+  "open_questions": [
+    "internal/hubforge/seed.go's SeedConfig/SeedFabricConfig write config files directly and go through configengine.ConfigFile, but they override an already-reconciled file for test fixtures rather than performing reconciliation themselves -- treated as adjacent rather than part of the mechanism proper.",
+    "internal/burlerengine/config.go documents that the burler module (SeedOnly) is written verbatim once rather than reconciled key-by-key; confirmed by configreg.go's SeedOnly flag and configsync.go's SeedOnly branch, not by reading burlerengine/config.go's own logic in detail."
+  ]
+}

@@ -11,6 +11,7 @@ package ladder
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -357,6 +358,10 @@ func TestE2E(t *testing.T) {
 		repDir := RepDir(env.resultsRoot, "cell-a", 1)
 		assertStateFileWrittenLast(t, repDir)
 
+		if _, err := os.Stat(filepath.Join(repDir, InvalidReasonFile)); !os.IsNotExist(err) {
+			t.Errorf("%s exists in a completed repetition's own directory; want it absent", InvalidReasonFile)
+		}
+
 		transcriptData, err := os.ReadFile(filepath.Join(repDir, TranscriptFile))
 		if err != nil || len(transcriptData) == 0 {
 			t.Errorf("transcript was not tee'd to %s: %v", repDir, err)
@@ -615,7 +620,7 @@ func TestE2E(t *testing.T) {
 				t.Errorf("invalid directory %s was not produced: %v", target, err)
 				continue
 			}
-			reasonPath := filepath.Join(target, ServerConnectFailureFile)
+			reasonPath := filepath.Join(target, InvalidReasonFile)
 			data, err := os.ReadFile(reasonPath)
 			if err != nil {
 				t.Errorf("reason file %s was not written: %v", reasonPath, err)
@@ -624,11 +629,156 @@ func TestE2E(t *testing.T) {
 			if !strings.Contains(string(data), granted.ID) || !strings.Contains(string(data), "quarry") {
 				t.Errorf("reason file %s = %q; want it to name the cell and the server", reasonPath, data)
 			}
+			if !strings.Contains(string(data), "cause: "+CauseServerNotConnected) {
+				t.Errorf("reason file %s = %q; want it to carry \"cause: %s\"", reasonPath, data, CauseServerNotConnected)
+			}
 		}
 
 		summary, _, _ := summarizeAndWriteReport(t, env.resultsRoot)
 		if len(summary.Incomplete) != 1 || summary.Incomplete[0] != granted.ID {
 			t.Errorf("summary.Incomplete = %v; want [%q]", summary.Incomplete, granted.ID)
+		}
+	})
+
+	t.Run("InvalidReasonRunnerError", func(t *testing.T) {
+		env, sha := newE2EEnv(t, fakeBinPath)
+		l := baseLadder(env, sha, 1, "task-1")
+		l.Configs = []Config{{ID: "cell-runner-error", Ladder: "re", Task: "task-1", Allowed: nil}}
+		ladderPath := filepath.Join(t.TempDir(), "ladder.yaml")
+		writeSyntheticLadderFile(t, ladderPath, l)
+		setFakeClaudeEnv(t, l, "partial_fail")
+
+		exitNonZero, err := Run(context.Background(), runOpts(env, ladderPath, nil))
+		if err != nil {
+			t.Fatalf("Run() = %v; want no error", err)
+		}
+		if !exitNonZero {
+			t.Error("Run() reported a zero exit for a cell that never produced a valid answer")
+		}
+
+		dir := RepDir(env.resultsRoot, "cell-runner-error", 1)
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("repetition directory %s still exists; want it renamed away", dir)
+		}
+		for k := 1; k <= MaxAttempts; k++ {
+			target := dir + ".invalid-" + strconv.Itoa(k)
+			reason := readInvalidReason(t, target)
+			if !strings.Contains(reason, "cell: cell-runner-error") {
+				t.Errorf("reason file %s = %q; want it to name the cell", target, reason)
+			}
+			if !strings.Contains(reason, "repetition: 1") {
+				t.Errorf("reason file %s = %q; want \"repetition: 1\"", target, reason)
+			}
+			if !strings.Contains(reason, "cause: "+CauseRunnerError) {
+				t.Errorf("reason file %s = %q; want \"cause: %s\"", target, reason, CauseRunnerError)
+			}
+			if !strings.Contains(reason, "exit_code: 1") {
+				t.Errorf("reason file %s = %q; want \"exit_code: 1\"", target, reason)
+			}
+			if !strings.Contains(reason, fmt.Sprintf("attempt: %d", k)) {
+				t.Errorf("reason file %s = %q; want \"attempt: %d\"", target, reason, k)
+			}
+		}
+	})
+
+	t.Run("InvalidReasonUnparseableAnswer", func(t *testing.T) {
+		env, sha := newE2EEnv(t, fakeBinPath)
+		l := baseLadder(env, sha, 1, "task-1")
+		l.Configs = []Config{{ID: "cell-unparseable", Ladder: "up", Task: "task-1", Allowed: nil}}
+		ladderPath := filepath.Join(t.TempDir(), "ladder.yaml")
+		writeSyntheticLadderFile(t, ladderPath, l)
+		setFakeClaudeEnv(t, l, "no_fence")
+
+		exitNonZero, err := Run(context.Background(), runOpts(env, ladderPath, nil))
+		if err != nil {
+			t.Fatalf("Run() = %v; want no error", err)
+		}
+		if !exitNonZero {
+			t.Error("Run() reported a zero exit for a cell that never produced a valid answer")
+		}
+
+		dir := RepDir(env.resultsRoot, "cell-unparseable", 1)
+		for k := 1; k <= MaxAttempts; k++ {
+			target := dir + ".invalid-" + strconv.Itoa(k)
+			reason := readInvalidReason(t, target)
+			if !strings.Contains(reason, "cause: "+CauseUnparseableAnswer) {
+				t.Errorf("reason file %s = %q; want \"cause: %s\"", target, reason, CauseUnparseableAnswer)
+			}
+			if !strings.Contains(reason, fmt.Sprintf("attempt: %d", k)) {
+				t.Errorf("reason file %s = %q; want \"attempt: %d\"", target, reason, k)
+			}
+			for _, line := range strings.Split(reason, "\n") {
+				if strings.HasPrefix(line, "exit_code:") {
+					t.Errorf("reason file %s = %q; want no \"exit_code:\" line -- the fixture exits zero", target, reason)
+				}
+			}
+		}
+	})
+
+	t.Run("InvalidReasonResultError", func(t *testing.T) {
+		env, sha := newE2EEnv(t, fakeBinPath)
+		l := baseLadder(env, sha, 1, "task-1")
+		l.Configs = []Config{{ID: "cell-result-error", Ladder: "rl", Task: "task-1", Allowed: nil}}
+		ladderPath := filepath.Join(t.TempDir(), "ladder.yaml")
+		writeSyntheticLadderFile(t, ladderPath, l)
+		setFakeClaudeEnv(t, l, "result_error")
+
+		exitNonZero, err := Run(context.Background(), runOpts(env, ladderPath, nil))
+		if err != nil {
+			t.Fatalf("Run() = %v; want no error", err)
+		}
+		if !exitNonZero {
+			t.Error("Run() reported a zero exit for a cell that never produced a valid answer")
+		}
+
+		dir := RepDir(env.resultsRoot, "cell-result-error", 1)
+		for k := 1; k <= MaxAttempts; k++ {
+			target := dir + ".invalid-" + strconv.Itoa(k)
+			reason := readInvalidReason(t, target)
+			if !strings.Contains(reason, "cause: "+CauseResultError) {
+				t.Errorf("reason file %s = %q; want \"cause: %s\"", target, reason, CauseResultError)
+			}
+			if !strings.Contains(reason, fmt.Sprintf("attempt: %d", k)) {
+				t.Errorf("reason file %s = %q; want \"attempt: %d\"", target, reason, k)
+			}
+			for _, line := range strings.Split(reason, "\n") {
+				if strings.HasPrefix(line, "exit_code:") {
+					t.Errorf("reason file %s = %q; want no \"exit_code:\" line -- the fixture exits zero", target, reason)
+				}
+			}
+		}
+	})
+
+	t.Run("InvalidReasonReEntry", func(t *testing.T) {
+		env, sha := newE2EEnv(t, fakeBinPath)
+		l := baseLadder(env, sha, 1, "task-1")
+		l.Configs = []Config{{ID: "cell-reentry", Ladder: "rn", Task: "task-1", Allowed: nil}}
+		ladderPath := filepath.Join(t.TempDir(), "ladder.yaml")
+		writeSyntheticLadderFile(t, ladderPath, l)
+		setFakeClaudeEnv(t, l, "partial_fail")
+
+		opts := runOpts(env, ladderPath, nil)
+
+		if _, err := Run(context.Background(), opts); err != nil {
+			t.Fatalf("first Run() = %v; want no error", err)
+		}
+
+		dir := RepDir(env.resultsRoot, "cell-reentry", 1)
+		for k := 1; k <= MaxAttempts; k++ {
+			assertDirExists(t, dir+".invalid-"+strconv.Itoa(k))
+		}
+
+		if _, err := Run(context.Background(), opts); err != nil {
+			t.Fatalf("second Run() = %v; want no error", err)
+		}
+
+		target := dir + ".invalid-4"
+		reason := readInvalidReason(t, target)
+		if !strings.Contains(reason, "attempt: 1") {
+			t.Errorf("reason file %s = %q; want \"attempt: 1\" -- the attempt counter restarts on a re-entered root", target, reason)
+		}
+		if strings.Contains(reason, "attempt: 4") {
+			t.Errorf("reason file %s = %q; want the attempt counter to diverge from the directory suffix", target, reason)
 		}
 	})
 
@@ -732,6 +882,17 @@ func TestE2E(t *testing.T) {
 			t.Errorf("cell.UnscoredCount = %d; want 0", cell.UnscoredCount)
 		}
 	})
+}
+
+// readInvalidReason reads dir/InvalidReasonFile, failing the test with the path on a read error.
+func readInvalidReason(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, InvalidReasonFile)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
 }
 
 // copyDir recursively copies every file and directory under src into dst, creating dst.

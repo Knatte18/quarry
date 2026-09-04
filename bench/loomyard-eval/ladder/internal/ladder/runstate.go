@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // The six per-repetition file names, the single place they are spelled. Every writer and reader in
@@ -30,12 +31,105 @@ const (
 	RunStateFile = "run.json"
 )
 
-// ServerConnectFailureFile is the file name run.go writes CheckServerConnected's finding under, into
-// the attempt directory, immediately before InvalidateRep renames it away. It is not one of the six
+// InvalidReasonFile is the file name run.go writes an InvalidReason under, into the attempt
+// directory, immediately before InvalidateRep renames it away. It is not one of the six
 // per-repetition file names above: it exists only inside a discarded attempt directory, never inside
 // a completed repetition's own directory, since InvalidateRep -- unlike the blinding-failed path --
 // renames the directory it lives in rather than leaving it in place.
-const ServerConnectFailureFile = "server_connect_failure.txt"
+const InvalidReasonFile = "invalid_reason.txt"
+
+// The four causes InvalidReason.Cause ever carries. This is the whole enumeration; no fifth value is
+// ever written.
+const (
+	// CauseRunnerError is written when the measured claude process itself failed -- a non-zero exit,
+	// or an unparseable stream.
+	CauseRunnerError = "runner_error"
+	// CauseResultError is written when the process exited zero but the transcript carries no usable
+	// result record, or the result record itself reports an error.
+	CauseResultError = "result_error"
+	// CauseUnparseableAnswer is written when the transcript carries a usable result record but the
+	// final assistant text carries no decodable fenced answer.
+	CauseUnparseableAnswer = "unparseable_answer"
+	// CauseServerNotConnected is written when a granted cell's session-init record does not show its
+	// expected server connected.
+	CauseServerNotConnected = "server_not_connected"
+)
+
+// InvalidReason is the invalid_reason.txt payload: why one attempt of one repetition was discarded.
+// ExitCode is a pointer so an unrecoverable exit status is expressed as absence rather than as a
+// sentinel value.
+type InvalidReason struct {
+	// Cell is the cell id this attempt belongs to.
+	Cell string
+	// Repetition is the repetition number this attempt belongs to.
+	Repetition int
+	// Attempt is the attempt's index within the invocation that produced it. It is deliberately not
+	// the directory's ".invalid-<n>" suffix; the two coincide only on a fresh repetition directory,
+	// since a re-entered root's attempt counter restarts at one while the suffix keeps counting from
+	// whatever invalidated directories already exist.
+	Attempt int
+	// Cause is one of the four cause constants above.
+	Cause string
+	// Detail is a single-line, sanitized elaboration of Cause -- never the wrapped error's own text,
+	// which can carry a machine path or the full rendered prompt.
+	Detail string
+	// ExitCode is the measured process's exit status, when one is recoverable and Cause is
+	// CauseRunnerError. Nil otherwise, so the exit_code line is omitted rather than written as a
+	// sentinel.
+	ExitCode *int
+}
+
+// invalidReasonDetailMaxLen is the byte-length ceiling sanitizeDetail truncates a detail string to.
+const invalidReasonDetailMaxLen = 200
+
+// sanitizeDetail collapses detail to a single line safe for one key: value entry: every "\r" and "\n"
+// is replaced with a single space, runs of whitespace are collapsed to one space, and the result is
+// trimmed of leading and trailing space. The length bound is measured in bytes, as len(s), not in
+// runes: when the trimmed result's len exceeds invalidReasonDetailMaxLen, it is truncated to at most
+// invalidReasonDetailMaxLen-3 bytes without splitting a UTF-8 rune, then the three-byte ASCII
+// ellipsis "..." is appended, so the returned string's len is never greater than
+// invalidReasonDetailMaxLen.
+func sanitizeDetail(detail string) string {
+	replaced := strings.NewReplacer("\r", " ", "\n", " ").Replace(detail)
+	collapsed := strings.Join(strings.Fields(replaced), " ")
+	if len(collapsed) <= invalidReasonDetailMaxLen {
+		return collapsed
+	}
+
+	limit := invalidReasonDetailMaxLen - len("...")
+	// A UTF-8 continuation byte's two high bits are "10"; back off until limit lands on a rune's
+	// first byte (or on 0), so the truncation below never splits a multi-byte rune.
+	for limit > 0 && collapsed[limit]&0xC0 == 0x80 {
+		limit--
+	}
+	return collapsed[:limit] + "..."
+}
+
+// RenderInvalidReason returns invalid_reason.txt's text for r: one "key: value" pair per line, each
+// line newline-terminated, in exactly this order -- cell, repetition, attempt, cause, exit_code,
+// detail. The exit_code line is emitted only when r.ExitCode is non-nil and is omitted entirely
+// otherwise. detail is passed through sanitizeDetail before it is written.
+func RenderInvalidReason(r InvalidReason) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "cell: %s\n", r.Cell)
+	fmt.Fprintf(&b, "repetition: %d\n", r.Repetition)
+	fmt.Fprintf(&b, "attempt: %d\n", r.Attempt)
+	fmt.Fprintf(&b, "cause: %s\n", r.Cause)
+	if r.ExitCode != nil {
+		fmt.Fprintf(&b, "exit_code: %d\n", *r.ExitCode)
+	}
+	fmt.Fprintf(&b, "detail: %s\n", sanitizeDetail(r.Detail))
+	return b.String()
+}
+
+// WriteInvalidReason writes RenderInvalidReason(r) to dir/InvalidReasonFile.
+func WriteInvalidReason(dir string, r InvalidReason) error {
+	path := filepath.Join(dir, InvalidReasonFile)
+	if err := os.WriteFile(path, []byte(RenderInvalidReason(r)), 0o644); err != nil {
+		return fmt.Errorf("write invalid reason %s: %w", path, err)
+	}
+	return nil
+}
 
 // MaxAttempts is the ceiling on how many times one repetition is retried -- shared by the
 // invalid-repetition rename this file implements and the scorer-only retry run.go implements -- so

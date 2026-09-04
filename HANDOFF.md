@@ -67,14 +67,18 @@ document goes stale the moment anything else lands.
 
 The numbers the plan cites (its §1 points here). The runs are on branch `v1-final` under
 `bench/loomyard-eval/ladder/results/<root>/conclusion.md`; T7 reran the toc-dir finding against
-the merged rewrite (`main`'s `cmd/quarry-mcp`) and it did not reproduce cleanly — see the new row
+the merged rewrite (`main`'s `cmd/quarry-mcp`) and it did not reproduce cleanly — see the row
 below and `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` for the full account.
-The committed conclusions are the record; the raw run data was never committed anywhere.
+M1 then ran a breadth matrix across three further shapes against the same merged rewrite and
+found no shape separates either — see the row below and
+`bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md` for the full account. The
+committed conclusions are the record; the raw run data was never committed anywhere.
 
 | finding | run |
 |---|---|
 | A directory table of contents halves exploration on unfamiliar code: turns 8→4, cache_read 127k→83k, recall unchanged. The one measured win and the regression gate for the rewrite (T7). | `2026-09-02-toc`, reps 5 |
 | T7's rerun of the same comparison, against the merged rewrite: no cost metric separated from the control at n=5 (turns and cache_read both `separated: false`), and most cost medians ran equal-or-higher for the toc-dir cell rather than lower. Recall/precision stayed consistent with the prior root. The regression gate did not reproduce the prior win on this host/harness/CLI-version pairing. | `2026-09-04-toc`, reps 5 |
+| M1's breadth matrix, three shapes against the same merged rewrite — ladder b (task 04, the negative control), ladder c (task 02, three-package exploration) and ladder d (task 06, whole-repo cold-start orientation with no scope hint), all at n=5. No shape has even one cost metric marked `separated: true` in the direction the toc hypothesis predicts: ladder b stayed flat as its negative-control role requires, ladder c's cost medians mostly moved the wrong way, and ladder d's cost medians pointed the predicted way on every metric without any of them separating. Recall and precision did not degrade on any shape. Toc does not separate anywhere in this root. | `2026-09-04-breadth`, reps 5 |
 | Every LSP-shaped tool (definition, references, symbol) sat flat with or below the grep control. | `2026-08-30`, 45 runs |
 | A lossy compact view cut bytes 4× and cost precision 0.96→0.82. Views must be complete by default. | `2026-09-02-compact2` |
 | Symbol spans are syntactic: doc p90=12 lines, total span p90=52, max=971. A fixed grep window truncates silently. | 1741 symbols, Loomyard |
