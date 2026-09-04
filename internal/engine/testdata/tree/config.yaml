@@ -1,0 +1,4 @@
+# Config fixture.
+# Pins hashBlockHeader over a .yaml extension.
+
+key: value
