@@ -4,7 +4,7 @@
 task: "resolve + expand (T4)"
 batch: "loomyard-timing"
 number: 5
-cards: 3
+cards: 5
 verify: CGO_ENABLED=1 go test ./internal/engine/
 depends-on: [3, 4]
 ```
@@ -13,15 +13,28 @@ depends-on: [3, 4]
 
 This batch closes the task: the environment-gated timing assertion that turns the plan's twenty
 glyphs across five units under 150 ms into a test, the benchmark kept beside it so a regression is
-measurable rather than merely detectable, and the two mechanical follow-throughs the task's Scope
+measurable rather than merely detectable, the spot check that shows `expand` collecting members from
+more than one file of a real repository, and the two mechanical follow-throughs the task's Scope
 names and closes — widening T3's Loomyard gate helper by one parameter type so a benchmark can call
 it, and correcting the one sentence in T3's type-symbol doc comment that describes an `expand` this
 task has now decided differently.
 
 It is last because the timing test calls `Resolve` and the spot check calls `Expand`, so both verbs
-must exist. It is one batch because all three cards are small, share the Loomyard gate as their
+must exist. It is one batch because all five cards are small, share the Loomyard gate as their
 subject, and share one risk: a change to a T3 file. Both changes to T3 files are behaviour-preserving
-by construction and each is its own card so a reviewer sees it in isolation.
+by construction and each is its own card so a reviewer sees it in isolation, and each of the three
+test artefacts is its own card and its own commit for the same reason.
+
+**Batch prerequisite: a pinned Loomyard checkout must be reachable before card 20 starts.** Cards 20,
+21 and 22 all measure against a checkout at the commit `loomyard_test.go`'s own pin names, and card 20
+reads its twenty glyph strings off it. Resolve it once, before card 20: read `LADDER_LOOMYARD_REPO`
+from the environment first; when it is unset, read simple key-equals-value lines from the gitignored
+`.scratch/ladder.env` beneath the repository root, the same file and the same precedence the ladder
+harness uses; when neither names a checkout at the pinned commit, locate one on the host and write its
+path into `.scratch/ladder.env`, which is gitignored and therefore carries no machine path into a
+tracked file. If no checkout at the pinned commit can be found at all, stop and report that as the
+blocker rather than inventing glyph strings — the list must be read off the real checkout or it is not
+a measurement, and no later card in this batch can be validated without it.
 
 ## Cards
 
@@ -43,18 +56,19 @@ by construction and each is its own card so a reviewer sees it in isolation.
   existing caller still compiles: the goldens and the round trip pass a `*testing.T`, which satisfies
   `testing.TB`.
 
-  Card 20's benchmark is the reason for the widening. Duplicating the pin check into a second file was
+  Card 21's benchmark is the reason for the widening. Duplicating the pin check into a second file was
   rejected: two implementations of "is this the right Loomyard" is exactly the drift that makes a
   done-criterion silently unverifiable when one is updated and the other is not.
 - **Commit:** `refactor(engine): widen the Loomyard gate helper to testing.TB`
 
-### Card 20: the Loomyard timing test, its benchmark and the expand spot check
+### Card 20: the twenty-glyph list and the timing assertion
 
 - **Context:**
   - `internal/engine/answer.go`
-  - `internal/engine/expand.go`
   - `internal/engine/loomyard_test.go`
+  - `internal/engine/repo.go`
   - `internal/engine/resolve.go`
+  - `internal/engine/roundtrip_test.go`
   - `internal/engine/toc_test.go`
 - **Edits:** none
 - **Creates:**
@@ -62,18 +76,9 @@ by construction and each is its own card so a reviewer sees it in isolation.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Create `internal/engine/loomyard_timing_test.go` with a file header comment in
-  this package's register, and three artefacts, all gated through the existing `loomyardRepo` helper
-  so the pin rule is not restated: it skips when the environment names no checkout and fails when it
-  names one at the wrong commit.
-
-  Before writing the glyph list, resolve a Loomyard checkout on this host. Read
-  `LADDER_LOOMYARD_REPO` from the environment first; when it is unset, read simple key-equals-value
-  lines from the gitignored `.scratch/ladder.env` beneath the repository root, the same file and the
-  same precedence the ladder harness uses. When neither names a checkout at the pinned commit, locate
-  one on the host and write its path into `.scratch/ladder.env`, which is gitignored and therefore
-  carries no machine path into a tracked file. If no checkout at the pinned commit can be found at
-  all, stop and report it rather than inventing glyph strings: the list must be read off the real
-  checkout or it is not a measurement.
+  this package's register, the glyph list, and one test. The batch's Loomyard checkout prerequisite,
+  stated in the Batch Scope above, is resolved before this card starts; this card reads its glyph
+  strings off that checkout.
 
   Declare a package-level `var loomyardTwentyGlyphs = []string{...}` of exactly twenty glyph strings,
   four each from five Loomyard packages of differing size, every one of them read off the pinned
@@ -83,28 +88,72 @@ by construction and each is its own card so a reviewer sees it in isolation.
   depends on. Comment the list with which packages it draws from and that the pin is what keeps it
   from going stale silently.
 
-  `TestResolve_TwentyGlyphsUnder150ms` calls `loomyardRepo`, skips when `testing.Short()` is set,
-  opens the checkout with `Open`, and first resolves all twenty glyphs asserting every result's
-  `Status` is `StatusFound` — a drifted glyph list would otherwise turn the criterion green by timing
-  twenty misses. It then times one `Resolve` call over the same twenty glyphs five times with
-  `time.Since` and asserts the minimum elapsed is under 150 ms, reporting all five durations in the
-  failure message. The minimum is the floor the criterion is about; a single run would fail on an
-  unrelated build in another worktree, and an average or a percentile would measure the machine's
-  load rather than the code.
-
-  `BenchmarkResolveTwentyGlyphs` calls the same `loomyardRepo` gate — the reason card 19 widened it —
-  opens the checkout once outside the timed loop, resets the timer, and calls `Resolve` over the same
-  twenty glyphs once per iteration, failing the benchmark on any error.
-
-  `TestExpand_LoomyardMembersAcrossFiles` calls the same gate, skips under `testing.Short()`, and
-  expands one Loomyard type whose methods are known to live in more than one file at the pinned
-  commit, asserting `Status` is `StatusFound`, that `Members` is non-empty, and that the members carry
-  at least two distinct `File` values. That is the property the verb exists for and the one no
-  committed fixture proves as convincingly. Name the chosen type in a comment alongside the glyph
-  list.
+  `TestResolve_TwentyGlyphsUnder150ms` checks `testing.Short()` and skips with a reason **first**,
+  before calling `loomyardRepo` — the same order `TestRoundTrip_Loomyard` uses in
+  `internal/engine/roundtrip_test.go`, and the order that matters: `loomyardRepo` *fails* rather than
+  skips on a wrongly-pinned checkout, so gating on the checkout first would make this test fail under
+  `-short` on a machine where the established Loomyard test skips. It then opens the checkout with
+  `Open`, resolves all twenty glyphs asserting every result's `Status` is `StatusFound` — a drifted
+  glyph list would otherwise turn the criterion green by timing twenty misses — and times one
+  `Resolve` call over the same twenty glyphs five times with `time.Since`, asserting the minimum
+  elapsed is under 150 ms and reporting all five durations in the failure message. The minimum is the
+  floor the criterion is about; a single run would fail on an unrelated build in another worktree, and
+  an average or a percentile would measure the machine's load rather than the code.
 - **Commit:** `test(engine): assert the twenty-glyph resolve timing against Loomyard`
 
-### Card 21: correct the stale expand sentence in golang.go
+### Card 21: the resolve benchmark
+
+- **Context:**
+  - `internal/engine/answer.go`
+  - `internal/engine/loomyard_test.go`
+  - `internal/engine/repo.go`
+  - `internal/engine/resolve.go`
+  - `internal/engine/toc_test.go`
+- **Edits:**
+  - `internal/engine/loomyard_timing_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Add `BenchmarkResolveTwentyGlyphs` to `internal/engine/loomyard_timing_test.go`,
+  beside the timing test it mirrors. It calls the same `loomyardRepo` gate — passing a `*testing.B`,
+  which is the reason card 19 widened that helper's parameter to `testing.TB` — opens the checkout
+  once outside the timed loop with `Open`, calls `b.ResetTimer`, and calls `Resolve` over
+  `loomyardTwentyGlyphs` once per iteration, failing the benchmark on any error. It reuses the
+  package-level glyph list card 20 declared and does not restate it.
+
+  The benchmark is kept beside the assertion rather than replacing it, so a regression is measurable
+  rather than merely detectable. It cannot replace the assertion: `go test` does not run benchmarks,
+  so a criterion asserted only in a benchmark would never be checked by the gate.
+- **Commit:** `test(engine): keep the twenty-glyph resolve call as a benchmark`
+
+### Card 22: the expand spot check over a real repository
+
+- **Context:**
+  - `internal/engine/answer.go`
+  - `internal/engine/expand.go`
+  - `internal/engine/loomyard_test.go`
+  - `internal/engine/repo.go`
+  - `internal/engine/roundtrip_test.go`
+  - `internal/engine/toc_test.go`
+- **Edits:**
+  - `internal/engine/loomyard_timing_test.go`
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Add `TestExpand_LoomyardMembersAcrossFiles` to
+  `internal/engine/loomyard_timing_test.go`. It checks `testing.Short()` and skips first, then calls
+  `loomyardRepo` — the same gate order card 20 uses and for the same reason — opens the checkout with
+  `Open`, and expands one Loomyard type whose methods are known to live in more than one file at the
+  pinned commit. Assert `Status` is `StatusFound`, `Head` is non-nil, `Members` is non-empty, and the
+  members carry at least two distinct `File` values.
+
+  That last assertion is the property the verb exists for and the one no committed fixture proves as
+  convincingly — a fixture built to have members in two files proves the filter runs, where a real
+  repository proves it finds what a reader would have had to open several files to see. Name the chosen
+  type and the files its methods live in, at the pinned commit, in a comment on the test.
+- **Commit:** `test(engine): spot-check expand's cross-file members against Loomyard`
+
+### Card 23: correct the stale expand sentence in golang.go
 
 - **Context:**
   - `internal/engine/answer.go`
@@ -132,14 +181,16 @@ by construction and each is its own card so a reviewer sees it in isolation.
 
 ## Batch Tests
 
-`verify:` runs the whole `internal/engine` package suite. Card 19's widening and card 21's comment
+`verify:` runs the whole `internal/engine` package suite. Card 19's widening and card 23's comment
 correction are both behaviour-preserving, and the suite passing unchanged is precisely their
 assertion — card 19's in particular, since a caller that no longer compiles is the only way that
-change can go wrong. Card 20's three artefacts are environment-gated: on a host with no Loomyard
-checkout they skip with a reason and the suite is green, and on a host with the pinned checkout and
-`LADDER_LOOMYARD_REPO` exported they run for real. The implementer must run the suite both ways
-before committing card 20 — once with the variable unset, confirming the skips, and once with it set
-to the pinned checkout, confirming the twenty glyphs resolve `found`, the timing assertion passes,
-the benchmark runs under `go test -bench . -run '^$' ./internal/engine/`, and the expand spot check
-finds members in more than one file — and state both outcomes in the commit body. A test that only
-ever skips is not a test.
+change can go wrong. The three artefacts of cards 20, 21 and 22 are environment-gated: on a host with
+no Loomyard checkout they skip with a reason and the suite is green, and on a host with the pinned
+checkout and `LADDER_LOOMYARD_REPO` exported they run for real. The implementer must run the suite
+both ways before committing each of those three cards — once with the variable unset, confirming the
+skip, and once with it set to the pinned checkout, confirming card 20's twenty glyphs resolve `found`
+and its timing assertion passes, card 21's benchmark runs under
+`go test -bench . -run '^$' ./internal/engine/`, and card 22's spot check finds members in more than
+one file — and state both outcomes in each commit body. A test that only ever skips is not a test.
+Run the suite once under `-short` as well, confirming cards 20 and 22 skip on that flag alone rather
+than reaching the checkout gate.

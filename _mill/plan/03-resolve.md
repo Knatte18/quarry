@@ -374,6 +374,7 @@ and every card in this batch leaves the package building and the existing suite 
 - **Context:**
   - `internal/engine/answer.go`
   - `internal/engine/ignore.go`
+  - `internal/engine/repo.go`
   - `internal/engine/resolve.go`
   - `internal/engine/scratchtree_test.go`
   - `internal/engine/toc_test.go`

@@ -1,0 +1,53 @@
+MILL_REVIEW_BEGIN
+# Review: resolve + expand (T4) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: Anthropic Claude Opus-class model (harness reports claude-opus-5)
+reviewed_file: plan/
+date: 2026-09-04
+```
+
+## Findings
+
+### [BLOCKING:decision] Card 15 never calls statusForMatches
+**Location:** batch 4 / card 15 (and batch 4 Batch Scope)
+**Issue:** Batch Scope says expand "reuses rather than reimplements" `statusForMatches`, and the Shared Decision "one decision function" says it is "the only place a match set becomes a status, and both verbs call it" — but card 15's `Requirements:` prescribe five standalone rows and never name `statusForMatches`, so rows 1 and 2 duplicate the shared function's rows 1 and 2 inline.
+**Fix:** State in card 15 that `expand` calls `statusForMatches(g, matches, res.collision)` and give the mapping from its four return values onto the kind gate and the head/members path.
+
+### [BLOCKING:consistency] Three doc citations point at the wrong file
+**Location:** batch 1 / card 2; batch 4 / cards 14, 15
+**Issue:** "docs/glyph.md §5 requires the answer to name the kind" (card 14), "docs/glyph.md §5's 'the class span minus its member spans'" (card 15) and "docs/glyph.md §5's rule that a Go type never splits" (card 2) are all text from `docs/rewrite-plan.md` (lines 279, 281, 293); `docs/glyph.md` §5 contains the word "expand" exactly once and none of those clauses. Each card orders the implementer to write the citation into a shipped doc comment.
+**Fix:** Re-attribute the three claims to `docs/rewrite-plan.md` and add that file to those cards' `Context:`, which currently lists only `docs/glyph.md`.
+
+### [BLOCKING:scope] repo.go identifiers named without repo.go in Context
+**Location:** batch 3 / card 12; batch 5 / card 20 (also card 14)
+**Issue:** Card 12's `Requirements:` name `ErrTargetNotFound` and `ErrTargetOutsideRepo` and card 20's name `Open`, all declared in `internal/engine/repo.go`, which appears in neither card's `Context:` or `Edits:`; card 14 argues from "the two target sentinels in repo.go" with the same omission. Sibling cards 8, 9 and 13 do list repo.go.
+**Fix:** Add `internal/engine/repo.go` to the `Context:` of cards 12, 14 and 20.
+
+### [NIT:consistency] Batch 2's regression premise omits the whole-repo round trip
+**Location:** batch 2 / Batch Scope and Batch Tests
+**Issue:** Both claim `internal/engine/testdata/` is enumerated by no existing test and name `testdata/tree/` and `testdata/glyphs/` as the only enumerated places; `TestRoundTrip_QuarryItself` in fact walks the module root with `DepthAll` and covers both new packages. The `tags` fixture survives only because `tupleSetDiff` is a multiset diff written for build-tag duplicates — a fact the batch's risk analysis never states.
+**Fix:** Name `TestRoundTrip_QuarryItself` and `tupleSetDiff`'s multiset semantics as the reason the duplicate-declaration fixture is safe.
+
+### [NIT:consistency] answer.go's own stale comments are ruled out of scope
+**Location:** batch 1 / cards 1 and 2
+**Issue:** Both end with "Change no existing declaration, tag or comment in this file", which freezes answer.go's header comment (it enumerates the file's contents as "Kind, Symbol, DirAnswer, FileEntry, TOCOptions") and `Symbol.HeadStart`'s "consumed by the later expand verb" — while card 9 rewrites resolve.go's header for exactly this reason and card 21 exists solely to fix one stale forward reference in golang.go.
+**Fix:** Allow the header-comment sentence and the "later expand verb" phrasing in answer.go the same treatment cards 9 and 21 give their files.
+
+### [NIT:scope] Card 20 carries five deliverables and one host-provisioning step
+**Location:** batch 5 / card 20
+**Issue:** One card does host checkout discovery, writing `.scratch/ladder.env`, a twenty-element glyph list read off the pinned commit, a timing test, a benchmark and an expand spot check; its `Commit:` names only the timing assertion, and the card can halt outright ("stop and report it") on a host with no pinned checkout. Every other card in this plan is one artefact.
+**Fix:** Split the checkout resolution plus glyph list from the three test artefacts, or at least widen the commit subject to cover the benchmark and the spot check.
+
+### [NIT:consistency] Timing test gates in the opposite order to its sibling
+**Location:** batch 5 / card 20
+**Issue:** `TestResolve_TwentyGlyphsUnder150ms` is specified as "calls `loomyardRepo`, skips when `testing.Short()` is set"; `TestRoundTrip_Loomyard` checks `testing.Short()` first, so under `-short` on a machine with a wrongly-pinned checkout the new test fails where the established one skips.
+**Fix:** Specify the `testing.Short()` check before the `loomyardRepo` call, matching roundtrip_test.go.
+
+## Verdict
+
+REQUEST_CHANGES
+Expand bypasses the shared decision function; three doc citations name the wrong file.
+MILL_REVIEW_END
