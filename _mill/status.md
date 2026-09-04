@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-expand
+phase: approved-loomyard-timing
 slug: resolve-expand
 branch: resolve-expand
 plan: _mill/plan
@@ -39,6 +39,7 @@ approved-answer-types  '2026-09-04T06:23:10Z'
 approved-fixtures  '2026-09-04T06:25:04Z'
 approved-resolve  '2026-09-04T06:34:47Z'
 approved-expand  '2026-09-04T06:40:48Z'
+approved-loomyard-timing  '2026-09-04T06:49:20Z'
 ```
 
 ## Batches
@@ -70,8 +71,9 @@ batches:
     commit_sha: 66a18a8a1e9e88efbc5b01874415c3c8c9cbab32
     verify_baseline_failures: []
   - name: loomyard-timing
-    state: running
+    state: approved
     implementer_session: 06d27e19-5729-4041-8761-25fc1afeb728
     start_sha: 05d83f61717ddff0934489c4e3fb6fe34e1509b1
+    commit_sha: e6bb802094f38da617668b9b65f2e50b5ca4265f
     verify_baseline_failures: []
 ```
