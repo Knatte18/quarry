@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/quarry/glyph"
+	"github.com/Knatte18/quarry/internal/repopath"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -135,6 +136,26 @@ func codeForExpandError(err error) int {
 	return exitInternal
 }
 
+// rootUsageMessage formats the CLI's own user-facing sentence for a repopath.ResolveRoot error,
+// rather than propagating err.Error(), since repopath's sentinel text is namespaced to that
+// package and would leak an internal package name into the CLI's contract. It returns the message
+// and true when err wraps repopath.ErrNoRepositoryRoot or repopath.ErrRootNotDirectory, and
+// ("", false) for any other error, including nil.
+//
+// It is a named function rather than an inline switch precisely so a table test can assert both
+// sentences directly, without a fixture that cannot exist — the no-root case is unreachable from
+// inside this repository without changing the process working directory, which these tests never
+// do.
+func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
+	if errors.Is(err, repopath.ErrNoRepositoryRoot) {
+		return "no repository root found above " + cwd + "; pass --root", true
+	}
+	if errors.Is(err, repopath.ErrRootNotDirectory) {
+		return "--root is not a directory: " + flagRoot, true
+	}
+	return "", false
+}
+
 // Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes the four
 // steps every verb shares, then dispatches to that verb's own pipeline — the step that decides an
 // exit code is the step that decides the message, so the two things are never allowed to drift
@@ -144,8 +165,11 @@ func codeForExpandError(err error) int {
 //  2. When help was requested, write usageText to stdout and return exit 0 — help is a successful
 //     query about the CLI, not a usage error, so it never touches stderr or exit 2.
 //  3. Read the working directory. This is the one place in the package that does.
-//  4. Resolve the repository root, --root or discovery, then the base directory a relative target
-//     is interpreted against: the root when --root was given, the working directory otherwise.
+//  4. Resolve the repository root by calling internal/repopath.ResolveRoot, --root or discovery,
+//     then compute the base directory a relative target is interpreted against: the root when
+//     --root was given, the working directory otherwise. A repopath error is translated to the
+//     CLI's own usage sentence by rootUsageMessage, which keeps repopath's own namespaced sentinel
+//     text out of the CLI's contract.
 //
 // Run then switches on req.verb and calls one of runTOC, runResolve, or runExpand. The default
 // case returns exitInternal with an internal-error message rather than falling through to a zero
@@ -154,9 +178,9 @@ func codeForExpandError(err error) int {
 //
 // runTOC's own pipeline, continuing from step 4 above:
 //
-//  1. Convert the target to a clean, repository-relative path. Escaping the root is exit 1, named
-//     with the target exactly as given, since a target that escaped the root has no meaningful
-//     repository-relative form.
+//  1. Convert the target to a clean, repository-relative path with internal/repopath.RepoRelTarget.
+//     Escaping the root is exit 1, named with the target exactly as given, since a target that
+//     escaped the root has no meaningful repository-relative form.
 //  2. Lstat the resolved target: not found is exit 1, named with the repository-relative path; any
 //     other stat error is exit 3. Lstat, never Stat, so a symlink named as the target is treated as
 //     a file and not followed, the same rule engine.resolveTarget already follows.
@@ -176,10 +200,10 @@ func codeForExpandError(err error) int {
 //  1. Classify the target with strings.Contains(req.target, "#"). A glyph target is passed to the
 //     facade verbatim — no path conversion, no rebasing, no stat — because a glyph's unit is
 //     repository-relative by the grammar's own definition. A path target is converted with
-//     repoRelPath, the arithmetic-only helper, and the converted form is passed through
-//     unconditionally, including one that begins with "..". Only repoRelPath erroring is a failure
-//     here, and it is exit 1, named "target outside repository: " followed by the target as given —
-//     the same message and code runTOC already emits for the same condition.
+//     internal/repopath.RepoRelPath, the arithmetic-only helper, and the converted form is passed
+//     through unconditionally, including one that begins with "..". Only RepoRelPath erroring is a
+//     failure here, and it is exit 1, named "target outside repository: " followed by the target as
+//     given — the same message and code runTOC already emits for the same condition.
 //  2. Open the repository. A failure is exit 3.
 //  3. Call the facade's Resolve method with a one-element slice holding the target from step 1. A
 //     non-nil error is exit 3: an engine read failure is not an answer about a glyph.
@@ -239,15 +263,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 
-	root, err := resolveRoot(req.root, cwd)
+	root, err := repopath.ResolveRoot(req.root, cwd)
 	if err != nil {
-		var uerr usageError
-		if errors.As(err, &uerr) {
-			return fail(stdout, stderr, exitUsage, uerr.Error(), true)
+		if msg, ok := rootUsageMessage(err, req.root, cwd); ok {
+			return fail(stdout, stderr, exitUsage, msg, true)
 		}
-		// Unreachable today: resolveRoot and discoverRoot are contracted to return only a
-		// usageError. Stated anyway, so every step of this pipeline spells both dispositions and a
-		// later change to that contract cannot silently fall through to a zero exit code.
+		// Guards the case where repopath.ResolveRoot returns an error that is neither sentinel —
+		// unreachable today, since DiscoverRoot and ResolveRoot only ever wrap
+		// repopath.ErrNoRepositoryRoot or repopath.ErrRootNotDirectory. Stated anyway, so every
+		// step of this pipeline spells both dispositions and a later change to that contract
+		// cannot silently fall through to a zero exit code.
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 
@@ -274,7 +299,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 // Its behaviour is unchanged from Run's own body before this pipeline was extracted from it; see
 // Run's doc comment for the numbered steps.
 func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
-	rel, err := repoRelTarget(root, base, req.target)
+	rel, err := repopath.RepoRelTarget(root, base, req.target)
 	if err != nil {
 		if errors.Is(err, quarry.ErrTargetOutsideRepo) {
 			return fail(stdout, stderr, exitNegative, "target outside repository: "+req.target, false)
@@ -334,7 +359,7 @@ func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
 func runResolve(req request, root, base string, stdout, stderr io.Writer) int {
 	target := req.target
 	if !strings.Contains(target, "#") {
-		rel, err := repoRelPath(root, base, target)
+		rel, err := repopath.RepoRelPath(root, base, target)
 		if err != nil {
 			return fail(stdout, stderr, exitNegative, "target outside repository: "+req.target, false)
 		}
