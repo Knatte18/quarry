@@ -105,6 +105,26 @@ change, and a harness change cannot land mid-matrix.
   results root is the whole point. Also rejected: parsing the exit code out of the wrapped error's
   text.
 
+### m2-attempt-numbering
+
+- Decision: the attempt number written into `invalid_reason.txt` comes from a **loop-local counter in
+  `run.go`'s attempt loop**, initialised to zero before the loop and incremented once per rejected
+  attempt immediately before the reason file is written — never from `InvalidateRep`'s return value,
+  which is only produced after the rename. `InvalidateRep`'s own numbering is unchanged: it still
+  scans for the next unused `.invalid-<n>` suffix. The two are kept in agreement by assertion, not by
+  hope: every e2e case specified below asserts that each `N.invalid-k/` directory's own reason file
+  carries `attempt: k`.
+- Rationale: the reason file must be written into the directory *before* it is renamed away, so the
+  writer cannot know the suffix the rename will pick. A counter incremented once per rejection
+  produces the same sequence `InvalidateRep`'s scan does for a fresh repetition directory, and the
+  assertion is what catches the one case where they could diverge — a results root re-entered by a
+  second invocation where earlier `.invalid-*` directories already exist.
+- Rejected: writing the file after the rename into the renamed directory (it would work, but it moves
+  the write outside the "before `InvalidateRep`" contract the roadmap's done-when states, and leaves
+  a window where a crash between rename and write loses the reason entirely). Also rejected: omitting
+  the `attempt` field (it is what lets a reader of three sibling `.invalid-*` directories tell which
+  cause came first).
+
 ### m2-proven-by-test
 
 - Decision: prove M2 with e2e tests in `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
@@ -310,8 +330,9 @@ there is no nested module. `cmd/ladder` has two subcommands, `run` and `report`.
   `max_turns` transcript or a decodable fenced JSON block. On rejection it calls
   `writeServerConnectFailure` (server-connect path only), then `InvalidateRep`, then retries until
   `attempts >= MaxAttempts`. The `connectFailures == attempts` case aborts the whole run and must keep
-  working unchanged. The loop currently has no explicit attempt counter of its own — one is needed for
-  the reason file's `attempt` field, and it must agree with the suffix `InvalidateRep` produces.
+  working unchanged. The loop currently has no explicit attempt counter of its own — see the
+  `m2-attempt-numbering` decision for how the reason file's `attempt` field is made to agree with the
+  suffix `InvalidateRep` produces.
 - `writeServerConnectFailure` (`run.go`, ~line 584) is the function the new writer replaces; its
   current content shape (`cell:`, `repetition:`, `expected_server:`, then the finding message) is the
   precedent for the new file's layout.
@@ -422,6 +443,8 @@ There is no `CONSTRAINTS.md` at the hub root. The binding constraints come from 
 - *e2e — `server_not_connected`:* retarget the existing `GrantedCellServerNeverConnects` case from
   `ServerConnectFailureFile` to `InvalidReasonFile`, keeping its existing assertions that the file
   names the cell and the server, and adding `cause: server_not_connected`.
+- *Every e2e case above* asserts the `attempt` field equals its own directory's `.invalid-<k>` suffix,
+  per the `m2-attempt-numbering` decision — not only the `runner_error` case.
 - *Regression:* the happy path must write **no** `invalid_reason.txt` into a completed repetition's
   own directory — assert its absence, since the file belongs only inside a discarded attempt.
 - *Regression:* the `connectFailures == attempts` whole-run abort still fires (the existing case's
@@ -440,9 +463,14 @@ There is no `CONSTRAINTS.md` at the hub root. The binding constraints come from 
 - Each new fasit parses as JSON, carries the exploration schema's three scored keys
   (`relevant_files`, `key_symbols`, `summary`) plus `confidence` and `open_questions`, and its
   `_meta.pinned_sha` equals the pin its ladder entry names.
-- A dry sanity run of one new cell at `--reps 1` before the full matrix is **not** taken — it would
-  consume real budget and, worse, produce a results root that is not the measured one. The offline
-  e2e layer plus the loader tests are the pre-flight.
+- A dry sanity run of one new cell at `--reps 1` is **not** taken on this task's own authority — it
+  costs real budget and the cost discipline reserves any widening for the operator. It is, however,
+  available *with* the operator's word, and the plan's pre-matrix step should say so rather than
+  close the door: the residual risk the offline layer cannot catch is a subtly bad new prompt, and
+  two real runs (`c1-toc-dir` and `d1-toc-dir` at `--reps 1`) would surface it. If authorised, the
+  smoke run goes into a **throwaway results root outside `bench/loomyard-eval/ladder/results/`**,
+  never the measured one, and its root is deleted afterwards — a measured root must contain only the
+  matrix it reports.
 
 **The matrix itself** is not a test and has no assertions; its acceptance is the task's own done-when
 — every measured cell a real MCP cell completing end to end, `5/5` complete non-blinding-failed
