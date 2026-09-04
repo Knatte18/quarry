@@ -118,6 +118,11 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
     `invalidReasonDetailMaxLen`, and that it ends with the ASCII `...`. Assert against `len`, not
     against a rune count, so the assertion cannot pass or fail depending on which reading the
     implementer picked.
+  - A case whose `Detail` is over-length **and built from multi-byte runes** asserts
+    `utf8.ValidString` on the rendered `detail` value. The two assertions above are both satisfied by
+    a naive byte slice that splits a rune mid-sequence, so without this case card 1's one non-obvious
+    requirement — truncate without splitting a UTF-8 rune — ships unverified. This case needs
+    `unicode/utf8` in `runstate_test.go`'s import block.
 
   Do not add a test for `WriteInvalidReason`'s file I/O here — the e2e cases in card 4 prove the
   file reaches disk on the paths that matter. `TestInvalidateRep` is not touched: the rename
