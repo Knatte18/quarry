@@ -42,6 +42,7 @@ rung cell's transcript at all.
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -65,6 +66,15 @@ rung cell's transcript at all.
   `len(transcript.Init.MCPServers) != 0` for a control cell, which is length-only and survives the
   change. Read `run.go` only to confirm `NewSessionFingerprint`'s call site needs no edit. Do not
   change either file in this card.
+  **Cover both additions in `provenance_test.go`, because nothing existing does.**
+  `TestCompareFingerprints` builds its fingerprints from named-field literals, so it stays green
+  while exercising neither the new map nor the new diff clause. Add a case asserting
+  `NewSessionFingerprint` populates `MCPServerStatuses` from a retyped init record — names as keys,
+  statuses as values, with `MCPServers` still carrying the names in record order — and a
+  `diffSessionFingerprint` case where two fingerprints agree on every field including the name list
+  and differ only in a server's status, asserting the returned string reports that difference.
+  Without the second case a server that silently stopped connecting mid-cell would read as no drift
+  at all, which is the failure this field exists to prevent.
 - **Commit:** `fix(ladder): type session-init mcp_servers as objects and record server status`
 
 ### Card 4: Pin the real 2.1.236 init shape in a regression test
@@ -77,7 +87,7 @@ rung cell's transcript at all.
   - `bench/loomyard-eval/ladder/internal/ladder/stream_test.go`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/tool-bytes.jsonl`
 - **Creates:**
-  - `bench/loomyard-eval/ladder/internal/ladder/testdata/session-init-mcp-connected.jsonl`
+  - `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/session-init-mcp-connected.jsonl`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Add a regression case whose init line is **copied verbatim from a real transcript
@@ -139,6 +149,13 @@ rung cell's transcript at all.
   the observed status, or its absence, in the finding's message. A control cell — one whose allowed
   list is empty — is never its concern; keep that predicate on the caller's side, matching how the
   blinding checks are gated by `IsControl` at the call site rather than inside the check.
+  **A nil init record is a finding, not a pass, and the check must never dereference it.**
+  `transcript.Init` is nil for a transcript carrying no init line — `run.go` nil-guards it at both of
+  its existing uses, and the attempt loop's accept branch tests only the result record, so a nil can
+  reach this call site. Take the pointer, guard it first, and return a finding when it is nil: for a
+  granted cell, a transcript with no init record cannot show the server ever loaded, and treating an
+  absence of evidence as a pass is the reasoning this whole batch exists to undo. Word that finding
+  distinctly from the server-absent one, so the two are told apart in the reason file.
   In `run.go`, wire it as an **infrastructure failure, not a fatal finding.** Place the check inside
   the per-attempt loop, against the candidate transcript's `Init`, before the loop accepts that
   transcript and breaks. On a finding, do not break: let control fall through to the existing
@@ -159,11 +176,24 @@ rung cell's transcript at all.
   names, and write the finding into the attempt directory as that file immediately before calling
   `InvalidateRep`. Name the cell, the repetition, the expected server and the observed status, or its
   absence.
+  **Bound the spend across repetitions, not just within one.** `MaxAttempts` caps retries at 3 *per
+  repetition*, which for a five-repetition cell permits 15 measured `claude -p` calls — against a
+  whole-task budget of 10 — and a systematic connect failure is exactly the case this check exists
+  to catch, so that ceiling would be reached, not approached. Use the disposition `run.go` already
+  carries for a tainted memory-path scan: when a repetition exhausts its attempts **and every one of
+  those attempts failed this check**, return a `repOutcome` with `abortRun` set, stopping the whole
+  invocation rather than moving to the next repetition. Three consecutive failures to connect the
+  same server is a configuration or environment fault, not bad luck, and the next repetition will
+  reproduce it at the cost of three more measured calls. That caps the blast radius of a systematic
+  failure at 3 calls instead of 15, and surfaces it while the operator can still act rather than
+  after the invocation returns. Keep the ordinary within-repetition retries intact: a single failed
+  attempt followed by a successful one is transient and must not abort anything.
   Add table cases to `gates_test.go` covering: a granted cell whose server is `connected` (no
   finding), one whose server reports another status (a finding naming that status), one whose init
-  record omits the server entirely (a finding), and a control cell, which the caller-side predicate
-  keeps out — assert the check's own behaviour for the granted cases and leave the control gating to
-  the call site.
+  record omits the server entirely (a finding), one passed a **nil** init record (a finding, and the
+  case that proves the guard rather than a panic), and a control cell, which the caller-side
+  predicate keeps out — assert the check's own behaviour for the granted cases and leave the control
+  gating to the call site.
 - **Commit:** `feat(ladder): invalidate a granted repetition whose mcp server did not connect`
 
 ## Batch Tests

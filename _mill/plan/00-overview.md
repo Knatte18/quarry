@@ -3,7 +3,7 @@
 ```yaml
 task: "Ladder, toc rerun (T7)"
 slug: "ladder-toc-rerun"
-approved: false
+approved: true
 started: "20260904-112745"
 parent: "main"
 root: ""
@@ -268,7 +268,9 @@ batches:
 
 ### Decision: the-code-under-test-is-not-edited
 
-- **Decision:** no card in this plan edits `internal/`, `quarry/`, `cmd/` or the ladder file's
+- **Decision:** no card in this plan edits the repository-root `internal/`, `quarry/` or `cmd/`
+  trees — the qualifier matters, because the harness tree under `bench/loomyard-eval/ladder/` has
+  `internal/` and `cmd/` directories of its own that batch 2 and card 7 legitimately touch — or the ladder file's
   measured parameters (cells, reps, models, effort, turn ceiling, pins, tasks, fasit). If the
   measurement exposes a defect there, the conclusion records it and it becomes a separate task.
 - **Rationale:** those are the code under test, and the ladder file's parameters are what makes this
@@ -285,7 +287,8 @@ batches:
 - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
 - `bench/loomyard-eval/ladder/internal/ladder/stream.go`
 - `bench/loomyard-eval/ladder/internal/ladder/stream_test.go`
-- `bench/loomyard-eval/ladder/internal/ladder/testdata/session-init-mcp-connected.jsonl`
+- `bench/loomyard-eval/ladder/internal/ladder/provenance_test.go`
+- `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/session-init-mcp-connected.jsonl`
 - `bench/loomyard-eval/ladder/internal/ladder/testdata/transcripts/tool-bytes.jsonl`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/ABANDONED.md`
 - `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md`
