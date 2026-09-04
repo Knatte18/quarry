@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Knatte18/quarry/internal/repopath"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -68,6 +69,26 @@ func codeForTOCError(err error) int {
 	return exitInternal
 }
 
+// rootUsageMessage formats the CLI's own user-facing sentence for a repopath.ResolveRoot error,
+// rather than propagating err.Error(), since repopath's sentinel text is namespaced to that
+// package and would leak an internal package name into the CLI's contract. It returns the message
+// and true when err wraps repopath.ErrNoRepositoryRoot or repopath.ErrRootNotDirectory, and
+// ("", false) for any other error, including nil.
+//
+// It is a named function rather than an inline switch precisely so a table test can assert both
+// sentences directly, without a fixture that cannot exist — the no-root case is unreachable from
+// inside this repository without changing the process working directory, which these tests never
+// do.
+func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
+	if errors.Is(err, repopath.ErrNoRepositoryRoot) {
+		return "no repository root found above " + cwd + "; pass --root", true
+	}
+	if errors.Is(err, repopath.ErrRootNotDirectory) {
+		return "--root is not a directory: " + flagRoot, true
+	}
+	return "", false
+}
+
 // Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes the
 // request pipeline in this fixed order — the step that decides an exit code is the step that
 // decides the message, so the two things are never allowed to drift apart:
@@ -76,7 +97,7 @@ func codeForTOCError(err error) int {
 //  2. When help was requested, write usageText to stdout and return exit 0 — help is a successful
 //     query about the CLI, not a usage error, so it never touches stderr or exit 2.
 //  3. Read the working directory. This is the one place in the package that does.
-//  4. Resolve the repository root, --root or discovery.
+//  4. Resolve the repository root by calling internal/repopath, --root or discovery.
 //  5. Convert the target to a clean, repository-relative path. Escaping the root is exit 1, named
 //     with the target exactly as given, since a target that escaped the root has no meaningful
 //     repository-relative form.
@@ -118,15 +139,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 
-	root, err := resolveRoot(req.root, cwd)
+	root, err := repopath.ResolveRoot(req.root, cwd)
 	if err != nil {
-		var uerr usageError
-		if errors.As(err, &uerr) {
-			return fail(stdout, stderr, exitUsage, uerr.Error(), true)
+		if msg, ok := rootUsageMessage(err, req.root, cwd); ok {
+			return fail(stdout, stderr, exitUsage, msg, true)
 		}
-		// Unreachable today: resolveRoot and discoverRoot are contracted (card 11) to return only
-		// a usageError. Stated anyway, so every step of this pipeline spells both dispositions and
-		// a later change to that contract cannot silently fall through to a zero exit code.
+		// Guards the case where repopath.ResolveRoot returns an error that is neither sentinel —
+		// unreachable today, since DiscoverRoot and ResolveRoot only ever wrap
+		// repopath.ErrNoRepositoryRoot or repopath.ErrRootNotDirectory. Stated anyway, so every
+		// step of this pipeline spells both dispositions and a later change to that contract
+		// cannot silently fall through to a zero exit code.
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 
@@ -134,7 +156,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if req.root != "" {
 		base = root
 	}
-	rel, err := repoRelTarget(root, base, req.target)
+	rel, err := repopath.RepoRelTarget(root, base, req.target)
 	if err != nil {
 		if errors.Is(err, quarry.ErrTargetOutsideRepo) {
 			return fail(stdout, stderr, exitNegative, "target outside repository: "+req.target, false)
