@@ -72,7 +72,7 @@
 #   go run ./bench/loomyard-eval/ladder/cmd/ladder run \
 #     --config bench/loomyard-eval/ladder/ladder-toc.yaml \
 #     --results bench/loomyard-eval/ladder/results/<date>-breadth \
-#     --cells a0-none,a2-toc-dir,b0-none,b8-toc-dir,c0-none,c1-toc-dir,d0-none,d1-toc-dir
+#     --cells b0-none,b8-toc-dir,c0-none,c1-toc-dir,d0-none,d1-toc-dir
 
 run_model: claude-sonnet-5
 reps: 5
