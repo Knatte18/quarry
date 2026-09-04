@@ -153,9 +153,21 @@ func TestParseArgs_UsageErrors(t *testing.T) {
 		{"unknown-flag", []string{"toc", "--depht", "t"}, "unknown flag: --depht"},
 		{"missing-target", []string{"toc"}, "toc takes exactly one target, got 0"},
 		{"two-targets", []string{"toc", "a", "b"}, "toc takes exactly one target, got 2"},
-		{"missing-verb", []string{}, "no verb given; expected: toc"},
-		{"unknown-verb", []string{"resolve", "t"}, "unknown verb: resolve"},
-		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc"},
+		{"missing-verb", []string{}, "no verb given; expected: toc, resolve, or expand"},
+		{"unknown-verb", []string{"bogus", "t"}, "unknown verb: bogus"},
+		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc, resolve, or expand"},
+		{"depth-not-valid-for-resolve", []string{"resolve", "--depth", "3", "t"}, "--depth is not valid for resolve"},
+		{"depth-not-valid-for-resolve-bad-value", []string{"resolve", "--depth", "x", "t"}, "--depth is not valid for resolve"},
+		{"symbols-not-valid-for-resolve", []string{"resolve", "--symbols", "t"}, "--symbols is not valid for resolve"},
+		{"no-symbols-not-valid-for-resolve", []string{"resolve", "--no-symbols", "t"}, "--no-symbols is not valid for resolve"},
+		{"depth-not-valid-for-expand", []string{"expand", "--depth", "3", "t#u"}, "--depth is not valid for expand"},
+		{"symbols-not-valid-for-expand", []string{"expand", "--symbols", "t#u"}, "--symbols is not valid for expand"},
+		{"no-symbols-not-valid-for-expand", []string{"expand", "--no-symbols", "t#u"}, "--no-symbols is not valid for expand"},
+		{"resolve-missing-target", []string{"resolve"}, "resolve takes exactly one target, got 0"},
+		{"resolve-two-targets", []string{"resolve", "a", "b"}, "resolve takes exactly one target, got 2"},
+		{"expand-missing-target", []string{"expand"}, "expand takes exactly one target, got 0"},
+		{"expand-two-targets", []string{"expand", "a#b", "c#d"}, "expand takes exactly one target, got 2"},
+		{"expand-missing-separator", []string{"expand", "no-hash-here"}, `expand takes a glyph (a target containing "#"), got: no-hash-here`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -204,6 +216,67 @@ func TestParseArgs_SingleDashHole(t *testing.T) {
 	}
 }
 
+// TestParseArgs_ThreeVerbGate pins that all three verbs are accepted and land in req.verb
+// unchanged, with no target-shape rejection for the verbs that do not require one.
+func TestParseArgs_ThreeVerbGate(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		verb string
+	}{
+		{"toc", []string{"toc", "t"}, "toc"},
+		{"resolve", []string{"resolve", "t"}, "resolve"},
+		{"expand", []string{"expand", "t#u"}, "expand"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseArgs(tt.args)
+			if err != nil {
+				t.Fatalf("parseArgs(%v) = _, %v; want nil error", tt.args, err)
+			}
+			if got.verb != tt.verb {
+				t.Errorf("parseArgs(%v).verb = %q; want %q", tt.args, got.verb, tt.verb)
+			}
+		})
+	}
+}
+
+// TestParseArgs_ExpandAcceptsHashBearingTarget pins that a "#"-bearing target passes the parser
+// for expand: the grammar's own rejection of a malformed glyph belongs to a later stage, not
+// here.
+func TestParseArgs_ExpandAcceptsHashBearingTarget(t *testing.T) {
+	got, err := parseArgs([]string{"expand", "pkg/file.go#Foo"})
+	if err != nil {
+		t.Fatalf("parseArgs(expand, hash-bearing target) = _, %v; want nil error", err)
+	}
+	if got.target != "pkg/file.go#Foo" {
+		t.Errorf("parseArgs(expand, hash-bearing target).target = %q; want %q", got.target, "pkg/file.go#Foo")
+	}
+}
+
+// TestParseArgs_TextAndRootValidForAllVerbs pins that --text and --root are accepted on every
+// verb, unlike --depth, --symbols and --no-symbols.
+func TestParseArgs_TextAndRootValidForAllVerbs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"toc-text", []string{"toc", "--text", "t"}},
+		{"toc-root", []string{"toc", "--root", "/repo", "t"}},
+		{"resolve-text", []string{"resolve", "--text", "t"}},
+		{"resolve-root", []string{"resolve", "--root", "/repo", "t"}},
+		{"expand-text", []string{"expand", "--text", "t#u"}},
+		{"expand-root", []string{"expand", "--root", "/repo", "t#u"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseArgs(tt.args); err != nil {
+				t.Errorf("parseArgs(%v) = _, %v; want nil error", tt.args, err)
+			}
+		})
+	}
+}
+
 func TestParseArgs_Help(t *testing.T) {
 	tests := []struct {
 		name string
@@ -215,6 +288,10 @@ func TestParseArgs_Help(t *testing.T) {
 		{"after-verb", []string{"toc", "--help"}},
 		{"after-target", []string{"toc", "t", "--help"}},
 		{"alongside-invalid-flag", []string{"toc", "--bogus", "-h"}},
+		{"resolve-after-verb", []string{"resolve", "--help"}},
+		{"resolve-alongside-invalid-flag", []string{"resolve", "--depth", "-h"}},
+		{"expand-after-verb", []string{"expand", "--help"}},
+		{"expand-alongside-invalid-flag", []string{"expand", "--symbols", "-h"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

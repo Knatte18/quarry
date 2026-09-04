@@ -39,8 +39,17 @@ type request struct {
 // its table test run with no fixtures.
 //
 // --help and -h are scanned for at any position, before anything else, and before any unknown
-// flag or missing verb is rejected: when found, parseArgs returns a request with help set and a
-// nil error, so help wins over every other complaint.
+// flag, missing verb, or unrecognised verb is rejected: when found, parseArgs returns a request
+// with help set and a nil error, so help wins over every other complaint.
+//
+// The verb gate accepts exactly "toc", "resolve" and "expand". --depth, --symbols and
+// --no-symbols are valid for "toc" only; either new verb rejects each with a usage error naming
+// the flag and the verb, checked at the point the flag is recognised so that rejection takes
+// precedence over the flag's own value validation. --text and --root are valid for all three
+// verbs. Every verb requires exactly one target; for "expand" specifically, a target containing
+// no "#" is rejected here, once the arity check has passed, so the parser stays pure over the
+// argument slice — no root discovery, no engine call — which is the property its fixture-free
+// table test rests on.
 func parseArgs(args []string) (request, error) {
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
@@ -49,14 +58,14 @@ func parseArgs(args []string) (request, error) {
 	}
 
 	if len(args) == 0 {
-		return request{}, usageError("no verb given; expected: toc")
+		return request{}, usageError("no verb given; expected: toc, resolve, or expand")
 	}
 
 	verb := args[0]
 	if strings.HasPrefix(verb, "-") {
-		return request{}, usageError("no verb given; expected: toc")
+		return request{}, usageError("no verb given; expected: toc, resolve, or expand")
 	}
-	if verb != "toc" {
+	if verb != "toc" && verb != "resolve" && verb != "expand" {
 		return request{}, usageError(fmt.Sprintf("unknown verb: %s", verb))
 	}
 
@@ -88,6 +97,9 @@ func parseArgs(args []string) (request, error) {
 
 		switch name {
 		case "--depth":
+			if verb != "toc" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
 			v, ok := nextValue()
 			if !ok {
 				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
@@ -103,12 +115,18 @@ func parseArgs(args []string) (request, error) {
 			}
 			req.depth = n
 		case "--symbols":
+			if verb != "toc" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
 			if req.symbols != nil && !*req.symbols {
 				return request{}, usageError("--symbols and --no-symbols cannot both be given")
 			}
 			t := true
 			req.symbols = &t
 		case "--no-symbols":
+			if verb != "toc" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
 			if req.symbols != nil && *req.symbols {
 				return request{}, usageError("--symbols and --no-symbols cannot both be given")
 			}
@@ -128,9 +146,14 @@ func parseArgs(args []string) (request, error) {
 	}
 
 	if len(targets) != 1 {
-		return request{}, usageError(fmt.Sprintf("toc takes exactly one target, got %d", len(targets)))
+		return request{}, usageError(fmt.Sprintf("%s takes exactly one target, got %d", verb, len(targets)))
 	}
 	req.target = targets[0]
+
+	if verb == "expand" && !strings.Contains(req.target, "#") {
+		return request{}, usageError(fmt.Sprintf(
+			"expand takes a glyph (a target containing \"#\"), got: %s", req.target))
+	}
 
 	return req, nil
 }
