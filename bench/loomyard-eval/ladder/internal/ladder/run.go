@@ -15,8 +15,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -392,6 +394,7 @@ func runCellRepetition(
 		maxTurnsHit bool
 	)
 	connectFailures := 0
+	attempt := 0
 	for {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return repOutcome{}, err
@@ -400,6 +403,10 @@ func runCellRepetition(
 		t, invokeErr := invokeMeasuredProcess(ctx, opts, l, cfg, prompt, dest, mcpConfigPath, dir)
 		var serverFinding *Finding
 		accepted := false
+		// unparseableAnswerDetail names which of the two answer-extraction steps failed, for the
+		// unparseable_answer cause below. It carries a fixed phrase, never the extraction error's
+		// own text, and is meaningful only when this iteration lands in that cause.
+		var unparseableAnswerDetail string
 		if invokeErr == nil && t.Result != nil && !t.Result.IsError {
 			// check (e): a granted cell whose server did not connect measured a toolless run --
 			// caught here, against the candidate transcript, before this attempt is accepted and the
@@ -416,12 +423,16 @@ func runCellRepetition(
 				} else {
 					text := finalAssistantText(t.Records)
 					_, inner, extractErr := ExtractFencedJSON(text, "last")
-					if extractErr == nil {
+					if extractErr != nil {
+						unparseableAnswerDetail = "final assistant text carries no fenced json block"
+					} else {
 						var probe map[string]any
 						if json.Unmarshal([]byte(inner), &probe) == nil {
 							transcript = t
 							answerText = inner
 							accepted = true
+						} else {
+							unparseableAnswerDetail = "the fenced json block did not decode"
 						}
 					}
 				}
@@ -432,13 +443,44 @@ func runCellRepetition(
 		}
 
 		if serverFinding != nil {
-			// Persist the finding into the attempt directory, before InvalidateRep renames it away --
-			// this path never reaches writeCompleteState, so the attempt's own directory is the only
-			// place left for the finding to survive.
+			// connectFailures is incremented before the reason file below is written, so the
+			// connectFailures == attempts whole-run abort further down fires on exactly the same
+			// condition it does today.
 			connectFailures++
-			if err := writeServerConnectFailure(dir, cfg.ID, rep, l.ServerName(), serverFinding); err != nil {
-				return repOutcome{}, err
+		}
+
+		attempt++
+		reason := InvalidReason{Cell: cfg.ID, Repetition: rep, Attempt: attempt}
+		switch {
+		case invokeErr != nil:
+			reason.Cause = CauseRunnerError
+			reason.Detail = "the measured claude process failed"
+			if code, ok := exitCodeOf(invokeErr); ok {
+				reason.ExitCode = &code
+				reason.Detail = fmt.Sprintf("%s: exit status %d", reason.Detail, code)
 			}
+		case t == nil || t.Result == nil || t.Result.IsError:
+			reason.Cause = CauseResultError
+			if t == nil || t.Result == nil {
+				reason.Detail = "no result record in transcript"
+			} else {
+				reason.Detail = fmt.Sprintf(
+					"result record reports terminal_reason=%q stop_reason=%q",
+					t.Result.TerminalReason, t.Result.StopReason,
+				)
+			}
+		case serverFinding != nil:
+			reason.Cause = CauseServerNotConnected
+			reason.Detail = serverFinding.Message
+		default:
+			reason.Cause = CauseUnparseableAnswer
+			reason.Detail = unparseableAnswerDetail
+		}
+		// Persist the reason into the attempt directory, before InvalidateRep renames it away --
+		// this path never reaches writeCompleteState, so the attempt's own directory is the only
+		// place left for it to survive.
+		if err := WriteInvalidReason(dir, reason); err != nil {
+			return repOutcome{}, err
 		}
 
 		// Either an infrastructure failure (non-zero exit, unparseable stream, or an error flag in
@@ -580,19 +622,17 @@ func runCellRepetition(
 	return repOutcome{}, nil
 }
 
-// writeServerConnectFailure writes finding's message, alongside the cell id, repetition number and
-// expected server name, to dir/ServerConnectFailureFile -- called immediately before InvalidateRep
-// renames dir away, so the reason survives at <root>/raw/<cell>/<rep>.invalid-<k>/ after the rename.
-func writeServerConnectFailure(dir, cellID string, rep int, serverName string, finding *Finding) error {
-	content := fmt.Sprintf(
-		"cell: %s\nrepetition: %d\nexpected_server: %s\n%s\n",
-		cellID, rep, serverName, finding.Message,
-	)
-	path := filepath.Join(dir, ServerConnectFailureFile)
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("write server connect failure %s: %w", path, err)
+// exitCodeOf reports the exit code err's *exec.ExitError carries, and whether one was found. It
+// never inspects err's own formatted message: ExecRunner.Run wraps a run failure as
+// "run %s %s: %w" over the full argument vector, which carries the rendered prompt, the absolute
+// --mcp-config path and the claude binary path -- exactly the kind of content the invalid-reason
+// detail must never carry.
+func exitCodeOf(err error) (int, bool) {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), true
 	}
-	return nil
+	return 0, false
 }
 
 // invokeMeasuredProcess runs the measured claude process for one cell-and-repetition pair through the
