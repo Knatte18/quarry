@@ -81,8 +81,11 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
     until the first line that is neither a blockquote line nor blank, stripping a leading `>` and at
     most one following space, so an indented sub-list inside the quote keeps its relative
     indentation.
-  - A `## Output schema (exploration tasks)` section carrying the identical fenced JSON block tasks
-    01 and 02 use. It must come **before** the notes section below: `extractSchemaBlock` takes the
+  - A `## Output schema (exploration tasks)` section carrying the fenced JSON block copied from
+    `01-reed-geometry-exploration.md`, which is already in this card's `Context:`. Copy it from task
+    01 specifically, not from task 02: this batch declares `depends-on: []` and can run before batch
+    2's card 6 adds that section to `02-shedadapters-exploration.md`, where it does not exist today.
+    It must come **before** the notes section below: `extractSchemaBlock` takes the
     first fenced JSON block after the first `## Output schema` line, and a notes section that
     happened to carry a fenced block ahead of the schema would be extracted instead.
   - A `## Notes for whoever prepares C's fasit / scores this` section recording the chosen subject

@@ -1,0 +1,48 @@
+MILL_REVIEW_BEGIN
+# Review: Ladder breadth (M1) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewer_self_id: Claude Opus 5 (Anthropic), high reasoning effort
+reviewed_file: plan/
+date: 2026-09-04
+```
+
+## Findings
+
+### [BLOCKING:scope] Card 1 Context omits run.go
+**Location:** batch 1 / card 1
+**Issue:** Requirements tells the implementer to wrap write failures in "the same shape `writeServerConnectFailure` uses today", but that function lives in `run.go:586`, and card 1 lists only `gates.go` in `Context:` with `runstate.go` in `Edits:`.
+**Fix:** Add `bench/loomyard-eval/ladder/internal/ladder/run.go` to card 1's `Context:` (card 5 already lists it via `Edits:`).
+
+### [BLOCKING:consistency] Decision exempts cards 7 and 9, but card 8 also reads the foreign checkout
+**Location:** overview `### Decision: reference-agent-cards-read-the-pinned-checkout-freely` vs batch 3 / card 8
+**Issue:** The decision scopes the out-of-repo unbounded-read exemption to "the two fasit-authoring cards (7 and 9)", yet card 8's own Requirements directs an unbounded survey of the pinned Loomyard worktree to pick the subject — an activity the decision does not cover, so the plan contradicts itself on which cards may read outside the `Context:` allowlist.
+**Fix:** Extend the decision's `Applies to`/card enumeration to card 8, or state explicitly that card 8's survey is bounded and how.
+
+### [NIT:consistency] Card 3 calls the new fixture variant the "fifth"
+**Location:** batch 1 / card 3
+**Issue:** `writeCellStream`'s switch already carries five variants (`normal`, `max_turns`, `no_fence`, `leak_prefix`, `partial_fail`); the `result_error` case is the sixth, so the card's count is wrong even though every other claim about the fixture (only `partial_fail` omits a result record and exits 1; every existing variant passes `isError=false`) checks out.
+**Fix:** Say "a sixth variant" or drop the ordinal.
+
+### [NIT:consistency] Card 8 sources the schema block from a file batch 2 may not have written yet
+**Location:** batch 3 / card 8, third bullet of the section list
+**Issue:** Card 8 must carry "the identical fenced JSON block tasks 01 and 02 use", but batch 3 declares `depends-on: []` and can run before batch 2's card 6 adds that section to `02-shedadapters-exploration.md`, where today it does not exist.
+**Fix:** Name `01-reed-geometry-exploration.md` as the single source to copy from; it is already in card 8's `Context:`.
+
+### [NIT:design] sanitizeDetail's length bound is ambiguous in Go
+**Location:** batch 1 / cards 1 and 2
+**Issue:** "never exceeds `invalidReasonDetailMaxLen` characters" with a trailing ellipsis does not say bytes or runes; `…` is three bytes, so card 2's assertion can pass or fail depending on which reading the implementer picks. Card 1 also omits the `strings` import `runstate.go` will need, where card 5 spells out run.go's `errors`/`os/exec` additions.
+**Fix:** State bytes (`len`) or runes explicitly and pick the ellipsis form accordingly; mention the `strings` import.
+
+### [NIT:consistency] Card 10's header pass says "update the --cells list" where none exists
+**Location:** batch 4 / card 10
+**Issue:** `ladder-toc.yaml`'s trailing run command (lines 55–58) carries `--config` and `--results` only; there is no `--cells` line to update, it must be added.
+**Fix:** Word it as "add a `--cells` line naming the six cells".
+
+## Verdict
+
+REQUEST_CHANGES
+Two blocking issues; DAG, numbering, files-touched and source claims otherwise verify clean.
+MILL_REVIEW_END

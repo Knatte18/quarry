@@ -44,6 +44,7 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
 
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/run.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
 - **Creates:** none
@@ -69,10 +70,17 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
     coincide only on a fresh repetition directory.
   - `invalidReasonDetailMaxLen`, an unexported int constant with the value `200`.
   - `sanitizeDetail(detail string) string`, unexported: replaces every `\r` and `\n` in `detail`
-    with a single space, collapses runs of whitespace to one space, trims leading and trailing
-    space, and, when the result is longer than `invalidReasonDetailMaxLen`, truncates it to that
-    length with the final character replaced by an ellipsis so the returned string never exceeds
-    `invalidReasonDetailMaxLen` characters.
+    with a single space, collapses runs of whitespace to one space, and trims leading and trailing
+    space. The length bound is measured in **bytes**, as `len(s)`, not in runes: when the trimmed
+    result's `len` exceeds `invalidReasonDetailMaxLen`, truncate it to at most
+    `invalidReasonDetailMaxLen - 3` bytes **without splitting a UTF-8 rune** and append the
+    three-byte ASCII ellipsis `...`, so `len` of the returned string is never greater than
+    `invalidReasonDetailMaxLen`. Use the ASCII `...` rather than the single-character `…`, which is
+    three bytes and would make the bound read differently depending on whether a reader thinks in
+    bytes or runes — the ambiguity this wording exists to remove.
+
+    `runstate.go` does not import `strings` today; this function needs it, so add it to the import
+    block alongside the existing `encoding/json`, `fmt`, `os` and `path/filepath`.
   - `RenderInvalidReason(r InvalidReason) string`: returns the file's text, one `key: value` pair
     per line, each line newline-terminated, in exactly this order — `cell`, `repetition`, `attempt`,
     `cause`, `exit_code`, `detail`. The `exit_code` line is emitted only when `r.ExitCode` is
@@ -106,7 +114,10 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
   - A case whose `Detail` carries embedded newlines asserts the rendered text has exactly one line
     per emitted key — i.e. the multi-line detail did not break the one-pair-per-line shape.
   - A case whose `Detail` is longer than `invalidReasonDetailMaxLen` asserts the rendered `detail`
-    value is at most `invalidReasonDetailMaxLen` characters and ends with an ellipsis.
+    value's `len` — its **byte** length, matching card 1's stated bound — is at most
+    `invalidReasonDetailMaxLen`, and that it ends with the ASCII `...`. Assert against `len`, not
+    against a rune count, so the assertion cannot pass or fail depending on which reading the
+    implementer picked.
 
   Do not add a test for `WriteInvalidReason`'s file I/O here — the e2e cases in card 4 prove the
   file reaches disk on the paths that matter. `TestInvalidateRep` is not touched: the rename
@@ -124,8 +135,10 @@ Batch-local decisions that differ from the overview's `## Shared Decisions`:
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  Add a fifth `FAKE_CLAUDE_STREAM` variant, `result_error`, as a new `case` in `writeCellStream`'s
-  `switch`. It writes one assistant record via `writeAssistant` and then
+  Add a new `FAKE_CLAUDE_STREAM` variant, `result_error`, as a new `case` in `writeCellStream`'s
+  `switch`. The switch carries five variants today — `normal`, `max_turns`, `no_fence`,
+  `leak_prefix`, `partial_fail` — so this one is the sixth. It writes one assistant record via
+  `writeAssistant` and then
   `writeResult(w, "error_during_execution", "end_turn", true)`, and returns normally so the process
   exits zero.
 
