@@ -135,3 +135,158 @@ func TestRepoTOC_AbsoluteTargetIsOutsideRepo(t *testing.T) {
 		t.Errorf("TOC(\"/etc/passwd\", ...) error = %v; want errors.Is(err, ErrTargetOutsideRepo)", err)
 	}
 }
+
+// resolveExpandFixture is the source used by every Resolve and Expand test in this file. Its one Go
+// file sits under the nested "sub" package directory, not the fixture root: a file at the fixture
+// root has the empty unit, which no glyph can spell, so a glyph case built against the root could
+// never resolve. Foo is a free function; Thing is a type with one member method.
+const resolveExpandFixture = "package sub\n\nfunc Foo() {}\n\ntype Thing struct{}\n\nfunc (t Thing) Method() {}\n"
+
+// TestRepoResolve_GlyphFound asserts a glyph naming a free function resolves to StatusFound with
+// that one declaration in Symbols.
+func TestRepoResolve_GlyphFound(t *testing.T) {
+	root := writeScratchTree(t, "resolve-glyph-found", map[string]string{"sub/a.go": resolveExpandFixture})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	results, err := r.Resolve([]string{"sub#Foo"})
+	if err != nil {
+		t.Fatalf("Resolve([%q]) returned error: %v", "sub#Foo", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(Resolve([%q])) = %d; want 1", "sub#Foo", len(results))
+	}
+	got := results[0]
+	if got.Status != StatusFound {
+		t.Errorf("Status = %q; want %q", got.Status, StatusFound)
+	}
+	if len(got.Symbols) != 1 {
+		t.Fatalf("len(Symbols) = %d; want 1", len(got.Symbols))
+	}
+	if got.Symbols[0].ID != "sub#Foo" {
+		t.Errorf("Symbols[0].ID = %q; want %q", got.Symbols[0].ID, "sub#Foo")
+	}
+}
+
+// TestRepoResolve_GlyphMemberMissingIsNotFound asserts a glyph whose unit exists but whose member
+// does not resolves to StatusNotFound with Unit == StatusFound.
+func TestRepoResolve_GlyphMemberMissingIsNotFound(t *testing.T) {
+	root := writeScratchTree(t, "resolve-glyph-missing-member", map[string]string{"sub/a.go": resolveExpandFixture})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	results, err := r.Resolve([]string{"sub#DoesNotExist"})
+	if err != nil {
+		t.Fatalf("Resolve([%q]) returned error: %v", "sub#DoesNotExist", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(Resolve([%q])) = %d; want 1", "sub#DoesNotExist", len(results))
+	}
+	got := results[0]
+	if got.Status != StatusNotFound {
+		t.Errorf("Status = %q; want %q", got.Status, StatusNotFound)
+	}
+	if got.Unit != StatusFound {
+		t.Errorf("Unit = %q; want %q", got.Unit, StatusFound)
+	}
+}
+
+// TestRepoResolve_PathTarget asserts a repository-relative path target resolves to StatusFound with
+// a non-nil directory answer.
+func TestRepoResolve_PathTarget(t *testing.T) {
+	root := writeScratchTree(t, "resolve-path", map[string]string{"sub/a.go": resolveExpandFixture})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	results, err := r.Resolve([]string{"sub"})
+	if err != nil {
+		t.Fatalf("Resolve([%q]) returned error: %v", "sub", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(Resolve([%q])) = %d; want 1", "sub", len(results))
+	}
+	got := results[0]
+	if got.Status != StatusFound {
+		t.Errorf("Status = %q; want %q", got.Status, StatusFound)
+	}
+	if got.Dir == nil {
+		t.Fatalf("Dir = nil; want a non-nil directory answer")
+	}
+}
+
+// TestRepoResolve_TwoTargetsPositional asserts a two-element target slice returns exactly two
+// results, positionally.
+func TestRepoResolve_TwoTargetsPositional(t *testing.T) {
+	root := writeScratchTree(t, "resolve-two-targets", map[string]string{"sub/a.go": resolveExpandFixture})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	results, err := r.Resolve([]string{"sub#Foo", "sub#Thing"})
+	if err != nil {
+		t.Fatalf("Resolve(...) returned error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(Resolve(...)) = %d; want 2", len(results))
+	}
+	if results[0].Target != "sub#Foo" {
+		t.Errorf("results[0].Target = %q; want %q", results[0].Target, "sub#Foo")
+	}
+	if results[1].Target != "sub#Thing" {
+		t.Errorf("results[1].Target = %q; want %q", results[1].Target, "sub#Thing")
+	}
+}
+
+// TestRepoExpand_TypeFound asserts a glyph naming a type expands to StatusFound with a non-nil head.
+func TestRepoExpand_TypeFound(t *testing.T) {
+	root := writeScratchTree(t, "expand-type-found", map[string]string{"sub/a.go": resolveExpandFixture})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	got, err := r.Expand("sub#Thing")
+	if err != nil {
+		t.Fatalf("Expand(%q) returned error: %v", "sub#Thing", err)
+	}
+	if got.Status != StatusFound {
+		t.Errorf("Status = %q; want %q", got.Status, StatusFound)
+	}
+	if got.Head == nil {
+		t.Fatalf("Head = nil; want a non-nil head")
+	}
+}
+
+// TestRepoExpand_FunctionIsNotAType is the transitivity test, the analogue of the sentinel tests
+// above: it asserts a glyph naming a free function returns a non-nil error for which
+// errors.As(err, &notType) against *NotATypeError succeeds, with ID and Kind readable, for a caller
+// that never imports the engine.
+func TestRepoExpand_FunctionIsNotAType(t *testing.T) {
+	root := writeScratchTree(t, "expand-function-not-a-type", map[string]string{"sub/a.go": resolveExpandFixture})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	_, err = r.Expand("sub#Foo")
+	if err == nil {
+		t.Fatalf("Expand(%q) returned nil error; want a non-nil error", "sub#Foo")
+	}
+	var notType *NotATypeError
+	if !errors.As(err, &notType) {
+		t.Fatalf("Expand(%q) error = %v; want errors.As(err, &notType) against *NotATypeError to succeed", "sub#Foo", err)
+	}
+	if notType.ID != "sub#Foo" {
+		t.Errorf("notType.ID = %q; want %q", notType.ID, "sub#Foo")
+	}
+	if notType.Kind != KindFunction {
+		t.Errorf("notType.Kind = %q; want %q", notType.Kind, KindFunction)
+	}
+}

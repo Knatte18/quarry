@@ -35,3 +35,22 @@ func Open(root string) (*Repo, error) {
 func (r *Repo) TOC(target string, opts TOCOptions) (DirAnswer, error) {
 	return r.engine.TOC(target, opts)
 }
+
+// Resolve answers every target in targets, positionally, exactly as the engine's own Resolve does:
+// it returns the engine's own result slice and the engine's own error unchanged — no filtering, no
+// re-shaping, no defaulting.
+//
+// Resolve keeps the engine's multi-target signature rather than the command line's one-target rule:
+// a Go caller batches many glyphs in one call and pays one parse per unit, which is the performance
+// property this facade exists to preserve.
+func (r *Repo) Resolve(targets []string) ([]ResolveResult, error) {
+	return r.engine.Resolve(targets)
+}
+
+// Expand answers target — the target type's own head, plus every member whose owner chain begins
+// with it — exactly as the engine's own Expand does: it returns the engine's own answer and the
+// engine's own error unchanged. errors.As(err, &notType) against *NotATypeError therefore succeeds
+// for a caller that never imports the engine.
+func (r *Repo) Expand(target string) (ExpandAnswer, error) {
+	return r.engine.Expand(target)
+}
