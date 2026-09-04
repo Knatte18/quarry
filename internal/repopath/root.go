@@ -14,7 +14,7 @@ import (
 // root without finding a .git entry. Its own text is namespaced to this package and is never
 // user-visible through a caller; each caller formats its own user-facing sentence from the
 // sentinel and the path DiscoverRoot was called with.
-var ErrNoRepositoryRoot = errors.New("repopath: no repository root found")
+var ErrNoRepositoryRoot = errors.New("repopath: no repository root found; pass --root")
 
 // ErrRootNotDirectory is ResolveRoot's failure sentinel when flagRoot does not resolve to an
 // existing directory. Its own text is namespaced to this package and is never user-visible
