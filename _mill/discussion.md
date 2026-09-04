@@ -43,7 +43,8 @@ ladder cell measures them. The temptation this task must resist is building the 
 - Tests: in-process MCP client↔server tests, a golden test on the `toc` tool's payload bytes, a
   not-found/error-path test, and a layering test that the MCP packages reach the engine only through
   the facade.
-- A short MCP section in `README.md`.
+- A short MCP section in `README.md`, and a tracked `.mcp.json` at the repository root (D18).
+- A `.gitignore` entry for the built `quarry-mcp` binary.
 - One operator-run §9a probe against the built binary (connect, `toc` call, allowlist denial),
   recorded in this task's `_mill/` artifacts, not in the tracked tree.
 
@@ -159,15 +160,55 @@ ladder cell measures them. The temptation this task must resist is building the 
   already expresses (D8). Also rejected: `target` alone with no knobs, which would make MCP a
   different surface from the CLI for no stated reason.
 
+### D5a — The tool's prose is fixed here, verbatim, and pinned by a test
+
+- **Decision:** the `toc` tool's description and its three property descriptions are these exact
+  strings. ASCII only, matching `internal/cli/usage.go`'s own rule.
+
+  **Tool description:**
+
+  > `Table of contents for a directory or file in this repository: its package, its files, each file's header comment, and optionally each file's symbols. Reach for this first to find your way around unfamiliar code, instead of listing directories and grepping for declarations.`
+
+  **`target`:**
+
+  > `Repository-relative path to a directory or a file. Use "" or "." for the repository root.`
+
+  **`depth`:**
+
+  > `How far to recurse into subdirectories. 0, the default, lists this directory's own files and names its subdirectories without descending; N fills N levels; -1 recurses to the bottom of the tree.`
+
+  **`symbols`:**
+
+  > `Populate every file entry's symbols: functions, methods, types, consts and vars. Omit for the per-target default, which is on for a file target and off for a directory target.`
+
+- **Rationale:** this prose is not documentation, it is measured surface. It is the entire prompt
+  cost a granted cell pays before it does anything, and it is what decides whether the agent calls
+  the tool at all — plan §9a is explicit that a cell whose agent never calls its tool "measured the
+  tool's prompt cost only", which is a wasted cell. D6 already cites the V1 evidence that schema
+  wording changed agent behaviour in 5 of 6 sessions. Leaving the wording to the implementer would
+  put the measurement's independent variable outside the reviewed artefact.
+- **A test pins all four strings** as exact-string assertions in the `tools/list` test, so a reword
+  is a deliberate, reviewed change rather than drift. If T7's results ever suggest the description is
+  the problem, changing it is a ladder question — a new cell — not a quiet edit, for the same reason
+  the harness forbids editing the code under test mid-matrix.
+- **Rejected:** a longer description listing the answer's JSON keys (the answer is
+  self-describing and the bytes cost the same on every call); a one-word description (nothing tells
+  the agent when to reach for it, which is the behaviour the ladder measures).
+
 ### D6 — `depth`: an integer, `-1` for the whole tree; no `"all"` sentinel string
 
 - **Decision:** `depth` is a JSON integer. `-1` recurses to the bottom of the tree. The property
   description spells that out. There is no string form and no union type.
 - **Validation and absent-value semantics (both required, not optional):**
   - The schema carries `minimum: -1`, so the SDK rejects `depth: -7` before the handler runs.
-  - The handler *also* rejects `depth < -1` with a D8 error (`isError`, message
-    `--depth must be -1 (whole tree) or a non-negative integer, got <n>`, worded from the CLI's own
-    `flags.go` complaint). Belt and braces, because the schema is advisory to a client that ignores
+  - The handler *also* rejects `depth < -1` with a D8 error (`isError`), and the message is
+    **exactly** `--depth must be -1 (whole tree) or a non-negative integer, got <n>`. This is the
+    one place the MCP surface deliberately diverges from the CLI's wording rather than reusing it:
+    the CLI's own string is `--depth must be a non-negative integer or "all", got %q`
+    (`internal/cli/flags.go:101`), which cannot be reused because `-1` is *valid* on this surface
+    and `"all"` does not exist on it. D8's "verbatim where the condition is the same" does not
+    apply, because the condition is not the same. This literal is the string the test asserts.
+    Belt and braces, because the schema is advisory to a client that ignores
     it and the failure mode is silent: `internal/engine/walk.go`'s recursion decrements `depth` on
     every level and only stops at `depth == 0` or `DepthAll`, so any other negative value recurses
     without ever taking the identity-only cut — an unbounded walk that looks like a valid answer.
@@ -294,7 +335,10 @@ ladder cell measures them. The temptation this task must resist is building the 
   `quarry/` carries a third copy. The copy must be adjusted for depth: the helper walks up from
   `runtime.Caller(0)` to the module root, and `internal/repopath/` sits two directories down, the
   same as `internal/cli/` and `internal/engine/`, so the same three `filepath.Dir` steps apply
-  unchanged. `t.TempDir()` stays banned (the system temp directory is banned for this repo's tests;
+  unchanged. It also **renames its scratch subdirectory** to `.scratch/repopath-tests/`: the CLI's
+  copy hard-codes `.scratch/cli-tests/<name>` (`internal/cli/scratchtree_test.go:39`), and a
+  `repopath` copy writing under `cli-tests` would be both misleading and sharing a parent directory
+  with a package that tests in parallel. `t.TempDir()` stays banned (the system temp directory is banned for this repo's tests;
   `.scratch/` is the sanctioned location) — so is `/tmp` in any form.
   `internal/cli`'s own copy stays exactly where it is and is not touched; the moved tests take a
   copy, they do not take the original.
@@ -339,7 +383,13 @@ ladder cell measures them. The temptation this task must resist is building the 
   2. Live, once, by the operator or the implementing agent at the end of the task: build the binary,
      write an MCP config pointing at it, and run `claude -p` with `--mcp-config`,
      `--strict-mcp-config`, `--output-format stream-json --verbose`,
-     `--no-session-persistence`, `< /dev/null`, per plan §9a's table.
+     `--no-session-persistence`, `< /dev/null`, per plan §9a's table. The **success session's**
+     full flag set matters and is stated here rather than left to judgement: it carries
+     `--allowedTools mcp__quarry__toc` **and** `--tools ""`, exactly as §9a's allowlist row does.
+     Without `--tools ""` the agent can answer from built-in reads and never call `toc`, and the
+     rooting assertion below then has no answer to inspect. The stream must contain a `toc`
+     `tool_use` record; if it does not, the probe missed and is retried with a blunter prompt,
+     the same rule D14 states for the denial session.
 
      **Run it from a different repository than the one the server must serve.** The natural choice
      is the Loomyard checkout the ladder already uses (`LADDER_LOOMYARD_REPO`, per
@@ -403,13 +453,16 @@ ladder cell measures them. The temptation this task must resist is building the 
 ### D15 — Documentation: a README section, no new doc file
 
 - **Decision:** add a short section to `README.md` covering what the server is, that it exposes one
-  tool, and a generic `.mcp.json` snippet using a placeholder path. No `docs/mcp-setup.md`.
+  tool, that the repository ships a ready `.mcp.json` (D18), and how to swap it for a pre-built
+  binary. No `docs/mcp-setup.md`.
 - **Rationale:** plan §2 deleted V1's `docs/mcp-setup.md` along with the rest of the V1 surface and
   kept the README as a stub. A one-tool server does not need a document; it needs four lines and an
   example. The snippet must use a placeholder, never a real path, per the no-machine-paths
   constraint.
 - **Rejected:** recreating `docs/mcp-setup.md`; no documentation at all (the binary would then be
-  undiscoverable outside the harness).
+  undiscoverable outside the harness). The earlier framing of "a snippet with a placeholder path" is
+  superseded by D18: the repository ships a real, working `.mcp.json`, so the README points at it
+  rather than asking the reader to transcribe one.
 
 ### D16 — No facade change
 
@@ -440,6 +493,31 @@ ladder cell measures them. The temptation this task must resist is building the 
   fresh per query, so a target created after startup is found by a later call), that is a
   discrepancy with the facade's documented contract and is worth stopping and raising rather than
   quietly switching designs.
+
+### D18 — `.mcp.json` is recreated, and invokes the server through `go run`
+
+- **Decision:** T6 writes a tracked `.mcp.json` at the repository root declaring exactly one server,
+  `quarry`, invoked as `go run ./cmd/quarry-mcp` with no arguments. The built binary is gitignored
+  as `/quarry-mcp`, alongside the `/quarry` entry `.gitignore` already carries for the CLI.
+- **Rationale:** this is not optional housekeeping — `docs/rewrite-plan.md` §2's deletion table
+  lists `.mcp.json` among the V1 files deleted and states "T5b and T6 write the new documents and
+  the new `.mcp.json` when the surface they describe exists". T6 is the task that makes the surface
+  exist, so leaving it out would leave the plan's own instruction unexecuted with no record of why.
+  `go run ./cmd/quarry-mcp` is what makes the file committable under the no-machine-paths
+  constraint: it is a repository-relative target, it needs no prior build step, and Claude Code
+  spawns a project-scope server with the project root as its working directory — which is also
+  exactly the D3 cwd path, so the committed config exercises the same rooting the harness relies on.
+- **Cost, stated plainly:** `go run` recompiles on every server start, and this binary links
+  tree-sitter through cgo, so the first start after a change is slow (seconds, not milliseconds).
+  The README section documents `go build -o quarry-mcp ./cmd/quarry-mcp` plus a
+  `"command": "./quarry-mcp"` variant as the faster local alternative, which is why the binary needs
+  its `.gitignore` entry.
+- **No effect on the ladder.** The harness passes `--strict-mcp-config`
+  (`bench/loomyard-eval/ladder/internal/ladder/run.go`), so a measured run reads only the config the
+  harness wrote and never this file. The tracked `.mcp.json` is for humans opening the repository.
+- **Rejected:** omitting it and saying so in Scope Out (it would contradict a direct plan
+  instruction for a convenience reason); committing a built-binary absolute path (a machine path in
+  a tracked file, forbidden outright).
 
 ## Technical context
 
@@ -563,8 +641,11 @@ stay and must still pass unchanged — that is the regression gate on the refact
 connect a client to the server and assert on `tools/list`: exactly one tool, named `toc`, with
 `target` required and `depth`/`symbols` optional, `depth` typed integer with `minimum: -1`, and
 **no `outputSchema`** — that last assertion is what enforces D7's implementation consequence, since
-the go-sdk emits `structuredContent` for any tool that declares one. This is the test that catches
-an accidental second tool and a schema drift, both of which would silently break T7.
+the go-sdk emits `structuredContent` for any tool that declares one. The same test pins the tool
+description and the three property descriptions as **exact strings**, per D5a: that prose is the
+granted cell's whole prompt cost and the thing that decides whether the agent calls the tool, so it
+is asserted, not left to drift. This is the test that catches an accidental second tool and a schema
+drift, both of which would silently break T7.
 
 **`internal/mcpserver` — the happy path (golden):** against a small committed fixture repository at
 `internal/mcpserver/testdata/` — a directory with a couple of Go files and a subdirectory is enough
@@ -627,7 +708,7 @@ the task's `_mill/` artifacts and named in the merge commit.
 - **Q:** Startup output on stdout/stderr? **A:** [auto-pick] nothing on stdout ever; one stderr line naming the resolved root. **Why:** stdout is the transport, and a misrooted server is otherwise invisible — the harness tees only stdout, so the line cannot pollute a transcript.
 - **Q:** Input schema — full CLI mirror, `target` only, or V1-style batching? **A:** [auto-pick] full CLI mirror: `target` required, `depth` and `symbols` optional. **Why:** §7 makes MCP a mirror of the CLI and §5 fixes one target per call; `depth`/`symbols` are the same verb's knobs, not extra tools.
 - **Q:** How is `depth: all` spelled on the wire? **A:** [auto-pick] integer, `-1` means the whole tree. **Why:** `quarry.DepthAll` is already `-1`, and V1's code records that 5 of 6 sessions mis-quoted its `"all"` sentinel and wasted a round trip — unacceptable in a token-cost measurement.
-- **Q:** Success payload — text only, or text plus `structuredContent`? **A:** [auto-pick] `content[0].text` = `quarry.RenderJSON` bytes, nothing else. **Why:** the task says JSON in `content[].text`; `structuredContent` would duplicate the payload into every transcript and corrupt the token metric T7 exists to produce.
+- **Q:** Success payload — text only, or text plus `structuredContent`? **A:** [auto-pick] `content[0].text` = `quarry.RenderJSON` bytes, nothing else. **Why:** the task says JSON in `content[].text`, and omitting `structuredContent` leaves one payload shape and no output schema to keep in step with the engine's answer type. Because the go-sdk emits `structuredContent` for any tool that declares an `outputSchema`, this is an implementation requirement with a `tools/list` assertion behind it, not a default. (A token-duplication argument would be wrong here — see D7's "Not the rationale" paragraph and the `[r2 gap]` entry below.)
 - **Q:** How does a failed query come back? **A:** [auto-pick] `isError: true` with `quarry.RenderErrorJSON(msg)` as the text, CLI wording verbatim. **Why:** `isError` is the protocol's analogue of the CLI's exit code, and reusing the failure envelope keeps both surfaces saying the same thing.
 - **Q:** Does exposing `symbols` break T7's by-id comparison against the 2026-08-30 root? **A:** [auto-pick] ship the knob and record the caveat for T7's conclusion. **Why:** cost is already only comparable within a root; narrowing the correctness comparison honestly beats bending the surface to preserve it.
 - **Q:** With one tool, what does the allowlist-denial gate deny? **A:** [auto-pick] run the probe with an allowlist that does not grant `toc`, and observe it in `permission_denials`. **Why:** §9a's `toc_file` has no successor in the thin surface, and shipping a no-op tool purely to be denied violates the task's own "thin means thin".
@@ -638,5 +719,7 @@ the task's `_mill/` artifacts and named in the merge commit.
 - **Q:** [r2 gap] D7 justified omitting `structuredContent` by token cost — but `docs/research/mcp-surface.md` measured that Claude Code discards it and the duplication is transport-only. Keep the decision or reverse it? **A:** [auto-pick] keep the decision, replace the rationale. **Why:** one payload shape and no output schema to maintain still justify it; the token argument is refuted and is now marked in D7 as explicitly not a valid reason. The note's other finding — that the go-sdk emits `structuredContent` for any tool declaring an `outputSchema`, as all seven V1 tools did — turns this into an implementation requirement with a `tools/list` assertion behind it.
 - **Q:** [r2 gap] Nothing verifies that the stdio server actually inherits `claude`'s cwd, which the whole "harness untouched" scope rests on. How is it gated? **A:** [auto-pick] run D13's live probe from a *different* repository (the ladder's Loomyard checkout) and assert the answer names that repository's files; better still, run the harness itself once at `--cells a2-toc-dir --reps 1`. **Why:** run from the quarry repo the probe proves nothing, since discovery succeeds there either way; and a misrooting found mid-matrix costs the whole results root, because the harness forbids editing the code under test mid-run.
 - **Q:** [r2 gap] The tests moved into `internal/repopath` use `writeScratchTree`, an unexported `package cli` helper. Where do their fixtures come from? **A:** [auto-pick] a per-package copy of the helper in `internal/repopath/scratchtree_test.go`. **Why:** that is the repo's documented convention, not a workaround — `internal/cli/scratchtree_test.go`'s own header calls itself a deliberate per-package copy of the engine's, "because Go test helpers are not importable across packages", and `quarry/` carries a third. `internal/cli`'s copy is untouched.
+- **Q:** [r3 gap] Nothing fixed the `toc` tool's description or its property descriptions, yet that prose is the granted cell's entire prompt cost and decides whether the agent calls the tool. Fix it where? **A:** [auto-pick] fix all four strings verbatim in the discussion (D5a) and pin them with exact-string assertions in the `tools/list` test. **Why:** it is the measurement's independent variable, so it belongs in the reviewed artefact, not in the implementer's judgement — and plan §9a warns that a cell whose agent never calls its tool measured only prompt cost. Rewording it later is a ladder question, not a quiet edit.
+- **Q:** [r3 gap] Plan §2 assigns the new `.mcp.json` to T5b/T6, but the discussion mentioned only a README snippet. Recreate it, defer it, or drop it? **A:** [auto-pick] recreate it, invoking the server as `go run ./cmd/quarry-mcp`. **Why:** it is a direct plan instruction, and `go run` with a repository-relative target is what makes the file committable under the no-machine-paths constraint — no build step, and Claude Code spawns it with the project root as cwd, which exercises D3's own rooting path. The harness passes `--strict-mcp-config`, so a measured run never reads it.
 - **Q:** [r2 gap] What validates `depth`, and what does an absent `depth` mean? **A:** [auto-pick] schema `minimum: -1`, plus a handler-level D8 rejection of `depth < -1`; absent means `0`. **Why:** `internal/engine/walk.go` decrements depth with no floor and stops only at `0` or `DepthAll`, so `depth: -7` is an unbounded walk that returns a plausible answer instead of an error — and the CLI already rejects it (`flags.go:100`), so mirroring the CLI has to include its invalid-input behaviour.
 - **Q:** How do the MCP server and the CLI share root discovery and target relativisation? **A:** [auto-pick] lift `discoverRoot`/`resolveRoot`/`repoRelTarget` into a new `internal/repopath` package, with `internal/cli` wrapping their errors back into its own `usageError`. **Why:** they are unexported and return an unexported type today, and duplicating ~60 lines of subtle path handling across two surfaces is exactly the drift the facade discipline exists to prevent.
