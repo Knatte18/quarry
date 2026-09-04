@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-matrix-run
+phase: approved-write-up
 slug: ladder-toc-rerun
 branch: ladder-toc-rerun
 plan: _mill/plan
@@ -38,6 +38,7 @@ implementing  '2026-09-04T14:15:44Z'
 approved-pre-matrix-gates  '2026-09-04T14:19:32Z'
 approved-harness-mcp-init-fix  '2026-09-04T14:29:12Z'
 approved-matrix-run  '2026-09-04T14:49:19Z'
+approved-write-up  '2026-09-04T14:58:46Z'
 ```
 
 ## Batches
@@ -62,7 +63,8 @@ batches:
     commit_sha: 14b9f91a763e3748197151ba3fafa4524cefb935
     verify_baseline_failures: []
   - name: write-up
-    state: running
+    state: approved
     implementer_session: c96c7544-75a0-4a51-bd90-6aa55ce92617
     start_sha: 695c001e08f7d17ca9cbe45ba018822f2c5859af
+    commit_sha: 2bc5f5b77a82e51b434b5758e5ca76eef4253abc
 ```
