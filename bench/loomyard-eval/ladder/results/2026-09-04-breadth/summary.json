@@ -1,0 +1,1265 @@
+{
+  "cells": [
+    {
+      "id": "b0-none",
+      "ladder": "b",
+      "task": "04-shedadapters-shuttle-impact",
+      "allowed": null,
+      "control": true,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 13501,
+          "min": 12147,
+          "max": 19415,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 120556,
+          "min": 87120,
+          "max": 157801,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.155334,
+          "min": 0.12487199999999998,
+          "max": 0.20624729999999997,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 21761,
+          "min": 16548,
+          "max": 29002,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 4,
+          "min": 3,
+          "max": 7,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 133241,
+          "min": 99275,
+          "max": 177230,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 18,
+          "min": 9,
+          "max": 34,
+          "n": 5
+        },
+        "precision": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 16311,
+          "n": 5
+        },
+        "recall": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 24094,
+          "min": 19772,
+          "max": 30775,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 7,
+          "min": 5,
+          "max": 7,
+          "n": 5
+        },
+        "turns": {
+          "median": 8,
+          "min": 6,
+          "max": 8,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "b8-toc-dir",
+      "ladder": "b",
+      "task": "04-shedadapters-shuttle-impact",
+      "allowed": [
+        "toc"
+      ],
+      "control": false,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 11651,
+          "min": 10496,
+          "max": 19065,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 119833,
+          "min": 91031,
+          "max": 152082,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.1327199,
+          "min": 0.11842330000000001,
+          "max": 0.20669459999999995,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 24340,
+          "min": 17088,
+          "max": 30679,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 4,
+          "min": 3,
+          "max": 5,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 131494,
+          "min": 101535,
+          "max": 171159,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 17,
+          "min": 15,
+          "max": 34,
+          "n": 5
+        },
+        "precision": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 1,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 13907,
+          "min": 11278,
+          "max": 24922,
+          "n": 5
+        },
+        "recall": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 23368,
+          "min": 19952,
+          "max": 36823,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 6,
+          "min": 5,
+          "max": 10,
+          "n": 5
+        },
+        "turns": {
+          "median": 7,
+          "min": 6,
+          "max": 11,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "c0-none",
+      "ladder": "c",
+      "task": "02-shedadapters-exploration",
+      "allowed": null,
+      "control": true,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 27822,
+          "min": 18109,
+          "max": 33734,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 183475,
+          "min": 116344,
+          "max": 222362,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.2785572,
+          "min": 0.22786350000000002,
+          "max": 0.3425696,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 48521,
+          "min": 41756,
+          "max": 50445,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 3,
+          "min": 2,
+          "max": 7,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 201598,
+          "min": 145473,
+          "max": 256110,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 34,
+          "min": 28,
+          "max": 45,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.95,
+          "min": 0.93,
+          "max": 1,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 44629,
+          "min": 27580,
+          "max": 67755,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.52,
+          "min": 0.45,
+          "max": 0.62,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 49997,
+          "min": 40039,
+          "max": 77140,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 14,
+          "min": 12,
+          "max": 18,
+          "n": 5
+        },
+        "turns": {
+          "median": 15,
+          "min": 13,
+          "max": 19,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "c1-toc-dir",
+      "ladder": "c",
+      "task": "02-shedadapters-exploration",
+      "allowed": [
+        "toc"
+      ],
+      "control": false,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 30180,
+          "min": 29932,
+          "max": 33186,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 231597,
+          "min": 142966,
+          "max": 285120,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.3319067,
+          "min": 0.31677879999999997,
+          "max": 0.376895,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 55784,
+          "min": 38786,
+          "max": 74916,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 3,
+          "min": 3,
+          "max": 6,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 261620,
+          "min": 175496,
+          "max": 315068,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 30,
+          "min": 16,
+          "max": 62,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.95,
+          "min": 0.82,
+          "max": 1,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 3,
+          "min": 3,
+          "max": 4,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 14800,
+          "min": 2516,
+          "max": 38926,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.62,
+          "min": 0.42,
+          "max": 0.66,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 68933,
+          "min": 58366,
+          "max": 81166,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 11,
+          "min": 9,
+          "max": 13,
+          "n": 5
+        },
+        "turns": {
+          "median": 12,
+          "min": 10,
+          "max": 14,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "d0-none",
+      "ladder": "d",
+      "task": "06-loomyard-cold-start-orientation",
+      "allowed": null,
+      "control": true,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 36906,
+          "min": 27128,
+          "max": 47877,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 216642,
+          "min": 153034,
+          "max": 262051,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.336117,
+          "min": 0.3004683,
+          "max": 0.4104666,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 44150,
+          "min": 35454,
+          "max": 52193,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 3,
+          "min": 2,
+          "max": 4,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 264531,
+          "min": 189227,
+          "max": 297419,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 13,
+          "min": 6,
+          "max": 60,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.85,
+          "min": 0.8,
+          "max": 0.93,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 61181,
+          "min": 49613,
+          "max": 71316,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.8,
+          "min": 0.71,
+          "max": 0.82,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 81031,
+          "min": 59649,
+          "max": 90650,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 11,
+          "min": 10,
+          "max": 12,
+          "n": 5
+        },
+        "turns": {
+          "median": 12,
+          "min": 11,
+          "max": 13,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "d1-toc-dir",
+      "ladder": "d",
+      "task": "06-loomyard-cold-start-orientation",
+      "allowed": [
+        "toc"
+      ],
+      "control": false,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 33577,
+          "min": 22509,
+          "max": 40376,
+          "n": 5
+        },
+        "cache_read_input_tokens": {
+          "median": 137544,
+          "min": 50213,
+          "max": 251436,
+          "n": 5
+        },
+        "cost_usd": {
+          "median": 0.3026202,
+          "min": 0.2089374,
+          "max": 0.36169080000000003,
+          "n": 5
+        },
+        "duration_ms": {
+          "median": 39595,
+          "min": 29971,
+          "max": 47391,
+          "n": 5
+        },
+        "grep_fallback_total": {
+          "median": 2,
+          "min": 1,
+          "max": 5,
+          "n": 5
+        },
+        "input_tokens_total": {
+          "median": 165337,
+          "min": 90595,
+          "max": 287293,
+          "n": 5
+        },
+        "output_tokens": {
+          "median": 8,
+          "min": 5,
+          "max": 18,
+          "n": 5
+        },
+        "precision": {
+          "median": 0.86,
+          "min": 0.8,
+          "max": 0.93,
+          "n": 5
+        },
+        "quarry_tool_uses": {
+          "median": 1,
+          "min": 1,
+          "max": 1,
+          "n": 5
+        },
+        "read_bytes": {
+          "median": 67865,
+          "min": 39561,
+          "max": 71316,
+          "n": 5
+        },
+        "recall": {
+          "median": 0.75,
+          "min": 0.62,
+          "max": 0.82,
+          "n": 5
+        },
+        "tool_result_bytes": {
+          "median": 78812,
+          "min": 51495,
+          "max": 79071,
+          "n": 5
+        },
+        "tool_uses": {
+          "median": 9,
+          "min": 7,
+          "max": 14,
+          "n": 5
+        },
+        "turns": {
+          "median": 10,
+          "min": 8,
+          "max": 15,
+          "n": 5
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    }
+  ],
+  "comparisons": [
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "turns",
+      "cell_median": 7,
+      "control_median": 8,
+      "cell_range": [
+        6,
+        11
+      ],
+      "control_range": [
+        6,
+        8
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "duration_ms",
+      "cell_median": 24340,
+      "control_median": 21761,
+      "cell_range": [
+        17088,
+        30679
+      ],
+      "control_range": [
+        16548,
+        29002
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "cost_usd",
+      "cell_median": 0.1327199,
+      "control_median": 0.155334,
+      "cell_range": [
+        0.11842330000000001,
+        0.20669459999999995
+      ],
+      "control_range": [
+        0.12487199999999998,
+        0.20624729999999997
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "cache_read_input_tokens",
+      "cell_median": 119833,
+      "control_median": 120556,
+      "cell_range": [
+        91031,
+        152082
+      ],
+      "control_range": [
+        87120,
+        157801
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "cache_creation_input_tokens",
+      "cell_median": 11651,
+      "control_median": 13501,
+      "cell_range": [
+        10496,
+        19065
+      ],
+      "control_range": [
+        12147,
+        19415
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "output_tokens",
+      "cell_median": 17,
+      "control_median": 18,
+      "cell_range": [
+        15,
+        34
+      ],
+      "control_range": [
+        9,
+        34
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "input_tokens_total",
+      "cell_median": 131494,
+      "control_median": 133241,
+      "cell_range": [
+        101535,
+        171159
+      ],
+      "control_range": [
+        99275,
+        177230
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "tool_uses",
+      "cell_median": 6,
+      "control_median": 7,
+      "cell_range": [
+        5,
+        10
+      ],
+      "control_range": [
+        5,
+        7
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "quarry_tool_uses",
+      "cell_median": 0,
+      "control_median": 0,
+      "cell_range": [
+        0,
+        1
+      ],
+      "control_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "grep_fallback_total",
+      "cell_median": 4,
+      "control_median": 4,
+      "cell_range": [
+        3,
+        5
+      ],
+      "control_range": [
+        3,
+        7
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "tool_result_bytes",
+      "cell_median": 23368,
+      "control_median": 24094,
+      "cell_range": [
+        19952,
+        36823
+      ],
+      "control_range": [
+        19772,
+        30775
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "read_bytes",
+      "cell_median": 13907,
+      "control_median": 0,
+      "cell_range": [
+        11278,
+        24922
+      ],
+      "control_range": [
+        0,
+        16311
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "recall",
+      "cell_median": 1,
+      "control_median": 1,
+      "cell_range": [
+        1,
+        1
+      ],
+      "control_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "cell": "b8-toc-dir",
+      "control": "b0-none",
+      "metric": "precision",
+      "cell_median": 1,
+      "control_median": 1,
+      "cell_range": [
+        1,
+        1
+      ],
+      "control_range": [
+        1,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "turns",
+      "cell_median": 12,
+      "control_median": 15,
+      "cell_range": [
+        10,
+        14
+      ],
+      "control_range": [
+        13,
+        19
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "duration_ms",
+      "cell_median": 55784,
+      "control_median": 48521,
+      "cell_range": [
+        38786,
+        74916
+      ],
+      "control_range": [
+        41756,
+        50445
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "cost_usd",
+      "cell_median": 0.3319067,
+      "control_median": 0.2785572,
+      "cell_range": [
+        0.31677879999999997,
+        0.376895
+      ],
+      "control_range": [
+        0.22786350000000002,
+        0.3425696
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "cache_read_input_tokens",
+      "cell_median": 231597,
+      "control_median": 183475,
+      "cell_range": [
+        142966,
+        285120
+      ],
+      "control_range": [
+        116344,
+        222362
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "cache_creation_input_tokens",
+      "cell_median": 30180,
+      "control_median": 27822,
+      "cell_range": [
+        29932,
+        33186
+      ],
+      "control_range": [
+        18109,
+        33734
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "output_tokens",
+      "cell_median": 30,
+      "control_median": 34,
+      "cell_range": [
+        16,
+        62
+      ],
+      "control_range": [
+        28,
+        45
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "input_tokens_total",
+      "cell_median": 261620,
+      "control_median": 201598,
+      "cell_range": [
+        175496,
+        315068
+      ],
+      "control_range": [
+        145473,
+        256110
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "tool_uses",
+      "cell_median": 11,
+      "control_median": 14,
+      "cell_range": [
+        9,
+        13
+      ],
+      "control_range": [
+        12,
+        18
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "quarry_tool_uses",
+      "cell_median": 3,
+      "control_median": 0,
+      "cell_range": [
+        3,
+        4
+      ],
+      "control_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "grep_fallback_total",
+      "cell_median": 3,
+      "control_median": 3,
+      "cell_range": [
+        3,
+        6
+      ],
+      "control_range": [
+        2,
+        7
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "tool_result_bytes",
+      "cell_median": 68933,
+      "control_median": 49997,
+      "cell_range": [
+        58366,
+        81166
+      ],
+      "control_range": [
+        40039,
+        77140
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "read_bytes",
+      "cell_median": 14800,
+      "control_median": 44629,
+      "cell_range": [
+        2516,
+        38926
+      ],
+      "control_range": [
+        27580,
+        67755
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "recall",
+      "cell_median": 0.62,
+      "control_median": 0.52,
+      "cell_range": [
+        0.42,
+        0.66
+      ],
+      "control_range": [
+        0.45,
+        0.62
+      ],
+      "separated": false
+    },
+    {
+      "cell": "c1-toc-dir",
+      "control": "c0-none",
+      "metric": "precision",
+      "cell_median": 0.95,
+      "control_median": 0.95,
+      "cell_range": [
+        0.82,
+        1
+      ],
+      "control_range": [
+        0.93,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "turns",
+      "cell_median": 10,
+      "control_median": 12,
+      "cell_range": [
+        8,
+        15
+      ],
+      "control_range": [
+        11,
+        13
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "duration_ms",
+      "cell_median": 39595,
+      "control_median": 44150,
+      "cell_range": [
+        29971,
+        47391
+      ],
+      "control_range": [
+        35454,
+        52193
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "cost_usd",
+      "cell_median": 0.3026202,
+      "control_median": 0.336117,
+      "cell_range": [
+        0.2089374,
+        0.36169080000000003
+      ],
+      "control_range": [
+        0.3004683,
+        0.4104666
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "cache_read_input_tokens",
+      "cell_median": 137544,
+      "control_median": 216642,
+      "cell_range": [
+        50213,
+        251436
+      ],
+      "control_range": [
+        153034,
+        262051
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "cache_creation_input_tokens",
+      "cell_median": 33577,
+      "control_median": 36906,
+      "cell_range": [
+        22509,
+        40376
+      ],
+      "control_range": [
+        27128,
+        47877
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "output_tokens",
+      "cell_median": 8,
+      "control_median": 13,
+      "cell_range": [
+        5,
+        18
+      ],
+      "control_range": [
+        6,
+        60
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "input_tokens_total",
+      "cell_median": 165337,
+      "control_median": 264531,
+      "cell_range": [
+        90595,
+        287293
+      ],
+      "control_range": [
+        189227,
+        297419
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "tool_uses",
+      "cell_median": 9,
+      "control_median": 11,
+      "cell_range": [
+        7,
+        14
+      ],
+      "control_range": [
+        10,
+        12
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "quarry_tool_uses",
+      "cell_median": 1,
+      "control_median": 0,
+      "cell_range": [
+        1,
+        1
+      ],
+      "control_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "grep_fallback_total",
+      "cell_median": 2,
+      "control_median": 3,
+      "cell_range": [
+        1,
+        5
+      ],
+      "control_range": [
+        2,
+        4
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "tool_result_bytes",
+      "cell_median": 78812,
+      "control_median": 81031,
+      "cell_range": [
+        51495,
+        79071
+      ],
+      "control_range": [
+        59649,
+        90650
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "read_bytes",
+      "cell_median": 67865,
+      "control_median": 61181,
+      "cell_range": [
+        39561,
+        71316
+      ],
+      "control_range": [
+        49613,
+        71316
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "recall",
+      "cell_median": 0.75,
+      "control_median": 0.8,
+      "cell_range": [
+        0.62,
+        0.82
+      ],
+      "control_range": [
+        0.71,
+        0.82
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "precision",
+      "cell_median": 0.86,
+      "control_median": 0.85,
+      "cell_range": [
+        0.8,
+        0.93
+      ],
+      "control_range": [
+        0.8,
+        0.93
+      ],
+      "separated": false
+    }
+  ],
+  "incomplete": null,
+  "invalid": null,
+  "meta": {
+    "results_root": "2026-09-04-breadth"
+  }
+}
