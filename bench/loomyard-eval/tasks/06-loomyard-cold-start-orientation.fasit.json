@@ -3,7 +3,9 @@
     "task": "06-loomyard-cold-start-orientation",
     "type": "exploration",
     "pinned_sha": "975578cda8d6f3a81580bd4e73725e060211b766",
-    "scope": "whole repository -- no package named in the prompt",
+    "scope": [
+      "whole repository -- no package named in the prompt"
+    ],
     "date": "2026-09-04",
     "arm": "C",
     "role": "reference/fasit agent -- unlimited time/token budget, produces the ground-truth answer the other two arms are scored against; cross-checked the package graph with a second independent method, `go build ./...` at the pinned SHA, which succeeds cleanly and confirms every symbol named below is present and referenced exactly as described",
