@@ -71,8 +71,11 @@ this batch does not depend on any engine change.
   - `internal/cli/after_test.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create `internal/cli/after_test.go` in `package cli`, table-driven over four
-  cases, each gated by `loomyardRepo(t)`.
+- **Requirements:** Create `internal/cli/after_test.go` in `package cli`, declaring one
+  table-driven test function named exactly `TestAfterGoldens`, over four cases, each gated by
+  `loomyardRepo(t)`. The name matters: cards 21 and 23 both prescribe
+  `go test ./internal/cli/ -run TestAfter -update`, and `-run` prefix-matches, so a differently
+  named function would make that `-update` run a silent no-op that produces no files at all.
 
   | golden file | args after the verb |
   |---|---|
@@ -89,8 +92,13 @@ this batch does not depend on any engine change.
   root, and return `exitNegative` instead of a golden. Note this dependency in the file-level
   comment: the two decisions are load-bearing on each other and must not be changed independently.
 
-  Assemble the file content as the invocation line `$ quarry toc ` followed by the same flags and
-  target the case passed, then `"\n\n"`, then `stdout` verbatim. There is **no** exit-code trailer:
+  Assemble the file content as the invocation line `$ quarry toc ` followed by **the table's
+  "args after the verb" column only**, then `"\n\n"`, then `stdout` verbatim. The invocation
+  line must never include the `--root <absolute Loomyard path>` pair the case actually passes:
+  that is a machine-specific path, and no tracked file in this repository may carry one. Give
+  each table row its own literal invocation-line suffix rather than deriving it from the
+  argument slice, so the machine path cannot leak in by construction rather than being caught
+  after the fact. There is **no** exit-code trailer:
   the four before-side files these pair with carry none, and since these files are byte-compared
   goldens the trailer would decide their bytes, so the exit code is asserted by the test instead.
   Compare byte for byte against `docs/research/output-formats/after/<golden file>`, resolved through
@@ -193,9 +201,13 @@ this batch does not depend on any engine change.
   - `docs/research/output-formats/INDEX.md`
   - `docs/research/output-formats/toc-dir.txt`
   - `docs/research/output-formats/toc-file.txt`
+  - `docs/research/output-formats/toc-dir-compact.txt`
+  - `docs/research/output-formats/toc-file-compact.txt`
   - `internal/cli/after_test.go`
   - `docs/research/output-formats/after/toc-dir.txt`
+  - `docs/research/output-formats/after/toc-file.txt`
   - `docs/research/output-formats/after/toc-dir-text.txt`
+  - `docs/research/output-formats/after/toc-file-text.txt`
   - `docs/rewrite-plan.md`
 - **Edits:** none
 - **Creates:**
