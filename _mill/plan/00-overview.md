@@ -87,7 +87,7 @@ Batch-local decisions live in each batch file._
 - **Decision:** the existing rule that forbids leaking the engine's package-name prefix through an exit-1 or exit-2 message binds the sentences quarry itself authors — the failure path's message, and therefore both the error envelope on stdout and the same sentence on stderr. It does not bind a result payload's own error field, which is a data field of the answer, populated by the engine, and carried to stdout unchanged. So a resolve of a path that escapes the root prints the engine's own doubled-prefix string inside its payload and exits 1, and the text view renders that same string as prose after normalisation. The evidence goldens and the end-to-end tests pin that exact string byte for byte.
 - **Rationale:** the alternative is for the command line to overwrite a payload field the engine authored, which would be a second implementation of the outside-repository disposition — the very thing routing that case through the engine avoids. The rule's purpose is that quarry's own prose not name an internal package; a data field echoing the producer's text is a different thing, and rewriting it would make the command line's payload disagree with the facade's, which returns the engine value untouched.
 - **Consequence for the implementer:** the doubled prefix in that string is the engine's own wording and is a known defect handed to the operator as a follow-up, not something any card here tightens. Do not rewrite, trim, or re-prefix a payload error field anywhere in this plan.
-- **Applies to:** cli-pipelines, evidence-and-status-gate
+- **Applies to:** facade-surface, cli-pipelines, evidence-and-status-gate
 
 ### Decision: no new file is added to quarry/
 
@@ -115,7 +115,7 @@ Batch-local decisions live in each batch file._
 
 ### Decision: tests build fixtures under .scratch/, never in a system temp directory
 
-- **Decision:** every new test that needs a tree on disk uses the existing per-package `writeScratchTree` helper, which writes under `.scratch/cli-tests/`. No test calls `t.TempDir()`, and no test changes the process working directory.
+- **Decision:** every new test that needs a tree on disk uses its own package's existing `writeScratchTree` helper, which writes under that package's own subdirectory of `.scratch/` — `.scratch/quarry-tests/` for the facade package and `.scratch/cli-tests/` for the command-line package. The two helpers are a deliberate per-package copy, because Go test helpers are not importable across packages; neither is made shared. No test calls `t.TempDir()`, and no test changes the process working directory.
 - **Rationale:** the system temp directory is banned for this repository's tests and `.scratch/` is the sanctioned location; the helper already registers its own cleanup.
 - **Applies to:** facade-surface, cli-pipelines, evidence-and-status-gate
 
@@ -129,6 +129,7 @@ Batch-local decisions live in each batch file._
 
 - **Decision:** `go test ./... && golangci-lint run`, already configured as this hub's `pipeline.done_gate`. It was run against this worktree's tip before planning and exits 0, so it carries no pre-existing debt into this task.
 - **Rationale:** the batch verify scopes are per-package, so a repo-wide gate is what catches a cross-package regression from the shared-helper edits.
+- **Where each gate actually runs:** the per-batch `verify:` commands run one package's test binary after every implementer and fixer round. The plan-level `verify:` is `go build ./...`, run at each batch boundary, and is deliberately a compile check only — it is what catches a cross-package break at the batch that introduced it, without paying the repository-wide suite's cost on every round. Neither of those runs the linter or the repository-wide test: those run once, at the end, as the hub's configured done gate. An implementer who wants to check the errcheck rule before then runs `golangci-lint run` by hand; nothing in the per-round loop will catch an unchecked write error for them.
 - **Applies to:** all batches
 
 ## All Files Touched
