@@ -91,8 +91,10 @@ three cards can be validated without it.
   before calling `loomyardRepo` — the same order `TestRoundTrip_Loomyard` uses in
   `internal/engine/roundtrip_test.go`, and the order that matters: `loomyardRepo` *fails* rather than
   skips on a wrongly-pinned checkout, so gating on the checkout first would make this test fail under
-  `-short` on a machine where the established Loomyard test skips. It then opens the checkout with
-  `Open`, resolves all twenty glyphs asserting every result's `Status` is `StatusFound` — a drifted
+  `-short` on a machine where the established Loomyard test skips. It then opens the checkout with the
+  existing `openRepo` helper, as every other Loomyard-gated test in this package does, rather than
+  calling `Open` and hand-rolling the error check. It resolves all twenty glyphs asserting every
+  result's `Status` is `StatusFound` — a drifted
   glyph list would otherwise turn the criterion green by timing twenty misses — and times one
   `Resolve` call over the same twenty glyphs five times with `time.Since`, asserting the minimum
   elapsed is under 150 ms and reporting all five durations in the failure message. The minimum is the
@@ -116,7 +118,10 @@ three cards can be validated without it.
 - **Requirements:** Add `BenchmarkResolveTwentyGlyphs` to `internal/engine/loomyard_timing_test.go`,
   beside the timing test it mirrors. It calls the same `loomyardRepo` gate — passing a `*testing.B`,
   which is the reason card 19 widened that helper's parameter to `testing.TB` — opens the checkout
-  once outside the timed loop with `Open`, calls `b.ResetTimer`, and calls `Resolve` over
+  once outside the timed loop with `Open` directly — not the `openRepo` helper cards 20 and 22 use,
+  which takes a `*testing.T` a benchmark does not have; widening that helper too is not among this
+  task's two named scope exceptions, so the benchmark calls `Open` and fails on its error with
+  `b.Fatalf` — calls `b.ResetTimer`, and calls `Resolve` over
   `loomyardTwentyGlyphs` once per iteration, failing the benchmark on any error. It reuses the
   package-level glyph list card 20 declared and does not restate it.
 
@@ -142,8 +147,9 @@ three cards can be validated without it.
 - **Requirements:** Add `TestExpand_LoomyardMembersAcrossFiles` to
   `internal/engine/loomyard_timing_test.go`. It checks `testing.Short()` and skips first, then calls
   `loomyardRepo` — the same gate order card 20 uses and for the same reason — opens the checkout with
-  `Open`, and expands one Loomyard type whose methods are known to live in more than one file at the
-  pinned commit. Assert `Status` is `StatusFound`, `Head` is non-nil, `Members` is non-empty, and the
+  the existing `openRepo` helper, and expands one Loomyard type whose methods are known to live in more
+  than one file at the pinned commit. Assert `Status` is `StatusFound`, `Head` is non-nil, `Members` is
+  non-empty, and the
   members carry at least two distinct `File` values.
 
   That last assertion is the property the verb exists for and the one no committed fixture proves as
