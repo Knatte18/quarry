@@ -91,18 +91,21 @@ after that is a change to a published contract rather than a choice.
 ## Provenance — what is inherited, and what the plan revision must verify
 
 This task was discussed while T3 was still in flight, so every fact below is labelled by where it
-came from. **Nothing in the `internal/engine` column exists on `main` at the time of writing.**
+came from. **T3 has since merged** — `6ab5b27 "Engine core (T3)"` on `main`, merged into this branch
+as `e881f98` — and the verification list at the end of this section has been **run against the
+merged code**, with its results recorded there. The labelling is kept because it records what each
+claim rested on when it was made; the merge is what turned those claims from inherited design into
+checked fact.
 
-**On `main` today (verified in this worktree):** the `glyph` package (`Parse`, `Glyph`, `String`,
-`Language`, `ParseError`, `Reason`); the V1 extractor under `internal/quarryengine/` and
-`internal/quarryengine/toc/`, which T3 deletes; `docs/glyph.md`; `docs/rewrite-plan.md`; the ladder
+**On `main` today (verified in this worktree after the merge):** the `glyph` package (`Parse`,
+`Glyph`, `String`, `Language`, `ParseError`, `Reason`); the whole of T3's `internal/engine` and
+`internal/cgoguard` — `internal/quarryengine/` is deleted; `docs/glyph.md`; `docs/rewrite-plan.md`; the ladder
 harness under `bench/`.
 
-**Inherited from `.portals/engine-core/` and additionally confirmed by reading the `engine-core`
-worktree's committed code** (so these are decided *and* written, but unmerged — verify the merge did
-not change them):
+**Inherited from `.portals/engine-core/`, confirmed against the `engine-core` worktree, and
+re-confirmed on `main` after the merge:**
 
-| fact | artifact | code seen in `wts/engine-core` |
+| fact | artifact | code (merged, `internal/engine/`) |
 |---|---|---|
 | package `internal/engine`, files per concern; `treesitter` a subpackage; `internal/cgoguard` | D1, D2, plan 01 cards 1–4 | yes |
 | `Symbol{Glyph, ID, Kind, File, Start, SigEnd, End, Signature, Doc, HeadStart, HeadEnd}` and the five-value `Kind` | D3, D5, plan 04 card 23 | `internal/engine/answer.go` |
@@ -114,12 +117,11 @@ not change them):
 | `Strategy.Symbols(unit string, root, src) []Symbol`; the Go walk over func/method/type/const/var/interface-method; generic receiver owner stripped; `_` skipped | D5, plan 04 cards 24–28 | `strategy.go`, `golang.go` |
 | `ErrLanguageUnsupported` exists (its doc comment is rewritten by T3's own card 33) | D21, plan 05 card 33 | `errors.go` |
 
-**Batch 5 (`spans`) landed while this discussion was under review** — it was `pending` when the
-first draft was written and its three functions were design-only then; they are now written and
-committed on `engine-core` (`internal/engine/resolve.go` holds `unitDirs`, `dirExists`,
-`dirChainBelowRoot`, `symbolsOfUnit`, `symbolsOfDir`, `sameOwner`, `SpansOf`). They are still
-**unmerged**, so they stay on this list and the verification below still runs — but the facts
-asserted about them are now read from code, not from a plan:
+**Batch 5 (`spans`) landed while this discussion was under review**, and all of T3 has since merged
+to `main`. Its three functions were design-only when the first draft was written; they are now
+merged code — `internal/engine/resolve.go` holds `unitDirs`, `dirExists`, `dirChainBelowRoot`,
+`symbolsOfUnit`, `symbolsOfDir`, `sameOwner`, `SpansOf`, every signature as described below and
+re-checked after the merge:
 
 - `func (r *Repo) unitDirs(unit string) (dirs []string, collision bool)` — the unit→directory
   inverse, **literal-first**: the directory named exactly by the unit wins; only if it does not
@@ -146,30 +148,49 @@ asserted about them are now read from code, not from a plan:
   literal directory first and the `_test`-stripped fallback second, and **both existing is exactly
   T4's `ambiguous` case**.
 
-**The plan revision's verification list**, to be run after `main` is merged in (`mill-merge-in`):
+**The plan revision's verification list — RUN, after `mill-merge-in` (merge `e881f98`).** Every item
+was checked against merged code; all nine hold, so no decision below needs re-deriving.
 
-1. Do `unitDirs`, `symbolsOfUnit` and `SpansOf` still carry those signatures in
-   `internal/engine/resolve.go` after the merge, and did T3's batch 6 change any of them? They were
-   read from the `engine-core` worktree before merge; if the merge altered the split, D9 and D5 are
-   the decisions to re-derive.
-2. Is `collision` still the second return of `unitDirs`, and is it still unexported? D6 promotes it.
-3. Are `HeadStart`/`HeadEnd` actually set to the type symbol's own `Start`/`End` (with the doc block)
-   for interfaces as well as structs? D12 reads them.
-4. Is `symbolsOfUnit`'s `ig` parameter still an `*ignoreSet` the caller builds, or did it start
-   building its own? D9's per-call memo hands it one set for the whole call.
-5. Does `Symbol.File` come back set from `symbolsOfUnit`, and is the order file-then-line? D15 rests
-   on it.
-6. Did T3's batch 6 add anything to `Symbol`'s key set? D3's result types embed `Symbol` verbatim.
-7. Does a unit whose directory does not exist still come back as `(empty slice, nil error)` from
-   `symbolsOfUnit`, and does `symbolsOfUnit` still return an error **only** for a genuine read
-   failure (`ig.extend`, file read)? D2's error boundary and D10's reachable `unit: not_found` both
-   depend on the absence being an empty result rather than an error, and on no `TOC` sentinel ever
-   surfacing on the glyph branch.
-8. Is the stale `goUngroupedTypeSymbol` comment (D12's last bullet) still present and still worded
-   the way D12 quotes it? If T3's batch 6 already corrected it, T4's card drops.
-9. Does `dirExists` still use `os.Lstat`, so D18's third gap (a unit reached through an intermediate
-   symlink resolves but is never listed) still reads as written? If batch 6 changed it, D10's note
-   and that gap both need re-deriving.
+1. ✅ `unitDirs`, `symbolsOfUnit` and `SpansOf` carry the signatures described above, in
+   `internal/engine/resolve.go`. Batch 6 changed none of them.
+2. ✅ `collision` is still `unitDirs`'s second return, still unexported, still `len(dirs) == 2`.
+   D6 promotes it.
+3. ✅ `HeadStart`/`HeadEnd` are `KindType`-only and JSON-hidden, and `answer.go`'s own comment states
+   they equal the symbol's `Start`/`End` "for every Go type, interfaces included". D12 reads them.
+4. ✅ `symbolsOfUnit(unit string, ig *ignoreSet)` still takes the caller's set. D9's memo builds one
+   per call and hands it down.
+5. ✅ `symbolsOfDir` sets `File`, and `symbolsOfUnit` closes with a `sort.SliceStable` on
+   `(File, Start)`. D15 rests on it, and Testing 16 asserts against it.
+6. ✅ `Symbol`'s key set is unchanged by batch 6 — `id`, `kind`, `file`, `start`, `sigend`, `end`,
+   `signature`, `doc`, plus the two JSON-hidden head fields. D3's result types embed it verbatim.
+7. ✅ A unit with no directory returns an empty slice and a nil error: `unitDirs` yields no
+   directories and `symbolsOfUnit`'s extraction loop does not run. D2's error boundary and D10's
+   reachable `unit: not_found` both hold.
+8. ✅ The stale `goUngroupedTypeSymbol` comment is still present at `golang.go:266-278` and still
+   worded as D12 quotes it ("because the later expand verb renders a type's head by omitting the
+   lines its own member symbols cover"). **Scope exception 1 stands and its card is still needed.**
+9. ✅ `dirExists` still uses `os.Lstat`, so D18's third gap — a unit reached through an intermediate
+   symlink resolves but is never listed — reads exactly as written.
+
+**Also re-verified, since later decisions cite them by name:**
+
+- `internal/engine/loomyard_test.go:50` declares `loomyardRepo(t *testing.T)`, and its body makes
+  five `t.*` calls, all `testing.TB` methods. **Scope exception 2 stands** and D16's widening is
+  still one line.
+- `resolve_test.go:150` still asserts `collision == false` for `internal/engine/testdata/foo_test`,
+  and no `testdata/foo/` sibling exists. D6's and D17's placement rule holds for the stated reason.
+- `roundtrip_test.go:75` defines `tupleSetDiff` as the duplicate-tolerant multiset comparison D17
+  cites when explaining what does *not* constrain fixture placement.
+- `glyph/errors.go` declares 15 `Reason` constants. D11's "the other fourteen" is correct.
+- `testdata/tree/pkg` holds `Alpha` and `Beta` and no method; `testdata/glyphs/` holds `iface.go`,
+  `decls.go` and `inits.go`. D17's rows — including the new `testdata/methods/` package — are
+  accurate.
+- `Repo.Resolve` and `Repo.Expand` do not exist. T4's work is untouched by the merge.
+
+**One change the merge brings that no decision anticipated:** T3 shipped `golden_test.go`,
+`roundtrip_test.go` and `testdata/loomyard/*.json` beyond what the portal plan named. None of them
+constrains T4 — they read the engine rather than the two new verbs — but the plan writer should
+treat them, like every other T3 test, as must-keep-passing rather than as files to extend.
 
 ## Decisions
 
@@ -842,15 +863,16 @@ asserted about them are now read from code, not from a plan:
 
 ## Technical context
 
-**Everything T4 builds on is committed on `engine-core` and unmerged.** Nothing of T3's is on `main`.
-See the Provenance section above for the full table and the nine-item verification list the plan
-revision must run after `mill-merge-in`. `unitDirs`, `symbolsOfUnit` and `SpansOf` were read from
-that worktree's `internal/engine/resolve.go`, not from a plan; if the merge changed their split,
-D9's memo and D10's unit test are the two decisions to re-derive first.
+**Everything T4 builds on is merged and on this branch.** T3 landed as `6ab5b27 "Engine core (T3)"`
+and came in via `e881f98`. The Provenance section above carries the full table and the nine-item
+verification list, **already run against the merged code** — all nine hold, so no decision below
+needs re-deriving. `CGO_ENABLED=1 go build ./... && go test ./...` is green on this branch as of
+that merge.
 
-**The pipelined hold.** Do not begin implementation until T3 is merged to `main`. Then merge `main`
-into this branch with the `mill-merge-in` skill and revise the plan against the code T3 actually
-chose, not the layout its discussion assumed.
+**The pipelined hold is discharged.** It required T3 merged to `main`, `main` merged into this
+branch, and the design checked against the code T3 actually chose rather than the layout its
+discussion assumed. All three are done: the merge is `e881f98`, and the verification list above is
+the check, run item by item. Nothing blocks planning or implementation on T3 any longer.
 
 **Files T4 touches:**
 
