@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-facade-surface
+phase: approved-cli-argument-layer
 slug: facade-cli-resolve-expand
 branch: facade-cli-resolve-expand
 plan: _mill/plan
@@ -34,6 +34,7 @@ plan-fix-r5  '2026-09-04T09:44:17Z'
 planned  '2026-09-04T09:44:27Z'
 implementing  '2026-09-04T09:44:59Z'
 approved-facade-surface  '2026-09-04T09:52:27Z'
+approved-cli-argument-layer  '2026-09-04T09:55:57Z'
 ```
 
 ## Batches
@@ -47,9 +48,10 @@ batches:
     commit_sha: 78528f6bebc607baced1d096dc0c34748daec8f3
     verify_baseline_failures: []
   - name: cli-argument-layer
-    state: running
+    state: approved
     implementer_session: 2ca8a589-360b-45c3-b635-d852c003d066
     start_sha: d14161eb08ffc0b094646a4acd965c185dacd452
+    commit_sha: 76cd9978c35eef44ce2bb723d2dd3e19329b6c2e
     verify_baseline_failures: []
   - name: cli-pipelines
     state: pending
