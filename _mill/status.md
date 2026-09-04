@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-answer-and-walk
+phase: approved-glyph-symbols
 slug: engine-core
 branch: engine-core
 plan: _mill/plan
@@ -32,6 +32,7 @@ implementing  '2026-09-03T19:22:09Z'
 approved-layout  '2026-09-03T19:31:47Z'
 approved-text-rules  '2026-09-03T19:38:53Z'
 approved-answer-and-walk  '2026-09-03T20:00:49Z'
+approved-glyph-symbols  '2026-09-04T04:21:00Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     commit_sha: 8594cdef8bb8777330e108cc41db4c2e651a36ab
     verify_baseline_failures: []
   - name: glyph-symbols
-    state: running
+    state: approved
     implementer_session: 2a901edd-2234-4336-ab6c-36792ebbb965
     start_sha: c9fca14b25183214589f58253197038558fde9e9
+    commit_sha: d6b52365a36f99dd514c2baa76cfa13584a26c1b
     verify_baseline_failures: []
   - name: spans
     state: pending
