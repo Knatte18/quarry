@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: ladder-breadth
 branch: ladder-breadth
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r1  '2026-09-04T16:29:24Z'
 discussion-fix-r5  '2026-09-04T16:54:20Z'
 discussed  '2026-09-04T16:54:20Z'
 planning  '2026-09-04T17:05:55Z'
+plan-review-r1  '2026-09-04T17:11:27Z'
 ```
