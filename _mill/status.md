@@ -61,6 +61,8 @@ batches:
     commit_sha: 387425903869650bd2a09416e03a59f7782b239c
     verify_baseline_failures: []
   - name: evidence-and-status-gate
-    state: pending
+    state: running
+    implementer_session: 00cf4797-e12d-4b0d-ace3-d9847a5853c8
+    start_sha: 2026cb23d4efb1d48cfb7b8ce6d9b74e21fe91f7
     verify_baseline_failures: []
 ```
