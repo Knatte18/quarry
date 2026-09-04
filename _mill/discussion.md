@@ -167,8 +167,18 @@ change, and a harness change cannot land mid-matrix.
 - Rationale: `docs/rewrite-plan.md` §2 forbids editing the code under test mid-matrix and holds a
   harness change proven only by a non-control cell completing end to end. Sequencing M2 first
   satisfies both with no extra runs. A clean tree at invocation time also keeps `provenance.json`'s
-  `quarry_dirty` honest (the only tolerated dirty entry is the narrow
-  `_mill/briefs/<currently-executing-batch>*.md` carve-out T7 established).
+  `quarry_dirty` honest. Exactly two dirty entries are tolerated, both carried over from T7's
+  `clean-tree-and-no-edits-mid-matrix` decision: the narrow
+  `_mill/briefs/<currently-executing-batch>*.md` file the orchestrator writes before any card can
+  commit it, and — **on a resumed invocation only** — paths **inside the in-progress results root**.
+  The second is what makes resume compatible with the clean-tree rule: `.gitignore` covers
+  `results/*/raw/` but not the root's own `provenance.json`, `summary.json` and `table.txt`, so
+  invocation 1 necessarily leaves them untracked and `CollectInvocation`'s `git status --porcelain`
+  necessarily lists them at invocation 2's startup. Those entries are benign precisely because every
+  one of them is inside the root being written; a dirty path **outside** the results root on a resume
+  is not covered and must be committed or reverted before re-invoking. Committing the partial root
+  between invocations is deliberately **not** required — a half-written `summary.json` is not a
+  record worth committing, and the root is committed once when the matrix is done.
 - Rejected: running the matrix first and landing M2 after — it would leave the very run that most
   needs invalidation diagnostics running on the blind harness. Also rejected: splitting M2 out to a
   separate `mill-quick` task — the roadmap allows it, but then this task's matrix either waits on
@@ -310,15 +320,27 @@ change, and a harness change cannot land mid-matrix.
 
   1. **A repetition exhausts `MaxAttempts`** and its cell is recorded incomplete. Remedy: read the
      `invalid_reason.txt` files M2 now writes, fix the named cause, and re-invoke over the same root
-     — a repetition that is not `RepIsComplete` is re-attempted. If a cell still cannot reach `5/5`
-     after a second invocation, it is reported in the conclusion as **incomplete with its causes
-     quoted**, its comparison is not presented as a result, and that task shape is named as
-     unmeasured rather than as flat. A shape reported flat on `3/5` would be the worst possible
-     outcome of this task.
+     — a repetition that is not `RepIsComplete` is re-attempted. **Resume buys one attempt, not a
+     fresh three.** `run.go` compares `InvalidateRep`'s return value — the *cumulative*
+     `.invalid-<n>` suffix — against `MaxAttempts`, so a repetition that already carries three
+     invalid directories gets exactly one more attempt per invocation before being recorded
+     incomplete again. Plan around that: verify the fix out of band before re-invoking rather than
+     using the matrix as the test, and cap this at **two resume invocations**; past that, stop and
+     report. If a cell still cannot reach `5/5`, it is reported in the conclusion as **incomplete
+     with its causes quoted**, its comparison is not presented as a result, and that task shape is
+     named as unmeasured rather than as flat. A shape reported flat on `3/5` would be the worst
+     possible outcome of this task.
   2. **The whole invocation aborts** because every attempt of one repetition failed to connect the
      server (`connectFailures == attempts`). This is an environment or configuration fault by
      construction, not data: fix it, then re-invoke over the same root. Repetitions already complete
-     are not re-run.
+     are not re-run. **That abort is a fresh-root protection only.** `connectFailures` is loop-local
+     while `attempts` is cumulative, so on a re-entered root the equality is unreachable and an
+     unfixed server fault no longer stops the invocation — it quietly burns one real call per
+     remaining repetition across all six cells. The cost guard therefore has to be the operator's on
+     a resume: confirm the server actually connects (the `--setting-sources ""` probe `HANDOFF.md`
+     §4 documents) before re-invoking, not after. Correcting this accounting in the harness is
+     **out of scope** here — it is a retry-semantics change with no bearing on what this task
+     measures, and it would have to land before the matrix like M2 did; record it as a follow-up.
   3. **A repetition is complete but unscored** (`writeCompleteState(..., scored=false,
      ScoreSkipReason: "scorer_failed")`). `RepIsComplete` returns true for it, so a re-invocation
      will never re-attempt it — the only route back to `unscored_count: 0` is to **delete that one
@@ -328,6 +350,20 @@ change, and a harness change cannot land mid-matrix.
      was re-run). If the same repetition fails scoring a second time, stop deleting: accept it,
      report `unscored_count` non-zero, and read that cell's recall/precision at the reduced `n` while
      its cost metrics stay at full `n` — the split T7's table already reports per metric.
+  4. **A control repetition fails the rendered-prompt blinding gate.** Check (d),
+     `CheckRenderedControlPrompt`, runs pre-dispatch for a control cell and fails it when the
+     rendered prompt carries the bare token `quarry`, the bare server name, any entry of
+     `quarry_tools` (i.e. `toc`), or the MCP prefix as a composed string. The repetition is written
+     **void** (`writeVoidRepetition`), is flagged `blinding_failed`, produces **no**
+     `invalid_reason.txt` — this path never reaches the attempt loop — and does **not** abort the
+     run. Because `RepIsComplete` is false for it, every invocation re-attempts it and fails it again
+     deterministically, while the paired rung cell happily spends five real calls against a control
+     that can never complete. This task authors the two prompts feeding `c0-none` and `d0-none`, so
+     it is the task most able to trip this gate. Remedy: it is caught **before** the matrix by the
+     offline assertion in Testing below, never diagnosed during it. If one does fire during the
+     matrix, stop the invocation immediately — the prompt is measured stimulus and cannot be edited
+     with the matrix in flight, so the root is abandoned (`ABANDONED.md`, as T7's plan provides) and
+     restarted after the prompt is fixed.
 - Rationale: the done-when ("every measured cell a real MCP cell completing end to end") is about
   measurement integrity, not about a single process start, and the harness was built with resume as a
   first-class path (`RepIsComplete` exists for exactly this). Saying so explicitly stops a plan writer
@@ -566,6 +602,12 @@ There is no `CONSTRAINTS.md` at the hub root. The binding constraints come from 
 - `LoadTaskFile` succeeds on `02-shedadapters-exploration.md` and on the new task 06 file, returning
   a non-empty task text and a schema block — the direct regression against task 02's current missing
   heading.
+- **`CheckRenderedControlPrompt` returns nil for every control cell's rendered prompt.** Render each
+  control cell's prompt exactly as `run.go` does — `LoadTaskFile` → `RenderPrompt(content, dest,
+  grantedToolNames(...))` — and assert the gate returns no finding for `b0-none`, `c0-none` and
+  `d0-none`. This is a pure function of the task file and the ladder file, so it costs nothing and it
+  is the only pre-matrix check that catches a new prompt containing the bare token `toc` or `quarry`
+  before it voids a control cell for the whole matrix (shortfall 4 above).
 - Each new fasit parses as JSON, carries the exploration schema's three scored keys
   (`relevant_files`, `key_symbols`, `summary`) plus `confidence` and `open_questions`, and its
   `_meta.pinned_sha` equals the pin its ladder entry names.
@@ -647,6 +689,18 @@ shortfall rather than paper over it.
   **Why:** the harness's own resume path exists for this, and the one failure it cannot self-heal
   (a complete-but-unscored rep, which `RepIsComplete` accepts forever) otherwise makes the done-when
   unreachable.
+- **Q:** What does resuming actually buy, and what stops a bad server config burning the budget?
+  **A:** [auto-resolve, review r4 BLOCKING] One attempt per invocation, not three (the ceiling is
+  compared against the cumulative suffix); and the whole-run connect abort is unreachable on a
+  re-entered root, so the operator verifies the server connects out of band before re-invoking, with
+  resumes capped at two. **Why:** the accounting is cumulative on one side and loop-local on the
+  other; correcting it is a harness change this task does not own.
+- **Q:** What if a new task's prompt trips the control-cell blinding gate? **A:** [auto-resolve,
+  review r4 BLOCKING] It is caught pre-matrix by an offline assertion that
+  `CheckRenderedControlPrompt` returns nil for every control cell's rendered prompt; if it somehow
+  fires mid-matrix the root is abandoned and restarted, since the prompt cannot be edited in flight.
+  **Why:** a void control repetition re-fails deterministically forever and never aborts the run,
+  while its paired rung cell spends five real calls against a control that can never complete.
 - **Q:** What happens at the discussion-review round cap if findings remain? **A:** [operator]
   Approve and hand off regardless. **Why:** the operator's explicit instruction this session — the
   round cap ends the review loop and proceeds to Handoff rather than blocking the task.
