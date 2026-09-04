@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-fix-r5
+phase: discussed
 slug: resolve-expand
 branch: resolve-expand
 plan: null
@@ -17,4 +17,6 @@ task_description: |
 discussing  '2026-09-04T04:05:19Z'
 discussion-fix-r3  '2026-09-04T04:40:33Z'
 discussion-fix-r5  '2026-09-04T04:55:58Z'
+discussion-fix-r6  '2026-09-04T05:03:27Z'
+discussed  '2026-09-04T05:03:27Z'
 ```
