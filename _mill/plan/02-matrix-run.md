@@ -1,0 +1,169 @@
+# Batch: matrix-run
+
+```yaml
+task: "Ladder, toc rerun (T7)"
+batch: "matrix-run"
+number: 2
+cards: 2
+verify: go test ./bench/loomyard-eval/ladder/...
+depends-on: [1]
+```
+
+## Batch Scope
+
+This batch spends the task's whole API budget and produces its three machine artifacts. Card 3 is
+the gate — the offline suite, the clean tree, the environment preconditions and the harness's own
+guarded live test, in that order — and card 4 drives the matrix to a terminal state and commits what
+it produced. The two are one batch because they share the same context (the harness's failure
+taxonomy, its gates, its resume contract) and because nothing may come between them: the clean-tree
+check card 3 ends on is only meaningful if the next thing that happens is the matrix.
+
+The batch is also the only place a harness defect may be fixed. If one blocks the run, it is fixed
+under `bench/loomyard-eval/ladder/` with a failing table test written first, committed, and the
+matrix restarts in a fresh `-r2` root per `## Shared Decisions`. A defect in the code under test
+stops the run instead and is recorded by the next batch.
+
+The interface batch 3 consumes: a results root holding `summary.json`, `provenance.json` and
+`table.txt`, committed, plus the run log under `.scratch/` carrying the per-invocation server-hash
+readings and the invocation count.
+
+## Cards
+
+### Card 3: Pre-matrix gates and the guarded live test
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/ladder-toc.yaml`
+  - `bench/loomyard-eval/ladder/internal/ladder/live_test.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/run.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/mcp.go`
+- **Edits:** none
+- **Creates:** none
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** A zero-diff gate card. Run each step from the repository root and stop the whole
+  batch on the first failure, reporting what failed.
+  (1) **The offline suite.** `go test ./... && golangci-lint run`, with `LADDER_LIVE_TEST` unset so
+  the guarded live test skips. The tree is green today, so any failure is something this task
+  introduced.
+  (2) **The clean tree.** `git status --porcelain` must be empty. A non-empty tree means the matrix
+  would record `quarry_dirty` true and describe something that is not in git.
+  (3) **The environment preconditions**, each read and reported, none of them written into a
+  committed file: the ladder env file under .scratch/ resolves the Loomyard checkout for
+  `ResolveLoomyardRepo`; that checkout's HEAD is at the required pin and the ladder file's own
+  `pinned_sha` is a commit reachable in it; `LADDER_WORKTREE_ROOT` is either unset — so
+  `ResolveWorktreeRoot` falls back to the cache directory — or set to a path that is not the quarry
+  repository root, not under it, and does not contain the substring `quarry`, which
+  `ResolveWorktreeRoot` refuses; and no stale `.ladder.lock` sits under the resolved ladder worktree
+  root. Never copy the resolved Loomyard path or the resolved worktree root into any file this task
+  commits — the repository's rule is that no tracked file carries a machine path, which is why the
+  provenance record stores hashes.
+  (4) **The guarded live test**, once:
+  `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT LADDER_LIVE_TEST=1 go test ./bench/loomyard-eval/ladder/internal/ladder -run TestLive -v -timeout 20m`.
+  Budget it as an eleventh measured repetition, not as a unit test:
+  `TestLive_FreshWorktreeGrantsExactlyBuiltins` drives `invokeMeasuredProcess` at the ladder file's
+  own run model, run effort and 60-turn ceiling, so it costs one full control repetition's API spend
+  and wall-clock. The explicit `-timeout 20m` is there because the default 10-minute limit sits
+  uncomfortably close to a 60-turn run's worst case and a timeout kill would read as a seam failure
+  when it is not. The same `env -u` prefix the matrix uses is mandatory here: the test exists to make
+  a claim about the `claude -p` seam under the conditions the matrix runs in, and running it under
+  the very markers the matrix strips would test something else. Because this test is slow and
+  expensive, run it in the background with its output tee'd to a log under .scratch/ and poll that
+  log, rather than blocking a foreground call on it. A failure blocks the matrix — do not proceed to
+  card 4.
+  (5) **The baseline server hash.** Record `sha256sum` of the built server binary at
+  `<ladder-worktree-root>/bin/quarry` — the harness's own build target, per `run.go`'s
+  `serverBinary` — into the run log, and report it. This is the first of the per-invocation readings
+  the write-up batch transcribes. Make no file change in this card.
+- **Commit:** none
+
+### Card 4: Run the toc matrix and commit its machine artifacts
+
+- **Context:**
+  - `bench/loomyard-eval/ladder/ladder-toc.yaml`
+  - `bench/loomyard-eval/ladder/cmd/ladder/main.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/run.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/worktree.go`
+  - `bench/loomyard-eval/ladder/results/2026-09-04-toc/probe.md`
+- **Edits:** none
+- **Creates:**
+  - `bench/loomyard-eval/ladder/results/2026-09-04-toc/summary.json`
+  - `bench/loomyard-eval/ladder/results/2026-09-04-toc/provenance.json`
+  - `bench/loomyard-eval/ladder/results/2026-09-04-toc/table.txt`
+- **Deletes:** none
+- **Moves:** none
+- **Requirements:** Drive the matrix to a terminal state, then commit the three artifacts it wrote.
+  **The invocation**, run from the repository root, detached, with stdout and stderr tee'd to a log
+  under .scratch/, and polled rather than blocked on:
+
+  ```
+  env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT \
+    go run ./bench/loomyard-eval/ladder/cmd/ladder run \
+      --config bench/loomyard-eval/ladder/ladder-toc.yaml \
+      --results bench/loomyard-eval/ladder/results/2026-09-04-toc \
+      --cells a0-none,a2-toc-dir
+  ```
+
+  No `--reps` override, so the ladder file's own `reps: 5` applies; no other flag is passed, so the
+  file's run model, run effort, 60-turn ceiling, scorer model and scorer effort all come from the
+  file. Ten measured repetitions plus ten scorer invocations is the whole matrix.
+  **Before every invocation**, including the first: take `sha256sum` of the built server binary at
+  `<ladder-worktree-root>/bin/quarry` and append the reading to the run log, and confirm
+  `git status --porcelain` is still empty apart from the untracked results root.
+  **The termination rule** is the driver's own, not the harness's, and it has three arms. Stop when
+  every selected cell reports 5 complete repetitions; or when three invocations of the command have
+  been made, the third being the last; or when every still-missing repetition is attempt-exhausted.
+  Before each re-invocation, list `<root>/raw/<cell>/<rep>.invalid-*` for every missing repetition: a
+  repetition with three or more such directories will never complete, because `InvalidateRep` derives
+  its counter from the directories already on disk, so the next attempt trips the ceiling immediately
+  after spending a fresh measured call. When every missing repetition is exhausted, do not re-invoke
+  at all. A non-zero exit code alone is never a reason to re-run: `runCommand` exits non-zero
+  whenever the summary carries an incomplete or invalid cell, and neither the exit code nor the
+  summary distinguishes "never attempted" from "attempt-exhausted".
+  **A blinding failure takes a different path and must be handled by hand.** `writeCompleteState`
+  with the blinding flag set writes the repetition complete-with-the-flag rather than invalidating
+  it, so no counter increments and an unattended loop would re-attempt it forever. Re-attempt such a
+  repetition **exactly once**, and only after diagnosing and naming the cause; a second failure of
+  the same repetition stops the matrix. Per fatal check: check (a), the MCP prefix in a control
+  transcript, and check (b), the quarry repository root path in a control transcript, are both
+  non-transient — inspect the cell's configuration and the rendered prompt, and stop until the cause
+  is explained. Check (d), `CheckRenderedControlPrompt`, runs pre-dispatch and is deterministic, so a
+  re-run can never clear it: **zero** re-attempts, stop immediately. `ScanMemoryPaths` aborts the
+  whole invocation rather than one repetition, and the memory it walks is the measured session's own,
+  which runs with its working directory in the pinned Loomyard worktree — so it is Loomyard's project
+  memory that trips it; one re-attempt after the offending file is dealt with, then stop. Gate 2
+  check (c), the bare token `quarry` in a control transcript, is an observation and never fatal —
+  expect it to fire and carry it to the write-up as information.
+  **Two outcomes are accepted and never retried:** a scorer failure, which `dispatchScorer` has
+  already retried alone up to the harness ceiling before writing the repetition complete with
+  `scored: false` and `score_skip_reason` set to `scorer_failed`, counted in `UnscoredCount` and
+  dropped from recall and precision only; and a max-turns completion, which is complete by design and
+  counted in `MaxTurnsCount`. Do not re-run either one's measured process.
+  **When the run terminates**, record in the run log: the number of invocations made, every
+  server-hash reading, the final incomplete and invalid lists, and the per-cell repetition counts.
+  Then `git add` exactly the three artifacts named in `Creates:` and commit. Add nothing under the
+  results root's raw tree. Do not edit any other file in the repository between the first repetition
+  and this commit.
+- **Commit:** `bench(ladder): T7 toc matrix results, cells a0-none and a2-toc-dir at reps 5`
+
+## Batch Tests
+
+`verify: go test ./bench/loomyard-eval/ladder/...` — the harness's own offline suite, scoped to the
+one tree this batch is permitted to change. It runs against the fake-runner layer under
+`testdata/`, needs no network and no API budget, and skips the guarded live test because
+`LADDER_LIVE_TEST` is unset in the verify environment. The scope is deliberate: this batch's only
+possible code change is a harness fix (see `## Batch Scope`), and if one lands its failing table
+test goes in the same package tree the command covers. The repository-wide gate
+(`go test ./... && golangci-lint run`) still runs once as card 3's first step and again as the task's
+done gate.
+
+The batch's real tests, though, are the run's own gates, and the write-up batch reports all of them:
+gate 1 tells the conclusion whether `a2-toc-dir` ever called the tool it was granted — a cell that
+never did measured prompt cost only; gate 2 tells it whether any control repetition was
+contaminated; and the summary's incomplete and invalid lists, plus the non-zero exit, are the machine
+check that the matrix finished. The pre-matrix live test in card 3 is the seam check that no offline
+test can stand in for.
