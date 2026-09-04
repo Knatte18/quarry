@@ -431,13 +431,18 @@ func goConstOrVarSpecChild(decl *ts.Node, kind string) *ts.Node {
 
 // goSpecNames returns every identifier under spec's "name" field, in source order: one name for
 // "const x = 1" or "var x int", several for "const a, b = 1, 2" — the grammar's "name" field holds
-// multiple identifier children (interleaved with "," tokens) for exactly this shape, on both
-// const_spec and var_spec.
+// multiple identifier children for exactly this shape, on both const_spec and var_spec. The field
+// also carries the "," tokens separating those identifiers, tagged with the same field name, so
+// every non-identifier (unnamed) child is skipped here; without that filter each "," would surface
+// as a spurious, blank-adjacent extra name.
 func goSpecNames(spec *ts.Node, src []byte) []string {
 	nodes := spec.ChildrenByFieldName("name", spec.Walk())
-	names := make([]string, len(nodes))
+	names := make([]string, 0, len(nodes))
 	for i := range nodes {
-		names[i] = NodeText(&nodes[i], src)
+		if !nodes[i].IsNamed() {
+			continue
+		}
+		names = append(names, NodeText(&nodes[i], src))
 	}
 	return names
 }
