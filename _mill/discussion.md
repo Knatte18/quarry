@@ -198,6 +198,11 @@ have to redo.
   recursive type, shared facts once — and is the one to revisit first if multi-target is ever
   wanted. It is out of T5a because it needs its own decisions on ordering, on de-duplication, and
   on a target nested inside another target, none of which §4 settles.
+- **Known divergence this task deliberately leaves standing.** `docs/rewrite-plan.md` §5 spells the
+  verb `toc <dir|file>...`, so once T5a merges the plan text claims an arity the CLI answers with
+  exit 2. That file is on this task's Out list and must not be edited here. Amending or annotating
+  §5's spelling is a one-line follow-up owned outside T5a; the plan writer carries the
+  single-target contract as decided above and does not attempt to reconcile the plan text.
 
 ### cli-shape
 
@@ -545,9 +550,8 @@ There is no `CONSTRAINTS.md` at the hub root. The constraints below come from th
   need siblings, not rewrites, for `resolve` and `expand` answers; the exit-code table and the
   failure envelope are verb-independent and T5b reuses them unchanged; `internal/cli.Run` dispatches
   on a verb word so a second verb is an added case, not a restructure.
-- **Review rounds are capped at 3** for both the discussion and plan holistic loops
-  (`.millhouse/config.local.yaml`, operator decision 2026-09-04). On reaching the cap the loop
-  approves implicitly and proceeds to handoff; it never blocks.
+- **Review rounds are capped at 3** for the discussion and plan holistic loops
+  (`.millhouse/config.local.yaml`, operator decision 2026-09-04).
 
 ## Testing
 
