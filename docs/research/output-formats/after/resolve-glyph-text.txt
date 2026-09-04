@@ -1,0 +1,5 @@
+$ quarry resolve --text internal/logger#stderrHandlerSnapshot
+
+internal/logger#stderrHandlerSnapshot found
+internal/logger/logger.go:155-163 (sig 155-158) internal/logger#stderrHandlerSnapshot: func stderrHandlerSnapshot() slog.Handler
+    stderrHandlerSnapshot returns the current stderr-half handler under a narrow critical section; caller must not hold sinkMu across the following Handle call to avoid deadlock.

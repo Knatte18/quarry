@@ -1,0 +1,19 @@
+$ quarry resolve internal/logger#dualHandler.Handle
+
+{
+  "target": "internal/logger#dualHandler.Handle",
+  "id": "internal/logger#dualHandler.Handle",
+  "status": "found",
+  "symbols": [
+    {
+      "id": "internal/logger#dualHandler.Handle",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 216,
+      "sigend": 222,
+      "end": 239,
+      "signature": "func (d dualHandler) Handle(ctx context.Context, record slog.Record) error",
+      "doc": "Handle implements slog.Handler by independently re-checking each half's own Enabled and\ndelegating only to the halves that pass -- see the dualHandler doc comment for why this\nindependent re-check, rather than a single shared gate, is load-bearing.\nrecord.Clone() is used for all but the last delegate because slog.Record documents that a Record\npassed to more than one Handler must be cloned for each use beyond the first, since its internal\nsmall-attrs storage may otherwise be shared."
+    }
+  ]
+}

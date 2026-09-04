@@ -1,7 +1,9 @@
-// render.go declares the two JSON renderers the facade exports: RenderJSON, the successful
-// envelope, and RenderErrorJSON, the failure envelope. Both are package-level functions rather than
-// methods, per the overview's alias-types-carry-no-methods decision — DirAnswer is an alias for an
-// engine type, and Go forbids a method declared here from binding to it.
+// render.go declares the JSON renderers the facade exports: RenderJSON, RenderResolveJSON and
+// RenderExpandJSON, the three successful envelopes, sharing one unexported encoder configuration in
+// renderJSON, and RenderErrorJSON, the failure envelope. All are package-level functions rather than
+// methods, per the overview's alias-types-carry-no-methods decision — DirAnswer, ResolveResult and
+// ExpandAnswer are aliases for engine types, and Go forbids a method declared here from binding to
+// any of them.
 
 package quarry
 
@@ -21,22 +23,46 @@ type errorEnvelope struct {
 	Error string `json:"error"`
 }
 
-// RenderJSON encodes a into the wire form docs/rewrite-plan.md §4 fixes: two-space indentation, one
-// trailing newline, and no other bytes. HTML escaping is disabled because headers and package docs
-// are real prose that can legitimately contain '<', '>' and '&' — Go's default encoder would rewrite
-// '<' as `<` and make the output both unreadable and unequal to §4's own examples. Key order
-// within the object is the struct field declaration order of internal/engine/answer.go, which is
-// already §4's order, so no hand-written marshaller is needed here or anywhere this type is encoded.
-func RenderJSON(a DirAnswer) ([]byte, error) {
+// renderJSON encodes v into the wire form docs/rewrite-plan.md §4 fixes: two-space indentation, one
+// trailing newline, and no other bytes. HTML escaping is disabled because headers, package docs and
+// signatures are real prose that can legitimately contain '<', '>' and '&' — Go's default encoder
+// would rewrite '<' as `<` and make the output both unreadable and unequal to §4's own examples.
+// Key order within the object is the struct field declaration order of the type being encoded, so no
+// hand-written marshaller is needed here or anywhere this helper is used. renderJSON is the one
+// place this encoder configuration is built; every exported success renderer in this file delegates
+// to it so the byte contract cannot drift between them.
+func renderJSON(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(a); err != nil {
+	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
 	// Encode already appends exactly one trailing newline; buf carries no other bytes.
 	return buf.Bytes(), nil
+}
+
+// RenderJSON encodes a, a table-of-contents answer, as a successful JSON envelope. See renderJSON
+// for the byte contract this and every other success renderer in this file share.
+func RenderJSON(a DirAnswer) ([]byte, error) {
+	return renderJSON(a)
+}
+
+// RenderResolveJSON encodes r, a resolve answer, as a successful JSON envelope. It emits the same
+// byte contract as RenderJSON — two-space indent, one trailing newline, no HTML escaping — and its
+// key order within the object is ResolveResult's own field declaration order, so no hand-written
+// marshaller is needed.
+func RenderResolveJSON(r ResolveResult) ([]byte, error) {
+	return renderJSON(r)
+}
+
+// RenderExpandJSON encodes a, an expand answer, as a successful JSON envelope. It emits the same
+// byte contract as RenderJSON — two-space indent, one trailing newline, no HTML escaping — and its
+// key order within the object is ExpandAnswer's own field declaration order, so no hand-written
+// marshaller is needed.
+func RenderExpandJSON(a ExpandAnswer) ([]byte, error) {
+	return renderJSON(a)
 }
 
 // RenderErrorJSON encodes msg as the compact failure envelope {"ok":false,"error":"<msg>"} followed

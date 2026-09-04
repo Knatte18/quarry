@@ -1,7 +1,10 @@
-// after_test.go pins the four docs/research/output-formats/after/ files as goldens: one real
+// after_test.go pins the twelve docs/research/output-formats/after/ files as goldens: one real
 // invocation of Run, in-process, against a Loomyard checkout at loomyardPin, compared byte for
-// byte against the committed golden. These four files are also the task's committed evidence — the
-// golden fixture and the regression gate are the same artifact.
+// byte against the committed golden. These twelve files are also the task's committed evidence —
+// the golden fixture and the regression gate are the same artifact. The table spans three verbs —
+// toc, resolve, and expand — and each row carries its own expected exit code: the expected code
+// lives here, in the table, and in docs/research/output-formats/after/INDEX.md, never in a trailer
+// inside a golden file itself.
 //
 // TestAfterGoldens is named so that "-run TestAfter -update" (docs/research/output-formats/after's
 // own regeneration instructions) matches it by prefix: a differently named function would make that
@@ -15,13 +18,13 @@
 // file and loomyard_test.go / cli.go must not be changed independently of each other.
 //
 // This file opens a deliberate red window with the batch it ships in: it compares against
-// after/toc-dir.txt and the other three golden files before the card that creates them has run, so
-// on a machine with the pinned checkout "go test ./internal/cli/..." fails on a missing golden
-// between this card's commit and the next one's. That window is expected and bounded to within the
-// batch — the batch's own verify only runs once every card has landed — and it is not papered over
-// by skipping on a missing golden: after the next card, a missing golden is a real regression (a
-// deleted or unstaged fixture), and a skip there would hide exactly the failure this gate exists to
-// catch.
+// after/toc-dir.txt and the other eleven golden files before the card that creates the eight new
+// ones has run, so on a machine with the pinned checkout "go test ./internal/cli/..." fails on a
+// missing golden between this card's commit and the next one's. That window is expected and
+// bounded to within the batch — the batch's own verify only runs once every card has landed — and
+// it is not papered over by skipping on a missing golden: after the next card, a missing golden is
+// a real regression (a deleted or unstaged fixture), and a skip there would hide exactly the
+// failure this gate exists to catch.
 
 package cli
 
@@ -32,39 +35,106 @@ import (
 	"testing"
 )
 
-// afterGoldenCase is one row of the after/ golden table: the golden file name, the CLI arguments
-// following the "toc" verb (used both to build Run's argv and to spell the invocation line each
-// golden file records), and the repository-relative target those arguments end with.
+// afterGoldenCase is one row of the after/ golden table: the golden file name, the verb it
+// invokes, the CLI arguments following that verb (used both to build Run's argv and to spell the
+// invocation line each golden file records), the repository-relative target those arguments end
+// with, and the exit code Run is expected to return for this row.
 type afterGoldenCase struct {
 	golden     string
+	verb       string
 	invocation string
 	verbArgs   []string
+	exitCode   int
 }
 
 // afterGoldenCases is docs/research/output-formats/after/'s own table: which golden file each
-// invocation produces, and the exact invocation-line suffix it records. Each row spells its own
-// suffix literally, rather than deriving it from verbArgs, so a machine-specific --root cannot leak
-// into a committed golden by construction.
+// invocation produces, the exact invocation-line suffix it records, and the exit code Run is
+// expected to return. Each row spells its own suffix literally, rather than deriving it from
+// verbArgs, so a machine-specific --root cannot leak into a committed golden by construction.
 var afterGoldenCases = []afterGoldenCase{
 	{
 		golden:     "toc-dir.txt",
+		verb:       "toc",
 		invocation: "internal/logger",
 		verbArgs:   []string{"internal/logger"},
+		exitCode:   exitOK,
 	},
 	{
 		golden:     "toc-file.txt",
+		verb:       "toc",
 		invocation: "internal/logger/logger.go",
 		verbArgs:   []string{"internal/logger/logger.go"},
+		exitCode:   exitOK,
 	},
 	{
 		golden:     "toc-dir-text.txt",
+		verb:       "toc",
 		invocation: "--text internal/logger",
 		verbArgs:   []string{"--text", "internal/logger"},
+		exitCode:   exitOK,
 	},
 	{
 		golden:     "toc-file-text.txt",
+		verb:       "toc",
 		invocation: "--text internal/logger/logger.go",
 		verbArgs:   []string{"--text", "internal/logger/logger.go"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "resolve-glyph.txt",
+		verb:       "resolve",
+		invocation: "internal/logger#stderrHandlerSnapshot",
+		verbArgs:   []string{"internal/logger#stderrHandlerSnapshot"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "resolve-glyph-text.txt",
+		verb:       "resolve",
+		invocation: "--text internal/logger#stderrHandlerSnapshot",
+		verbArgs:   []string{"--text", "internal/logger#stderrHandlerSnapshot"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "resolve-method.txt",
+		verb:       "resolve",
+		invocation: "internal/logger#dualHandler.Handle",
+		verbArgs:   []string{"internal/logger#dualHandler.Handle"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "resolve-not-found.txt",
+		verb:       "resolve",
+		invocation: "internal/logger#noSuchSymbol",
+		verbArgs:   []string{"internal/logger#noSuchSymbol"},
+		exitCode:   exitNegative,
+	},
+	{
+		golden:     "resolve-path.txt",
+		verb:       "resolve",
+		invocation: "internal/logger/logger.go",
+		verbArgs:   []string{"internal/logger/logger.go"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "expand-type.txt",
+		verb:       "expand",
+		invocation: "internal/logger#dualHandler",
+		verbArgs:   []string{"internal/logger#dualHandler"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "expand-type-text.txt",
+		verb:       "expand",
+		invocation: "--text internal/logger#dualHandler",
+		verbArgs:   []string{"--text", "internal/logger#dualHandler"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "expand-not-a-type.txt",
+		verb:       "expand",
+		invocation: "internal/logger#newDualHandler",
+		verbArgs:   []string{"internal/logger#newDualHandler"},
+		exitCode:   exitNegative,
 	},
 }
 
@@ -75,18 +145,18 @@ func TestAfterGoldens(t *testing.T) {
 
 	for _, tc := range afterGoldenCases {
 		t.Run(tc.golden, func(t *testing.T) {
-			args := append([]string{"toc", "--root", repo}, tc.verbArgs...)
+			args := append([]string{tc.verb, "--root", repo}, tc.verbArgs...)
 
 			var stdout, stderr bytes.Buffer
 			code := Run(args, &stdout, &stderr)
-			if code != exitOK {
-				t.Fatalf("Run(%v) code = %d, stderr = %q; want %d", args, code, stderr.String(), exitOK)
+			if code != tc.exitCode {
+				t.Fatalf("Run(%v) code = %d, stderr = %q; want %d", args, code, stderr.String(), tc.exitCode)
 			}
-			if stderr.Len() != 0 {
+			if tc.exitCode == exitOK && stderr.Len() != 0 {
 				t.Fatalf("Run(%v) stderr = %q; want empty", args, stderr.String())
 			}
 
-			got := "$ quarry toc " + tc.invocation + "\n\n" + stdout.String()
+			got := "$ quarry " + tc.verb + " " + tc.invocation + "\n\n" + stdout.String()
 			compareAfterGolden(t, tc.golden, got)
 		})
 	}
