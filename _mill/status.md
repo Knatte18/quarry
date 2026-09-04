@@ -64,7 +64,9 @@ batches:
     commit_sha: 33b129f1504df38c22d9a480b9f4176bf4924c7a
     verify_baseline_failures: []
   - name: matrix-and-conclusion
-    state: pending
+    state: running
+    implementer_session: eac3f920-0ca8-4577-b4ef-258c6a663398
+    start_sha: a0f520e74f110d9b3451219c0ca5312e1bd18f12
     verify_baseline_failures: []
   - name: doc-propagation
     state: pending
