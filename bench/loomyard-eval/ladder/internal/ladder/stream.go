@@ -104,13 +104,23 @@ type ContentBlock struct {
 	Content json.RawMessage `json:"content"`
 }
 
+// MCPServerStatus is one entry of a SessionInit's advertised MCP server list: the server's own name
+// and its connection status for this session, e.g. "connected" or "failed".
+type MCPServerStatus struct {
+	// Name is the MCP server's own name.
+	Name string `json:"name"`
+	// Status is the server's connection status for this session.
+	Status string `json:"status"`
+}
+
 // SessionInit is the first "system"/"init" record's payload: the session's advertised
 // configuration.
 type SessionInit struct {
 	// Tools is the advertised built-in tool list.
 	Tools []string `json:"tools"`
-	// MCPServers is the advertised MCP server name list.
-	MCPServers []string `json:"mcp_servers"`
+	// MCPServers is the advertised MCP server list, with per-server connection status. Claude Code
+	// 2.1.236 emits this as an object list, not a name list -- see this file's header comment.
+	MCPServers []MCPServerStatus `json:"mcp_servers"`
 	// Model is the session's model id.
 	Model string `json:"model"`
 	// PermissionMode is the session's permission mode, e.g. "default".

@@ -1,0 +1,32 @@
+results root: 2026-09-04-toc
+reps: 5
+claude_code_version: 2.1.236 (Claude Code)
+cache caveat: the first repetition of a root pays cache creation while later repetitions read it -- cache-read and cache-creation figures are reported separately, never summed, and per-repetition numbers are not interchangeable; the median over repetitions is the honest statistic.
+
+cell        ladder  n  turns  duration_ms  cost_usd  cache_read  cache_creation  output_tokens  input_tokens_total  tool_uses  prefixed_tool_uses  grep_fallback  tool_result_bytes  read_bytes  recall  recall_n  precision  precision_n  flags
+a0-none     a       5  12     51903        0.316     207207      29498           35             236719              11         0                   3              63098              38901       0.4     5         0.88       5            
+a2-toc-dir  a       5  12     62668        0.374     227014      39474           17             256472              11         2                   3              87883              36999       0.43    5         0.93       5            
+
+
+comparison: a2-toc-dir vs a0-none (control) on turns: median 12=12 cell-range=[12, 17] control-range=[11, 15] separated=false
+comparison: a2-toc-dir vs a0-none (control) on duration_ms: median 62668=51903 cell-range=[48202, 69588] control-range=[49024, 66790] separated=false
+comparison: a2-toc-dir vs a0-none (control) on cost_usd: median 0.374=0.316 cell-range=[0.2676, 0.4274] control-range=[0.2719, 0.3611] separated=false
+comparison: a2-toc-dir vs a0-none (control) on cache_read_input_tokens: median 227014=207207 cell-range=[168364, 244386] control-range=[194250, 273760] separated=false
+comparison: a2-toc-dir vs a0-none (control) on cache_creation_input_tokens: median 39474=29498 cell-range=[17412, 44429] control-range=[23536, 32709] separated=false
+comparison: a2-toc-dir vs a0-none (control) on output_tokens: median 17=35 cell-range=[10, 21] control-range=[19, 57] separated=false
+comparison: a2-toc-dir vs a0-none (control) on input_tokens_total: median 256472=236719 cell-range=[207848, 288833] control-range=[217800, 304673] separated=false
+comparison: a2-toc-dir vs a0-none (control) on tool_uses: median 11=11 cell-range=[11, 16] control-range=[10, 14] separated=false
+comparison: a2-toc-dir vs a0-none (control) on quarry_tool_uses: median 2=0 cell-range=[2, 2] control-range=[0, 0] separated=true
+comparison: a2-toc-dir vs a0-none (control) on grep_fallback_total: median 3=3 cell-range=[1, 6] control-range=[3, 6] separated=false
+comparison: a2-toc-dir vs a0-none (control) on tool_result_bytes: median 87883=63098 cell-range=[53115, 95120] control-range=[51976, 69127] separated=false
+comparison: a2-toc-dir vs a0-none (control) on read_bytes: median 36999=38901 cell-range=[32553, 38991] control-range=[30793, 55554] separated=false
+comparison: a2-toc-dir vs a0-none (control) on recall: median 0.43=0.4 cell-range=[0.34, 0.5] control-range=[0.38, 0.46] separated=false
+comparison: a2-toc-dir vs a0-none (control) on precision: median 0.93=0.88 cell-range=[0.82, 0.94] control-range=[0.76, 0.93] separated=false
+
+incomplete: none
+invalid: none
+session_fingerprint_drift: a2-toc-dir/1 differs from a0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: a2-toc-dir/2 differs from a0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: a2-toc-dir/3 differs from a0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: a2-toc-dir/4 differs from a0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: a2-toc-dir/5 differs from a0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]

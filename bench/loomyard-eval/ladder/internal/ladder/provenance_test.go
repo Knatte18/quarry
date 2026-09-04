@@ -372,6 +372,27 @@ func TestWarnOnServerHashDrift(t *testing.T) {
 	})
 }
 
+func TestNewSessionFingerprint_PopulatesMCPServerStatuses(t *testing.T) {
+	init := &SessionInit{
+		ClaudeCodeVersion: "2.1.236",
+		Model:             "claude-opus",
+		MCPServers: []MCPServerStatus{
+			{Name: "quarry", Status: "connected"},
+			{Name: "other", Status: "failed"},
+		},
+	}
+	fp := NewSessionFingerprint(init)
+
+	wantNames := []string{"quarry", "other"}
+	if !stringSlicesEqual(fp.MCPServers, wantNames) {
+		t.Errorf("NewSessionFingerprint().MCPServers = %v; want %v in record order", fp.MCPServers, wantNames)
+	}
+	wantStatuses := map[string]string{"quarry": "connected", "other": "failed"}
+	if !stringMapsEqual(fp.MCPServerStatuses, wantStatuses) {
+		t.Errorf("NewSessionFingerprint().MCPServerStatuses = %v; want %v", fp.MCPServerStatuses, wantStatuses)
+	}
+}
+
 func TestCompareFingerprints(t *testing.T) {
 	base := SessionFingerprint{ClaudeCodeVersion: "1.0", Model: "m1", Tools: []string{"Bash"}}
 	drifted := SessionFingerprint{ClaudeCodeVersion: "1.1", Model: "m1", Tools: []string{"Bash"}}
@@ -390,5 +411,30 @@ func TestCompareFingerprints(t *testing.T) {
 	}
 	if !strings.Contains(findings[0].Message, "claude_code_version") {
 		t.Errorf("finding message = %q; want it to name the differing field", findings[0].Message)
+	}
+}
+
+func TestDiffSessionFingerprint_ServerStatusOnlyChangeIsReported(t *testing.T) {
+	a := SessionFingerprint{
+		ClaudeCodeVersion: "2.1.236",
+		Model:             "m1",
+		Tools:             []string{"Bash"},
+		MCPServers:        []string{"quarry"},
+		MCPServerStatuses: map[string]string{"quarry": "connected"},
+	}
+	b := SessionFingerprint{
+		ClaudeCodeVersion: "2.1.236",
+		Model:             "m1",
+		Tools:             []string{"Bash"},
+		MCPServers:        []string{"quarry"},
+		MCPServerStatuses: map[string]string{"quarry": "failed"},
+	}
+
+	diff := diffSessionFingerprint(a, b)
+	if diff == "" {
+		t.Fatal("diffSessionFingerprint() = \"\"; want a difference naming the server-status change")
+	}
+	if !strings.Contains(diff, "mcp_server_statuses") {
+		t.Errorf("diff = %q; want it to name mcp_server_statuses", diff)
 	}
 }
