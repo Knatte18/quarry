@@ -57,29 +57,35 @@ func TestRepoTOC_RepositoryFile_TreesitterPackage(t *testing.T) {
 	}
 	symbols := *entry.Symbols
 
-	wantNames := map[string]bool{"Supported": true, "Languages": true, "WithTree": true}
-	found := make(map[string]bool, len(wantNames))
+	// The treesitter package's own unit is its repository-relative directory, so each expected
+	// function's id is that unit followed by "#" and the bare function name.
+	wantIDs := map[string]bool{
+		"internal/engine/treesitter#Supported": true,
+		"internal/engine/treesitter#Languages": true,
+		"internal/engine/treesitter#WithTree":  true,
+	}
+	found := make(map[string]bool, len(wantIDs))
 	for _, sym := range symbols {
-		if !wantNames[sym.Name] {
+		if !wantIDs[sym.ID] {
 			continue
 		}
-		found[sym.Name] = true
+		found[sym.ID] = true
 		if sym.Kind != KindFunction {
-			t.Errorf("symbol %q Kind = %q; want %q", sym.Name, sym.Kind, KindFunction)
+			t.Errorf("symbol %q Kind = %q; want %q", sym.ID, sym.Kind, KindFunction)
 		}
 		if sym.Signature == "" {
-			t.Errorf("symbol %q Signature is empty; want non-empty", sym.Name)
+			t.Errorf("symbol %q Signature is empty; want non-empty", sym.ID)
 		}
-		if sym.Docstring == "" {
-			t.Errorf("symbol %q Docstring is empty; want non-empty", sym.Name)
+		if sym.Doc == "" {
+			t.Errorf("symbol %q Doc is empty; want non-empty", sym.ID)
 		}
 		if !(sym.Start <= sym.SigEnd && sym.SigEnd <= sym.End) {
-			t.Errorf("symbol %q: Start=%d SigEnd=%d End=%d; want Start <= SigEnd <= End", sym.Name, sym.Start, sym.SigEnd, sym.End)
+			t.Errorf("symbol %q: Start=%d SigEnd=%d End=%d; want Start <= SigEnd <= End", sym.ID, sym.Start, sym.SigEnd, sym.End)
 		}
 	}
-	for name := range wantNames {
-		if !found[name] {
-			t.Errorf("expected exported function %q not found in Symbols", name)
+	for wantID := range wantIDs {
+		if !found[wantID] {
+			t.Errorf("expected exported function id %q not found in Symbols", wantID)
 		}
 	}
 

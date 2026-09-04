@@ -51,7 +51,9 @@ func boolPtr(b bool) *bool {
 }
 
 // TestRepoTOC_GoFileWithSymbols asserts the full file-entry shape for a Go file target carrying
-// two symbols.
+// two symbols. The fixture sits under a "pkg" subdirectory, not the scratch root itself: the
+// repository root's own glyph unit is "" (dirRel == "."), and "" is never spellable
+// (checkGoUnit's ReasonUnitEmpty), so a root-level file could never carry symbols at all.
 func TestRepoTOC_GoFileWithSymbols(t *testing.T) {
 	src := "package p\n" +
 		"\n" +
@@ -60,11 +62,11 @@ func TestRepoTOC_GoFileWithSymbols(t *testing.T) {
 		"\n" +
 		"// Bar does another thing.\n" +
 		"func Bar() {}\n"
-	r := openScratchRepo(t, "toc-go-file-with-symbols", map[string]string{"foo.go": src})
+	r := openScratchRepo(t, "toc-go-file-with-symbols", map[string]string{"pkg/foo.go": src})
 
-	got, err := r.TOC("foo.go", TOCOptions{})
+	got, err := r.TOC("pkg/foo.go", TOCOptions{})
 	if err != nil {
-		t.Fatalf("TOC(%q, ...) returned error: %v", "foo.go", err)
+		t.Fatalf("TOC(%q, ...) returned error: %v", "pkg/foo.go", err)
 	}
 	if len(got.Files) != 1 {
 		t.Fatalf("len(Files) = %d; want 1", len(got.Files))
@@ -77,8 +79,11 @@ func TestRepoTOC_GoFileWithSymbols(t *testing.T) {
 	if len(symbols) != 2 {
 		t.Fatalf("len(Symbols) = %d; want 2", len(symbols))
 	}
-	if symbols[0].Name != "Foo" || symbols[1].Name != "Bar" {
-		t.Errorf("Symbols names = [%q, %q]; want [\"Foo\", \"Bar\"]", symbols[0].Name, symbols[1].Name)
+	wantIDs := []string{"pkg#Foo", "pkg#Bar"}
+	for i, want := range wantIDs {
+		if symbols[i].ID != want {
+			t.Errorf("Symbols[%d].ID = %q; want %q", i, symbols[i].ID, want)
+		}
 	}
 	for i := 1; i < len(symbols); i++ {
 		if symbols[i-1].Start >= symbols[i].Start {
@@ -97,9 +102,12 @@ func TestRepoTOC_HeaderTruncation(t *testing.T) {
 			"//\n" +
 			"// This is a second paragraph that must not appear.\n" +
 			"package p\n"
-		r := openScratchRepo(t, "toc-header-multi-paragraph", map[string]string{"doc.go": src})
+		// Under "pkg/", not the scratch root: the root's own unit ("") is never spellable, and this
+		// subtest asserts the spellable-unit shape — a non-nil, empty Symbols slice — not the
+		// unspellable one, which glyph_test.go covers separately.
+		r := openScratchRepo(t, "toc-header-multi-paragraph", map[string]string{"pkg/doc.go": src})
 
-		got, err := r.TOC("doc.go", TOCOptions{})
+		got, err := r.TOC("pkg/doc.go", TOCOptions{})
 		if err != nil {
 			t.Fatalf("TOC returned error: %v", err)
 		}
@@ -193,8 +201,8 @@ func TestRepoTOC_SigEndOrderingInvariant(t *testing.T) {
 		"type S struct {\n" +
 		"\tX int\n" +
 		"}\n"
-	r := openScratchRepo(t, "toc-sigend-ordering", map[string]string{"foo.go": src})
-	got, err := r.TOC("foo.go", TOCOptions{})
+	r := openScratchRepo(t, "toc-sigend-ordering", map[string]string{"pkg/foo.go": src})
+	got, err := r.TOC("pkg/foo.go", TOCOptions{})
 	if err != nil {
 		t.Fatalf("TOC returned error: %v", err)
 	}
@@ -207,11 +215,11 @@ func TestRepoTOC_SigEndOrderingInvariant(t *testing.T) {
 			continue
 		}
 		if !(sym.Start <= sym.SigEnd && sym.SigEnd <= sym.End) {
-			t.Errorf("symbol %q: Start=%d SigEnd=%d End=%d; want Start <= SigEnd <= End", sym.Name, sym.Start, sym.SigEnd, sym.End)
+			t.Errorf("symbol %q: Start=%d SigEnd=%d End=%d; want Start <= SigEnd <= End", sym.ID, sym.Start, sym.SigEnd, sym.End)
 		}
 	}
 	if symbols[1].SigEnd != 0 {
-		t.Errorf("bodyless symbol %q SigEnd = %d; want 0", symbols[1].Name, symbols[1].SigEnd)
+		t.Errorf("bodyless symbol %q SigEnd = %d; want 0", symbols[1].ID, symbols[1].SigEnd)
 	}
 }
 
@@ -251,8 +259,8 @@ func TestRepoTOC_PartialParseReturnsSurvivingSymbols(t *testing.T) {
 		"func Broken(\n" +
 		"\n" +
 		"func Recovered() {}\n"
-	r := openScratchRepo(t, "toc-partial-parse", map[string]string{"foo.go": src})
-	got, err := r.TOC("foo.go", TOCOptions{})
+	r := openScratchRepo(t, "toc-partial-parse", map[string]string{"pkg/foo.go": src})
+	got, err := r.TOC("pkg/foo.go", TOCOptions{})
 	if err != nil {
 		t.Fatalf("TOC returned error: %v", err)
 	}
@@ -378,12 +386,14 @@ func TestRepoTOC_EmptyDirectory(t *testing.T) {
 // language is now listed — the walk lists every non-gitignored file, not only code files — with a
 // header from its own table and no Symbols, even when the query explicitly requests symbols.
 func TestRepoTOC_NonCodeFileIsListedWithHeaderNoSymbols(t *testing.T) {
+	// Under "pkg/", not the scratch root: the root's own unit ("") is never spellable, and top.go
+	// needs a spellable unit here to prove Symbols is populated when requested.
 	r := openScratchRepo(t, "toc-non-code-file-listed", map[string]string{
-		"top.go":    "package p\n",
-		"README.md": "# Title\n\nSome prose.\n",
+		"pkg/top.go":    "package p\n",
+		"pkg/README.md": "# Title\n\nSome prose.\n",
 	})
 
-	got, err := r.TOC(".", TOCOptions{Symbols: boolPtr(true)})
+	got, err := r.TOC("pkg", TOCOptions{Symbols: boolPtr(true)})
 	if err != nil {
 		t.Fatalf("TOC returned error: %v", err)
 	}
