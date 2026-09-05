@@ -131,8 +131,11 @@ batches:
   byte contract instead of borrowing `RenderText`'s, why the re-parse branch after the argv rewrite
   is unreachable. Existing doc comments a card makes incomplete are updated in the same card:
   specifically `Run`'s numbered pipeline in `internal/cli/cli.go`, `usageText`'s own rules in
-  `internal/cli/usage.go`, `internal/cli/doc.go`'s verb count, and `quarry/doc.go`'s renderer and
-  query counts.
+  `internal/cli/usage.go`, `internal/cli/doc.go`'s verb count, `quarry/doc.go`'s renderer and query
+  counts **and** its "the package adds no behaviour of its own" claim, `quarry/repo.go`'s file
+  header naming only Repo, Open and TOC, and `internal/cli/flags_test.go`'s
+  `TestParseArgs_FourVerbGate` — whose name and doc comment both state a verb count this task
+  changes. Each is named in the card that makes it stale.
 - **Rationale:** the discussion's `## Constraints` names comment discipline explicitly, and the
   four doc comments listed above are prose specifications that a reader is entitled to trust; a
   stale one is worse than none.

@@ -230,6 +230,12 @@ implements is either in the overview or in `_mill/discussion.md`'s `## Decisions
   directory target. Add a second case asserting `Glyphs("")` and `Glyphs(".")` both return
   `Target == "."`. Do not add a Loomyard checkout gate to this package — see the overview's
   `the-facade-drift-test-uses-a-scratch-tree` Shared Decision.
+
+  This card also makes `quarry/repo.go`'s own file header stale, and it is updated in this same
+  card: the header says the file declares Repo, Open, "and the TOC query that delegates to the
+  engine unchanged", which no longer describes a file that also declares a query composing TOC with
+  a projection, and a frozen option value that exists to be compared against the CLI's preset. Say
+  both, in the register the rest of that header uses.
 - **Commit:** `feat(quarry): Repo.Glyphs and the exported GlyphsOptions`
 
 ### Card 5: the package doc comment's counts
@@ -256,6 +262,15 @@ implements is either in the overview or in `_mill/discussion.md`'s `## Decisions
   that `RenderGlyphsJSON` shares the same encoder configuration as the other JSON success renderers
   while `RenderGlyphsText` states its own byte contract rather than the shared one, because an
   empty glyphs answer renders as the empty string.
+
+  A third sentence in the same comment must change with them, and editing only the two counts would
+  leave the file self-contradictory: the second paragraph opens by stating that the package adds no
+  behaviour of its own, immediately before the sentence this card is adding `Glyphs` to. Rewrite
+  that opening so the claim is scoped to what still holds — the answer types are the engine's, and
+  the four delegating queries add no filtering, re-shaping or defaulting — and so the one exception
+  is stated there rather than contradicted two sentences later. Do not weaken it into vagueness:
+  the no-added-behaviour posture is a real property of the other four queries and is why the aliases
+  work at all.
 - **Commit:** `docs(quarry): update the package comment's query and renderer counts`
 
 ## Batch Tests
