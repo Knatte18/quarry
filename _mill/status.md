@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: self-resolved-verify-logic
+phase: approved-cli-view-flag-and-glyphs-verb
 slug: glyphs-verb
 branch: glyphs-verb
 plan: _mill/plan
@@ -30,6 +30,7 @@ planned  '2026-09-05T17:37:06Z'
 implementing  '2026-09-05T17:37:37Z'
 approved-facade-glyphs-view  '2026-09-05T17:44:29Z'
 self-resolved-verify-logic  '2026-09-05T17:47:42Z'
+approved-cli-view-flag-and-glyphs-verb  '2026-09-05T17:57:18Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     commit_sha: d62a4206639ca4b279c6f16947b393a41f1e59d0
     verify_baseline_failures: []
   - name: cli-view-flag-and-glyphs-verb
-    state: running
+    state: approved
     implementer_session: 66e19db3-4947-420a-ab61-b3ee971485e1
     start_sha: 123899b190215567fb46a8e9f14b10c5a1a25500
+    commit_sha: 4340999c0e94292120220e8915cd8875f69e463c
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-05T17:47:42Z'
   - name: goldens-and-docs
