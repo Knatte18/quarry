@@ -113,7 +113,10 @@ function: exit 2 means the caller asked wrong, and printing the usage block is w
   scope, which is what separates it from the two existing exit-1 path failures in this function. Pass
   `req.target`, the argument as given, not the relativised form: the relativisation is what failed.
   Change `codeForTOCError` in no way — this error never reaches it, since the failure happens before
-  `repo.TOC` is called.
+  `repo.TOC` is called. Card 28 owns the two comments this branch falsifies — `Run`'s doc comment
+  step 1 for `runTOC`, and the `exitUsage` constant's enumeration of its causes — so make the code
+  change here and leave both comment edits to that card, rather than editing the same file's prose
+  from two cards.
 - **Commit:** `feat(cli)!: map the separator sentinel to a usage error in toc`
 
 ### Card 27: `expand` loses its usage gate and gains the actionable message
@@ -169,17 +172,26 @@ function: exit 2 means the caller asked wrong, and printing the usage block is w
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Eight paragraphs across these three files are now false or incomplete, and all
-  eight change.
+- **Requirements:** Ten paragraphs across these three files are now false or incomplete, and all ten
+  change.
   In `internal/cli/doc.go`: delete the "Known contract gap" paragraph outright, and replace it with a
   statement of the new rule — `resolve` takes glyphs, `toc` takes paths, classification happens
   exactly once and it is `glyph.Parse` doing it, and a `"#"` in a path segment is an explicit error at
-  both verbs rather than a reclassification; rewrite the paragraph immediately above it, which
-  describes this package classifying a target by `strings.Contains` on sight, since that code is
-  gone; and rewrite the three-verbs paragraph, whose sentence saying `resolve` takes either a path or
-  a glyph is exactly the contract this task reverses. In `internal/cli/cli.go`: rewrite `Run`'s doc
-  comment step 1, which narrates `runResolve`'s classification and its `RepoRelPath` conversion, both
-  deleted by card 23; rewrite the separate `runExpand` preamble paragraph asserting that the parser
+  both verbs rather than a reclassification; rewrite the paragraph opening "A target containing a
+  `"#"` is classified as a glyph by this package, on sight", since that code is gone — identify it by
+  those opening words rather than by position, as it is two paragraphs above the contract-gap one and
+  not adjacent to it; and rewrite the three-verbs paragraph, whose sentence saying `resolve` takes
+  either a path or a glyph is exactly the contract this task reverses. In `internal/cli/cli.go`:
+  rewrite the `exitUsage` constant's doc comment, which enumerates three causes — an unparseable
+  flag, a missing or extra target, and a `--root` that does not resolve to a directory — and now
+  needs card 26's fourth, a target carrying the glyph separator; its closing sentence saying the TOC
+  query is never called on this path stays true, since card 26's branch fires before the repository
+  is opened, so confirm it rather than rewriting it. Rewrite `runTOC`'s step 1 in `Run`'s doc
+  comment, which documents the target conversion as producing exit 1 for an escaping target and
+  nothing else, to carry the separator reject and its exit 2. Rewrite step 1 of the same doc
+  comment's `runResolve` list — a different numbered list from `runTOC`'s, further down — which
+  narrates that verb's classification and its `RepoRelPath` conversion, both deleted by card 23;
+  rewrite the separate `runExpand` preamble paragraph asserting that the parser
   has already guaranteed the target contains a `"#"`, which card 27's deleted gate falsifies — this is
   a distinct paragraph from step 1, and editing step 1 alone would leave it standing; and rewrite
   step 3, which documents the expand `*glyph.ParseError` message as the value's reason word and the
@@ -278,6 +290,13 @@ function: exit 2 means the caller asked wrong, and printing the usage block is w
   given to `expand`. In `internal/cli/flags_test.go`, delete the case pinning the deleted
   `expand` usage gate, which asserts the message beginning `expand takes a glyph`; grep for that
   string first rather than assuming where it is.
+  The `target-echo-asymmetry` subtest in `internal/cli/cli_test.go` loses its premise entirely: it
+  exists to contrast a relativised path target, echoed as its repository-relative form, against a
+  glyph target echoed verbatim, and card 23 removes the relativisation so both halves now echo the
+  argument verbatim. Rename it to say that the target field is always the argument verbatim, and
+  retarget its first half to assert exactly that on the absolute-path rejection — the rejection
+  payload's target is the absolute argument as given, not a relativised form. Keep its second half,
+  the glyph row, unchanged; the test now asserts a rule rather than a contrast.
   Do not edit `internal/cli/glyph5_test.go`: it uses member glyphs only; confirm that rather than
   assuming it.
 - **Commit:** `test(cli): pin the glyph-only resolve contract end to end`
