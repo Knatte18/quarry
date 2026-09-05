@@ -15,9 +15,17 @@ contents separates from its control on any cost metric (`docs/roadmap.md`, and t
 it points at). Every one of those cells handed the agent a *tool* and measured whether it paid for
 itself.
 
-This task measures the other half of the hypothesis, the §8.2 mechanism in `docs/rewrite-plan.md`:
-*push* mode. A plan card's glyphs are resolved mechanically **before** the agent starts, and the
-resulting file+span pack is injected into the prompt. The agent spends zero turns looking. If push
+This task measures the other half of the hypothesis, the mechanism `docs/rewrite-plan.md` §7 ("How
+Loomyard uses it") calls *plan-pack generation*: **push** mode. A plan card's glyphs are resolved
+mechanically **before** the agent starts, and the resulting file+span pack is injected into the
+prompt. The agent spends zero turns looking.
+
+§7 describes that mechanism as "resolved spans injected at dispatch, re-resolved, **never cached**"
+— because in Loomyard the tree moves under the plan. This bench deliberately does the opposite and
+caches one resolve for the whole matrix (D3): harness rule 1 pins both the code under test and the
+target repository per rep, so the tree cannot move and a second resolve could only return the same
+answer at the cost of making the treatment non-identical across reps. The measurement is of the
+injected pack, not of the re-resolution policy, which is not under test here. If push
 mode does not separate either, the surface has been measured from both directions and the roadmap's
 parked-T8 condition is closed twice over; if it does separate, the win belongs to pre-resolution
 rather than to an MCP tool, which is a different product than the one T8 assumed.
@@ -101,6 +109,22 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
   | `run.go:902` `ControlForLadder` | `cfg.IsControl()` | unchanged | comparison baseline |
   | `run.go:912` `RunState.IsControl` | `cfg.IsControl()` | unchanged | comparison baseline |
   | `config.go:131` `ControlFor` / `config.go:232` `validate` | `c.IsControl()` | unchanged | comparison baseline; `validate` keeps "exactly one control per ladder letter that appears" |
+  | `gates.go:62` `CheckGrantedToolUsed` | `len(cfg.Allowed) == 0` | unchanged (semantically `!GrantsTools()`) | already means grants-tools; only its wording goes stale |
+
+- **The sweep covers inline `len(Allowed)` spellings too, not only `IsControl()` call sites.** A grep
+  for `IsControl()` alone misses `gates.go:62`, where `CheckGrantedToolUsed` tests
+  `len(cfg.Allowed) == 0` directly. That branch is already correct under D2 — it means *grants no
+  tools*, which is what the check is about — but its doc comment ("returns nil for a control cell (an
+  empty allowed list)") becomes wrong the moment the two concepts diverge. Two texts are therefore
+  re-worded in the same change, with no behaviour attached:
+  - `gates.go`'s `CheckGrantedToolUsed` comment: "a control cell (an empty allowed list)" → "a cell
+    that grants no tools";
+  - `config.go:239`'s validation message: `expected exactly one control (empty allowed list), found
+    %d` → `expected exactly one control, found %d`, since an empty allowed list is no longer what
+    makes a cell the control.
+
+  The plan re-runs both greps — `IsControl()` and `Allowed` — and confirms nothing else in the
+  package conflates the two.
 
 - **The two sites in bold are the reason the sweep is written out rather than summarised.**
   `run.go:664` would give `e1-pack` and `e2-files` two extra argv entries (`--allowedTools` and an
@@ -125,7 +149,11 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
 
 ### D3 — the pack is generated once by a `ladder pack` subcommand and verified at dispatch
 
-- **Decision:** a third subcommand, `ladder pack`, with flags `--config` and `--results` only. It:
+- **Decision:** a third subcommand, `ladder pack`, with flags `--config`, `--results` and
+  `--claude-bin` (default `claude`, the same flag and default `run` declares at `main.go:58`). The
+  third flag is not optional dressing: D4 has `pack` call `CollectInvocation`, which runs
+  `probeClaudeVersion` (`provenance.go:317–322`) and aborts collection when the binary cannot be
+  executed, so `pack` must be able to name the same binary `run` will. It:
   1. resolves the quarry repository root, the target repository and the worktree root exactly as
      `Run` does, then **acquires the same run lock** — `AcquireRunLock(worktreeRoot, resultsRoot)`
      (`worktree.go:293`), release deferred — so a pack and a run can never touch one pinned worktree
@@ -145,10 +173,31 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
      and writes the raw resolve JSON to `<results>/pack-resolve.json`;
   7. writes `provenance.json` **as a full, ordinary invocation** (D4), with the `kickstart_pack`
      block set on the merged record.
-- `run` then verifies, once per invocation before rep 1: the e1 card's sentinel-delimited pack block
-  hashes to `kickstart_pack.pack_sha256`, and `provenance.quarry_commit` /`quarry_dirty` still match
-  the block's own recorded pair. Any mismatch is a hard error naming both hashes and does not spend
-  an API call.
+- **`run`'s pre-rep-1 verification compares exactly one thing:** the sha256 of the pack cell's
+  sentinel-delimited card block equals `kickstart_pack.pack_sha256`. A mismatch is a hard error
+  naming both hashes, before any API call. `run` additionally checks that **every selected config's
+  `card` file exists and is readable** in the same pass — a typo'd path on `e2-files` would otherwise
+  first surface partway through rep 1, after `e0` and `e1` have already spent API calls, and the
+  check costs one `os.Stat` per cell.
+- **The gate deliberately does *not* compare quarry VCS state.** `kickstart_pack.quarry_commit` and
+  `quarry_dirty` are a **record of pack-time state, never a comparand**. Two reasons, both structural:
+  - `MergeProvenance` sets the top-level `QuarryCommit`/`QuarryDirty` from the **latest** invocation
+    (`provenance.go:400–418` — `next.QuarryCommit`, not `existing.`), so the two would differ after
+    any commit in the quarry repository between `ladder pack` and `run`. Committing the generated
+    card and the tracked results root is exactly such a commit, and it is the normal workflow — a
+    gate on this field would brick the root for doing the right thing.
+  - `quarry_dirty` is vacuously true on both sides the moment `ladder pack` writes the card, since
+    the card is a tracked file in the quarry repository. A gate that is always satisfied is not a
+    gate.
+- **What actually enforces harness rule 1** is the per-invocation record, not a gate: every
+  invocation's own `quarry_commit`, `quarry_dirty` and `quarry_dirty_files` are appended to
+  `invocations[]`, so a mid-matrix edit to the code under test is *visible and auditable* in
+  `provenance.json` afterwards. The pack's own hash gate covers the one thing that must not drift
+  silently — the prompt text itself.
+- **Operator workflow between pack and run, stated so it is not rediscovered:** run `ladder pack`,
+  inspect its output, commit the generated card together with the ladder file and the task/fasit
+  files, *then* start the matrix. Committing between pack and run is expected and is not a
+  freshness violation.
 - **Rationale:** the proposal's requirement is "the pack in the prompt is the one provenance
   records". A generated card plus a hash check enforces exactly that, mechanically, rather than
   trusting an author. Generating once satisfies "before rep 0", and harness rule 1 (the code under
@@ -277,8 +326,19 @@ All three cards carry the same `Uses:` glyph-name list, in the same order. They 
   the engine. Replace the offending glyph with another symbol from the same package and the same
   mechanism (candidates in reserve: `internal/fabricengine#Fabric.MergeAbort`,
   `internal/fabricengine#Fabric.mergeStateOrForeignErr`, `internal/gitrepo#Repo.ConflictedFiles`),
-  re-run `ladder pack`, and record the substitution and its reason in the task file's notes section.
-  Re-run the fasit's cross-check afterwards. This happens before rep 0 or not at all: once rep 1 has
+  then, **in this order**:
+  1. edit `pack_targets:` in the ladder file;
+  2. **hand-edit the `Uses:` list in all three cards** — `ladder pack` rewrites only the pack cell's
+     sentinel block, so e0 and e2 would otherwise keep naming a symbol e1 no longer lists, which is
+     an arm difference in precisely the dimension under test;
+  3. **re-derive e2's `Files:` list** from the new glyph set, deduplicated (the substitute may live
+     in a file no other glyph does, or may vacate one);
+  4. re-run `ladder pack`, which rewrites the pack block and the provenance record;
+  5. record the substitution and its reason in the task file's notes section;
+  6. re-run the fasit's cross-check.
+
+  The three `Uses:` lists being identical is a property no code enforces, so it is checked by eye
+  against the three card files before rep 1. This happens before rep 0 or not at all: once rep 1 has
   run, the glyph list is frozen for the whole root.
 - **Question text** (goes in the task file's `` ## `<TASK TEXT>` `` blockquote, identical for all
   three arms; the card follows it):
@@ -396,7 +456,10 @@ Copied from the task proposal and not reinterpreted:
 - **`validate`'s new rules are struct-level only.** `(*Ladder).validate()` takes no repository root
   and touches no filesystem — every existing `config_test.go` fixture depends on that — so nothing it
   checks may require reading a `card` file. The rules are therefore:
-  - at most one config per ladder letter may set `pack: true`;
+  - at most one config **in the whole file** may set `pack: true` — per file, not per ladder letter.
+    `pack_targets` is a single top-level list and `ladder pack` resolves it once, so two pack cells
+    under two letters would have no defined meaning; a future ladder file wanting a pack per letter
+    needs a per-letter target list first, which is a format change, not a validation relaxation;
   - a config with `pack: true` must declare a non-empty `card`;
   - `pack_targets` is non-empty **iff** at least one config sets `pack: true`;
   - every `pack_targets` entry is non-empty and unique.
@@ -516,7 +579,8 @@ adding new files where a home already exists.
   `control: true`, and rejects zero or two. Every existing `ladder-toc.yaml`-shaped fixture still
   loads unchanged (a regression fixture asserting D2's compatibility claim).
 - `config_test.go` — `pack:`/`pack_targets` validation, all filesystem-free: two `pack: true` configs
-  under one letter rejected; `pack: true` with no `card` rejected; `pack_targets` set with no pack
+  rejected whether they share a ladder letter or sit under different ones (the per-file rule);
+  `pack: true` with no `card` rejected; `pack_targets` set with no pack
   cell rejected and a pack cell with empty `pack_targets` rejected (the iff, both directions); an
   empty or duplicated `pack_targets` entry rejected; unknown-key rejection still fires for a typo'd
   key. A fixture asserting `validate` still opens no file (no `card` path need exist on disk for a
@@ -539,7 +603,9 @@ adding new files where a home already exists.
   D10 regression test, red before the fix).
 - `run` verification (extend `e2e_test.go` or `prematrix_test.go`) — a card whose pack block has been
   edited after generation fails before any dispatch, with a message naming both hashes; a matching
-  pack proceeds.
+  pack proceeds. A run whose top-level `quarry_commit` differs from `kickstart_pack.quarry_commit`
+  still proceeds (the D3 anti-regression: the freshness gate must not key on VCS state). A selected
+  config whose `card` path does not exist fails before rep 1, naming the cell and the path.
 - `gates_test.go` — `CheckRenderedControlPrompt` still fires for a tool-less non-control cell under
   D2's `!GrantsTools()` gating (the case that would silently stop being checked if the switch were
   made on `IsControl()` instead).
