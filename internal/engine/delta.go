@@ -14,6 +14,7 @@ package engine
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"unicode/utf8"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -153,6 +154,184 @@ func (r *Repo) deltaEntryFiles(entry DeltaEntry) (DeltaFile, []occurrence, []occ
 	}, beforeOccs, afterOccs
 }
 
+// comparisonTuple is the four-dimension comparison tuple every symbol-table occurrence reduces to:
+// a hash of its body token stream, its signature text, its doc text, and its file. These are the
+// same four dimensions ChangedDimension's closed vocabulary draws from, so the comparison here and
+// the changed array a caller reads can never cover different ground.
+type comparisonTuple struct {
+	bodyHash  string
+	signature string
+	doc       string
+	file      string
+}
+
+// hashBodyStream returns a string built deterministically from body's tokens, kind and text alike,
+// so two occurrences with the same body compare equal and two with a different body compare
+// unequal — the same guarantee a real hash would give, without a collision ever being possible: the
+// two separator bytes used here can never appear inside a tree-sitter node's own kind or text.
+func hashBodyStream(body tokenStream) string {
+	var sb strings.Builder
+	for _, tok := range body {
+		sb.WriteString(tok.kind)
+		sb.WriteByte(0)
+		sb.WriteString(tok.text)
+		sb.WriteByte(1)
+	}
+	return sb.String()
+}
+
+// tupleFor reduces one occurrence to its comparison tuple.
+func tupleFor(occ occurrence) comparisonTuple {
+	return comparisonTuple{
+		bodyHash:  hashBodyStream(occ.streams.body),
+		signature: occ.sym.Signature,
+		doc:       occ.sym.Doc,
+		file:      occ.sym.File,
+	}
+}
+
+// tupleMultisetEqual reports whether a and b, read as multisets of comparisonTuple, are equal.
+func tupleMultisetEqual(a, b []comparisonTuple) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[comparisonTuple]int, len(a))
+	for _, t := range a {
+		counts[t]++
+	}
+	for _, t := range b {
+		counts[t]--
+	}
+	for _, n := range counts {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// stringMultisetEqual reports whether a and b, read as multisets of string, are equal. It backs
+// changedDimensions' per-dimension comparison.
+func stringMultisetEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[string]int, len(a))
+	for _, s := range a {
+		counts[s]++
+	}
+	for _, s := range b {
+		counts[s]--
+	}
+	for _, n := range counts {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// changedDimensions returns the union of dimensions that differ between beforeOccs and afterOccs,
+// in ChangedDimension's own declared order: body, signature, doc, file. Each dimension is compared
+// as its own multiset across every occurrence under the key, never occurrence-by-occurrence,
+// because a multi-occurrence key — several func init() in one package, for instance — has no
+// per-occurrence identity to line the two sides up by; a doc-only change to one of two such
+// occurrences is reported as changed:["doc"] under this rule, never as a vanished difference.
+func changedDimensions(beforeOccs, afterOccs []occurrence) []ChangedDimension {
+	project := func(occs []occurrence, f func(occurrence) string) []string {
+		out := make([]string, len(occs))
+		for i, occ := range occs {
+			out[i] = f(occ)
+		}
+		return out
+	}
+	bodyOf := func(occ occurrence) string { return hashBodyStream(occ.streams.body) }
+	sigOf := func(occ occurrence) string { return occ.sym.Signature }
+	docOf := func(occ occurrence) string { return occ.sym.Doc }
+	fileOf := func(occ occurrence) string { return occ.sym.File }
+
+	var changed []ChangedDimension
+	if !stringMultisetEqual(project(beforeOccs, bodyOf), project(afterOccs, bodyOf)) {
+		changed = append(changed, ChangedBody)
+	}
+	if !stringMultisetEqual(project(beforeOccs, sigOf), project(afterOccs, sigOf)) {
+		changed = append(changed, ChangedSignature)
+	}
+	if !stringMultisetEqual(project(beforeOccs, docOf), project(afterOccs, docOf)) {
+		changed = append(changed, ChangedDoc)
+	}
+	if !stringMultisetEqual(project(beforeOccs, fileOf), project(afterOccs, fileOf)) {
+		changed = append(changed, ChangedFile)
+	}
+	return changed
+}
+
+// locationsFor returns one SymbolLocation per occurrence, unsorted — the ordering pass (card 21)
+// sorts this array independently of the After array it sits beside in a ModifiedSymbol.
+func locationsFor(occs []occurrence) []SymbolLocation {
+	locs := make([]SymbolLocation, len(occs))
+	for i, occ := range occs {
+		locs[i] = SymbolLocation{File: occ.sym.File, Start: occ.sym.Start, SigEnd: occ.sym.SigEnd, End: occ.sym.End}
+	}
+	return locs
+}
+
+// symbolsFor returns one Symbol per occurrence, unsorted, in occs' own order.
+func symbolsFor(occs []occurrence) []Symbol {
+	syms := make([]Symbol, len(occs))
+	for i, occ := range occs {
+		syms[i] = occ.sym
+	}
+	return syms
+}
+
+// compareTables reduces beforeTable and afterTable to created, deleted and modified: a key present
+// only on the after side contributes every one of its symbols to created; a key present only on the
+// before side contributes every one of its symbols to deleted; a key present on both sides is
+// compared as a multiset of comparison tuples — never of body hashes alone — and any difference
+// produces exactly one modified entry for that key. Equal multisets means unchanged, and such a
+// symbol appears in none of the three returned slices.
+func compareTables(beforeTable, afterTable map[symbolKey][]occurrence) (created, deleted []Symbol, modified []ModifiedSymbol) {
+	keys := make(map[symbolKey]bool, len(beforeTable)+len(afterTable))
+	for k := range beforeTable {
+		keys[k] = true
+	}
+	for k := range afterTable {
+		keys[k] = true
+	}
+
+	for key := range keys {
+		beforeOccs := beforeTable[key]
+		afterOccs := afterTable[key]
+		switch {
+		case len(beforeOccs) == 0:
+			created = append(created, symbolsFor(afterOccs)...)
+		case len(afterOccs) == 0:
+			deleted = append(deleted, symbolsFor(beforeOccs)...)
+		default:
+			beforeTuples := make([]comparisonTuple, len(beforeOccs))
+			for i, occ := range beforeOccs {
+				beforeTuples[i] = tupleFor(occ)
+			}
+			afterTuples := make([]comparisonTuple, len(afterOccs))
+			for i, occ := range afterOccs {
+				afterTuples[i] = tupleFor(occ)
+			}
+			if tupleMultisetEqual(beforeTuples, afterTuples) {
+				continue
+			}
+			modified = append(modified, ModifiedSymbol{
+				ID:      key.id,
+				Kind:    key.kind,
+				Changed: changedDimensions(beforeOccs, afterOccs),
+				Before:  locationsFor(beforeOccs),
+				After:   symbolsFor(afterOccs),
+			})
+		}
+	}
+	return created, deleted, modified
+}
+
 // Delta compares two versions of a batch of files, extracted with the same Strategy every other
 // query in this package uses, and returns the resulting symbol-table delta. Its returned error is
 // non-nil only for a failure of the call as a whole; a single entry's own extraction failure is
@@ -175,7 +354,12 @@ func (r *Repo) Delta(entries []DeltaEntry) (DeltaAnswer, error) {
 		}
 	}
 
-	_ = beforeTable
-	_ = afterTable
-	return DeltaAnswer{Files: files}, nil
+	created, deleted, modified := compareTables(beforeTable, afterTable)
+
+	return DeltaAnswer{
+		Files:    files,
+		Created:  created,
+		Deleted:  deleted,
+		Modified: modified,
+	}, nil
 }
