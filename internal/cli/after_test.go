@@ -1,10 +1,10 @@
-// after_test.go pins the fifteen testdata/ golden files as goldens: one real
+// after_test.go pins the twenty testdata/ golden files as goldens: one real
 // invocation of Run, in-process, against a Loomyard checkout at loomyardPin, compared byte for
-// byte against the committed golden. These fifteen files are also the task's committed evidence —
-// the golden fixture and the regression gate are the same artifact. The table spans three verbs —
-// toc, resolve, and expand — and each row carries its own expected exit code: the expected code
-// lives here, in the table, and in testdata/INDEX.md, never in a trailer
-// inside a golden file itself.
+// byte against the committed golden. These twenty files are also the task's committed evidence —
+// the golden fixture and the regression gate are the same artifact. The table spans four verbs —
+// toc, glyphs, resolve, and expand, the fourth a frozen preset over the first — and each row
+// carries its own expected exit code: the expected code lives here, in the table, and in
+// testdata/INDEX.md, never in a trailer inside a golden file itself.
 //
 // TestAfterGoldens is named so that "-run TestAfter -update" (testdata/INDEX.md's
 // own regeneration instructions) matches it by prefix: a differently named function would make that
@@ -156,6 +156,51 @@ var afterGoldenCases = []afterGoldenCase{
 		invocation: "internal/logger#newDualHandler",
 		verbArgs:   []string{"internal/logger#newDualHandler"},
 		exitCode:   exitNegative,
+	},
+	{
+		golden:     "glyphs-dir.txt",
+		verb:       "glyphs",
+		invocation: "internal/logger",
+		verbArgs:   []string{"internal/logger"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "glyphs-dir-text.txt",
+		verb:       "glyphs",
+		invocation: "--text internal/logger",
+		verbArgs:   []string{"--text", "internal/logger"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "glyphs-file.txt",
+		verb:       "glyphs",
+		invocation: "internal/logger/logger.go",
+		verbArgs:   []string{"internal/logger/logger.go"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "glyphs-file-text.txt",
+		verb:       "glyphs",
+		invocation: "--text internal/logger/logger.go",
+		verbArgs:   []string{"--text", "internal/logger/logger.go"},
+		exitCode:   exitOK,
+	},
+	// toc-view-glyphs-depth.txt is a "toc" invocation, not a "glyphs" one, because the preset is
+	// frozen at --depth all and rejects --depth; a depth-cut view is only reachable by spelling
+	// "toc --view glyphs" directly. internal/boardengine is the target because it is the smallest
+	// of the three directories in the pinned checkout whose own subdirectory itself holds Go files
+	// (internal/boardengine/boardtest) — the property the "flat projection crosses directory
+	// boundaries" assertion below needs — and internal/logger, the other four rows' target, has no
+	// such subdirectory at this pin. The row carries no --symbols token, and that omission is
+	// deliberate and load-bearing: the view supplies that default itself, and a non-empty symbol
+	// list in this golden *is* the assertion that the default works. A version of this row that
+	// spelled --symbols would pass whether the default works or not.
+	{
+		golden:     "toc-view-glyphs-depth.txt",
+		verb:       "toc",
+		invocation: "--text --view glyphs --depth 1 internal/boardengine",
+		verbArgs:   []string{"--text", "--view", "glyphs", "--depth", "1", "internal/boardengine"},
+		exitCode:   exitOK,
 	},
 }
 

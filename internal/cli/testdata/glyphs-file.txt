@@ -1,0 +1,196 @@
+$ quarry glyphs internal/logger/logger.go
+
+{
+  "target": "internal/logger/logger.go",
+  "symbols": [
+    {
+      "id": "internal/logger#levelVar",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 145,
+      "end": 146
+    },
+    {
+      "id": "internal/logger#out",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 148,
+      "end": 149
+    },
+    {
+      "id": "internal/logger#currentStderr",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 151,
+      "end": 153
+    },
+    {
+      "id": "internal/logger#stderrHandlerSnapshot",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 155,
+      "end": 163
+    },
+    {
+      "id": "internal/logger#log",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 165,
+      "end": 171
+    },
+    {
+      "id": "internal/logger#dualHandler",
+      "kind": "type",
+      "file": "internal/logger/logger.go",
+      "start": 173,
+      "end": 195
+    },
+    {
+      "id": "internal/logger#newDualHandler",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 197,
+      "end": 201
+    },
+    {
+      "id": "internal/logger#dualHandler.stderr",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 203,
+      "end": 208
+    },
+    {
+      "id": "internal/logger#dualHandler.Enabled",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 210,
+      "end": 214
+    },
+    {
+      "id": "internal/logger#dualHandler.Handle",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 216,
+      "end": 239
+    },
+    {
+      "id": "internal/logger#dualHandler.WithAttrs",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 241,
+      "end": 250
+    },
+    {
+      "id": "internal/logger#dualHandler.WithGroup",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 252,
+      "end": 260
+    },
+    {
+      "id": "internal/logger#durableWriter",
+      "kind": "type",
+      "file": "internal/logger/logger.go",
+      "start": 262,
+      "end": 267
+    },
+    {
+      "id": "internal/logger#durableWriter.Write",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 269,
+      "end": 279
+    },
+    {
+      "id": "internal/logger#durableHandler",
+      "kind": "type",
+      "file": "internal/logger/logger.go",
+      "start": 281,
+      "end": 288
+    },
+    {
+      "id": "internal/logger#newDurableHandler",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 290,
+      "end": 294
+    },
+    {
+      "id": "internal/logger#durableHandler.Enabled",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 296,
+      "end": 300
+    },
+    {
+      "id": "internal/logger#durableHandler.Handle",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 302,
+      "end": 306
+    },
+    {
+      "id": "internal/logger#durableHandler.withAttrs",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 308,
+      "end": 314
+    },
+    {
+      "id": "internal/logger#durableHandler.withGroup",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 316,
+      "end": 320
+    },
+    {
+      "id": "internal/logger#init",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 322,
+      "end": 325
+    },
+    {
+      "id": "internal/logger#configureFromEnv",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 327,
+      "end": 349
+    },
+    {
+      "id": "internal/logger#Debug",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 351,
+      "end": 360
+    },
+    {
+      "id": "internal/logger#Info",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 362,
+      "end": 367
+    },
+    {
+      "id": "internal/logger#Warn",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 369,
+      "end": 374
+    },
+    {
+      "id": "internal/logger#SetVerbosity",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 376,
+      "end": 388
+    },
+    {
+      "id": "internal/logger#SetOutput",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 390,
+      "end": 413
+    }
+  ]
+}

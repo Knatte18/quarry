@@ -4,7 +4,7 @@ Every `.txt` file in this directory is one real invocation of the rewritten `qua
 in-process (`internal/cli/after_test.go`'s `TestAfterGoldens`) against a Loomyard checkout at HEAD
 `72c23d9`
 — the same checkout and commit the "before" side and `docs/rewrite-plan.md` §4 were taken from.
-The table now spans three verbs — `toc`, `resolve`, and `expand` — not `toc` alone.
+The table now spans four verbs — `toc`, `resolve`, `expand`, and `glyphs` — not `toc` alone.
 No absolute path is recorded here: the checkout is identified by name and pin only.
 
 ## Before-to-after mapping
@@ -36,6 +36,11 @@ claim rather than an assertion.
 | *(none)* | `resolve-self-file-text.txt` | 0 | new: the lossless text view of `resolve-self-file.txt`'s query |
 | *(none)* | `resolve-self-dir-text.txt` | 0 | new: the lossless text view of `resolve-self-dir.txt`'s query |
 | *(none)* | `expand-not-a-type.txt` | 1 | new: the plan's rule that the glyph must name a type, and that on any other kind the answer names the kind |
+| *(none)* | `glyphs-dir.txt` | 0 | new: `glyphs internal/logger`, the flat planner index over a directory |
+| *(none)* | `glyphs-dir-text.txt` | 0 | new: the lossless text view of `glyphs-dir.txt`'s query |
+| *(none)* | `glyphs-file.txt` | 0 | new: `glyphs internal/logger/logger.go`, the flat planner index over a single file |
+| *(none)* | `glyphs-file-text.txt` | 0 | new: the lossless text view of `glyphs-file.txt`'s query |
+| *(none)* | `toc-view-glyphs-depth.txt` | 0 | new: `toc --text --view glyphs --depth 1 internal/boardengine` — a direct `toc --view glyphs` invocation rather than the frozen `glyphs` preset, because the preset is fixed at `--depth all` and rejects `--depth`; it targets `internal/boardengine` rather than `internal/logger` because at this pin `internal/logger` has no subdirectory carrying Go files, so it cannot exercise a depth cut, while `internal/boardengine` does; and it is the one new golden in text form only, because the JSON form of the same 172-symbol answer runs to roughly 1,200 lines against this table's own size bound |
 
 **The compact view is gone, not replaced.**
 It was the lossy one-sentence-per-file view whose precision loss (0.96 to 0.82,
@@ -44,6 +49,12 @@ complete, a view filters, no view is ever forced.
 The lossless text view (`--text`) is what replaces it in spirit — same intent, no lost precision —
 but it is a new view over the same complete data,
 not a continuation of the compact view's own lossy grammar.
+The `glyphs` view is a different kind of replacement still: the compact view was lossy about
+*content* — one prose sentence per file, from which an agent then answered questions, which is
+where the measured precision drop came from — while the flat planner index drops fields but never
+drops a symbol, and its consumer looks up spellings rather than answering from it; the `incomplete`
+list exists precisely so that "this symbol is not in the target" stays a sound conclusion. The new
+rows above are not the compact view returning under a new name.
 
 ## What changed between the two sides
 
@@ -102,7 +113,7 @@ Reading `resolve-glyph.txt`, `resolve-method.txt`, `expand-type.txt`, `resolve-n
 
 ## Regenerating and the regression gate
 
-These fifteen files are also the golden fixtures `internal/cli/after_test.go` compares against,
+These twenty files are also the golden fixtures `internal/cli/after_test.go` compares against,
 so the committed evidence and the regression gate cannot disagree. That is why they live here,
 beside the test that owns them, rather than under `docs/research/output-formats/`, which is a
 frozen record — the before-side files this table's left column names are still there.

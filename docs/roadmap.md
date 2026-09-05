@@ -23,26 +23,14 @@ to an operator-driven step after the merge — the predeclared rule in the task 
 verbatim when it runs. If — and only if — e1 separates, an edit-task variant (M4b: agent
 revising code in a throwaway worktree) becomes a candidate follow-up.
 
-**2. The plan-alphabet primitives.** Three plan-unaware surfaces, built here as ordinary
+**2. The plan-alphabet primitives.** Two plan-unaware surfaces, built here as ordinary
 quarry tasks. No dependency on Loomyard — quarry imports nothing from it, and the
 consumer-blindness worry that would argue for waiting is already answered: their
 requirements are fixed in detail by the orchestration design recorded in Loomyard issue
 #226. Their one ordering constraint — C1's contract merge (they emit and consume the
-envelope and self-forms C1 changed) — was satisfied 2026-09-05 (`49304ca`), so all three
-are unblocked. Any order among the three; in parallel with or ahead of the Loomyard
+envelope and self-forms C1 changed) — was satisfied 2026-09-05 (`49304ca`), so both
+are unblocked. Any order between the two; in parallel with or ahead of the Loomyard
 adoption:
-
-- **2a. The `glyphs` verb — the planner's index.** A flat projection of the complete toc
-  answer — one line per symbol: `id`, kind, file, span; no doc, no signature, no recursive
-  envelope. Design principles to keep: extraction stays complete underneath ("views filter;
-  no view is ever forced"); the base `toc` carries the full flag set (`--view`, `--depth`,
-  `--symbols`); named verbs are frozen flag presets over that one query — `quarry glyphs
-  <target>` rewrites argv and runs the exact same code path as its `toc` flag expansion,
-  enforced by a golden test requiring byte-identical output, never a parallel
-  implementation. Same pattern in the facade (`Glyphs()`) and MCP (only presets exposed as
-  tools). Exact preset values are decided in the task's discussion. Lossy-by-design is safe
-  here because the consumer only looks up spellings, never answers from the view (V1's
-  measured 0.96→0.82 precision drop came from agents *answering* from a lossy view).
 
 - **2b. The glyph-maker (declaration → glyph).** Input per entry: a unit plus an intended
   declaration head (`func (f *Focus) Reset() error`); output: the glyph that declaration
