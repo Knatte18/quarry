@@ -1,0 +1,617 @@
+{
+  "written_at": "2026-09-05T09:56:57Z",
+  "ladder_file": "bench/loomyard-eval/ladder/ladder-toc.yaml",
+  "quarry_commit": "0ae4daa62af167be55142396417eed6dfa86d9dd",
+  "quarry_dirty": false,
+  "quarry_dirty_files": null,
+  "loomyard_commit": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+  "loomyard_repo_sha256": "21051e3d290c1dab1ab0d53cafc099faa133917eb17e0c5f7e3c6b2d9601ed41",
+  "hostname": "Neve",
+  "go_version": "go1.26.0",
+  "claude_version": "2.1.236 (Claude Code)",
+  "server_hashes": {
+    "d1-toc-dir/1": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/10": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/11": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/12": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/13": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/14": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/15": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/2": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/3": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/4": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/5": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/6": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/7": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/8": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4",
+    "d1-toc-dir/9": "6917c1b1b8fe950ad6bcc1f41c6bf84ee4254907a5778e207f2f931193f947a4"
+  },
+  "selected_cells": [
+    "d0-none",
+    "d1-toc-dir"
+  ],
+  "reps_effective": 15,
+  "memory_path_hashes": [
+    "29c9e9952659337ee8bbce95fb1ec6ecabd5b2d03afcc048d634e0fe38fb7be8"
+  ],
+  "server_name": "quarry",
+  "session_fingerprints": {
+    "d0-none/1": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/10": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/11": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/12": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/13": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/14": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/15": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/2": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/3": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/4": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/5": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/6": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/7": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/8": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d0-none/9": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read"
+      ],
+      "mcp_servers": [],
+      "mcp_server_statuses": {},
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/1": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/10": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/11": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/12": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/13": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/14": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/15": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/2": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/3": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/4": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/5": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/6": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/7": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/8": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    },
+    "d1-toc-dir/9": {
+      "claude_code_version": "2.1.236",
+      "model": "claude-sonnet-5",
+      "permission_mode": "default",
+      "tools": [
+        "Bash",
+        "Glob",
+        "Grep",
+        "Read",
+        "mcp__quarry__toc"
+      ],
+      "mcp_servers": [
+        "quarry"
+      ],
+      "mcp_server_statuses": {
+        "quarry": "connected"
+      },
+      "has_memory_paths": true,
+      "skill_count": 16,
+      "slash_command_count": 48
+    }
+  },
+  "invocations": [
+    {
+      "written_at": "2026-09-05T09:56:57Z",
+      "ladder_file": "bench/loomyard-eval/ladder/ladder-toc.yaml",
+      "selected_cells": [
+        "d0-none",
+        "d1-toc-dir"
+      ],
+      "reps_effective": 15,
+      "quarry_commit": "0ae4daa62af167be55142396417eed6dfa86d9dd",
+      "quarry_dirty": false,
+      "quarry_dirty_files": null,
+      "loomyard_commit": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+      "loomyard_repo_sha256": "21051e3d290c1dab1ab0d53cafc099faa133917eb17e0c5f7e3c6b2d9601ed41",
+      "claude_version": "2.1.236 (Claude Code)",
+      "go_version": "go1.26.0",
+      "hostname": "Neve",
+      "server_name": "quarry",
+      "memory_path_hashes": null,
+      "server_hashes": null
+    }
+  ]
+}

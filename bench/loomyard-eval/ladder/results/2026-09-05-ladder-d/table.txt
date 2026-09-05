@@ -1,0 +1,42 @@
+results root: 2026-09-05-ladder-d
+reps: 15
+claude_code_version: 2.1.236 (Claude Code)
+cache caveat: the first repetition of a root pays cache creation while later repetitions read it -- cache-read and cache-creation figures are reported separately, never summed, and per-repetition numbers are not interchangeable; the median over repetitions is the honest statistic.
+
+cell        ladder  n   turns  duration_ms  cost_usd  cache_read  cache_creation  output_tokens  input_tokens_total  tool_uses  prefixed_tool_uses  grep_fallback  tool_result_bytes  read_bytes  recall  recall_n  precision  precision_n  flags
+d0-none     d       15  11     42025        0.3006    152169      32005           9              181838              10         0                   3              70839              46705       0.76    15        0.92       15           
+d1-toc-dir  d       15  11     41557        0.3024    126468      32170           8              162904              10         1                   2              67920              54037       0.78    15        0.85       15           
+
+
+comparison: d1-toc-dir vs d0-none (control) on turns: median 11=11 cell-range=[8, 19] control-range=[9, 24] separated=false
+comparison: d1-toc-dir vs d0-none (control) on duration_ms: median 41557=42025 cell-range=[31305, 67732] control-range=[30613, 62008] separated=false
+comparison: d1-toc-dir vs d0-none (control) on cost_usd: median 0.3024=0.3006 cell-range=[0.2345, 0.359] control-range=[0.2452, 0.3967] separated=false
+comparison: d1-toc-dir vs d0-none (control) on cache_read_input_tokens: median 126468=152169 cell-range=[81000, 302281] control-range=[105333, 389015] separated=false
+comparison: d1-toc-dir vs d0-none (control) on cache_creation_input_tokens: median 32170=32005 cell-range=[23848, 42293] control-range=[24875, 45767] separated=false
+comparison: d1-toc-dir vs d0-none (control) on output_tokens: median 8=9 cell-range=[6, 53] control-range=[5, 57] separated=false
+comparison: d1-toc-dir vs d0-none (control) on input_tokens_total: median 162904=181838 cell-range=[121930, 334469] control-range=[136742, 421153] separated=false
+comparison: d1-toc-dir vs d0-none (control) on tool_uses: median 10=10 cell-range=[7, 18] control-range=[8, 23] separated=false
+comparison: d1-toc-dir vs d0-none (control) on quarry_tool_uses: median 1=0 cell-range=[1, 2] control-range=[0, 0] separated=true
+comparison: d1-toc-dir vs d0-none (control) on grep_fallback_total: median 2=3 cell-range=[1, 6] control-range=[2, 13] separated=false
+comparison: d1-toc-dir vs d0-none (control) on tool_result_bytes: median 67920=70839 cell-range=[53638, 88011] control-range=[56516, 91898] separated=false
+comparison: d1-toc-dir vs d0-none (control) on read_bytes: median 54037=46705 cell-range=[30467, 72762] control-range=[46705, 71316] separated=false
+comparison: d1-toc-dir vs d0-none (control) on recall: median 0.78=0.76 cell-range=[0.62, 0.92] control-range=[0.65, 0.88] separated=false
+comparison: d1-toc-dir vs d0-none (control) on precision: median 0.85=0.92 cell-range=[0.75, 0.94] control-range=[0.85, 1] separated=false
+
+incomplete: none
+invalid: none
+session_fingerprint_drift: d1-toc-dir/1 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/10 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/11 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/12 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/13 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/14 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/15 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/2 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/3 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/4 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/5 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/6 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/7 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/8 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
+session_fingerprint_drift: d1-toc-dir/9 differs from d0-none/1: tools [Bash Glob Grep Read] vs [Bash Glob Grep Read mcp__quarry__toc]; mcp_servers [] vs [quarry]; mcp_server_statuses map[] vs map[quarry:connected]
