@@ -99,6 +99,13 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   - golden `toc-view-glyphs-depth.txt`, verb `toc`, invocation
     `--text --view glyphs --depth 1 internal/boardengine`.
 
+  Each row's fifth field, `verbArgs`, is the row's own `invocation` string split on single spaces —
+  `TestAfterGoldens` builds Run's argv from `verbArgs` while the `invocation` string is only ever
+  written into the golden's first line, so the two must describe the same invocation or the golden
+  records a command it did not run. Spell `verbArgs` out per row as a literal `[]string`, the way
+  every existing row does; do not compute it from `invocation` at test time, since deriving one from
+  the other is what would let a divergence go unnoticed.
+
   The fifth row carries no `--symbols` token, and that omission is deliberate and load-bearing: the
   view supplies that default, and a non-empty symbol list in this golden *is* the assertion that
   the default works. A version of this row that spelled `--symbols` would pass whether the default

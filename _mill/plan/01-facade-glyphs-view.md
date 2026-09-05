@@ -176,9 +176,13 @@ implements is either in the overview or in `_mill/discussion.md`'s `## Decisions
     `<File>:<Start>-<End> <Kind> <ID>` — file first, then a colon, the span with an ASCII hyphen,
     a space, the kind word, a space, the id, and a newline. No directory line, no file line, no
     header, no docstring, no signature, and no `(sig ...)` clause.
-  - when `a.Incomplete` is non-empty, a single blank line follows the symbol lines, then one line
-    per path spelled `[incomplete] <path>` in the slice's own order. When `a.Incomplete` is empty,
-    neither the block nor its blank line is emitted.
+  - when `a.Incomplete` is non-empty, one line per path spelled `[incomplete] <path>`, in the
+    slice's own order, preceded by a single blank line **only when `a.Symbols` is also non-empty**.
+    The blank line is a separator between two blocks, so with no symbol lines to separate from
+    there is nothing to separate and it is not emitted — a leading `"\n"` would violate this
+    renderer's own no-leading-blank-line-on-a-non-empty-rendering shape and disagree with the test
+    the next paragraph requires. When `a.Incomplete` is empty, neither the block nor any separator
+    is emitted.
   - the byte contract is this renderer's own, stated in its doc comment rather than borrowed from
     `RenderText` in `quarry/text.go`: no trailing whitespace on any line; every non-empty rendering
     ends with exactly one `"\n"`; and an answer with no symbols and no incomplete files renders as

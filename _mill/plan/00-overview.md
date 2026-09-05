@@ -3,7 +3,7 @@
 ```yaml
 task: 'P3 — the glyphs verb: the planner flat index as a frozen toc preset (roadmap 2a)'
 slug: glyphs-verb
-approved: false
+approved: true
 started: '20260905-165109'
 parent: 'main'
 root: ""
@@ -49,9 +49,17 @@ batches:
   `internal/engine/testdata/` is regenerated — if one changes, that is this task's defect, and both
   halves are checked, in batch 3 card 15), and `projection-is-pure-and-late` (nothing under
   `internal/engine/` is modified by any card in any batch).
+  Two discussion decisions are deliberately superseded by this plan, and only two: `facade-shape`'s
+  unexported `glyphsOptions()` spelling, superseded by `glyphs-options-is-exported` below, and
+  `preset-expansion`'s "package-level constant", superseded by `the-preset-is-a-var-not-a-const`
+  below. Each carries its own rationale in its own entry. Nothing else in the discussion's
+  `## Decisions` is open to revision by a card, and neither of these two is superseded in substance
+  — only in spelling, in one case because Go cannot express what the discussion asked for.
 - **Rationale:** the discussion is 720 lines and no card carries all of it; naming the three that
   cannot be re-derived from a card's own text is what keeps a cold Sonnet session from
-  "simplifying" the shadow struct away or reaching for `-update` on a red golden.
+  "simplifying" the shadow struct away or reaching for `-update` on a red golden. Naming the two
+  exceptions in the same breath keeps this decision from formally forbidding two of its own
+  siblings.
 - **Applies to:** all batches
 
 ### Decision: glyphs-options-is-exported
