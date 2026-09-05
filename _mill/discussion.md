@@ -37,12 +37,15 @@ extracting files that did not change; correctness lives entirely in the table co
 - A new pure core in `internal/engine`: given a batch of `(path, before-bytes, after-bytes, units)`
   entries, produce a symbol-table delta — `created`, `deleted`, `modified`, `renamed` (exact tier),
   and `rename_candidates` (evidence tier), plus a `files` block echoing every entry's disposition.
-- A new unit-derivation helper in `internal/engine`, exported, that computes each side's glyph unit
-  per changed directory from a supplied `base name -> package clause` map, reusing the engine's
-  existing clause-vote rule rather than a second copy of it.
-- A new package `internal/gitsrc`: a thin, read-only git plumbing layer (`git diff --name-status
-  --no-renames`, `git show`, `git ls-tree`) that turns `--from R1 [--to R2]` into the core's entry
-  batch, with the working tree as the after side when `--to` is absent.
+- Three new exported entry points in `internal/engine`, all extracted from the existing
+  `dirPackage`/`unitFor` implementations rather than copied: `PackageClause` (bytes → package
+  clause), `(*Repo).ClauseMapForDir` (on-disk clause map for one directory), and
+  `UnitsForClauseMap` (the clause vote plus the unit derivation). `dirPackage` is refactored to call
+  the first and third so there is exactly one implementation of each rule.
+- A new package `internal/gitsrc`: a thin, read-only git plumbing layer (`git rev-parse --verify`,
+  `git diff --name-status --no-renames`, `git ls-files --others --exclude-standard`, `git show`,
+  `git ls-tree`) returning paths, bytes and errors only, with the working tree as the after side
+  when `--to` is absent and untracked files included on that path.
 - Two facade methods on `quarry.Repo`: `Delta(entries)` (pure) and `DeltaGit(from, to, target)`
   (convenience, delegating to `internal/gitsrc` then `Delta`).
 - A new CLI verb `delta`, with `--from`, `--to`, the existing `--text` and `--root`, exactly one
@@ -147,7 +150,10 @@ extracting files that did not change; correctness lives entirely in the table co
   following differ, and the entry carries a `changed` array naming which of them did, drawn from
   the closed set `["body", "signature", "doc", "file"]`:
   - `body` — the body token stream differs (see the next decision for what a token stream is).
-  - `signature` — the verbatim `Signature` text differs.
+  - `signature` — the verbatim `Signature` text differs. This is `SignatureCut`'s own span, which is
+    byte-for-byte the span the signature token stream is built over (see the next decision), so the
+    text comparison here and the token comparison used for renames can never disagree about which
+    bytes are "the signature".
   - `doc` — the `Doc` text differs.
   - `file` — the symbol's repository-relative file differs between the sides.
 
@@ -171,18 +177,46 @@ extracting files that did not change; correctness lives entirely in the table co
 
 ### The body token stream, and the exact-tier identity test
 
-- Decision: a symbol's **body token stream** is the sequence of `(node kind, node text)` pairs of
-  **every leaf tree-sitter node** under the declaration's body-bearing child, in source order, taken
-  from the same parse the extractor already performs. **Anonymous leaf nodes are included** —
-  operators, keywords and punctuation (`+`, `-`, `++`, `--`, `:=`, `return`, `if`, `{`) are
-  anonymous in the tree-sitter Go grammar, being grammar string literals rather than named rules,
-  and a stream restricted to *named* leaves would omit every one of them. Whitespace, comments
-  inside the body, and line numbers contribute nothing. A symbol with no body (a Go type alias, an
-  interface method, a `var` with no initialiser) has the empty stream.
+- Decision: the two streams are defined by **byte range**, split at exactly the byte
+  `internal/engine/nodes.go`'s `SignatureCut` already cuts at — never by node exclusion.
 
-  A symbol's **signature token stream** is the same construction applied to the declaration node
-  with its body-bearing child excluded — the head only. It exists so the signature comparison below
-  has nodes to key its substitution rule on rather than raw text.
+  Let `bodyStart` be `body.StartByte()` when the declaration has a body-bearing child, and
+  `decl.EndByte()` when it has none. `body` is the same node `SignatureCut(decl, body, src)` and
+  `SigEnd(decl, body)` already receive, resolved per language exactly as the strategy already
+  resolves it — for Go, `decl.ChildByFieldName("body")` for functions and methods, `goTypeBody(spec)`
+  for types. Then:
+  - the **signature token stream** is every leaf node of `decl` whose start byte lies in
+    `[decl.StartByte(), bodyStart)`;
+  - the **body token stream** is every leaf node of `decl` whose start byte lies in
+    `[bodyStart, decl.EndByte())`.
+
+  Both are sequences of `(node kind, node text)` pairs in source order, taken from the same parse
+  the extractor already performs. **Anonymous leaf nodes are included** — operators, keywords and
+  punctuation (`+`, `-`, `++`, `--`, `:=`, `return`, `if`, `{`) are anonymous in the tree-sitter Go
+  grammar, being grammar string literals rather than named rules, and a stream restricted to *named*
+  leaves would omit every one of them. Whitespace and line numbers contribute nothing. Neither
+  stream includes the doc block: `decl` does not span it, and `Doc` is compared separately.
+
+  **Why a byte range and not "the declaration minus its body child".** `goTypeBody` returns the bare
+  `"{"` **leaf** as an `interface_type`'s body-bearing child — its own doc comment in
+  `internal/engine/golang.go` records that the grammar exposes "no named body node and no 'body'
+  field at all" for an interface. Under a node-based rule an interface's body stream would be that
+  one leaf and nothing else: method-set and embedded-interface changes would be invisible to `body`,
+  and two unrelated interfaces (`type Reader interface{…}` and `type Closer interface{…}`) would
+  satisfy the identity test below and be **asserted** as a rename — again in the one tier quarry
+  asserts. The mirror-image rule, "the declaration node with its body child excluded", would leave
+  every interface method element in the *signature* stream, where `Symbol.Signature` — cut at
+  `body.StartByte()` — does not have them, so `changed:["signature"]` (verbatim text) and
+  `signature_identical_modulo_name` (token stream) would be computed over different spans of the
+  same declaration and could disagree. The byte split has neither problem: an interface's method
+  elements begin after the `"{"` and land in the body stream, a struct's fields land there too
+  (`field_declaration_list` starts at its own `"{"`), and the signature stream is byte-for-byte the
+  span `SignatureCut` returns, so the text comparison and the token comparison are over the same
+  bytes by construction.
+
+  A declaration with no body-bearing child — `type ID string`, `type Alias = T` — has
+  `bodyStart == decl.EndByte()`, so its signature stream is the whole declaration and its body
+  stream is empty, matching `SignatureCut`'s own nil-body branch and `SigEnd`'s zero.
 
   Two token streams are **identical modulo the renamed identifier** when they have the same length
   and, at every position, either the pairs are equal, or both nodes are `identifier` nodes whose
@@ -202,9 +236,10 @@ extracting files that did not change; correctness lives entirely in the table co
   defined so a test can prove it and a reader can predict it, which is the property "AST-exact, no
   threshold, quarry asserts it" demands.
 - Rejected: named leaves only (silently drops every operator and keyword — see the rationale);
-  comparing the raw byte span (reformatting would break it); comparing a hash of the normalized
-  source text (same problem, plus it cannot express "modulo the renamed identifier"); full
-  tree-edit distance (a threshold in disguise, and quadratic).
+  defining the two streams by node exclusion rather than byte range (breaks on interfaces, both
+  ways — see the rationale); comparing the raw byte span (reformatting would break it); comparing a
+  hash of the normalized source text (same problem, plus it cannot express "modulo the renamed
+  identifier"); full tree-edit distance (a threshold in disguise, and quadratic).
 
 ### Exact-tier rename scope: unit-wide, and unique or nothing
 
@@ -259,6 +294,10 @@ extracting files that did not change; correctness lives entirely in the table co
   recommendation, and not a verdict**.
 - Rationale: every signal is a fact a caller can check independently; a single blended score would
   invite "take the top one", which is the silent pick the contract forbids in the strongest terms.
+  `docs/rewrite-plan.md` §9 rules out "Fuzzy matching of any kind" as a way of *answering* —
+  "Unknown is `not_found`; several is `ambiguous`" — and this tier is the `ambiguous` branch of that
+  rule: `body_token_similarity` never reaches a classification, it only describes a candidate quarry
+  has explicitly declined to resolve. No asserted outcome anywhere in this query reads it.
   Jaccard over multisets is O(n) and adequate for a signal nobody decides on — a more expensive
   order-sensitive metric would buy precision that quarry, by contract, is not allowed to spend.
   Omitting the threshold means the answer never depends on a magic number, which is what makes the
@@ -325,13 +364,40 @@ extracting files that did not change; correctness lives entirely in the table co
     tables. The returned error is non-nil only for a failure of the call as a whole, never for one
     entry.
   - `internal/gitsrc` — a new package holding the read-only git plumbing and nothing else: list
-    changed paths between two revisions, read a blob at a revision, list a directory's entries at a
-    revision. It shells out with `os/exec` and returns bytes and errors; it holds no quarry types.
+    changed paths between two revisions, list untracked working-tree paths, read a blob at a
+    revision, list a directory's entries at a revision, and resolve a revision. It shells out with
+    `os/exec` and returns **paths, bytes and errors only** — no quarry types, no tree-sitter, and no
+    package clauses (a clause can only come from `Strategy.Package` inside `treesitter.WithTree`,
+    which is the engine's job, never this package's).
   - `quarry` facade — two methods. `(*Repo).Delta(entries)` delegates to the engine unchanged, as
-    every other facade method does. `(*Repo).DeltaGit(from, to, target string) (DeltaAnswer, error)`
-    is the convenience: it uses `internal/gitsrc` to build the entry batch (including the
-    per-directory clause maps the unit helper needs on each side), then calls `Delta`.
+    every other facade method does. `(*Repo).DeltaGit(from, to, target string) (GitDeltaAnswer,
+    error)` is the convenience: it drives `internal/gitsrc` for paths and bytes, turns those bytes
+    into clause maps by calling the engine's own exported clause helpers (below), derives the units,
+    and then calls `Delta`.
   The CLI calls `DeltaGit`.
+
+  **The clause-map seam, named explicitly.** Three exported engine entry points carry it, because
+  package `quarry` cannot reach `dirPackage` or `unitFor` — both are unexported methods and
+  functions on `internal/engine`, and export is the only way across the package boundary:
+  - `engine.PackageClause(base string, src []byte) (clause string, ok bool)` — resolves the language
+    from `base`'s extension via `LanguageForExtension`, looks the `Strategy` up with `StrategyFor`,
+    parses `src` inside `treesitter.WithTree`, and returns `Strategy.Package(root, src)`. `ok` is
+    false for an unknown extension, unreadable UTF-8, a parse failure, or an empty clause — the same
+    four conditions under which `dirPackage` records no clause today. This is the one function that
+    turns bytes into a clause, and `dirPackage` is refactored to call it so there is not a second
+    copy of that sequence.
+  - `(*engine.Repo).ClauseMapForDir(dirRel string) (map[string]string, error)` — the on-disk clause
+    map for one directory, ignore-filtered exactly as `dirPackage` already is. Used for the
+    working-tree side.
+  - `engine.UnitsForClauseMap(dirRel string, clauses map[string]string) (dirPkg string, unitOf
+    func(base string) string)` — the vote and the derivation, extracted from `dirPackage`'s
+    tie-break and `unitFor` so both callers share one implementation rather than a reimplementation.
+
+  Which layer calls which: for a **revision** side, `DeltaGit` asks `internal/gitsrc` for the
+  directory's file names (`git ls-tree`) and each `.go` file's bytes (`git show`), calls
+  `engine.PackageClause` on those bytes to build the map, then `engine.UnitsForClauseMap`. For the
+  **working-tree** side it calls `(*engine.Repo).ClauseMapForDir` and then the same
+  `UnitsForClauseMap`. `internal/gitsrc` never sees a clause, a unit, or a tree-sitter node.
 - Rationale: the task fixes the layering — the core takes byte pairs and knows nothing about git —
   and the reason is testability: a pure core needs no repository, no fixture tree and no commits to
   be exercised exhaustively. Putting `DeltaGit` on the facade rather than only in the CLI is what
@@ -348,15 +414,20 @@ extracting files that did not change; correctness lives entirely in the table co
 ### Git plumbing: exactly which calls, and `--no-renames`
 
 - Decision: `internal/gitsrc` runs exactly these, all read-only, all with `git -C <root>`:
+  - `git rev-parse --verify <rev>^{commit}` for each supplied revision, **first**, so an
+    unresolvable revision is reported as such rather than surfacing as a failed diff (see the
+    exit-code decision).
   - `git diff --name-status --no-renames <from> <to> -- <pathspec>` for the changed-path list when
     `--to` is a revision; `git diff --name-status --no-renames <from> -- <pathspec>` when the after
     side is the working tree.
+  - `git ls-files --others --exclude-standard -- <pathspec>` **when and only when the after side is
+    the working tree**, to enumerate untracked files (see the next decision).
   - `git show <rev>:<path>` to read a blob at a revision. The after side reads from disk instead
     when `--to` is absent.
   - `git ls-tree --name-only <rev> <dir>/` to enumerate a changed directory's files at a revision,
     so the package-clause vote for that side can be taken over the whole directory; combined with
-    `git show` for each `.go` file's clause. The working-tree side reuses the engine's existing
-    on-disk `dirPackage` path instead.
+    `git show` for each `.go` file's bytes, which the facade turns into clauses via
+    `engine.PackageClause`. The working-tree side calls `(*engine.Repo).ClauseMapForDir` instead.
   Nothing else. No `checkout`, no `stash`, no index write, no config write, no `-M`/`-C`.
 - Rationale: `--no-renames` is not an optimisation, it is a correctness requirement. Git's rename
   detection is a similarity threshold; letting it run would mean quarry's answer silently inherited
@@ -368,30 +439,90 @@ extracting files that did not change; correctness lives entirely in the table co
   the contract forbids one); `git diff --name-only` alone (loses the add/delete status, which the
   entry disposition needs).
 
+### Untracked working-tree files are included; tracked-but-gitignored files are not excluded
+
+- Decision, two halves.
+  1. **Untracked files are enumerated.** When `--to` is absent — the working-tree path — the batch
+     is `git diff --name-status --no-renames <from>` **plus**
+     `git ls-files --others --exclude-standard`. An untracked file appears with `nil` before-bytes
+     and its on-disk bytes after, and therefore with `disposition: added`, exactly like a staged
+     new file.
+  2. **Tracked-but-gitignored files are not additionally filtered out.** `git diff` and `git ls-tree`
+     enumerate tracked content; a file that is both tracked and matched by a `.gitignore` pattern is
+     listed by them and is kept in the batch, even though `toc` would not list it (the engine's
+     `ignoreSet` filters it out of every walk, and `dirPackage`'s doc comment records that such a
+     file "never votes in the tie-break and never contributes a clause"). `--exclude-standard` on
+     the untracked enumeration means an ignored *untracked* file is never picked up, so the only
+     divergence is the tracked-and-ignored case.
+- Rationale for half 1: the working-tree comparison is precisely the case the Problem section names
+  as Loomyard's card-done handle binding, and a card that creates a file and has not yet `git add`ed
+  it is the normal state at that moment. Without this, that file's symbols would be silently absent
+  from `created` — and worse, the `files` echo could not even record the omission, because git never
+  listed the file, which defeats the one property that block exists to provide (telling "no symbol
+  changes" apart from "never read").
+- Rationale for half 2: this is a deliberate, documented divergence from `toc`'s listing rule, not
+  an oversight. The question "what changed between these two versions" is a question about tracked
+  content; suppressing a real change to a tracked file because some `.gitignore` mentions it would
+  hide the change, and the `.gitignore` that governs is itself version-dependent — the chain at
+  `<from>` and the chain at `<to>` can differ, so an ignore filter here would need a revision to be
+  taken against and would make the two sides' clause votes disagree with each other. Using one
+  enumeration rule on both sides keeps the sides mutually consistent, which is the property the
+  comparison depends on; agreeing with `toc`'s listing is not, since no part of this query is
+  defined as "what `toc` would list". The consequence — `delta` can report a symbol `toc` never
+  lists — is stated in the answer type's doc comment.
+- Rejected: excluding untracked files (breaks the primary consumer's primary case, silently);
+  applying the engine's `ignoreSet` to the git-sourced batch (needs a revision to resolve the
+  `.gitignore` chain against, and picking either side makes the two sides' enumerations differ);
+  `git ls-files --others` without `--exclude-standard` (would sweep in build output and every
+  ignored artefact in the tree).
+
 ### CLI shape, and the exit-code contract
 
 - Decision:
   - `quarry delta <target> --from <rev> [--to <rev>] [--text] [--root <path>]`.
-  - Exactly one target, as every other verb requires, and `.` means the whole repository. The
-    target is used as the git pathspec and as the scope filter.
+  - Exactly one target, as every other verb requires. The target goes through
+    `repopath.RepoRelTarget(root, base, target)` first, exactly as `runTOC`'s does, and the
+    resulting **repository-relative** path is what is handed to git as the pathspec — `git -C <root>`
+    interprets a pathspec against the root, so this is the one conversion that makes the argument
+    mean the same thing to quarry and to git. Consequently `.` means **the current directory**, not
+    the repository root, when run from a subdirectory — identically to `quarry toc .`, since `base`
+    is the working directory unless `--root` is given. To scope the whole repository from a
+    subdirectory, pass `--root <root> .` or run from the root, again identically to `toc`.
+    `RepoRelTarget`'s existing rejections carry over unchanged: a target escaping the root is exit 1,
+    and a target carrying the glyph separator `#` is exit 2.
   - `--from` is required for `delta` and is a usage error (exit 2) when absent. `--to` is optional;
     absent means the working tree.
   - `--from` and `--to` are valid for `delta` only, rejected for the other three verbs with the same
     "`<flag>` is not valid for `<verb>`" message shape `--depth` already uses. `--depth`,
     `--symbols` and `--no-symbols` are rejected for `delta` the same way.
+  - **An unresolvable revision is exit 2**, with quarry's own sentence — `unknown revision: <rev>`,
+    the value spelled exactly as given — and the usage text on stderr. `internal/gitsrc` runs
+    `git rev-parse --verify <rev>^{commit}` for each supplied revision before anything else and
+    returns a distinguishable sentinel (`gitsrc.ErrUnknownRevision`) that the CLI checks with
+    `errors.Is`, never by parsing git's message.
   - Exit codes: **0** whenever the delta was computed — including an empty delta, and including a
-    batch in which some entries have `disposition: error`. **2** for a usage error. **3** for an
-    internal failure (a git command that failed, a render failure, a stdout write failure). **1 is
-    unreachable for this verb**, and the fact is stated in `Run`'s doc comment: this query has no
-    negative answer, because "nothing changed" is a true answer to "what changed", not a negative
-    one.
+    batch in which some entries have `disposition: error`. **2** for a usage error, which now
+    includes an unresolvable revision. **3** for an internal failure (a git command that failed for
+    any *other* reason, a render failure, a stdout write failure). **1** is reachable only through
+    `RepoRelTarget`'s target-escapes-the-root rejection, exactly as it is for `toc`; the query
+    itself has no negative answer, because "nothing changed" is a true answer to "what changed", not
+    a negative one, and `Run`'s doc comment says so.
 - Rationale: keeping the one-target rule intact avoids touching `parseArgs`' target-count check for
-  one verb's sake, and `.` already means the repository root everywhere else in the CLI. Declaring
-  exit 1 unreachable rather than inventing a meaning for it keeps the four-code contract honest —
-  the alternatives (exit 1 for an empty delta, exit 1 when an entry errored) would each make a
-  successful, complete answer look like a failure to a shell gate.
+  one verb's sake. Routing the target through `RepoRelTarget` is what keeps one argument from
+  meaning two different things — quarry resolves it against the working directory, git would resolve
+  it against the root — and it inherits `toc`'s already-tested escape and separator rejections for
+  free. Exit 2 for an unresolvable revision follows `exitUsage`'s own documented meaning ("the
+  caller asked wrong … a `--root` that does not resolve to a directory"): a revision that does not
+  resolve is the same class of mistake, it is the most likely user error for this verb, and routing
+  it to exit 3 would report it as `internal error: ` with git's raw message — the opposite of the
+  "quarry spells the conditions it defines" rule `Run`'s doc comment states. Declaring the query
+  itself to have no negative answer keeps the four-code contract honest: exit 1 for an empty delta,
+  or for a batch containing an errored entry, would each make a successful, complete answer look
+  like a failure to a shell gate.
 - Rejected: making the target optional for `delta` only (a per-verb exception in the argument
-  parser, for no gain over `.`); exit 1 on an empty delta; exit 1 when any entry errored.
+  parser, for no gain over `.`); using the raw target as the git pathspec without `RepoRelTarget`
+  (one argument, two meanings); exit 3 for an unresolvable revision; exit 1 on an empty delta;
+  exit 1 when any entry errored.
 
 ### The answer carries no revision information; the git layer wraps it
 
@@ -434,11 +565,22 @@ node pointers).
 clause vote (most common non-`_test`-suffixed clause; if every clause ends in `_test`, most common
 overall; lexicographically smallest breaks a tie). `dirRel == "."` is a documented special case
 returning `""`, and a file whose unit is unspellable by `glyph.Parse` (checked by `unitSpellable`)
-contributes no symbols at all — the delta core must honour that same rule, or a file at the
-repository root would produce symbols in the delta that `toc` would never emit. The new helper
-should reuse `dirPackage`'s vote logic by extracting it into a form that takes a
-`map[base]clause` rather than reading the directory, so both the on-disk caller and the git caller
-share one implementation.
+contributes no symbols at all — the delta core must honour that same rule. Both are refactored, not
+copied: `dirPackage`'s "bytes to clause" step becomes the exported `engine.PackageClause`, its
+tie-break plus `unitFor` become the exported `engine.UnitsForClauseMap`, and the on-disk map becomes
+the exported `(*engine.Repo).ClauseMapForDir`. Export is not decoration here — package `quarry`
+cannot call `dirPackage` or `unitFor`, both unexported, and it is the layer that assembles the batch.
+
+**`SignatureCut`, `SigEnd` and the body-bearing child.** `internal/engine/nodes.go`'s
+`SignatureCut(decl, body, src)` returns the trimmed bytes `[decl.StartByte(), body.StartByte())`,
+or the whole declaration when `body` is nil; `SigEnd` returns `body`'s start line, or 0 when nil.
+The `body` node is resolved per declaration kind by the strategy —
+`decl.ChildByFieldName("body")` for Go functions and methods, `goTypeBody(spec)` for types. Read
+`goTypeBody`'s doc comment before implementing the token streams: it returns
+`field_declaration_list` for a struct but the bare **`"{"` leaf** for an interface, "which the
+grammar exposes with no named body node and no 'body' field at all", and nil for `type ID string`
+and `type Alias = T`. That asymmetry is exactly why the token streams in the Decisions are defined
+by byte range rather than by node containment.
 
 **Where the symbol shape comes from.** `internal/engine/answer.go` declares `Symbol`, `Kind`,
 `Status`, `DirAnswer`, `FileEntry`, `ResolveResult`, `ExpandAnswer`. Its own file comment states
@@ -523,7 +665,13 @@ unit test instead, which is what the task's "Done when" asks for.
   plumbing.
 - No MCP tool for this query.
 - No cache, no index, no daemon, no parser pool (`docs/rewrite-plan.md` §10).
-- No fuzzy matching, no threshold, no score cut-off anywhere in the query.
+- **Nothing quarry decides is fuzzy.** No threshold, no score cut-off, and no similarity value
+  anywhere in a classification path: every asserted outcome (`created`, `deleted`, `modified`,
+  `renamed`) is reached by exact structural tests only. `body_token_similarity` is a **reported
+  signal on a candidate quarry does not resolve**, and is the one similarity value in the query;
+  `docs/rewrite-plan.md` §9's "Fuzzy matching of any kind" non-goal governs what quarry *decides*
+  — "Unknown is `not_found`; several is `ambiguous`" — and the evidence tier is the `ambiguous`
+  side of that rule, not an exception to it.
 - No new third-party dependency.
 - `glyph/` stays cgo-free.
 - `go test ./... && golangci-lint run` green.
@@ -552,6 +700,15 @@ every case is two string literals in the test file. Scenarios that must be cover
 - a signature rename hazard: `func (r *Runner) Run() error` renamed to
   `func (r *Runner) Execute() error`, asserted `signature_identical_modulo_name: true` — a textual
   `Run`→`Execute` substitution would corrupt the `Runner` receiver and get this wrong.
+- **interface declarations, the second regression the byte-range split exists to prevent:** adding a
+  method to an interface asserted `modified` with `changed:["body"]`; and two unrelated interfaces
+  of the same owner and kind (`type Reader interface{ Read() }` deleted, `type Closer interface{
+  Close() }` created) asserted **not** an exact-tier rename. Under a node-containment definition
+  both would fail, because `goTypeBody` returns the bare `"{"` leaf for an interface.
+- a struct with a changed field, and a `type Alias = T` changed to `type Alias = U`, each asserted
+  `modified` — the nil-body branch must not collapse to an empty comparison.
+- an interface's signature stream asserted byte-identical to the symbol's own `Signature` string,
+  proving the two definitions cut at the same place.
 - exact-tier rename: identical body modulo the identifier, including a recursive self-call, with the
   pair asserted present in `renamed` and **absent** from `created` and `deleted`.
 - exact-tier demotion: the same rename with one extra statement in the body, asserted to land in
@@ -582,7 +739,15 @@ of commits (using `os/exec`, as the existing `loomyard_test.go` helpers already 
 the changed-path list and its statuses; blob reads at a revision; the directory listing at a
 revision; the working-tree-as-after-side path; and that a rename in that fixture arrives as a
 delete plus an add (proving `--no-renames` is in force). A failing git command surfaces as an
-error, not a panic.
+error, not a panic. Additionally:
+- **an untracked, never-`git add`ed `.go` file in the working tree is enumerated** and reaches the
+  delta as `disposition: added` with its symbols in `created` — the case Loomyard's card-done
+  binding depends on;
+- an untracked file matched by `.gitignore` is **not** enumerated (`--exclude-standard` in force);
+- a tracked-but-gitignored `.go` file **is** kept, with the divergence from `toc`'s listing
+  asserted deliberately so the decision cannot be silently reverted;
+- an unresolvable revision returns `gitsrc.ErrUnknownRevision`, matched with `errors.Is`, before any
+  diff is attempted.
 
 **`quarry` facade and renderers.** Key-order and byte-contract tests for `RenderDeltaJSON`
 mirroring the existing `TestRenderExpandJSON_KeyOrder` shape; a text-view test mirroring
@@ -601,9 +766,14 @@ hand-written.
 **CLI.** Table tests over `Run` for: `--from` absent → exit 2 with the usage text; `--from` or
 `--to` given to `toc`/`resolve`/`expand` → exit 2 naming the flag and the verb; `--depth` given to
 `delta` → exit 2; zero or two targets → exit 2; a well-formed call producing an empty delta → exit
-0; a batch containing an errored entry → exit 0 with the error visible in the payload; a failing
-git invocation → exit 3 with the `internal error: ` prefix; `--text` producing the text view. A
-`codeForDelta` table test mirroring `TestCodeForTOCError`.
+0; a batch containing an errored entry → exit 0 with the error visible in the payload; **an
+unresolvable revision (`--from bogus`) → exit 2 with `unknown revision: bogus` and the usage text,
+never git's raw message**; a git invocation failing for another reason → exit 3 with the
+`internal error: ` prefix; a target escaping the root → exit 1; a target carrying `#` → exit 2;
+`--text` producing the text view. A `codeForDelta` table test mirroring `TestCodeForTOCError`.
+One test must pin the **target-resolution** rule: `delta .` run from a subdirectory scopes to that
+subdirectory, and produces the same scope `toc .` does from the same directory — the two verbs
+resolve one argument the same way or the CLI has two meanings for it.
 
 **Real-history check (T3-style).** One test running `DeltaGit("d413ceb", "49304ca", ...)` against
 this repository, scoped separately to `glyph/` and to `internal/engine/`, asserting a hand-verified
@@ -640,3 +810,14 @@ verb. No other document changes on this branch.
 - **Q:** What is the test approach? **A:** [auto-pick] Pure table tests over in-memory byte pairs (TDD on comparison and tiering), committed JSON/text goldens produced under `-update`, CLI table tests, a `t.TempDir()` git fixture for `internal/gitsrc`, and the real-history test. **Why:** the core is pure by design specifically so it needs no fixture tree to be exercised exhaustively.
 - **Q:** Which documents change? **A:** [auto-pick] `docs/rewrite-plan.md` §5 gains the `delta` contract paragraph and §7's mechanical-use item is updated; `docs/roadmap.md` is untouched. **Why:** the roadmap states what is ahead; removing a completed item belongs to the merge, not this branch.
 - **Q:** Does the answer echo the revisions it was computed from? **A:** [auto-pick] No — the core answer carries no revision information; `DeltaGit` returns a wrapper adding `from` and `to` (`null` for the working tree). **Why:** the core knows nothing about git, and a field it can never populate would be a lie in its own type.
+- **Q:** [review r1, BLOCKING] The body token stream was defined over *named* leaf nodes, but operators and keywords are anonymous in the tree-sitter Go grammar — should they be included? **A:** [auto-pick] Yes: every leaf, anonymous included. **Why:** with named leaves only, `a + b` → `a - b` reports *unchanged* and two symbols differing only in operators can be **asserted** as an exact-tier rename — wrong in the one tier quarry asserts. The substitution rule keys on `identifier` nodes, so widening the stream does not widen the substitution.
+- **Q:** [review r1, NIT] "Signature identical modulo the renamed identifier" was specified against verbatim text, which has no nodes to key on. **A:** [auto-pick] Compare the signature's own token stream under the same node-based rule. **Why:** a textual `Run`→`Execute` also hits the `Runner` receiver in `func (r *Runner) Run() error`.
+- **Q:** [review r1, NIT] The goldens constraint pinned a path a parallel task is relocating. **A:** [auto-pick] Require the bytes, not the path, and name the in-flight move. **Why:** `goldens-move` may merge first, inviting a false "constraint violated" reading.
+- **Q:** [review r2, BLOCKING] `goTypeBody` returns the bare `"{"` leaf for an interface, so a node-containment body stream is empty for every interface. **A:** [auto-pick] Define both streams by **byte range** split at `SignatureCut`'s own cut point. **Why:** node containment makes interface method-set changes invisible and lets two unrelated interfaces be asserted as a rename; the mirror rule ("declaration minus body child") instead leaves interface methods in the *signature* stream, where `Symbol.Signature` does not have them.
+- **Q:** [review r2, BLOCKING] "Signature token stream" had two incompatible readings, so `changed:["signature"]` and `signature_identical_modulo_name` could be computed over different spans. **A:** [auto-pick] Same byte-range fix — the signature stream is byte-for-byte the span `SignatureCut` returns. **Why:** the text comparison and the token comparison must be over the same bytes by construction, not by agreement.
+- **Q:** [review r2, BLOCKING] With `--to` absent, `git diff` lists tracked files only — what happens to a file a card created but never `git add`ed? **A:** [auto-pick] Enumerate untracked files with `git ls-files --others --exclude-standard`; they arrive as `disposition: added`. **Why:** the working-tree path *is* Loomyard's card-done binding, and without this the file's symbols are silently absent from `created` with the `files` echo unable to record the omission.
+- **Q:** [review r2, BLOCKING] `internal/gitsrc` was specified as holding no quarry types and no tree-sitter, yet also as building the per-directory clause maps — which only `Strategy.Package` inside `treesitter.WithTree` can produce. **A:** [auto-pick] Name three exported engine entry points — `PackageClause`, `(*Repo).ClauseMapForDir`, `UnitsForClauseMap` — and have the facade call them; `gitsrc` returns paths, bytes and errors only. **Why:** `dirPackage` and `unitFor` are unexported, so package `quarry` cannot reach them; export is the only seam across the boundary, and the refactor keeps one implementation of each rule.
+- **Q:** [review r2, NIT] Is the git-sourced batch gitignore-filtered, given `toc` never lists an ignored file? **A:** [auto-pick] Untracked files are filtered (`--exclude-standard`); tracked-but-gitignored files are kept, as a documented divergence from `toc`'s listing rule. **Why:** the `.gitignore` chain is itself version-dependent, so filtering would need a revision to be taken against and would make the two sides' enumerations — and their clause votes — disagree with each other; mutual consistency between the sides is the property the comparison depends on, agreement with `toc` is not.
+- **Q:** [review r2, NIT] The rationale claimed "`.` already means the repository root everywhere else in the CLI" — is that true? **A:** [auto-pick] No, it was wrong. `runTOC` resolves through `RepoRelTarget(root, base, target)` with `base = cwd` unless `--root`, so `toc .` from a subdirectory names that subdirectory. `delta`'s target goes through the same call, and `.` means the current directory. **Why:** git would resolve a raw pathspec against the root while quarry resolves against the cwd — one argument with two meanings.
+- **Q:** [review r2, NIT] "No fuzzy matching anywhere in the query" contradicted emitting a Jaccard float. **A:** [auto-pick] Narrow the constraint to "nothing quarry decides is fuzzy" and cite `docs/rewrite-plan.md` §9. **Why:** §9's non-goal governs how quarry *answers*; the evidence tier is the `ambiguous` branch of that same rule, and no asserted outcome reads the similarity value.
+- **Q:** [review r2, NIT] `--from bogus` would fail inside git and land on exit 3 with git's raw message. **A:** [auto-pick] `git rev-parse --verify` each revision first; an unresolvable one is exit 2 with `unknown revision: <rev>`, matched via an `errors.Is` sentinel. **Why:** `exitUsage` already means "the caller asked wrong … a `--root` that does not resolve"; a revision that does not resolve is the same class, and it is this verb's most likely user error.
