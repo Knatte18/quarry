@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: glyphs-verb
 branch: glyphs-verb
 plan: _mill/plan
@@ -27,4 +27,17 @@ plan-fix-r3  '2026-09-05T17:28:20Z'
 plan-review-r4  '2026-09-05T17:35:42Z'
 plan-fix-r4  '2026-09-05T17:36:58Z'
 planned  '2026-09-05T17:37:06Z'
+implementing  '2026-09-05T17:37:37Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: facade-glyphs-view
+    state: pending
+  - name: cli-view-flag-and-glyphs-verb
+    state: pending
+  - name: goldens-and-docs
+    state: pending
 ```
