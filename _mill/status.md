@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-delta-renderers
+phase: approved-cli-delta-verb
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -44,6 +44,7 @@ approved-delta-types-and-tokens  '2026-09-05T17:17:52Z'
 approved-delta-core  '2026-09-05T17:37:41Z'
 approved-facade-delta  '2026-09-05T17:50:57Z'
 approved-delta-renderers  '2026-09-05T17:58:10Z'
+approved-cli-delta-verb  '2026-09-05T18:10:12Z'
 ```
 
 ## Batches
@@ -93,9 +94,10 @@ batches:
     commit_sha: 228864294d68d12a5aaa96be89c690e50669783e
     verify_baseline_failures: []
   - name: cli-delta-verb
-    state: running
+    state: approved
     implementer_session: b33b4ab3-0279-4e48-8ebe-45aa1b809d53
     start_sha: 74581abfd82dd9bc4efc7532b32732d419b308ca
+    commit_sha: 111f63c85c2dcaa6c1452dbba3e1ed102a0e303b
     verify_baseline_failures: []
   - name: goldens-history-docs
     state: pending
