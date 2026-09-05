@@ -6,6 +6,7 @@ slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Kick-start pack bench: pre-resolved glyph spans in the prompt (M4)'
 task_description: |
   Kick-start pack bench: pre-resolved glyph spans in the prompt (M4)
@@ -35,17 +36,26 @@ implementing  '2026-09-05T12:07:02Z'
 ```yaml
 batches:
   - name: config-surface
-    state: pending
+    state: running
+    implementer_session: f5e95223-dc24-4b61-b0b3-9c12ee433888
+    start_sha: f4cfeb22cfa7de34734918f8b9e497938bcf82f5
+    verify_baseline_failures: []
   - name: provenance
     state: pending
+    verify_baseline_failures: []
   - name: control-sweep-and-card
     state: pending
+    verify_baseline_failures: []
   - name: pack-generation
     state: pending
+    verify_baseline_failures: []
   - name: run-gate-and-subcommand
     state: pending
+    verify_baseline_failures: []
   - name: benchmark-content
     state: pending
+    verify_baseline_failures: []
   - name: matrix-and-writeup
     state: pending
+    verify_baseline_failures: []
 ```
