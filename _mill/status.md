@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-facade-glyphs-view
 slug: glyphs-verb
 branch: glyphs-verb
 plan: _mill/plan
@@ -28,6 +28,7 @@ plan-review-r4  '2026-09-05T17:35:42Z'
 plan-fix-r4  '2026-09-05T17:36:58Z'
 planned  '2026-09-05T17:37:06Z'
 implementing  '2026-09-05T17:37:37Z'
+approved-facade-glyphs-view  '2026-09-05T17:44:29Z'
 ```
 
 ## Batches
@@ -35,9 +36,10 @@ implementing  '2026-09-05T17:37:37Z'
 ```yaml
 batches:
   - name: facade-glyphs-view
-    state: running
+    state: approved
     implementer_session: 33b81f0b-938e-4f2e-aacf-9d2996eabf6f
     start_sha: c8d4764a0de88c64bac78470e6f5eb4021400294
+    commit_sha: d62a4206639ca4b279c6f16947b393a41f1e59d0
     verify_baseline_failures: []
   - name: cli-view-flag-and-glyphs-verb
     state: pending
