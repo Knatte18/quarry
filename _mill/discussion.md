@@ -38,6 +38,16 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
 
 ## Scope
 
+> **Post-implementation descope (operator decision, 2026-09-05, after batch 6 landed):** the matrix
+> run and `conclusion.md` write-up (batch 7, `matrix-and-writeup`) are removed from this task's
+> done-when. This task's done-when is now: batches 1-6 landed and the module-wide `done_gate`
+> (`go test ./... && golangci-lint run`) green. The matrix run becomes a separate, operator-driven
+> step performed after merge, against merged `main` — not part of this branch. D9's predeclared
+> decision rule (primary comparison `e1-pack` vs `e0-names`, metrics `turns`/`cost_usd`, one-sided
+> Mann-Whitney U, n=10/arm, alpha=0.05, critical U <= 27, `e2-files` descriptive-only, no optional
+> stopping) is unchanged and still applies verbatim when that step is eventually run. See
+> `_mill/descoped/07-matrix-and-writeup.md` for the removed batch's card content.
+
 **In:**
 
 - A new ladder file, `bench/loomyard-eval/ladder/ladder-kickstart.yaml`, with one task and three
