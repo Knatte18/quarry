@@ -95,6 +95,36 @@ configs:
 	}
 }
 
+// TestLoadLadder_ThreeToolLessConfigsOneExplicitControl accepts three tool-less configs under one
+// ladder letter when exactly one sets control: true, since Control now overrides the default
+// len(Allowed) == 0 rule that would otherwise call all three controls.
+func TestLoadLadder_ThreeToolLessConfigsOneExplicitControl(t *testing.T) {
+	contents := `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], control: true}
+  - {id: a1-none, ladder: a, task: t1, allowed: [], control: false}
+  - {id: a2-none, ladder: a, task: t1, allowed: [], control: false}
+`
+	path := writeLadderFile(t, contents)
+	l, err := LoadLadder(path)
+	if err != nil {
+		t.Fatalf("LoadLadder(%s) = %v; want no error", path, err)
+	}
+	c, ok := l.ControlFor("a")
+	if !ok || c.ID != "a0-none" {
+		t.Errorf(`ControlFor("a") = %+v, %v; want a0-none, true`, c, ok)
+	}
+}
+
 func TestLoadLadder_Rejected(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -203,6 +233,44 @@ source_repo: env:LADDER_LOOMYARD_REPO
 configs:
   - {id: a0-none, ladder: a, task: t1, allowed: []}
   - {id: a1-none, ladder: a, task: t1, allowed: []}
+`,
+			wantErr: "expected exactly one control",
+		},
+		{
+			name: "ThreeToolLessConfigsTwoExplicitControls",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], control: true}
+  - {id: a1-none, ladder: a, task: t1, allowed: [], control: true}
+  - {id: a2-none, ladder: a, task: t1, allowed: []}
+`,
+			wantErr: "expected exactly one control",
+		},
+		{
+			name: "ThreeToolLessConfigsNoExplicitControl",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: []}
+  - {id: a1-none, ladder: a, task: t1, allowed: []}
+  - {id: a2-none, ladder: a, task: t1, allowed: []}
 `,
 			wantErr: "expected exactly one control",
 		},
@@ -378,6 +446,108 @@ configs:
 			}
 		})
 	}
+}
+
+// boolPtr returns a pointer to b, for constructing Config.Control values in table-driven tests.
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+// TestConfigIsControlAndGrantsTools covers the four Control-defaulting cases and asserts that
+// GrantsTools reads only Allowed in every one of them, so the two predicates are independent.
+func TestConfigIsControlAndGrantsTools(t *testing.T) {
+	tests := []struct {
+		name        string
+		control     *bool
+		allowed     []string
+		wantControl bool
+		wantGrants  bool
+	}{
+		{"UnsetEmptyAllowed", nil, nil, true, false},
+		{"UnsetNonEmptyAllowed", nil, []string{"toc"}, false, true},
+		{"ExplicitTrueOverridesEmptyAllowed", boolPtr(true), nil, true, false},
+		{"ExplicitFalseOverridesEmptyAllowed", boolPtr(false), nil, false, false},
+		{"ExplicitTrueOverridesNonEmptyAllowed", boolPtr(true), []string{"toc"}, true, true},
+		{"ExplicitFalseOverridesNonEmptyAllowed", boolPtr(false), []string{"toc"}, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := Config{Control: tt.control, Allowed: tt.allowed}
+			if got := c.IsControl(); got != tt.wantControl {
+				t.Errorf("IsControl() = %v; want %v", got, tt.wantControl)
+			}
+			if got := c.GrantsTools(); got != tt.wantGrants {
+				t.Errorf("GrantsTools() = %v; want %v", got, tt.wantGrants)
+			}
+		})
+	}
+}
+
+// TestLoadLadder_ControlFieldDefaulting drives the same Control-defaulting matrix through
+// LoadLadder, so the yaml decoding of control: is covered and not only the Config method.
+func TestLoadLadder_ControlFieldDefaulting(t *testing.T) {
+	tests := []struct {
+		name        string
+		controlLine string
+		allowedLine string
+		wantControl bool
+	}{
+		{"UnsetEmptyAllowed", "", "allowed: []", true},
+		{"UnsetNonEmptyAllowed", "", "allowed: [toc]", false},
+		{"ExplicitTrueOverridesEmptyAllowed", "control: true", "allowed: []", true},
+		{"ExplicitFalseOverridesEmptyAllowed", "control: false", "allowed: []", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeLadderFile(t, controlDefaultingFixture(tt.controlLine, tt.allowedLine, tt.wantControl))
+			l, err := LoadLadder(path)
+			if err != nil {
+				t.Fatalf("LoadLadder(%s) = %v; want no error", path, err)
+			}
+			testConfig, ok := l.ConfigByID("a0-under-test")
+			if !ok {
+				t.Fatalf("ConfigByID(a0-under-test) not found")
+			}
+			if got := testConfig.IsControl(); got != tt.wantControl {
+				t.Errorf("Configs[a0-under-test].IsControl() = %v; want %v", got, tt.wantControl)
+			}
+		})
+	}
+}
+
+// controlDefaultingFixture builds a two-config ladder file: the config under test, carrying
+// controlLine (a "control: <bool>" yaml line, or empty to omit the key) and allowedLine (an
+// "allowed: [...]" yaml line), plus a companion control config present only when the config under
+// test is not itself expected to be the control -- otherwise validate's one-control-per-letter rule
+// would reject the file before the assertion under test ever runs. Used by
+// TestLoadLadder_ControlFieldDefaulting.
+func controlDefaultingFixture(controlLine, allowedLine string, wantControl bool) string {
+	entry := "  - id: a0-under-test\n    ladder: a\n    task: t1\n    " + allowedLine + "\n"
+	if controlLine != "" {
+		entry += "    " + controlLine + "\n"
+	}
+	if !wantControl {
+		entry += "  - {id: a1-companion-control, ladder: a, task: t1, allowed: [], control: true}\n"
+	}
+	return `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer:
+  model: claude-opus-5
+  effort: high
+quarry_tools:
+  - toc
+tasks:
+  t1:
+    task_file: tasks/t1.md
+    pinned_sha: abc123
+    schema: exploration
+    fasit: tasks/t1.fasit.json
+source_repo: env:LADDER_LOOMYARD_REPO
+configs:
+` + entry
 }
 
 // TestLoadLadder_RealTocFile loads the tracked, migrated ladder-toc.yaml and asserts the shape the
