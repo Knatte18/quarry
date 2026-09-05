@@ -17,6 +17,8 @@ const (
 	ReasonInvalidUTF8 Reason = "invalid_utf8"
 	// ReasonNoSeparator fires when the input has no "#": a glyph needs a unit and a member.
 	ReasonNoSeparator Reason = "no_separator"
+	// ReasonMultipleSeparators fires when the input carries more than one "#".
+	ReasonMultipleSeparators Reason = "multiple_separators"
 	// ReasonUnitEmpty fires when the unit half is the empty string.
 	ReasonUnitEmpty Reason = "unit_empty"
 	// ReasonUnitEmptySegment fires when a "/"-separated segment of the unit is empty.
@@ -59,6 +61,7 @@ var Reasons = []Reason{
 	ReasonUnsupportedLanguage,
 	ReasonInvalidUTF8,
 	ReasonNoSeparator,
+	ReasonMultipleSeparators,
 	ReasonUnitEmpty,
 	ReasonUnitEmptySegment,
 	ReasonUnitDotSegment,
@@ -80,6 +83,7 @@ var reasonText = map[Reason]string{
 	ReasonUnsupportedLanguage:  "this language is not implemented",
 	ReasonInvalidUTF8:          "input is not valid UTF-8",
 	ReasonNoSeparator:          "a glyph needs a \"#\" and a repository-relative path is not a glyph",
+	ReasonMultipleSeparators:   "a glyph has exactly one \"#\"; a unit or member component may not contain one",
 	ReasonUnitEmpty:            "unit is empty",
 	ReasonUnitEmptySegment:     "unit has an empty segment",
 	ReasonUnitDotSegment:       "unit has a \".\" or \"..\" segment",
