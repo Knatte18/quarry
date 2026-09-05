@@ -14,9 +14,9 @@ type Language string
 const Go Language = "go"
 
 // Glyph is the parsed form of a glyph string: a symbol's unit and member, split into their
-// components. A Glyph built by hand rather than by Parse is the builder's responsibility — this
-// package exports no constructor and no Validate method, and String does not check the value it is
-// given.
+// components. A Glyph built by hand rather than by Parse or Self is the builder's responsibility —
+// Self is the one constructor this package exports, there is no Validate method, and String does
+// not check the value it is given.
 type Glyph struct {
 	// Lang is the language whose alphabet this Glyph's Unit and member were parsed against.
 	Lang Language
