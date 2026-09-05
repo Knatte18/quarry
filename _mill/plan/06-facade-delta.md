@@ -5,7 +5,7 @@ task: 'P2 — diff-to-symbols: changed file versions to symbol-table delta (road
 batch: 'facade-delta'
 number: 6
 cards: 7
-verify: go test ./quarry/ -run 'TestDelta'
+verify: go test ./quarry/ -run 'TestDelta' && go test ./internal/mcpserver/ -run 'TestFacadeOnly|TestStdout'
 depends-on: [2, 4, 5]
 ```
 
@@ -60,6 +60,10 @@ contradict that; it is the single documented exception to the facade's aliases-o
   argument the existing sentinel and typed-error aliases in this file already make.
   Each new alias carries a doc comment giving that reason rather than repeating the aliased type's
   own description.
+  Correct this file's own header comment in the same commit: it describes the file as declaring the
+  aliases that make the engine's answer shape and error identity nameable from outside the module,
+  and this card adds aliases for a second internal package's error identity, so the header must name
+  both sources rather than the engine alone.
 - **Commit:** `feat(quarry): alias the delta answer types and the git error identity`
 
 ### Card 32: declare the wrapped git answer and the pure Delta method
@@ -252,36 +256,52 @@ contradict that; it is the single documented exception to the facade's aliases-o
   is asserted directly rather than left to follow from the enumeration code.
 - **Commit:** `test(quarry): assert DeltaGit against Delta, the status letters and the git error identity`
 
-### Card 37: confirm the facade-only layering rule still holds
+### Card 37: make the git-layer layering rule mechanical
 
 - **Context:**
   - `quarry/delta.go`
   - `quarry/quarry.go`
-  - `internal/mcpserver/layering_test.go`
   - `internal/cli/cli.go`
-- **Edits:** none
+  - `internal/gitsrc/gitsrc.go`
+- **Edits:**
+  - `internal/mcpserver/layering_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Verification-only card, producing no diff.
-  Confirm by inspection of the import blocks that package `quarry` is the only package outside the
-  internal tree's own layers importing the git plumbing package, and that nothing in this batch made
-  the command-line layer import it — that import belongs to a later batch's temptation and the
-  overview's Shared Decision on git error identity forbids it.
-  Confirm that the mcp server package and its command remain free of any direct engine import, since
-  the existing layering test in that package enforces exactly that and this batch adds a second
-  internal package a future edit could reach for.
-  Confirm that no file added in this batch writes to standard output.
-  If any check fails, the fix is the import or the write, never a change to the layering test.
-- **Commit:** none
+- **Requirements:** The overview's Shared Decision on reaching git error identity through the facade
+  is currently guarded by nothing but this plan's own prose, and the repository has exactly one
+  mechanical layering gate: the import check in `internal/mcpserver/layering_test.go`, which today
+  forbids one import path across the mcp server package's files and its command's files.
+  Extend that check rather than adding a second mechanism.
+  Make its forbidden set two paths rather than one, adding the git plumbing package, so the mcp
+  server can no more reach the git layer directly than it can the engine.
+  Then extend the scanned set with the command-line package's own files, checked against the git
+  plumbing path alone — that package legitimately imports neither, but it is the package the Shared
+  Decision is actually about, and a convention no test states is one refactor from being lost.
+  Do not add the engine path to the command-line package's forbidden set: that would be a new rule
+  this task did not decide, and the existing header comment already records that the facade-only rule
+  holds there by convention.
+  The check reads each file's own import block, so it catches a direct import only; a package
+  reaching the git layer transitively through the facade is exactly what the design intends and must
+  not fail.
+  Update that file's own header comment, which states which packages it covers and which single rule
+  it enforces, and extend its existing note about the residual gap to say what the widened check does
+  and does not catch.
+  Confirm as well, by inspection, that no file added in this batch writes to standard output, which
+  the same test's second check already enforces for its own packages.
+- **Commit:** `test(mcpserver): forbid direct git-layer imports and cover the CLI package`
 
 ## Batch Tests
 
-`verify:` runs `go test ./quarry/ -run 'TestDelta'`, selecting the four test functions card 36 adds
-in `quarry/delta_test.go`; no existing test in this package carries that prefix.
-The pattern also matches the golden and real-history tests batch 9 adds later, which is intentional
+`verify:` runs two commands.
+The first, `go test ./quarry/ -run 'TestDelta'`, selects the four test functions card 36 adds in
+`quarry/delta_test.go`; no existing test in this package carries that prefix.
+That pattern also matches the golden and real-history tests batch 9 adds later, which is intentional
 and harmless — by then those tests exist and should pass.
-Every case builds a fresh throwaway repository and skips when git is unavailable, so this batch
-needs no checkout of any other repository.
+The second, `go test ./internal/mcpserver/ -run 'TestFacadeOnly|TestStdout'`, runs the two checks in
+the layering test card 37 edits, in the package that owns it: an import-rule test is only a gate if
+the batch that widens it also runs it.
+Every case in card 36 builds a fresh throwaway repository and skips when git is unavailable, so this
+batch needs no checkout of any other repository.
 Card 35's doc-comment amendments have no runnable surface; the module-wide `go vet ./...` at this
 batch's boundary is what proves the package still compiles with them.

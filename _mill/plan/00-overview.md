@@ -22,7 +22,7 @@ batches:
     name: engine-symbol-seam
     file: 01-engine-symbol-seam.md
     depends-on: []
-    verify: go test ./internal/engine/ -run 'TestSymbolOffsets|TestSignatureSpan'
+    verify: go test ./internal/engine/ -run 'TestSymbolOffsets|TestSignatureSpan|TestGoStrategy'
   - number: 2
     name: engine-unit-exports
     file: 02-engine-unit-exports.md
@@ -47,7 +47,7 @@ batches:
     name: facade-delta
     file: 06-facade-delta.md
     depends-on: [2, 4, 5]
-    verify: go test ./quarry/ -run 'TestDelta'
+    verify: go test ./quarry/ -run 'TestDelta' && go test ./internal/mcpserver/ -run 'TestFacadeOnly|TestStdout'
   - number: 7
     name: delta-renderers
     file: 07-delta-renderers.md
@@ -202,6 +202,7 @@ Batch-local decisions live in each batch file._
 - `internal/engine/delta_tokens.go`
 - `internal/engine/delta_tokens_test.go`
 - `internal/engine/golang.go`
+- `internal/engine/golang_test.go`
 - `internal/engine/offsets_test.go`
 - `internal/engine/units.go`
 - `internal/engine/units_test.go`
@@ -211,6 +212,7 @@ Batch-local decisions live in each batch file._
 - `internal/gitsrc/fixture_test.go`
 - `internal/gitsrc/gitsrc.go`
 - `internal/gitsrc/gitsrc_test.go`
+- `internal/mcpserver/layering_test.go`
 - `quarry/delta.go`
 - `quarry/delta_golden_test.go`
 - `quarry/delta_history_test.go`

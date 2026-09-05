@@ -91,6 +91,10 @@ answer.
   description exactly as the existing verb-scoped flags are.
   Keep the text ASCII only — no typographic dash and no typographic quotes — since it is
   byte-compared in tests and must be stable across terminals.
+  Correct this file's own header comment in the same commit: it explains the combined flags list as
+  "one combined list rather than three per-verb sections" and says the shared flags are "not repeated
+  three times", both of which become false with a fourth verb — the explanation itself stays right,
+  only its counts change.
   Leave the exit-codes block unchanged: this verb introduces no new code and reaches the negative
   code only through the target-escapes-the-root rejection every path-taking verb already inherits,
   so the block's existing wording still covers it.
@@ -210,6 +214,16 @@ answer.
   no-symbols flags each rejected for the new verb with the same message shape.
   Extend the existing three-verb gate test, or add a case to it, so the accepted verb set is
   asserted as four rather than three and an unknown verb is still rejected by name.
+  Two existing tables in this file also go red under card 42 and must be updated in this same commit,
+  since batch 8's own verify selects both.
+  The usage-error table hand-copies the parser's missing-verb sentence as literal bytes in its
+  missing-verb row and its first-argument-is-a-flag row; both must carry the four-verb sentence card
+  42 writes.
+  That hand-copying is why this differs from the usage constant, which every test compares by
+  reference and which therefore needs no test edit at all.
+  The all-verbs flag-validity table asserts that the text and root flags are accepted for three
+  verbs; add the two rows for the fourth, so the widened claim card 42 writes into the parser's doc
+  comment is actually pinned.
   Assert that the help flag still wins over every other complaint when given alongside this verb
   with no target and no revisions.
 - **Commit:** `test(cli): assert delta argument parsing and flag validity`

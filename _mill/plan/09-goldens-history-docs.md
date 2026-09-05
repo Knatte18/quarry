@@ -133,6 +133,10 @@ golden exists to prevent.
   verb read as the section's subject.
   Then update the mechanical-use list in the Loomyard section, whose item currently names this task
   by its slug as work still to come, so it names the built verb instead.
+  Then correct the opening section's own enumeration, which introduces quarry as one identifier and
+  **three** queries and names them — it is the same false count this plan corrects in four Go doc
+  comments, and leaving it in the document this card owns would be the one place the claim survives.
+  All three edits land in this one commit.
   Change no other document on this branch.
   In particular the roadmap is not edited here: it states what is ahead, and removing a completed
   item is the merge's job rather than this branch's.
@@ -156,8 +160,9 @@ golden exists to prevent.
   this task is byte-identical, wherever it lives at merge time — the fifteen files the command-line
   package's own golden table pins and the set the mcp server package pins — and no existing verb,
   envelope, flag or exit code changed.
-  Confirm nothing under the mcp server package or its command changed at all, since this task adds
-  no tool there.
+  Confirm that the only change under the mcp server package is card 37's widening of its layering
+  test, and that no production file there or under its command changed at all — this task adds no
+  tool and no behaviour on that side, and that one test edit is the single deliberate exception.
   Confirm the glyph package still compiles without tree-sitter and gained no dependency, since an
   external consumer imports it and it must stay free of cgo.
   Confirm no new third-party dependency entered the module files.
