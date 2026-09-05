@@ -36,13 +36,20 @@ implementing  '2026-09-05T14:50:21Z'
 ```yaml
 batches:
   - name: engine-maker
-    state: pending
+    state: running
+    implementer_session: 29021cc8-48ed-4d30-a62a-87c27704d8b3
+    start_sha: c0098adf63f09e22d48773cc6d28adb2b5bfe638
+    verify_baseline_failures: []
   - name: facade-and-renderers
     state: pending
+    verify_baseline_failures: []
   - name: naming-round-trip
     state: pending
+    verify_baseline_failures: []
   - name: cli-verb
     state: pending
+    verify_baseline_failures: []
   - name: docs-inventory
     state: pending
+    verify_baseline_failures: []
 ```
