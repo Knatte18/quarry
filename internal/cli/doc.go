@@ -8,10 +8,13 @@
 // performs no git discovery and no cwd resolution — and the two path frames never mix: input is
 // interpreted where the user is, output is always repository-root relative with forward slashes.
 //
-// The command has four verbs. "toc" takes a repository-relative or cwd-relative path — a
-// directory or a file. "resolve" takes a glyph only, including a self glyph naming a whole unit.
-// "expand" takes a glyph only. "name" takes a declaration head, which is neither a path nor a
-// glyph.
+// The command has five verbs. "toc" takes a repository-relative or cwd-relative path — a
+// directory or a file. "glyphs" takes the same repository-relative or cwd-relative path "toc"
+// takes, but it is not a fifth pipeline: parseArgs rewrites it to a frozen "toc" expansion
+// (--view glyphs --depth all --symbols), so it reaches exactly the same parsing, the same
+// dispatch and the same renderers, and nothing below the parser knows the verb "glyphs" ever
+// existed. "resolve" takes a glyph only, including a self glyph naming a whole unit. "expand"
+// takes a glyph only. "name" takes a declaration head, which is neither a path nor a glyph.
 //
 // A target is handed to the facade verbatim, with no path arithmetic and no stat ever applied to
 // it, whenever the verb does not take a path. This is because a glyph's unit is repository-relative
@@ -19,7 +22,8 @@
 // remote URL against a local directory would — and because a declaration head is neither a path nor
 // a glyph, so no path arithmetic applies to it either. "toc" is the only verb that still takes a
 // path, and it is the only verb this package still converts with internal/repopath before the
-// engine sees the target.
+// engine sees the target — still true, and now true for a second spelling of the same verb, since
+// "glyphs" is rewritten to "toc" before parseArgs ever returns.
 //
 // The failure envelope's "ok" key, present only on the failure path and always false there, marks
 // that quarry could not answer the query at all — a usage error, an internal error, or a
