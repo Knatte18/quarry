@@ -110,9 +110,30 @@ line. `toc`'s question asked of an owner instead of a container; it stays a sepa
 `toc` never takes a glyph — a Go type's methods live in other files and belong to no file's
 toc.
 
-**`toc <dir|file> [--depth N|all] [--symbols]`** — a table of contents over the recursive
-answer of §4. One target per call. A `#` in any path segment is rejected as an explicit error,
-never reclassified as a glyph.
+**`toc <dir|file> [--view full|glyphs] [--depth N|all] [--symbols]`** — a table of contents over
+the recursive answer of §4. One target per call. A `#` in any path segment is rejected as an
+explicit error, never reclassified as a glyph.
+
+**The view mechanism.** `--view` selects a projection of the one complete answer; extraction
+underneath is unchanged, and the projection is a pure function applied after the query returns,
+so no view can influence what is extracted. The `glyphs` view is flat and non-recursive: one
+entry per symbol carrying id, kind, file and span, plus an explicit list of files that could not
+be read or fully parsed. That `incomplete` list is what makes "an absent entry means the symbol
+is not in the target" a sound conclusion rather than a guess. State the scope of that promise in
+the same paragraph, because the promise and its limit must travel together: it holds for the
+frozen `glyphs` preset, which is `--depth all`, and there only — a direct
+`toc --view glyphs --depth N` answer is truncated by construction and contributes nothing to
+`incomplete`, because a depth-cut answer is indistinguishable from a genuinely empty leaf.
+
+**The preset rule.** A named verb is a frozen flag preset over the one query, never a second
+implementation: `quarry glyphs <target>` is spelled literally as
+`quarry toc --view glyphs --depth all --symbols <target>`, and the CLI reaches it by rewriting
+its own argument slice and re-parsing, so nothing below the parser can tell the two apart. That
+property is enforced by a test requiring byte-identical stdout, stderr and exit code for both
+spellings, over a file target and a directory target in both formats, rather than by a
+convention a later edit can quietly break. `--symbols` is spelled explicitly in the expansion
+rather than left to the default, because the per-target default is false for a directory
+target; the preset does not silently change if a default ever does.
 
 **`name <unit> <declaration>`** — predicts the id and kind a declaration head will get once it
 is actually written, by parsing it through the same extractor `toc`, `resolve` and `expand`
