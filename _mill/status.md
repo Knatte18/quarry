@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-facade-and-renderers
+phase: approved-naming-round-trip
 slug: glyph-maker
 branch: glyph-maker
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-09-05T14:49:51Z'
 implementing  '2026-09-05T14:50:21Z'
 approved-engine-maker  '2026-09-05T14:57:05Z'
 approved-facade-and-renderers  '2026-09-05T15:02:12Z'
+approved-naming-round-trip  '2026-09-05T15:07:23Z'
 ```
 
 ## Batches
@@ -50,9 +51,10 @@ batches:
     commit_sha: 77d58add5d1f5dc02681121e5afff867951766fd
     verify_baseline_failures: []
   - name: naming-round-trip
-    state: running
+    state: approved
     implementer_session: 74af55cc-db90-449d-9344-44aa1e03b206
     start_sha: c0149a6ba9ace37745adde7d32f64a56ba65e2e8
+    commit_sha: 988fe76729e4d6c9e8fbd0c50849fbf834244c2b
     verify_baseline_failures: []
   - name: cli-verb
     state: pending
