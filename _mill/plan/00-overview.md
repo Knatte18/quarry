@@ -8,7 +8,7 @@ discussion_sha: "70a9ac5cd076e5bd8ac27a426a43b2283fe73717"
 started: "20260905-113711"
 parent: "main"
 root: ""
-verify: null
+verify: go vet ./...
 ```
 
 ## Batch Index
@@ -77,11 +77,18 @@ batches:
   that field at once, across three packages. Batch 2 therefore carries the rename *and* every
   compile-level consequence of it — `quarry/text.go`, `quarry/repo_test.go`,
   `internal/cli/cli_test.go` — even though the behavioural rewrite of `internal/cli`'s own tests
-  belongs to batch 4. `go build ./...` succeeds after every batch in this plan.
+  belongs to batch 4. The module compiles, test files included, after every batch in this plan, and
+  the overview's module-wide `verify: go vet ./...` is what gates that at each batch boundary rather
+  than leaving the claim unchecked. `go vet` is the right gate and `go build ./...` is not: `go
+  build` skips `_test.go` files entirely, and every compile break this plan can cause — card 10's
+  rename reaching `quarry/render_test.go`, `quarry/repo_test.go` and `internal/cli/cli_test.go` —
+  is in a test file. `go vet ./...` type-checks them, is seconds rather than minutes, and exits 0 on
+  the tree as it stands, so it starts clean and any failure it reports belongs to this plan.
 - **Rationale:** a broken module-wide build between batches would make the `pipeline.done_gate`
   (`go test ./... && golangci-lint run`) meaningless as an intermediate signal, and would leave a
   bisect landing on a batch that cannot compile. Test *failures* between batches are accepted and
-  bounded (see the next decision); compile failures are not.
+  bounded (see the next decision); compile failures are not. A decision with no gate is a wish, which
+  is why the module-wide `verify:` is set rather than left null.
 - **Applies to:** all batches
 
 ### Decision: batch 2 and batch 3 open a bounded red window in `internal/cli`
@@ -124,10 +131,11 @@ batches:
 
 ### Decision: `verify:` scope is per-package, and the repo-wide gate is the config's `done_gate`
 
-- **Decision:** each batch's `verify:` names only the packages that batch touches. The repo-wide
-  regression gate is `mill-config.yaml`'s `pipeline.done_gate`, already set to
-  `go test ./... && golangci-lint run`, which mill-go runs from `git_root` before marking the task
-  done. No batch runs the unbounded suite.
+- **Decision:** each batch's `verify:` names only the packages that batch touches. Two wider gates
+  sit above them: the overview's module-wide `verify: go vet ./...`, which mill-go runs at every
+  batch boundary after the batch's own verify passes, and `mill-config.yaml`'s `pipeline.done_gate`,
+  already set to `go test ./... && golangci-lint run`, which mill-go runs from `git_root` before
+  marking the task done. No batch runs the unbounded suite itself.
 - **Rationale:** `verify:` runs after every implementer and fixer round; the full suite plus
   tree-sitter parsing is far more than the batch needs. The cross-package regressions this plan can
   produce — chiefly the `Dir` → `Listing` rename — are caught at the introducing batch by the
@@ -173,6 +181,7 @@ batches:
 - `internal/repopath/target.go`
 - `internal/repopath/target_test.go`
 - `quarry/quarry.go`
+- `quarry/render_test.go`
 - `quarry/repo_test.go`
 - `quarry/text.go`
 - `quarry/text_test.go`
