@@ -26,7 +26,7 @@ func Parse(lang Language, s string) (Glyph, error) {
 
 	unit, member, ok := splitGlyph(s)
 	if !ok {
-		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonNoSeparator}
+		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonNoSeparator, Detail: s + "#"}
 	}
 
 	switch lang {
