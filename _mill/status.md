@@ -93,7 +93,9 @@ batches:
     commit_sha: 228864294d68d12a5aaa96be89c690e50669783e
     verify_baseline_failures: []
   - name: cli-delta-verb
-    state: pending
+    state: running
+    implementer_session: b33b4ab3-0279-4e48-8ebe-45aa1b809d53
+    start_sha: 74581abfd82dd9bc4efc7532b32732d419b308ca
     verify_baseline_failures: []
   - name: goldens-history-docs
     state: pending
