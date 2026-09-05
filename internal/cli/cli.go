@@ -526,16 +526,16 @@ func runDelta(req request, root, base string, stdout, stderr io.Writer) int {
 		var revErr *quarry.UnknownRevisionError
 		if errors.As(err, &revErr) {
 			msg := "delta: unknown revision " + revErr.Rev
-			return fail(stdout, stderr, codeForDeltaError(err), msg, false)
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
 		}
 		var topErr *quarry.RootNotTopLevelError
 		if errors.As(err, &topErr) {
 			msg := "delta: root " + topErr.Root + " is not the repository top level (top level is " + topErr.TopLevel + ")"
-			return fail(stdout, stderr, codeForDeltaError(err), msg, false)
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
 		}
 		if errors.Is(err, quarry.ErrNotARepository) {
 			msg := "delta: root is not a git repository: " + root
-			return fail(stdout, stderr, codeForDeltaError(err), msg, false)
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
 		}
 		return fail(stdout, stderr, codeForDeltaError(err), "internal error: "+err.Error(), false)
 	}
