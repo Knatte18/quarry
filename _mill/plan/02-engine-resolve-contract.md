@@ -219,9 +219,11 @@ green-compile decision forbids.
 - **Context:**
   - `quarry/text.go`
   - `internal/engine/answer.go`
+  - `glyph/errors.go`
 - **Edits:**
   - `quarry/text_test.go`
   - `quarry/repo_test.go`
+  - `quarry/render_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -235,8 +237,17 @@ green-compile decision forbids.
   `ID` emits the target on line 1, never a line beginning with a space. Add a row for the reduced
   `default` arm: a hand-built value with no `ID` and no `Listing` still emits line 1 alone. Assert
   the renderer's standing invariants on every new case — no trailing whitespace on any line, and
-  exactly one closing newline. In `quarry/repo_test.go`, rename the `Dir` field reference on the
-  resolve result to `Listing`; change no assertion there beyond the field name.
+  exactly one closing newline. In `quarry/repo_test.go`, retarget `TestRepoResolve_PathTarget`: it
+  resolves a bare path today, which card 12 turns into a `no_separator` rejection with an empty
+  status, so its argument becomes that path's self glyph with a trailing `"#"`, its `Dir` field
+  reference becomes `Listing`, and the test is renamed off the word "PathTarget", which no longer
+  describes what it asserts. In `quarry/render_test.go`, rename the two `ResolveResult` composite
+  literals that set `Dir` to set `Listing` — one in the round-trip table's path row, one in
+  `TestRenderResolveJSON_KeyOrder` — and change the pinned key list in that second test so its last
+  entry is the `listing` key rather than the `dir` one. That key list is pinned to `ResolveResult`'s
+  own field declaration order, which card 10 leaves unchanged, so only the key's spelling moves.
+  Both files break the `quarry` test binary's compile until this card lands, which is why they are
+  named here rather than left to a later batch.
 - **Commit:** `test(quarry): pin the listing branch and its guards`
 
 ### Card 18: keep `internal/cli`'s test binary compiling

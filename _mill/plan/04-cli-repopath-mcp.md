@@ -121,6 +121,7 @@ function: exit 2 means the caller asked wrong, and printing the usage block is w
 - **Context:**
   - `glyph/errors.go`
   - `internal/engine/expand.go`
+  - `quarry/quarry.go`
 - **Edits:**
   - `internal/cli/flags.go`
   - `internal/cli/cli.go`
@@ -142,11 +143,18 @@ function: exit 2 means the caller asked wrong, and printing the usage block is w
   Add the `*SelfGlyphError` branch to `runExpand` beside the `*NotATypeError` branch, using
   `errors.As` against `*quarry.SelfGlyphError` and producing `expand ` followed by the value's `ID`
   field and `: not a type, self` — spelled from the value's fields rather than the error's own text,
-  so the engine's package-name prefix never leaks, exactly as the `*NotATypeError` branch does. Route
-  it through `codeForExpandError` for the code as the other two branches do; that function already
-  returns the negative exit for any error other than the internal ones, so confirm rather than assume
-  it needs no edit. A bare path given to `expand` now exits 1 with the payload-plus-message shape
-  instead of exit 2 with a usage message, which is the deliberate breaking change this card carries.
+  so the engine's package-name prefix never leaks, exactly as the `*NotATypeError` branch does. Add
+  a matching `*quarry.SelfGlyphError` arm to `codeForExpandError` returning `exitNegative`, placed
+  beside its existing `*quarry.NotATypeError` and `*glyph.ParseError` arms. That function's fallback
+  is `exitInternal`, so without the new arm a self glyph given to `expand` would exit 3 — an internal
+  error — rather than the negative exit the answer is: the verb ran to a definite conclusion and the
+  glyph names no type. The `glyph:` prefix the rewritten `*glyph.ParseError` message carries is
+  intended and is not the leak the surrounding code guards against: `github.com/Knatte18/quarry/glyph`
+  is a public package named in the contract, not one of the internal packages whose names the exit-1
+  message rule keeps out, and the full sentence is exactly what makes the message actionable. Card 28
+  records that distinction in the doc comment. A bare path given to `expand` now exits 1 with the
+  payload-plus-message shape instead of exit 2 with a usage message, which is the deliberate breaking
+  change this card carries.
 - **Commit:** `refactor(cli)!: delete expand's usage gate and carry the grammar's own message`
 
 ### Card 28: the package doc states the new contract, and `--help` stops promising the old one
@@ -161,7 +169,8 @@ function: exit 2 means the caller asked wrong, and printing the usage block is w
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Seven paragraphs across these three files are now false and all seven change.
+- **Requirements:** Eight paragraphs across these three files are now false or incomplete, and all
+  eight change.
   In `internal/cli/doc.go`: delete the "Known contract gap" paragraph outright, and replace it with a
   statement of the new rule — `resolve` takes glyphs, `toc` takes paths, classification happens
   exactly once and it is `glyph.Parse` doing it, and a `"#"` in a path segment is an explicit error at
@@ -175,8 +184,14 @@ function: exit 2 means the caller asked wrong, and printing the usage block is w
   a distinct paragraph from step 1, and editing step 1 alone would leave it standing; and rewrite
   step 3, which documents the expand `*glyph.ParseError` message as the value's reason word and the
   same word the resolve verb puts in its payload's reason key, which card 27 replaced with the
-  error's full text, adding the `*SelfGlyphError` branch to the same numbered list. In
-  `internal/cli/usage.go`: change the `resolve` line's argument from `<glyph|path>` to `<glyph>`. The
+  error's full text, adding the `*SelfGlyphError` branch to the same numbered list; and amend the
+  closing paragraph on message composition, which states that an exit-1 message never carries a
+  wrapped chain because quarry spells those conditions itself and passing a chain through would leak
+  an internal package name into a public contract. That rule stands and is not being relaxed: it
+  names *internal* packages, and `github.com/Knatte18/quarry/glyph` is a public package the contract
+  already names, so the grammar's own sentence is quarry spelling the condition rather than leaking
+  one. Say that explicitly, so the next reader does not read card 27's message as a violation of the
+  paragraph directly above it. In `internal/cli/usage.go`: change the `resolve` line's argument from `<glyph|path>` to `<glyph>`. The
   `toc` and `expand` lines stay as they are. Re-read the exit-codes block against card 27's change
   and confirm it needs no edit — its exit-1 line already ends "or not a well-formed glyph", which now
   also covers a bare path given to `expand`. Preserve this file's ASCII-only, byte-comparable
