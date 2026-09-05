@@ -32,6 +32,9 @@ type Ladder struct {
 	Server      *ServerSpec     `yaml:"server"`
 	Tasks       map[string]Task `yaml:"tasks"`
 	Configs     []Config        `yaml:"configs"`
+	// PackTargets is the glyph list the pack subcommand resolves. It is a single top-level list
+	// resolved once, which is why at most one config per file may set Pack.
+	PackTargets []string `yaml:"pack_targets"`
 }
 
 // ScorerSpec names the model and effort the scoring pass runs at.
@@ -66,11 +69,33 @@ type Config struct {
 	Ladder  string   `yaml:"ladder"`
 	Task    string   `yaml:"task"`
 	Allowed []string `yaml:"allowed"`
+	// Control overrides which cell is its ladder letter's comparison baseline. A nil Control
+	// defaults to today's behaviour, len(Allowed) == 0; an explicit false is distinguishable from
+	// an omitted key, which is why this is a pointer rather than a plain bool.
+	Control *bool `yaml:"control"`
+	// Card is a repository-relative markdown file rendered into the prompt, resolved the same way
+	// Task.TaskFile is. An empty value renders today's prompt unchanged.
+	Card string `yaml:"card"`
+	// Pack marks the one cell whose card the generated kick-start pack is written into.
+	Pack bool `yaml:"pack"`
 }
 
-// IsControl reports whether c is the control cell for its ladder letter, i.e. it grants no tools.
+// IsControl reports whether c is its ladder letter's comparison baseline. When Control is set
+// explicitly, that value wins; otherwise the default is today's behaviour, len(Allowed) == 0. This
+// is a different question from GrantsTools: every cell of a ladder letter may grant no tools, in
+// which case Control is the only way to pick one of them as the baseline.
 func (c Config) IsControl() bool {
+	if c.Control != nil {
+		return *c.Control
+	}
 	return len(c.Allowed) == 0
+}
+
+// GrantsTools reports whether c has an MCP server attached, i.e. its allowed list is non-empty.
+// This is a different question from IsControl: a cell can grant no tools without being its
+// ladder letter's control, and vice versa.
+func (c Config) GrantsTools() bool {
+	return len(c.Allowed) > 0
 }
 
 // LoadLadder reads and decodes the ladder configuration file at path, rejecting any unrecognised
@@ -123,9 +148,9 @@ func (l *Ladder) ConfigByID(id string) (Config, bool) {
 	return Config{}, false
 }
 
-// ControlFor returns the single config for the given ladder letter whose allowed list is empty, and
-// reports whether one was found. validate guarantees at most one such config exists per letter that
-// appears in the file.
+// ControlFor returns the single config for the given ladder letter that IsControl reports true for,
+// and reports whether one was found. validate guarantees at most one such config exists per letter
+// that appears in the file.
 func (l *Ladder) ControlFor(letter string) (Config, bool) {
 	for _, c := range l.Configs {
 		if c.Ladder == letter && c.IsControl() {
@@ -164,8 +189,13 @@ func wrapRetiredKeyError(err error) error {
 
 // validate checks l against every rule the ladder file format requires: the kept-from-V1 rules
 // (source_repo's literal value, config id uniqueness, task and tool-list references, one control
-// per ladder letter that appears, and the non-zero run/scorer/task fields) plus the schema
-// enumeration. Retired-key rejection happens earlier, at decode time, via wrapRetiredKeyError.
+// per ladder letter that appears, and the non-zero run/scorer/task fields), the schema enumeration,
+// and four new rules for pack, pack_targets and card: at most one config in the whole file may set
+// Pack true; a Pack config must declare a non-empty Card; PackTargets is non-empty if and only if
+// some config sets Pack true; and every PackTargets entry is non-empty and unique. Retired-key
+// rejection happens earlier, at decode time, via wrapRetiredKeyError. validate is deliberately
+// filesystem-free — it never opens Card, PackTargets, or any other referenced file; the sentinel
+// check on a card's contents lives elsewhere, where the repository root is in hand.
 func (l *Ladder) validate() error {
 	if l.SourceRepo != "env:LADDER_LOOMYARD_REPO" {
 		return fmt.Errorf("source_repo: must be the literal %q, got %q", "env:LADDER_LOOMYARD_REPO", l.SourceRepo)
@@ -212,6 +242,7 @@ func (l *Ladder) validate() error {
 	seenIDs := make(map[string]bool, len(l.Configs))
 	controlsByLetter := make(map[string]int)
 	lettersSeen := make(map[string]bool)
+	packCount := 0
 	for _, c := range l.Configs {
 		if seenIDs[c.ID] {
 			return fmt.Errorf("configs: duplicate id %q", c.ID)
@@ -229,6 +260,13 @@ func (l *Ladder) validate() error {
 			}
 		}
 
+		if c.Pack {
+			packCount++
+			if c.Card == "" {
+				return fmt.Errorf("configs.%s.card: must be set when pack is true", c.ID)
+			}
+		}
+
 		if c.IsControl() {
 			controlsByLetter[c.Ladder]++
 		}
@@ -236,8 +274,29 @@ func (l *Ladder) validate() error {
 
 	for letter := range lettersSeen {
 		if n := controlsByLetter[letter]; n != 1 {
-			return fmt.Errorf("ladder %q: expected exactly one control (empty allowed list), found %d", letter, n)
+			return fmt.Errorf("ladder %q: expected exactly one control, found %d", letter, n)
 		}
+	}
+
+	if packCount > 1 {
+		return fmt.Errorf("configs: at most one config may set pack, found %d", packCount)
+	}
+	if packCount == 0 && len(l.PackTargets) > 0 {
+		return fmt.Errorf("pack_targets: set but no config sets pack")
+	}
+	if packCount > 0 && len(l.PackTargets) == 0 {
+		return fmt.Errorf("pack_targets: must be non-empty when a config sets pack")
+	}
+
+	seenTargets := make(map[string]bool, len(l.PackTargets))
+	for _, target := range l.PackTargets {
+		if target == "" {
+			return fmt.Errorf("pack_targets: entries must be non-empty")
+		}
+		if seenTargets[target] {
+			return fmt.Errorf("pack_targets: duplicate entry %q", target)
+		}
+		seenTargets[target] = true
 	}
 
 	return nil

@@ -76,6 +76,35 @@ type Provenance struct {
 	SessionFingerprints map[string]SessionFingerprint `json:"session_fingerprints"`
 	// Invocations is every invocation this root has ever run, in the order they completed.
 	Invocations []Invocation `json:"invocations"`
+	// KickstartPack records the kick-start pack committed for this results root, or nil when no pack
+	// has been generated into it. This must be a real struct field, not something the pack command
+	// writes into the JSON directly: Run rewrites the whole file through MergeProvenance at startup,
+	// so an unknown key would be silently dropped on the first run after the pack.
+	KickstartPack *KickstartPack `json:"kickstart_pack,omitempty"`
+}
+
+// KickstartPack is the committed record of one kick-start pack generation: what it resolved against,
+// what it hashed to, and which card it belongs to.
+type KickstartPack struct {
+	// GeneratedAt is the pack generation's write time.
+	GeneratedAt string `json:"generated_at"`
+	// QuarryCommit is the quarry repository commit at pack-generation time.
+	QuarryCommit string `json:"quarry_commit"`
+	// QuarryDirty reports whether the quarry repository carried an uncommitted change at
+	// pack-generation time.
+	QuarryDirty bool `json:"quarry_dirty"`
+	// LoomyardCommit is the target repository commit at pack-generation time.
+	LoomyardCommit string `json:"loomyard_commit"`
+	// Targets is the list of glyph-resolution targets the pack was generated for.
+	Targets []string `json:"targets"`
+	// PackSHA256 is the hex sha256 of the pack cell's sentinel-delimited card block, the value run's
+	// pre-rep-1 gate compares its own recomputed hash against.
+	PackSHA256 string `json:"pack_sha256"`
+	// ResolveSHA256 is the hex sha256 of the glyph-resolution output the pack was generated from.
+	ResolveSHA256 string `json:"resolve_sha256"`
+	// CardFile is the pack cell's own card file path, repository-relative -- never an absolute path,
+	// since this record is committed.
+	CardFile string `json:"card_file"`
 }
 
 // SessionFingerprint is what one repetition's session-init record reveals about how that repetition
@@ -207,10 +236,15 @@ func ReadProvenance(resultsRoot string) (*Provenance, error) {
 	return &p, nil
 }
 
-// WriteProvenance writes p to resultsRoot/provenance.json.
+// WriteProvenance writes p to resultsRoot/provenance.json, creating resultsRoot when it does not
+// already exist -- this is the single write that runs first against a fresh results root, before
+// anything else in a run has created a directory.
 func WriteProvenance(resultsRoot string, p *Provenance) error {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
+		return fmt.Errorf("write provenance: %w", err)
+	}
+	if err := os.MkdirAll(resultsRoot, 0o755); err != nil {
 		return fmt.Errorf("write provenance: %w", err)
 	}
 	path := filepath.Join(resultsRoot, ProvenanceFile)
@@ -359,6 +393,10 @@ func ladderFileRelativeOrBase(quarryRepoRoot, ladderFilePath string) (string, er
 // four is an error naming both values -- a root assembled from two different ladder files, two
 // different checkouts, two different server names or two different per-cell sample sizes is not one
 // root. existing may be nil, for a fresh results root's first invocation.
+//
+// kickstart_pack is carried forward from the existing record, is never derived from an invocation,
+// and is never compared for equality the way ladder_file and the other three identity fields are --
+// it is an artefact record, not an identity.
 func MergeProvenance(existing *Provenance, next Invocation) (*Provenance, error) {
 	if existing == nil {
 		return &Provenance{
@@ -379,6 +417,7 @@ func MergeProvenance(existing *Provenance, next Invocation) (*Provenance, error)
 			ServerName:          next.ServerName,
 			SessionFingerprints: map[string]SessionFingerprint{},
 			Invocations:         []Invocation{next},
+			KickstartPack:       nil,
 		}, nil
 	}
 
@@ -415,6 +454,7 @@ func MergeProvenance(existing *Provenance, next Invocation) (*Provenance, error)
 		ServerName:          existing.ServerName,
 		SessionFingerprints: cloneFingerprintMap(existing.SessionFingerprints),
 		Invocations:         invocations,
+		KickstartPack:       existing.KickstartPack,
 	}
 	for k, v := range next.ServerHashes {
 		merged.ServerHashes[k] = v

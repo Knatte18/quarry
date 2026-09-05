@@ -1,6 +1,8 @@
 package ladder
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -238,7 +240,7 @@ func TestRenderPrompt_SixPartsInOrder(t *testing.T) {
 	}
 	toolNames := append([]string{}, BuiltinTools...)
 
-	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames)
+	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames, "")
 
 	parts := []string{
 		PARALLEL_OPENING,
@@ -266,7 +268,7 @@ func TestRenderPrompt_ControlCellNamesNoQuarryOrTOC(t *testing.T) {
 	target := TaskContent{TaskText: "task text", SchemaBlock: "```json\n{}\n```"}
 	toolNames := append([]string{}, BuiltinTools...)
 
-	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames)
+	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames, "")
 
 	if MatchesBareToken(prompt, "quarry") {
 		t.Errorf("RenderPrompt() for a control cell contains the word quarry:\n%s", prompt)
@@ -280,9 +282,92 @@ func TestRenderPrompt_GrantedCellListsPrefixedToolName(t *testing.T) {
 	target := TaskContent{TaskText: "task text", SchemaBlock: "```json\n{}\n```"}
 	toolNames := append(append([]string{}, BuiltinTools...), "mcp__quarry__toc_dir")
 
-	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames)
+	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames, "")
 
 	if !strings.Contains(prompt, "mcp__quarry__toc_dir") {
 		t.Errorf("RenderPrompt() for a granted cell does not list its granted tool name mcp__quarry__toc_dir:\n%s", prompt)
+	}
+}
+
+func TestRenderPrompt_CardLandsAfterTaskTextBeforeParallelBlock(t *testing.T) {
+	target := TaskContent{TaskText: "TASKTEXTMARKER", SchemaBlock: "SCHEMABLOCKMARKER"}
+	toolNames := append([]string{}, BuiltinTools...)
+
+	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames, "CARDMARKER")
+
+	parts := []string{
+		PARALLEL_OPENING,
+		"/tmp/target-dir",
+		"TASKTEXTMARKER",
+		"CARDMARKER",
+		PARALLEL_BLOCK,
+		closingSentence,
+		"SCHEMABLOCKMARKER",
+	}
+
+	lastIdx := -1
+	for _, part := range parts {
+		idx := strings.Index(prompt, part)
+		if idx == -1 {
+			t.Fatalf("RenderPrompt() does not contain %q", part)
+		}
+		if idx <= lastIdx {
+			t.Errorf("RenderPrompt() part %q appears out of order (index %d, previous %d)", part, idx, lastIdx)
+		}
+		lastIdx = idx
+	}
+}
+
+// TestRenderPrompt_NoCardIsByteIdenticalToTodaysOutput asserts the
+// backwards-compatibility-is-a-tested-property decision: rendering the same TaskContent, target
+// directory and tool list with an empty card produces exactly the six-section prompt RenderPrompt
+// rendered before the card parameter existed, byte for byte. The golden string is spelled out here
+// independently of renderBody's own implementation, so a bug in the join or in the conditional
+// card-insertion is what this test would catch, not a self-referential match against the same code
+// path it exercises.
+func TestRenderPrompt_NoCardIsByteIdenticalToTodaysOutput(t *testing.T) {
+	target := TaskContent{TaskText: "TASKTEXTMARKER", SchemaBlock: "SCHEMABLOCKMARKER"}
+	targetDir := "/tmp/target-dir"
+	toolNames := append([]string{}, BuiltinTools...)
+
+	golden := strings.Join([]string{
+		PARALLEL_OPENING,
+		"You are working on a code task in the codebase at /tmp/target-dir. You have access to\n" +
+			"the following tools: Read, Grep, Glob, Bash. Explore as needed to answer thoroughly and\n" +
+			"correctly.",
+		"TASKTEXTMARKER",
+		PARALLEL_BLOCK,
+		closingSentence,
+		"SCHEMABLOCKMARKER",
+	}, "\n\n")
+
+	got := RenderPrompt(target, targetDir, toolNames, "")
+	if got != golden {
+		t.Errorf("RenderPrompt() with an empty card = %q; want golden %q", got, golden)
+	}
+}
+
+// TestLoadCardFile covers a card read back with trailing newlines trimmed, and a missing path
+// returning an error naming the file.
+func TestLoadCardFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "card.md")
+	if err := os.WriteFile(path, []byte("card text\n\n"), 0o644); err != nil {
+		t.Fatalf("write card file %s: %v", path, err)
+	}
+
+	got, err := LoadCardFile(path)
+	if err != nil {
+		t.Fatalf("LoadCardFile(%q) error = %v", path, err)
+	}
+	if got != "card text" {
+		t.Errorf("LoadCardFile(%q) = %q; want %q", path, got, "card text")
+	}
+
+	missing := filepath.Join(dir, "missing.md")
+	if _, err := LoadCardFile(missing); err == nil {
+		t.Fatalf("LoadCardFile(%q) = nil error; want a hard error naming the file", missing)
+	} else if !strings.Contains(err.Error(), missing) {
+		t.Errorf("LoadCardFile(%q) error = %v; want it to name the file", missing, err)
 	}
 }
