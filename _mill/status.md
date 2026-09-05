@@ -43,7 +43,9 @@ batches:
     commit_sha: e6faa9473b90af02f8d00023b780e9bfe2a927e2
     verify_baseline_failures: []
   - name: facade-and-renderers
-    state: pending
+    state: running
+    implementer_session: d36b8346-6b15-4d56-8355-72014869f64c
+    start_sha: 45766662841e8eb9922b3f77d8fe4a4e6a25788c
     verify_baseline_failures: []
   - name: naming-round-trip
     state: pending
