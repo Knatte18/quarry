@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-engine-symbol-seam
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -37,6 +37,7 @@ plan-review-r5  '2026-09-05T16:40:20Z'
 plan-fix-r5  '2026-09-05T16:41:54Z'
 planned  '2026-09-05T16:42:16Z'
 implementing  '2026-09-05T16:42:49Z'
+approved-engine-symbol-seam  '2026-09-05T16:48:55Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ implementing  '2026-09-05T16:42:49Z'
 ```yaml
 batches:
   - name: engine-symbol-seam
-    state: running
+    state: approved
     implementer_session: 2cd72b5f-8681-4102-b879-acb06dfd4582
     start_sha: f96577dfbd98b0790e2b1c8aba848d7ee92bcfd7
+    commit_sha: 273b632a377f9192e1d6585a187f4f6ab912b58e
     verify_baseline_failures: []
   - name: engine-unit-exports
     state: pending
