@@ -9,8 +9,11 @@ package quarry
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 
+	"github.com/Knatte18/quarry/internal/engine"
 	"github.com/Knatte18/quarry/internal/gitsrc"
 )
 
@@ -84,9 +87,13 @@ func (r *Repo) DeltaGit(from, to, target string) (GitDeltaAnswer, error) {
 		if err != nil {
 			return GitDeltaAnswer{}, err
 		}
-		for _, path := range untracked {
-			entries = append(entries, r.deltaEntryForUntracked(path))
+		for _, p := range untracked {
+			entries = append(entries, r.deltaEntryForUntracked(p))
 		}
+	}
+
+	if err := r.fillDeltaUnits(gr, from, to, entries); err != nil {
+		return GitDeltaAnswer{}, err
 	}
 
 	answer, err := r.Delta(entries)
@@ -186,8 +193,110 @@ func (r *Repo) readWorkingTreeBytes(path string) ([]byte, error) {
 	return os.ReadFile(full)
 }
 
-// readRefusal builds the DeltaEntry a read failure on side ("before" or "after") produces for path:
-// a pre-set Refusal naming both, so the core skips the entry entirely rather than failing the batch.
-func readRefusal(path, side string, err error) DeltaEntry {
-	return DeltaEntry{Path: path, Refusal: fmt.Sprintf("%s: %s side: %v", path, side, err)}
+// readRefusal builds the DeltaEntry a read failure on side ("before" or "after") produces for a
+// path: a pre-set Refusal naming both, so the core skips the entry entirely rather than failing the
+// batch.
+func readRefusal(p, side string, err error) DeltaEntry {
+	return DeltaEntry{Path: p, Refusal: fmt.Sprintf("%s: %s side: %v", p, side, err)}
+}
+
+// fillDeltaUnits fills every changed-Go-file entry's BeforeUnit and AfterUnit in place, one
+// directory-level clause vote at a time.
+//
+// This is not one invocation per changed directory: it is one enumeration plus one blob read and one
+// parse per Go file of every changed directory, on both sides. A one-file change in a
+// twenty-Go-file package therefore costs on the order of forty blob reads and forty parses before any
+// delta work begins. The primary consumer calls this once per plan card, so the price belongs here,
+// where a reader meets it, rather than left to be discovered later.
+//
+// Two mitigations keep that cost bounded, and neither is a cache: the vote is skipped entirely for a
+// directory in which no Go file changed, and the working-tree side reads clauses from disk
+// (r.engine.ClauseMapForFiles) rather than spawning one blob read per file.
+//
+// Both sides vote over the same set for a directory -- its immediate Go children, never a
+// subdirectory's files -- which is the set gitsrc.DirFilesAtRevision and gitsrc.DirFilesInWorkingTree
+// already promise; a divergence there would let the two sides' dominant clauses disagree, changing
+// every glyph unit in the directory.
+func (r *Repo) fillDeltaUnits(gr *gitsrc.Repo, from, to string, entries []DeltaEntry) error {
+	dirs := make(map[string]bool)
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Path, ".go") {
+			continue
+		}
+		dirs[path.Dir(e.Path)] = true
+	}
+
+	beforeUnitOf := make(map[string]func(string) string, len(dirs))
+	afterUnitOf := make(map[string]func(string) string, len(dirs))
+	for dir := range dirs {
+		beforeClauses, err := r.revisionClauseMap(gr, from, dir)
+		if err != nil {
+			return err
+		}
+		_, beforeUnitOf[dir] = engine.UnitsForClauseMap(dir, beforeClauses)
+
+		var afterClauses map[string]string
+		if to == "" {
+			afterClauses, err = r.workingTreeClauseMap(gr, dir)
+		} else {
+			afterClauses, err = r.revisionClauseMap(gr, to, dir)
+		}
+		if err != nil {
+			return err
+		}
+		_, afterUnitOf[dir] = engine.UnitsForClauseMap(dir, afterClauses)
+	}
+
+	for i := range entries {
+		if !strings.HasSuffix(entries[i].Path, ".go") {
+			continue
+		}
+		dir := path.Dir(entries[i].Path)
+		base := path.Base(entries[i].Path)
+		entries[i].BeforeUnit = beforeUnitOf[dir](base)
+		entries[i].AfterUnit = afterUnitOf[dir](base)
+	}
+	return nil
+}
+
+// revisionClauseMap builds dir's base-name-to-clause map at rev, by enumerating dir's immediate Go
+// children through the git layer (gitsrc.DirFilesAtRevision) and turning each one's blob bytes into
+// a clause with engine.PackageClause. PackageClause applies every skip condition itself -- the UTF-8
+// rejection included -- so this side needs no validity step of its own: a base name whose bytes are
+// not valid source records no clause, exactly as the working-tree side's ClauseMapForFiles already
+// does. A blob read failure here is a call failure, not a skip: DirFilesAtRevision only ever lists a
+// name git itself resolves to a blob at rev, so a read failure means the call itself is broken.
+func (r *Repo) revisionClauseMap(gr *gitsrc.Repo, rev, dir string) (map[string]string, error) {
+	files, err := gr.DirFilesAtRevision(rev, dir)
+	if err != nil {
+		return nil, err
+	}
+	clauses := make(map[string]string, len(files))
+	for _, f := range files {
+		base := path.Base(f)
+		src, err := gr.ReadBlob(rev, f)
+		if err != nil {
+			return nil, err
+		}
+		if clause, ok := engine.PackageClause(base, src); ok {
+			clauses[base] = clause
+		}
+	}
+	return clauses, nil
+}
+
+// workingTreeClauseMap builds dir's base-name-to-clause map on the working-tree side, by enumerating
+// dir's immediate Go children through the git layer (gitsrc.DirFilesInWorkingTree) and handing that
+// file list to the engine's on-disk clause-map method, which reads from disk and skips any name it
+// cannot read -- an unstaged deletion is exactly such a name and must never fail the call.
+func (r *Repo) workingTreeClauseMap(gr *gitsrc.Repo, dir string) (map[string]string, error) {
+	files, err := gr.DirFilesInWorkingTree(dir)
+	if err != nil {
+		return nil, err
+	}
+	bases := make([]string, len(files))
+	for i, f := range files {
+		bases[i] = path.Base(f)
+	}
+	return r.engine.ClauseMapForFiles(dir, bases)
 }
