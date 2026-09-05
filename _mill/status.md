@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-05T10:56:47Z'
+discussion-fix-r1  '2026-09-05T11:15:04Z'
 ```
