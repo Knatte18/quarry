@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-glyph-grammar
 slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-review-r3  '2026-09-05T12:10:09Z'
 plan-fix-r3  '2026-09-05T12:11:31Z'
 planned  '2026-09-05T12:12:08Z'
 implementing  '2026-09-05T12:12:37Z'
+approved-glyph-grammar  '2026-09-05T12:19:35Z'
 ```
 
 ## Batches
@@ -38,9 +39,10 @@ implementing  '2026-09-05T12:12:37Z'
 ```yaml
 batches:
   - name: glyph-grammar
-    state: running
+    state: approved
     implementer_session: 1d3d71aa-5ef7-45c3-b55e-c9bfd4fb7cc6
     start_sha: 4d68e1361995dc1936de6274adffc207dda4c84a
+    commit_sha: 793738cc2d5f4bc537cae80383c16588baab7492
     verify_baseline_failures: []
   - name: engine-resolve-contract
     state: pending
