@@ -181,9 +181,15 @@ its own doc comment names as a live constraint against go test's default timeout
 ## Batch Tests
 
 `verify: go test ./internal/engine/ -run 'TestRoundTrip'` runs the two existing round trips plus the
-new naming one. The `-run` narrowing is scoped to what this batch touches: cards 14 and 15 edit
-helpers those three tests are the only consumers of, and `internal/engine` holds a large suite of
-unrelated cases the repo-wide `pipeline.done_gate` already covers before the task is marked done.
+new naming one. The `-run` narrowing is scoped to what this batch touches: card 14's helper has those
+three tests as its only consumers, and `internal/engine` holds a large suite of unrelated cases the
+repo-wide `pipeline.done_gate` already covers before the task is marked done.
+
+Card 15's helper is the exception and is named here rather than glossed: `compareGolden` is also
+called by `TestGolden_LoomyardRenderDir` and `TestGolden_LoomyardRenderLayoutFile`, neither of which
+the `-run` pattern reaches. Widening a parameter to `any` is a compile-time change, so the batch's own
+`go test` compiling the package is what covers those two call sites; their own behaviour is gated on
+a Loomyard checkout and is exercised by `pipeline.done_gate` on a machine that has one.
 
 On the machine this task is implemented on, `TestRoundTrip_Loomyard` and `TestRoundTrip_LoomyardNaming`
 both skip for want of a checkout, so the batch's real green signal here is

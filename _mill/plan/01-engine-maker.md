@@ -103,8 +103,11 @@ exported entry point is the batch function. That mirrors `resolveGlyphTarget` si
      `"package q\n\n" + d.Decl + " {}" + "\n"` and calling `nameExtract` again. A non-nil error from
      the retry is again `internal`. A retry that is still partial is the `parse` reason, sentence
      `declaration does not parse`. When the verbatim parse was clean, the retry never runs.
-  6. Decide the partial-parse disposition before the count: a fragment whose parse reports an error
-     after the retry is `parse`, even if it happened to yield one surviving symbol.
+  6. The partial-parse disposition is decided before the count, and step 3 is what makes that
+     structural rather than an ordering convention: `nameExtract` collects symbols only on a clean
+     parse, so a still-partial retry returns none and the count check below is never reached for it.
+     Keeping "malformed" and "declared the wrong number of things" as two crisply separate
+     conditions, each with its own reason word, is the property this ordering protects.
   7. Count the symbols. Zero is `no_declaration`, sentence `declaration declares no symbol`. More
      than one is `several_declarations`, sentence
      `declaration declares N symbols; exactly one is required`, with N the actual count formatted
