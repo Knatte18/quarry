@@ -234,6 +234,13 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   applies the same rule to the facade's own file header for the same reason; the two must not
   diverge on whether a new package-level declaration obliges a header update.
 
+  Two further `--root` claims go stale with this card and are updated with it, under the same rule:
+  `parseArgs`'s own doc comment says `--root` "is valid for the three repository verbs only", and
+  `internal/cli/flags_test.go`'s `TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs` repeats that
+  count in its own doc comment. The pre-scan accepts `--root` on a fourth verb, so both become
+  incomplete. Correct both counts; the test's name may stay as it is, since it names a property
+  rather than a number.
+
   Extend `parseArgs`'s doc comment: the verb gate now accepts five verbs; `glyphs` is a frozen
   preset validated against its own flag rules and then rewritten to its `toc` expansion, so nothing
   downstream — not the dispatch switch, not `runTOC`, not the renderers — can tell a `glyphs`
@@ -476,7 +483,8 @@ from there, which makes the value absolute (which `loomyardRepo`'s own stat requ
 putting a machine-specific path in a committed file. Card 6 is what creates the checkout that value
 points at, which is why it is the batch's first card.
 
-Files this batch's verify covers that it also changes: `internal/cli/flags_test.go` (cards 7, 8, 9)
-and `internal/cli/glyphs_test.go` (cards 12, 13). Files it covers as a regression gate without
-changing: `internal/cli/cli_test.go`, `internal/cli/after_test.go`, `internal/cli/message_test.go`,
-`internal/cli/name_test.go`, and every test file under `quarry/`.
+Files this batch's verify covers that it also changes: `internal/cli/flags_test.go` (cards 7, 8, 9),
+`internal/cli/cli_test.go` (card 10), `internal/cli/usage_test.go` (card 11, new), and
+`internal/cli/glyphs_test.go` (cards 12, 13). Files it covers as a regression gate without changing:
+`internal/cli/after_test.go`, `internal/cli/message_test.go`, `internal/cli/name_test.go`,
+`internal/cli/name_golden_test.go`, and every test file under `quarry/`.
