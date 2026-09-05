@@ -1,0 +1,6 @@
+{
+  "unit": "pkg",
+  "target": "func Make() Widget { return Widget{} }",
+  "id": "pkg#Make",
+  "kind": "function"
+}
