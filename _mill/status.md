@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-repopath-mcp
+phase: approved-docs-and-goldens
 slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
@@ -35,6 +35,7 @@ approved-glyph-grammar  '2026-09-05T12:19:35Z'
 approved-engine-resolve-contract  '2026-09-05T12:29:18Z'
 approved-expand-gate-and-sentinel  '2026-09-05T12:32:23Z'
 approved-cli-repopath-mcp  '2026-09-05T12:44:28Z'
+approved-docs-and-goldens  '2026-09-05T12:51:51Z'
 ```
 
 ## Batches
@@ -66,8 +67,9 @@ batches:
     commit_sha: 2ef7916fa087baf6f8de9ea690d0fb9183d40463
     verify_baseline_failures: []
   - name: docs-and-goldens
-    state: running
+    state: approved
     implementer_session: b6424cfa-cd46-4f96-9a59-13a91f9aa76f
     start_sha: 3377b44e97742186cf248b19b7c4621537fcccaa
+    commit_sha: 97d18185c83679dcbaa1cfd3de907a0c9f0390d1
     verify_baseline_failures: []
 ```
