@@ -79,7 +79,9 @@ batches:
     commit_sha: 9f55892df063eb2baad13ddcf7413b7a65d6640d
     verify_baseline_failures: []
   - name: facade-delta
-    state: pending
+    state: running
+    implementer_session: 666dc93b-f1fe-43db-a4ae-72ecb59539fc
+    start_sha: 9f5382f677a7129760704c934408a952a5bcbd62
     verify_baseline_failures: []
   - name: delta-renderers
     state: pending
