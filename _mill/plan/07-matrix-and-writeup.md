@@ -37,14 +37,15 @@ substitution rule allows happens before rep 0 or not at all.
 ### Card 29: Generate the pack and inspect it
 
 - **Context:**
-  - `bench/loomyard-eval/ladder/ladder-kickstart.yaml`
   - `bench/loomyard-eval/ladder/cmd/ladder/main.go`
   - `bench/loomyard-eval/ladder/internal/ladder/pack.go`
-  - `bench/loomyard-eval/cards/07-e0-names.md`
-  - `bench/loomyard-eval/cards/07-e2-files.md`
-  - `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md`
+  - `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.fasit.json`
 - **Edits:**
   - `bench/loomyard-eval/cards/07-e1-pack.md`
+  - `bench/loomyard-eval/cards/07-e0-names.md`
+  - `bench/loomyard-eval/cards/07-e2-files.md`
+  - `bench/loomyard-eval/ladder/ladder-kickstart.yaml`
+  - `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md`
 - **Creates:**
   - `bench/loomyard-eval/ladder/results/2026-09-05-kickstart/pack-resolve.json`
   - `bench/loomyard-eval/ladder/results/2026-09-05-kickstart/provenance.json`
@@ -57,6 +58,10 @@ substitution rule allows happens before rep 0 or not at all.
   the command halts on the first one that did not, so a clean exit is that confirmation — and read the
   rendered block in the treatment card to check that each line names a plausible file and span and
   that no docstring leaked into it.
+  On the expected path — every glyph resolves found — the only file this card writes is the treatment
+  card, and the pack command writes it. The four other files listed as edits are written only by the
+  substitution branch below, which is a contingency: they are declared as edits because that branch
+  writes them, not because the ordinary path does.
   If a glyph did not resolve found, do not weaken the gate and do not edit the target repository.
   Replace the offending glyph with another symbol from the same package and the same mechanism —
   the discussion names three candidates held in reserve — and then, in this order: edit the glyph
@@ -152,9 +157,11 @@ substitution rule allows happens before rep 0 or not at all.
   still reported; more than two of ten unscored in any arm means that arm's correctness accounting is
   called incomplete while its cost metrics stand.
   State plainly that recall and precision are descriptive only and are never compared across arms,
-  and why: the treatment's card names the seven files verbatim in the prompt, so its file recall is
-  inflated by construction. This is a known property of the design, stated here as such rather than
-  discovered afterwards.
+  and why: both non-control arms have their file recall inflated by construction, since the
+  treatment's card names the seven files verbatim inside its pack block and the descriptive card
+  names the same seven as a plain list derived from the fasit's own relevant-files list. The control
+  is the only arm whose file recall is earned. This is a known property of the design, stated here as
+  such rather than discovered afterwards.
   State the other known asymmetry too: the treatment minus the descriptive arm is not a clean spans
   contrast, because the treatment also carries the signature and the parallel-read instruction.
   Secondary observations — read bytes, wall time, and recall of the listed symbols in the answer —

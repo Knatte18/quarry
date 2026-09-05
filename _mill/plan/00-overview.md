@@ -157,9 +157,11 @@ batches:
 - **Decision:** the correctness gate is `summary_matches: true`. `recall` and `precision` are
   recorded and reported per rep but are never compared across arms, and `conclusion.md` states this
   as a known property of the design rather than discovering it afterwards.
-- **Rationale:** `e1-pack`'s card names the seven files verbatim in the prompt, so its
-  `relevant_files` recall is inflated by construction. A cross-arm recall comparison would measure
-  the prompt's own contents.
+- **Rationale:** both non-control arms have their `relevant_files` recall inflated by construction.
+  `e1-pack`'s card names the seven files verbatim inside its pack block, and `e2-files`' card names
+  the same seven as a plain list derived from the fasit's own relevant-files list, so the inflation
+  is if anything more direct there. The control is the only arm whose file recall is earned, and a
+  cross-arm recall comparison would measure the prompts' own contents.
 - **Applies to:** benchmark-content, matrix-and-writeup
 
 ### Decision: verify-commands-are-go-scoped-to-the-harness-package

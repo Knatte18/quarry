@@ -93,8 +93,9 @@ carries a test that checks it mechanically as well, so the eye check has a backs
   contrast, since the treatment also carries the signature and the parallel-read instruction — which
   is exactly why the descriptive arm is declared descriptive and no test is run on it. Second, that
   the correctness gate is the summary-match flag alone, and that recall and precision are recorded
-  but never compared across arms, because the treatment's card names the seven files verbatim and its
-  file recall is inflated by construction.
+  but never compared across arms, because both non-control cards name the same seven files — the
+  treatment inside its pack block, the descriptive one as a plain list — so both arms' file recall is
+  inflated by construction and only the control's is earned.
 - **Commit:** `feat(bench): add the kick-start ladder file`
 
 ### Card 25: Author the task file
