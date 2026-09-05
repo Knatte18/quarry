@@ -81,17 +81,36 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
 
 - **Decision:** `Config` gains `control *bool` (yaml `control:`). `Config.IsControl()` returns
   `*c.Control` when set and `len(c.Allowed) == 0` otherwise. A new `Config.GrantsTools()` returns
-  `len(c.Allowed) > 0`. Then:
-  - `validate` keeps "exactly one control per ladder letter that appears", now counting
-    `IsControl()`.
-  - `run.go`'s server-build decision (`needsServer`) and its per-cell `ServerHashes` loop switch from
-    `!c.IsControl()` to `c.GrantsTools()`.
-  - `run.go`'s blinding call sites — `CheckRenderedControlPrompt` (check d, pre-dispatch) and
-    `CheckBlinding` (check b/c, post-rep) — switch from `cfg.IsControl()` to `!cfg.GrantsTools()`.
-  - `CheckServerConnected` (check e) keeps its `!cfg.IsControl()` guard, rewritten as
-    `cfg.GrantsTools()`.
-  - `runstate`'s `IsControl` field and `summarize`'s `Control` flag keep reading `IsControl()`, so
-    the rung-vs-control table pairs `e1-pack` and `e2-files` against `e0-names`.
+  `len(c.Allowed) > 0`.
+- **The complete call-site sweep.** Every `IsControl()` call site in the package was enumerated by
+  `grep -rn "IsControl()" bench/loomyard-eval/ladder --include=*.go | grep -v _test` during this
+  discussion, and each is classified below. The plan must re-run that grep and confirm the list is
+  still exactly these ten before editing, so the enumeration is checked rather than assumed; any new
+  site the grep turns up is classified by the same question — *does this branch depend on whether the
+  cell has an MCP server attached, or on whether it is the letter's comparison baseline?*
+
+  | site | today | becomes | why |
+  | --- | --- | --- | --- |
+  | `run.go:164` `needsServer` | `!c.IsControl()` | `c.GrantsTools()` | builds the server only for a cell that has one |
+  | `run.go:182` `ServerHashes` skip | `c.IsControl()` | `!c.GrantsTools()` | records a hash only for cells the server serves |
+  | `run.go:368` `CheckRenderedControlPrompt` | `cfg.IsControl()` | `!cfg.GrantsTools()` | blinding must cover all three e-cells |
+  | `run.go:415` `CheckServerConnected` | `!cfg.IsControl()` | `cfg.GrantsTools()` | only a granted cell has a server to connect |
+  | `run.go:558` `CheckBlinding` | `cfg.IsControl()` | `!cfg.GrantsTools()` | blinding must cover all three e-cells |
+  | `run.go:664` `--allowedTools` argv append | `!cfg.IsControl()` | `cfg.GrantsTools()` | **would otherwise append `--allowedTools ""` to e1/e2 only** |
+  | `mcp.go:47` `MCPConfigDocument` empty-servers branch | `cfg.IsControl()` | `!cfg.GrantsTools()` | **would otherwise send e1/e2 down the granted-cell branch, which errors on `l.Server == nil`** |
+  | `run.go:902` `ControlForLadder` | `cfg.IsControl()` | unchanged | comparison baseline |
+  | `run.go:912` `RunState.IsControl` | `cfg.IsControl()` | unchanged | comparison baseline |
+  | `config.go:131` `ControlFor` / `config.go:232` `validate` | `c.IsControl()` | unchanged | comparison baseline; `validate` keeps "exactly one control per ladder letter that appears" |
+
+- **The two sites in bold are the reason the sweep is written out rather than summarised.**
+  `run.go:664` would give `e1-pack` and `e2-files` two extra argv entries (`--allowedTools` and an
+  empty string) that `e0-names` does not get — an unintended arm difference in the CLI invocation
+  itself, with CLI-dependent semantics for an empty allowlist, and exactly the class of confound D1
+  exists to remove. `mcp.go:47` is worse than a confound: with `l.Server == nil` in this ladder file,
+  a non-control cell reaching the granted branch returns `mcp config for cell e1-pack: ladder file
+  declares no server block` and the run dies before rep 1.
+- `runstate`'s `IsControl` field and `summarize`'s `Control` flag keep reading `IsControl()`, so the
+  rung-vs-control table pairs `e1-pack` and `e2-files` against `e0-names`.
 - **Rationale:** all three e-cells grant no tools, so today's `IsControl()` would call all three
   controls: `validate` rejects the file, and `summarize.go:318` would find no rung to pair. Yet
   blinding *should* apply to all three (none of them may leak the word `quarry`) and the server
@@ -433,6 +452,14 @@ adding new files where a home already exists.
 - `gates_test.go` — `CheckRenderedControlPrompt` still fires for a tool-less non-control cell under
   D2's `!GrantsTools()` gating (the case that would silently stop being checked if the switch were
   made on `IsControl()` instead).
+- Dispatch argv (extend `e2e_test.go`'s recorded-`Cmd` assertions, or a focused test over the argv
+  builder) — a **tool-less non-control** cell dispatches with **no** `--allowedTools` flag at all,
+  byte-identical argv to the control apart from the prompt; a granted cell still gets
+  `--allowedTools mcp__quarry__toc`. This is the D2 sweep's `run.go:664` regression, red before the
+  fix.
+- `mcp_test.go` — `MCPConfigDocument` returns the empty-servers document for a tool-less
+  **non-control** cell, and does so with `l.Server == nil` without erroring. This is the D2 sweep's
+  `mcp.go:47` regression, red before the fix.
 - `summarize_test.go` — a letter with one control and two rungs produces two comparison rows, both
   against the control.
 
