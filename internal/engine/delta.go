@@ -332,6 +332,132 @@ func compareTables(beforeTable, afterTable map[symbolKey][]occurrence) (created,
 	return created, deleted, modified
 }
 
+// sideSymbol is one single-occurrence deleted or created symbol considered as a rename endpoint. A
+// key held by several declarations on its own side never becomes a sideSymbol at all — see
+// singleOccurrenceOnly — because such a key is never a rename candidate on either tier.
+type sideSymbol struct {
+	occ occurrence
+}
+
+// symbolKeyOf returns s's symbol-table key.
+func symbolKeyOf(s sideSymbol) symbolKey {
+	return symbolKey{id: s.occ.sym.ID, kind: s.occ.sym.Kind}
+}
+
+// singleOccurrenceOnly returns every key in table that is absent from other and holds exactly one
+// occurrence, as sideSymbol values: the deleted-only or created-only, single-declaration subset
+// either rename tier ever considers.
+func singleOccurrenceOnly(table, other map[symbolKey][]occurrence) []sideSymbol {
+	var out []sideSymbol
+	for key, occs := range table {
+		if _, exists := other[key]; exists {
+			continue
+		}
+		if len(occs) != 1 {
+			continue
+		}
+		out = append(out, sideSymbol{occ: occs[0]})
+	}
+	return out
+}
+
+// renameStructural13 reports whether d and c satisfy the first three conditions shared by both
+// rename tiers: the same glyph unit (the before side's unit for d, the after side's for c), the
+// same owner chain and kind, and a different name.
+func renameStructural13(d, c sideSymbol) bool {
+	dg, cg := d.occ.sym.Glyph, c.occ.sym.Glyph
+	return dg.Unit == cg.Unit &&
+		sameOwner(dg.Owner, cg.Owner) &&
+		d.occ.sym.Kind == c.occ.sym.Kind &&
+		dg.Name != cg.Name
+}
+
+// renameExactBodyAndSignature reports whether d and c additionally satisfy exact-tier conditions 4
+// and 5: their body token streams are identical modulo the renamed identifier, and so are their
+// signature token streams, under the same node-based substitution rule — never a textual
+// substitution over either's verbatim text.
+func renameExactBodyAndSignature(d, c sideSymbol) bool {
+	dName, cName := d.occ.sym.Glyph.Name, c.occ.sym.Glyph.Name
+	return identicalModuloName(d.occ.streams.body, c.occ.streams.body, dName, cName) &&
+		identicalModuloName(d.occ.streams.signature, c.occ.streams.signature, dName, cName)
+}
+
+// renameExactBodyCondition reports whether d and c satisfy exact-tier condition 7: both have a
+// non-empty body stream, and neither side's file had a partial parse. This is what keeps every
+// const, var, type alias and interface method element — all of which have an empty body stream on
+// both sides — out of the exact tier: without it condition 4 would be vacuously satisfied by any
+// two of them, and the lossy half guards against a truncated table manufacturing a spurious delete.
+func renameExactBodyCondition(d, c sideSymbol) bool {
+	return len(d.occ.streams.body) > 0 && len(c.occ.streams.body) > 0 && !d.occ.lossy && !c.occ.lossy
+}
+
+// renamePair is one candidate pairing found while scanning the single-occurrence deleted and
+// created lists for a structural-plus-token match.
+type renamePair struct {
+	d sideSymbol
+	c sideSymbol
+}
+
+// classifyExactTier runs the exact tier over singleDeleted and singleCreated — the subset of
+// deleted and created symbols whose key holds exactly one declaration on its own side.
+//
+// A pair is asserted only when it is the unique match on both sides among every pair satisfying
+// conditions 1-5: several matches for the same deleted or created symbol means nothing was chosen,
+// so all of them fall through to the evidence tier instead (classifyEvidenceTier), whether or not
+// they were ever this function's own candidate. Condition 7 is checked last, after uniqueness, so a
+// pair demoted for an empty body stream or a lossy side is demoted rather than silently dropped.
+//
+// It returns every asserted RenamedPair, and the symbol-table keys of the deleted and created
+// symbols an asserted pair removes from their respective arrays.
+func classifyExactTier(singleDeleted, singleCreated []sideSymbol) (renamed []RenamedPair, assertedDeleted, assertedCreated map[symbolKey]bool) {
+	assertedDeleted = make(map[symbolKey]bool)
+	assertedCreated = make(map[symbolKey]bool)
+
+	var examPairs []renamePair
+	for _, d := range singleDeleted {
+		for _, c := range singleCreated {
+			if renameStructural13(d, c) && renameExactBodyAndSignature(d, c) {
+				examPairs = append(examPairs, renamePair{d: d, c: c})
+			}
+		}
+	}
+
+	dDegree := make(map[symbolKey]int, len(examPairs))
+	cDegree := make(map[symbolKey]int, len(examPairs))
+	for _, p := range examPairs {
+		dDegree[symbolKeyOf(p.d)]++
+		cDegree[symbolKeyOf(p.c)]++
+	}
+
+	for _, p := range examPairs {
+		dKey, cKey := symbolKeyOf(p.d), symbolKeyOf(p.c)
+		if dDegree[dKey] != 1 || cDegree[cKey] != 1 {
+			continue
+		}
+		if !renameExactBodyCondition(p.d, p.c) {
+			continue
+		}
+		renamed = append(renamed, RenamedPair{From: p.d.occ.sym, To: p.c.occ.sym})
+		assertedDeleted[dKey] = true
+		assertedCreated[cKey] = true
+	}
+
+	return renamed, assertedDeleted, assertedCreated
+}
+
+// removeKeys returns syms with every symbol whose (ID, Kind) key is in remove excluded, preserving
+// the order of the symbols that remain.
+func removeKeys(syms []Symbol, remove map[symbolKey]bool) []Symbol {
+	out := make([]Symbol, 0, len(syms))
+	for _, s := range syms {
+		if remove[symbolKey{id: s.ID, kind: s.Kind}] {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 // Delta compares two versions of a batch of files, extracted with the same Strategy every other
 // query in this package uses, and returns the resulting symbol-table delta. Its returned error is
 // non-nil only for a failure of the call as a whole; a single entry's own extraction failure is
@@ -356,10 +482,18 @@ func (r *Repo) Delta(entries []DeltaEntry) (DeltaAnswer, error) {
 
 	created, deleted, modified := compareTables(beforeTable, afterTable)
 
+	singleDeleted := singleOccurrenceOnly(beforeTable, afterTable)
+	singleCreated := singleOccurrenceOnly(afterTable, beforeTable)
+	renamed, assertedDeleted, assertedCreated := classifyExactTier(singleDeleted, singleCreated)
+
+	created = removeKeys(created, assertedCreated)
+	deleted = removeKeys(deleted, assertedDeleted)
+
 	return DeltaAnswer{
 		Files:    files,
 		Created:  created,
 		Deleted:  deleted,
 		Modified: modified,
+		Renamed:  renamed,
 	}, nil
 }
