@@ -6,6 +6,7 @@ slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'P2 — diff-to-symbols: changed file versions to symbol-table delta (roadmap 2c)'
 task_description: |
   P2 — diff-to-symbols: changed file versions to symbol-table delta (roadmap 2c)
@@ -43,21 +44,32 @@ implementing  '2026-09-05T16:42:49Z'
 ```yaml
 batches:
   - name: engine-symbol-seam
-    state: pending
+    state: running
+    implementer_session: 2cd72b5f-8681-4102-b879-acb06dfd4582
+    start_sha: f96577dfbd98b0790e2b1c8aba848d7ee92bcfd7
+    verify_baseline_failures: []
   - name: engine-unit-exports
     state: pending
+    verify_baseline_failures: []
   - name: gitsrc
     state: pending
+    verify_baseline_failures: ["FAIL\t./internal/gitsrc [setup failed]"]
   - name: delta-types-and-tokens
     state: pending
+    verify_baseline_failures: []
   - name: delta-core
     state: pending
+    verify_baseline_failures: []
   - name: facade-delta
     state: pending
+    verify_baseline_failures: []
   - name: delta-renderers
     state: pending
+    verify_baseline_failures: []
   - name: cli-delta-verb
     state: pending
+    verify_baseline_failures: []
   - name: goldens-history-docs
     state: pending
+    verify_baseline_failures: []
 ```
