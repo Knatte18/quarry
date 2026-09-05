@@ -461,8 +461,8 @@ func TestRun_Resolve(t *testing.T) {
 		if result.Status != quarry.StatusFound {
 			t.Errorf("status = %q; want %q", result.Status, quarry.StatusFound)
 		}
-		if result.Dir == nil {
-			t.Fatalf("dir = nil; want a directory answer")
+		if result.Listing == nil {
+			t.Fatalf("listing = nil; want a directory answer")
 		}
 	})
 
@@ -478,14 +478,14 @@ func TestRun_Resolve(t *testing.T) {
 		if result.Status != quarry.StatusFound {
 			t.Errorf("status = %q; want %q", result.Status, quarry.StatusFound)
 		}
-		if result.Dir == nil {
-			t.Fatalf("dir = nil; want a directory answer")
+		if result.Listing == nil {
+			t.Fatalf("listing = nil; want a directory answer")
 		}
-		if result.Dir.Dir != "pkg" {
-			t.Errorf("dir.Dir = %q; want %q", result.Dir.Dir, "pkg")
+		if result.Listing.Dir != "pkg" {
+			t.Errorf("listing.Dir = %q; want %q", result.Listing.Dir, "pkg")
 		}
-		if len(result.Dir.Files) != 1 {
-			t.Fatalf("dir.Files = %+v; want exactly one file entry", result.Dir.Files)
+		if len(result.Listing.Files) != 1 {
+			t.Fatalf("listing.Files = %+v; want exactly one file entry", result.Listing.Files)
 		}
 	})
 
