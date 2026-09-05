@@ -1,0 +1,14 @@
+from rev1 to rev2
+
+files:
+pkg/a.go changed
+
+created:
+function pkg/a.go:3-7 (sig 3-3) pkg#New: func New()
+
+deleted:
+function pkg/a.go:3-5 (sig 3-3) pkg#Old: func Old()
+
+rename_candidates:
+pkg#Old function
+candidate function pkg#New pkg/a.go signals sig_identical=true body_similarity=0.45454545454545453 body_tokens_before=5 body_tokens_after=11 doc_identical=true

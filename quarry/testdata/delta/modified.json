@@ -1,0 +1,42 @@
+{
+  "from": "rev1",
+  "to": "rev2",
+  "files": [
+    {
+      "path": "pkg/a.go",
+      "disposition": "changed"
+    }
+  ],
+  "created": [],
+  "deleted": [],
+  "modified": [
+    {
+      "id": "pkg#F",
+      "kind": "function",
+      "changed": [
+        "body"
+      ],
+      "before": [
+        {
+          "file": "pkg/a.go",
+          "start": 3,
+          "sigend": 3,
+          "end": 6
+        }
+      ],
+      "after": [
+        {
+          "id": "pkg#F",
+          "kind": "function",
+          "file": "pkg/a.go",
+          "start": 3,
+          "sigend": 3,
+          "end": 6,
+          "signature": "func F()"
+        }
+      ]
+    }
+  ],
+  "renamed": null,
+  "rename_candidates": []
+}

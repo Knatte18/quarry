@@ -1,0 +1,7 @@
+from rev1 to rev2
+
+files:
+pkg/new.go added
+
+created:
+function pkg/new.go:3-3 (sig 3-3) pkg#New: func New()
