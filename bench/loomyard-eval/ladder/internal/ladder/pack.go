@@ -69,3 +69,98 @@ func collapseSignature(sig string) string {
 	}
 	return strings.Join(parts, " ")
 }
+
+// PackSentinelBegin marks the start of a pack cell's card's substitutable region. It is spelled as a
+// markdown comment line so it renders invisibly in a rendered card while remaining a literal,
+// greppable line in the prompt text handed to the model. It must appear on its own line, exactly
+// once, before PackSentinelEnd.
+const PackSentinelBegin = "<!-- KICKSTART-PACK:BEGIN -->"
+
+// PackSentinelEnd marks the end of a pack cell's card's substitutable region, for the same reason and
+// under the same one-line, exactly-once, after-PackSentinelBegin rule PackSentinelBegin's doc comment
+// states.
+const PackSentinelEnd = "<!-- KICKSTART-PACK:END -->"
+
+// ExtractPackBlock returns the text strictly between cardText's two sentinel lines -- neither
+// sentinel line included -- with leading and trailing blank lines removed and no trailing newline. A
+// card missing either sentinel, carrying either more than once, or carrying them in the wrong order,
+// is an error naming which condition failed. A card whose block is empty is not an error: that is the
+// state an authored card starts in, before the pack is generated into it.
+func ExtractPackBlock(cardText string) (string, error) {
+	lines := strings.Split(cardText, "\n")
+	beginIdx, endIdx, err := findPackSentinels(lines)
+	if err != nil {
+		return "", fmt.Errorf("extract pack block: %w", err)
+	}
+	return trimBlankLines(lines[beginIdx+1 : endIdx]), nil
+}
+
+// WritePackIntoCard returns cardText with the region between its two sentinels replaced by pack. It
+// preserves everything outside the sentinels byte for byte, and it is idempotent: writing the same
+// pack twice yields the same text. A card missing its sentinels is an error, never a silent append --
+// appending would produce a card whose prompt text disagrees with the hash provenance records, which
+// is the one failure this whole mechanism exists to make impossible.
+func WritePackIntoCard(cardText, pack string) (string, error) {
+	lines := strings.Split(cardText, "\n")
+	beginIdx, endIdx, err := findPackSentinels(lines)
+	if err != nil {
+		return "", fmt.Errorf("write pack into card: %w", err)
+	}
+	newLines := make([]string, 0, beginIdx+1+1+len(lines)-endIdx)
+	newLines = append(newLines, lines[:beginIdx+1]...)
+	newLines = append(newLines, pack)
+	newLines = append(newLines, lines[endIdx:]...)
+	return strings.Join(newLines, "\n"), nil
+}
+
+// PackBlockSHA256 returns the hex sha256 of block's bytes, computed by calling the package's existing
+// sha256Hex helper rather than by spelling the same computation a second time. Both WritePackIntoCard's
+// caller and the run-time gate call this one function, so the two cannot drift.
+func PackBlockSHA256(block string) string {
+	return sha256Hex(block)
+}
+
+// findPackSentinels scans lines for exactly one PackSentinelBegin line and exactly one
+// PackSentinelEnd line, in that order, and returns their indices. It returns an error naming which
+// condition failed -- missing, duplicated, or out of order -- otherwise.
+func findPackSentinels(lines []string) (beginIdx, endIdx int, err error) {
+	beginIdx, endIdx = -1, -1
+	beginCount, endCount := 0, 0
+	for i, line := range lines {
+		switch line {
+		case PackSentinelBegin:
+			beginCount++
+			beginIdx = i
+		case PackSentinelEnd:
+			endCount++
+			endIdx = i
+		}
+	}
+	switch {
+	case beginCount == 0:
+		return 0, 0, fmt.Errorf("missing sentinel %q", PackSentinelBegin)
+	case endCount == 0:
+		return 0, 0, fmt.Errorf("missing sentinel %q", PackSentinelEnd)
+	case beginCount > 1:
+		return 0, 0, fmt.Errorf("sentinel %q appears more than once", PackSentinelBegin)
+	case endCount > 1:
+		return 0, 0, fmt.Errorf("sentinel %q appears more than once", PackSentinelEnd)
+	case beginIdx > endIdx:
+		return 0, 0, fmt.Errorf("sentinel %q appears after %q", PackSentinelBegin, PackSentinelEnd)
+	}
+	return beginIdx, endIdx, nil
+}
+
+// trimBlankLines joins lines with "\n" after dropping leading and trailing lines that are empty or
+// hold only whitespace.
+func trimBlankLines(lines []string) string {
+	start := 0
+	for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+		start++
+	}
+	end := len(lines)
+	for end > start && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	return strings.Join(lines[start:end], "\n")
+}
