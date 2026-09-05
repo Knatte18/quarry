@@ -69,13 +69,25 @@ contradict that; it is the single documented exception to the facade's aliases-o
   - `quarry/quarry.go`
   - `quarry/repo.go`
   - `internal/engine/delta.go`
-- **Edits:** none
+  - `internal/engine/repo.go`
+- **Edits:**
+  - `quarry/repo.go`
 - **Creates:**
   - `quarry/delta.go`
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Create the facade's delta file with a file comment stating that it holds the two
-  delta methods and the one new facade-declared type, and why that type is not an engine alias.
+- **Requirements:** Give the facade a seam to its own repository root, which it does not have today:
+  the facade's repository type holds only the engine handle, and the engine's own root field is
+  unexported with no accessor, so nothing in package `quarry` can name the root the git layer must be
+  opened against.
+  Add a root field to the facade's repository type and capture the constructor's already-validated
+  root argument into it, in the same constructor, so both delta methods and any later git caller read
+  one value.
+  Capture it on the facade rather than exporting an accessor from the engine: the root is a value the
+  facade constructor is already handed, and exporting an engine accessor would widen the engine's
+  surface for a caller that never needed to ask it anything.
+  Then create the facade's delta file with a file comment stating that it holds the two delta methods
+  and the one new facade-declared type, and why that type is not an engine alias.
   Declare `GitDeltaAnswer`, embedding the aliased delta answer and adding a `from` field carrying the
   revision string exactly as given and a `to` field carrying the revision string as given or a JSON
   null for the working tree.
@@ -88,7 +100,7 @@ contradict that; it is the single documented exception to the facade's aliases-o
   Declare `(*Repo).Delta(entries []DeltaEntry) (DeltaAnswer, error)`, delegating to the engine's own
   method unchanged with no filtering, no re-shaping and no defaulting, exactly as the existing three
   query methods on this facade do.
-- **Commit:** `feat(quarry): declare GitDeltaAnswer and the pure Delta facade method`
+- **Commit:** `feat(quarry): capture the repository root and declare GitDeltaAnswer and Delta`
 
 ### Card 33: DeltaGit's revision handling and batch assembly
 
@@ -107,9 +119,9 @@ contradict that; it is the single documented exception to the facade's aliases-o
 - **Requirements:** Declare `(*Repo).DeltaGit(from, to, target string) (GitDeltaAnswer, error)`.
   The target is already a repository-relative path when it arrives; this method performs no path
   arithmetic on it and hands it to the git layer as the pathspec.
-  Open the git layer against the same root the facade was opened with, which is what performs the
-  top-level verification, then verify each supplied revision before any diff runs, propagating the
-  git layer's errors unchanged so the facade's aliased identity survives.
+  Open the git layer against the root field card 32 adds to the facade's repository type, which is
+  what performs the top-level verification, then verify each supplied revision before any diff runs,
+  propagating the git layer's errors unchanged so the facade's aliased identity survives.
   Assemble the batch: the changed paths between the two sides, plus — when and only when the after
   side is the working tree — the untracked paths, each of which enters the batch with nil before
   bytes and its on-disk bytes after and therefore reads as added, exactly like a staged new file.

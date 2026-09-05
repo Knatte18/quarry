@@ -86,6 +86,16 @@ drift.
   A symbol in a delta always carries a file, since the core fills that field on both sides, so the
   symbol line's file prefix is always present here — unlike inside a table-of-contents answer, where
   the field is empty by design.
+  **The shared symbol-line writer does not emit a symbol's kind**, so this renderer must spell the
+  kind itself wherever a symbol or a table key appears: beside each created and deleted symbol,
+  beside each of a renamed pair's two symbols, and on each modified entry and each candidate entry,
+  whose own kind fields are part of the key rather than of a symbol.
+  This is a correctness requirement rather than a presentational choice: the kind is in the JSON view
+  with no other carrier, the text view is fixed as lossless, and a const replaced by a var of the
+  same name — which the core reports as one create and one delete carrying an identical identifier —
+  would otherwise render as two indistinguishable lines.
+  Do not widen the shared writer to emit the kind: it is byte-pinned by the existing goldens and
+  tests of the other three verbs, and this task changes no existing output.
   Choose a block-per-section grammar covering the files echo with each entry's disposition, lossy
   flags and error; the created, deleted and modified arrays; the renamed pairs; and the candidate
   entries with every signal spelled by name.
@@ -146,6 +156,10 @@ drift.
   The second asserts losslessness structurally rather than by eye: every value present in the JSON
   view of the same answer appears somewhere in the text view, including each signal's value and each
   changed dimension's word.
+  Include the case that makes the kind load-bearing — a const replaced by a var of the same name,
+  giving one created and one deleted symbol with an identical identifier and differing kinds —
+  asserted to render as two distinguishable records, since the shared symbol-line writer emits no
+  kind and card 39 requires this renderer to spell it.
   Include a case whose doc text spans several lines and contains runs of whitespace, asserted
   collapsed to single spaces by the shared prose normaliser, since an un-normalised value would
   break the one-record-per-line property.

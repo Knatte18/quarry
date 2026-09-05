@@ -62,6 +62,11 @@ answer.
   Keep the exactly-one-target rule intact for every verb, including this one; do not add a per-verb
   exception to the target-count check.
   Do not classify the target further here.
+  Correct this file's own stale doc claims in the same commit, since both become false with this
+  edit: the parser's doc comment states that the verb gate accepts exactly the three existing verbs,
+  and that the text and root flags are valid for all three — name four in both places, and describe
+  the two new flags as valid for the new verb only, in the same sentence that already scopes the
+  depth, symbols and no-symbols flags to the table-of-contents verb.
 - **Commit:** `feat(cli): parse the delta verb and its --from and --to flags`
 
 ### Card 43: the usage text
@@ -110,8 +115,16 @@ answer.
 - **Requirements:** Add the fourth branch to the verb dispatch and the verb's own pipeline function,
   continuing from the shared steps the existing dispatch already performs, and a named mapping
   function from the facade's returned error to an exit code — named rather than inlined, following
-  the convention the three existing mapping functions in this file set precisely so a table test can
+  the convention the four existing mapping functions in this file set precisely so a table test can
   be written against it, even though this one is nearly constant.
+  Correct this file's own stale doc claims in the same commit, since all three become false with this
+  edit: the entry point's doc comment states that it switches on the verb and calls one of the three
+  existing pipeline functions, and that its default case is unreachable for every word other than
+  the three verbs; and the usage-code constant's own comment scopes the glyph-separator rejection to
+  a table-of-contents target, which is now one of two path-taking verbs that raise it.
+  Add this verb's pipeline to the entry point's numbered per-verb description as well, at the same
+  level of detail the other three get, since that comment is where each pipeline's fixed step order
+  is stated.
   The pipeline converts the target through the shared repository-relative target helper first,
   exactly as the table-of-contents verb's pipeline does, so one argument cannot mean two things:
   quarry resolves a relative target against the caller's working directory while git would resolve a
