@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-and-goldens
+phase: holistic-reviewing
 slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-engine-resolve-contract  '2026-09-05T12:29:18Z'
 approved-expand-gate-and-sentinel  '2026-09-05T12:32:23Z'
 approved-cli-repopath-mcp  '2026-09-05T12:44:28Z'
 approved-docs-and-goldens  '2026-09-05T12:51:51Z'
+holistic-reviewing  '2026-09-05T12:52:21Z'
 ```
 
 ## Batches
