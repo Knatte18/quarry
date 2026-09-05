@@ -5,7 +5,7 @@ task: 'P3 — the glyphs verb: the planner flat index as a frozen toc preset (ro
 batch: 'goldens-and-docs'
 number: 3
 cards: 5
-verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/
+verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/ ./internal/engine/
 depends-on: [2]
 ```
 
@@ -106,11 +106,19 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   The `TestAfter` prefix match is load-bearing on the test function's name; do not rename it.
 
   Then enforce the regression gate, which is this task's own done-criterion and the only mechanical
-  proof that the view is additive: `git status --porcelain internal/cli/testdata/` must show exactly
-  five new untracked files and **no modification to any pre-existing golden**. If any of the
-  fifteen existing files was rewritten by the `-update` run, that is a defect introduced by this
-  task's product code, not a golden that needs updating — revert the whole `-update` run, fix the
-  code, and regenerate. Under no circumstances commit a modified pre-existing golden.
+  proof that the view is additive. The discussion's `viewless-output-unchanged` decision names both
+  golden sets, not one: `git status --porcelain internal/cli/testdata/ internal/engine/testdata/`
+  must show exactly the five new untracked files under the first and **no modification to any
+  pre-existing golden under either**. The engine half is not decoration even though no card in this
+  plan edits `internal/engine/`: those goldens are gated on the same environment variable and have
+  therefore never run on this machine either, so "unchanged" is a claim this task is the first to be
+  in a position to check. Run them: `LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test
+  ./internal/engine/` must pass with its Loomyard cases executed rather than skipped.
+
+  If any pre-existing file under either directory was rewritten by the `-update` run, that is a
+  defect introduced by this task's product code, not a golden that needs updating — revert the
+  whole `-update` run, fix the code, and regenerate. Under no circumstances commit a modified
+  pre-existing golden.
 
   Inspect the five generated files before committing them, since `-update` writes whatever the code
   produced: each is exactly the invocation line beginning `$ quarry `, a blank line, and stdout
@@ -217,27 +225,34 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   what is ahead", and this task is what makes 2a past; the build record lives in git history, not
   here.
 
-  Leave points 2b and 2c exactly as they are, including their already-merged status. Check the
-  introductory paragraph of point 2 for anything the removal makes wrong: it calls the group "three
-  plan-unaware surfaces" and says "Any order among the three", and both readings must still be true
-  of what remains after the removal, or be adjusted to match. Make no other change to this file —
+  Only point 2a is removed. Leave the text of points 2b and 2c byte-for-byte as it is, and do not
+  add, adjust or infer a status marker on either: neither point carries one today, and this task
+  has no standing to record anything about their state. Then check the introductory paragraph of
+  point 2 for what the removal makes wrong: it calls the group "three plan-unaware surfaces" and
+  says "Any order among the three", and both readings must be adjusted to the two points that
+  remain. Make no other change to this file —
   in particular, do not touch the standing-rule paragraph or point 1, and do not add a "done"
   marker for 2a, since recording completion is exactly what this file says it does not do.
 - **Commit:** `docs: remove roadmap point 2a, closed by the glyphs verb`
 
 ## Batch Tests
 
-`verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/` runs one
-package test binary. `./quarry/` is deliberately not in scope here: this batch adds no product
-code and touches no file that package compiles or reads, so including it would only lengthen the
-loop that runs after every implementer and fixer round. The repo-wide `pipeline.done_gate` is what
-covers the rest of the tree at the end of the task.
+`verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/ ./internal/engine/`
+runs two package test binaries. `./internal/cli/` is where the batch's three test-and-fixture cards
+land. `./internal/engine/` is here for one reason only: its own Loomyard-pinned goldens are the
+other half of the regression gate the discussion's `viewless-output-unchanged` decision names, and
+they are gated on the same environment variable, so this is the only place in the plan they ever
+execute. `./quarry/` is deliberately not in scope: this batch adds no product code and touches no
+file that package compiles or reads, so including it would only lengthen the loop that runs after
+every implementer and fixer round. The repo-wide `pipeline.done_gate` covers the rest of the tree
+at the end of the task — but note it sets no `LADDER_LOOMYARD_REPO`, so it re-runs both packages
+with every checkout-gated case skipping; this batch's own verify is where those cases actually run.
 
 The environment variable is what makes this batch's verify mean anything at all. Without it,
-`loomyardRepo` skips and all twenty golden cases — the five this batch creates included — report as
-skipped rather than run, so a wrong golden would pass. Card 6 in batch 2 created the checkout it
-points at; if `.scratch/loomyard-pin` is missing when this batch runs, stop and recreate it per
-that card rather than accepting a skipped run.
+`loomyardRepo` skips and all twenty golden cases — the five this batch creates included — plus every
+engine-side Loomyard case report as skipped rather than run, so a wrong golden would pass. Card 6 in
+batch 2 created the checkout it points at; if `.scratch/loomyard-pin` is missing when this batch
+runs, stop and recreate it per that card rather than accepting a skipped run.
 
 The two prose cards, 17 and 18, have no runnable surface: `docs/rewrite-plan.md` and
 `docs/roadmap.md` are not compiled, linted or tested by anything in this repository. They are
