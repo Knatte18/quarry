@@ -64,9 +64,11 @@ construction, and there is never a parallel naming rulebook that can drift from 
 - Rationale: the task body already reaches for `NameResult`, so `name` is the spelling the
   contract was drafted in. Quarry's verbs are imperative (`toc` excepted as a noun of long
   standing): "name this declaration" reads correctly.
-- Rejected: `make` — collides with a Go builtin and says nothing about glyphs. `compose` — already
-  taken by C1's self-form compose API in `glyph/`, and reusing the word for a different operation
-  in the same repository would be a live confusion.
+- Rejected: `make` — collides with a Go builtin and says nothing about glyphs. `compose` — `glyph/`
+  exports no `Compose`, so the word is not literally taken; what it is, is *spoken for*: C1's
+  self-form constructor `glyph.Self` (`glyph/self.go:14`) is described in its own file header as
+  "the compose constructor for the self form", so `compose` already names an existing operation in
+  this codebase's vocabulary, and reusing it for a different one would be a live confusion.
 
 ### The facade entry point is package-level, not a `Repo` method
 
@@ -74,10 +76,14 @@ construction, and there is never a parallel naming rulebook that can drift from 
   delegating to a package-level function in `internal/engine`. It takes no `*Repo`, no root, and
   performs no I/O.
 - Rationale: the maker reads nothing. A `*Repo` receiver would claim a repository dependency the
-  query does not have, and would force a caller with only a fragment to first open a directory
-  that has nothing to do with the answer. `quarry/quarry.go`'s own alias-types-carry-no-methods
-  decision already establishes that package-level functions are the facade's normal shape for
-  anything not bound to an open repository.
+  query does not have, and would force a caller holding only a fragment to first open a directory
+  that has nothing to do with the answer. That is the whole argument, and it stands alone.
+- Not a supporting argument, though an earlier draft used it as one: the
+  alias-types-carry-no-methods rule (stated in `quarry/render.go:3-6`, not `quarry/quarry.go`)
+  does **not** bear on this choice. That rule exists because `DirAnswer`, `ResolveResult` and
+  `ExpandAnswer` are aliases for engine types and Go forbids binding a method to them; `Repo` is
+  locally defined and carries methods perfectly well. Recorded so the citation is not repeated as
+  precedent it never was.
 - Rejected: a `(*Repo).Name` method for symmetry with `Resolve` and `Expand`. Symmetry is real but
   it would be symmetry with two queries that genuinely read the filesystem, which this one does
   not.
@@ -400,8 +406,10 @@ construction, and there is never a parallel naming rulebook that can drift from 
 ### No MCP tool
 
 - Decision: nothing is added to `internal/mcpserver` or `cmd/quarry-mcp`.
-- Rationale: fixed by the task and by `docs/rewrite-plan.md` §9 — only tools a measured cell or
-  the adoption's pipeline needs. This one is facade-first: the caller is Loomyard's pipeline.
+- Rationale: fixed by the task and by `docs/rewrite-plan.md` **§7** — "LLM use: only through the
+  same surfaces, and only tools a ladder cell measures". (§9 is Non-goals and says nothing about
+  tools; an earlier draft cited it wrongly.) This query is facade-first: the caller is Loomyard's
+  pipeline, and no ladder cell measures it.
 - `internal/mcpserver/layering_test.go` is unaffected, since no file there changes.
 
 ## Technical context
@@ -633,9 +641,23 @@ Table tests over the maker function directly, no fixtures on disk, no repository
    This is what keeps the exclusions honest rather than a silent skip.
 5. Guard against a vacuous pass with **three pinned counts, not a fuzzy threshold**: the harvest
    total, the in-contract count, and the excluded count. They live in **a counts golden file,
-   `internal/engine/testdata/loomyard/naming-counts.json`**, compared and rewritten by the same
-   `compareGolden` mechanism (`golden_test.go:113-119`) the package's other Loomyard goldens use,
-   under the existing `-update` flag. A Go `const` cannot be rewritten by a flag, so "constants
+   `internal/engine/testdata/loomyard/naming-counts.json`**, under the existing `-update` flag.
+   **`compareGolden` cannot take them as it stands:** its signature is
+   `compareGolden(t *testing.T, name string, got DirAnswer)` (`golden_test.go:104`) — it marshals a
+   `DirAnswer`, and a three-integer counts value is not one. Lines 113-119, cited in the previous
+   draft, are only its path-and-update block, not its parameter list.
+   Disposition: **widen `compareGolden`'s third parameter from `DirAnswer` to `any`.** Every
+   existing call site still compiles unchanged, and the marshal / `-update` / byte-compare block
+   stays a single implementation — which is what makes a golden produced by one `-update` run
+   compare equal to itself on every later run, and exactly what a sibling helper duplicating that
+   block would put at risk of drift.
+   This is a test-helper signature change, not a behaviour change: the additive constraint above
+   governs the product's envelopes, verbs and exit codes, none of which this touches. Stated
+   explicitly because "additive change" is a listed constraint and a plan writer should not have to
+   guess whether it reaches test helpers.
+   Rejected: a sibling `compareCountsGolden` sharing the same path and flag — the same marshal,
+   write-or-read and compare block, written twice.
+   A Go `const` cannot be rewritten by a flag, so "constants
    regenerated under `-update`" — the earlier draft's phrasing — was two mechanisms that cannot
    both hold; a golden file is the half that keeps `-update` working, and `-update`'s own
    description already says "the Loomyard goldens under testdata/loomyard", which this file is.
@@ -714,15 +736,30 @@ so the harness has to be stated rather than assumed:
 
 **Docs and the verb-set inventory.**
 
-This task adds a fourth verb, a fourth facade query, a fourth JSON success renderer and a fourth
-text renderer. **The search predicate is therefore not "statements of the verb set" — that one
-structurally cannot find a renderer-count or facade-method-count sentence, and missing five of
-them was the second draft's error.** The predicate is: *any statement that counts or enumerates a
-quarry surface this task extends* — verbs, facade query methods, renderers, envelopes. In
-practice: search for the verb names together, for `Render` together with a number word, and for
-the number words themselves (`three`, `seven`) across `*.go` and `*.md`, then read each hit and
-decide whether the count is one this task changes. Every site below has a stated disposition; a
-plan writer should re-run the search rather than trust this list to still be exhaustive.
+This task adds a fourth verb, a fourth facade query, a fourth JSON success renderer, a fourth text
+renderer — **and a per-entry payload shape that carries no status word, which is the part no count
+can find.**
+
+The predicate has now been wrong twice, each time by being narrower than the change:
+
+1. "The three files that document the verbs" — missed nine sites, including two byte-identical
+   usage messages and a test whose name encodes the count.
+2. "Any statement that *counts or enumerates* a quarry surface this task extends" — better, but
+   structurally blind to prose this task falsifies without counting anything. `quarry/doc.go:20-23`
+   says a negative answer "is a payload with a status word": true of `resolve` and `expand`, false
+   of `NameResult`, and containing no number for a count-based search to catch.
+
+**The predicate is therefore: *any statement a new verb or a new envelope shape falsifies, counted
+or not.*** In practice that is three passes, not one: search the verb names together; search the
+number words (`three`, `seven`) and `Render` beside them; and — the pass the first two cannot
+substitute for — read the doc comments of every package this task touches, asking of each sentence
+"is this still true once a fourth verb exists whose payload carries `error`/`reason` and no
+status?" **`internal/engine` is an inventory site too**, not just `quarry`, `internal/cli` and
+`docs/` — it holds sentences about what "all three verbs" return and pointers to the plan's
+"three-queries section".
+
+Every site below has a stated disposition. A plan writer should re-run all three passes rather
+than trust this list to be exhaustive — it has grown in each of the last three rounds.
 
 Prose and contract:
 
@@ -769,6 +806,26 @@ Facade surface counts (the class the first two drafts' predicate could not reach
   the byte-contract-cannot-drift property, and `RenderNameJSON` is inside that guarantee because
   it delegates to `renderJSON`.
 - `quarry/render.go:2` — "the three successful envelopes" → four.
+- `quarry/doc.go:20-23` — **extend.** "a negative resolution outcome ... is a payload with a status
+  word, rendered by the ordinary renderer, not the failure envelope." A `NameResult` rejection is
+  a payload rendered by the ordinary renderer *and carries no status word at all* — only `error`
+  and `reason`. This is the twin of `internal/cli/doc.go:22-29` below, and the sentence that most
+  directly states the rule the no-`ok` decision rests on, so leaving it half-true would undercut
+  that decision's own citation. It carries no number, which is why the previous predicate could
+  not reach it.
+
+`internal/engine` (an inventory site the earlier predicates excluded entirely):
+
+- `internal/engine/expand.go:137` — "one symbol entry is what all three verbs return for a symbol".
+  **Extend, but the count stays three:** `name` returns no `Symbol` at all — a `NameResult` carries
+  an id and a kind, not a symbol entry — so the sentence's claim about symbol-returning verbs is
+  still true of exactly three. Reword to say *which* three ("the three verbs that return symbols")
+  rather than leaving "all three verbs" to read as "every verb", which stops being true.
+- `internal/engine/expand.go:145` and `internal/engine/answer.go:218-219` — both cite
+  "docs/rewrite-plan.md's three-queries section". **Repoint** to the section by number and title
+  (§5, The queries) rather than by its query count, which this task makes four. A pointer that
+  names a count goes stale the moment the count changes; a pointer that names the section does
+  not.
 
 Help text and messages:
 
@@ -837,4 +894,6 @@ Not touched:
 - **Q:** What do the golden files contain? **A:** [r4] the payload bytes only — no `$ quarry` header — with the exit code pinned in the table. **Why:** a header would make each `.json` golden invalid JSON, and the engine's own `testdata/loomyard/*.json` goldens are pure payload; `after/`'s header exists because those files are evidence documents.
 - **Q:** How are the three round-trip counts pinned, given a `const` cannot be rewritten by a flag? **A:** [r4] a counts golden at `internal/engine/testdata/loomyard/naming-counts.json` through the existing `compareGolden`. **Why:** it is the half of "constants regenerated under -update" that can actually hold, and `-update`'s description already names that directory.
 - **Q:** What are the `Error` sentences for the maker's four reasons? **A:** [r4] spelled as a table in the reason-vocabulary decision, none repeating the target. **Why:** the text renderer prints the target ahead of the message, and two goldens pin these bytes.
+- **Q:** How does the counts golden reach `compareGolden`, which takes a `DirAnswer`? **A:** [r5] widen its third parameter to `any`. **Why:** every call site still compiles, and the marshal/update/compare block stays one implementation; a sibling helper would duplicate exactly the block whose single implementation is the point.
+- **Q:** Is the inventory predicate now right? **A:** [r5] no — widened a third time, to "any statement a new verb or a new envelope shape falsifies, counted or not", with `internal/engine` added as a site. **Why:** `quarry/doc.go:20-23` says a negative answer "is a payload with a status word" — false for `NameResult`, and containing no number for a count-based search to find.
 - **Q:** How does the text view survive a multi-line declaration head? **A:** [r2] `normalizeProse` the echoed target, as every `Signature` already is; JSON keeps the byte-verbatim echo. **Why:** an ungrouped var's signature is the whole declaration text and can span lines, which would break the one-record-per-line invariant.
