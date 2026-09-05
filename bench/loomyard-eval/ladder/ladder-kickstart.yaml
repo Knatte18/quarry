@@ -1,0 +1,122 @@
+# Kick-start pack ladder -- a separate matrix that tests the other half of the toc hypothesis: not
+# whether a *tool* the agent can call mid-session pays for itself (the pull-mode question
+# ladder-toc.yaml closed negative on), but whether *pre-resolving* a fixed set of file+span
+# locations and injecting them into the prompt before the agent starts (push mode) does.
+#
+# Why this file exists now. T7, M1 and M3 between them found no shape and no sample size where a
+# directory-level table of contents separates from its control on any cost metric -- every one of
+# those cells handed the agent a tool and measured whether it paid for itself. This ladder measures
+# the mechanism docs/rewrite-plan.md §7 calls plan-pack generation instead: a plan card's glyphs are
+# resolved mechanically before the agent starts, and the resulting file+span pack is injected into
+# the prompt. The agent spends zero turns looking. If push mode does not separate either, the
+# surface has been measured from both directions; if it does, the win belongs to pre-resolution
+# rather than to an MCP tool.
+#
+# What each cell is. One task, `07-fabric-merge-state-tracing`, three cells under ladder letter e,
+# differing only by the per-config `card:` each renders into the prompt after the task text:
+#
+#   e0-names   control:true    -- the `Uses:` glyph-name list and nothing else. No locations.
+#   e1-pack    pack:true       -- the same `Uses:` list, then the generated file+span+signature pack
+#                                  between two sentinel lines, then one instruction: read every
+#                                  listed span in parallel, in one turn, before doing anything else.
+#                                  This is the treatment.
+#   e2-files                   -- the same `Uses:` list, plus a deduplicated `Files:` list of the
+#                                  seven distinct files the glyphs live in, no per-glyph mapping, no
+#                                  line numbers -- the plan-card format the operator's own tooling
+#                                  writes today. Secondary and descriptive; no test is run on it,
+#                                  since e1 minus e2 is not a clean spans-only contrast (e1 also
+#                                  carries the signature and the parallel-read instruction).
+#
+# One task key, not three: the run loop derives the pinned worktree path from the task key alone
+# (`TaskWorktreePath(worktreeRoot, cfg.Task)`), and the rendered prompt names that path. Three task
+# entries would give the three arms three different worktree-path strings in the prompt body itself
+# -- an unintended arm difference the card mechanism exists to avoid. The card is the only
+# difference between the three arms.
+#
+# The two explicit `control: false` entries below are mandatory, not stylistic. All three cells
+# grant no tools, and the default for a tool-less cell is control (`len(allowed) == 0`); an omitted
+# `control:` key on e1/e2 would make all three cells controls, `validate` would reject the file with
+# "expected exactly one control, found 3", and the summary would build zero comparison rows.
+#
+# What is deliberately not here. No `server:` block and no `quarry_tools:` entries: no cell grants
+# tools, so the server is never built, `needsServer` is false throughout, and an empty tool list
+# additionally removes any chance of the rendered-prompt blinding check firing on an ordinary
+# English word that happens to be a tool name. There is also no numeric recall/precision comparison
+# across arms in the analysis this ladder feeds: both non-control cards name the same seven files
+# the fasit does -- e1 inside its pack block, e2 as a plain list -- so both arms' relevant-files
+# recall is inflated by construction and only the control's is earned. The correctness gate for this
+# matrix is `summary_matches` alone; recall and precision are recorded per rep and reported, never
+# compared across arms.
+#
+# A second note on the treatment card, for the same "no code enforces this" reason: e1 minus e2 is
+# not a clean spans-only contrast, since e1 also carries the signature and the parallel-read
+# instruction e2 does not. That is why e2 is declared descriptive and no significance test runs on
+# it -- only e1-pack vs e0-names is the primary, tested comparison.
+#
+# Run parameters mirror ladder-toc.yaml's so the numbers sit on the same scale as the previous
+# results roots. Repetitions are 10 -- the predeclared n, fixed before rep 1 and never grown after
+# looking at any result.
+#
+# Run with:
+#   go run ./bench/loomyard-eval/ladder/cmd/ladder pack \
+#     --config bench/loomyard-eval/ladder/ladder-kickstart.yaml \
+#     --results bench/loomyard-eval/ladder/results/<date>-kickstart
+#   go run ./bench/loomyard-eval/ladder/cmd/ladder run \
+#     --config bench/loomyard-eval/ladder/ladder-kickstart.yaml \
+#     --results bench/loomyard-eval/ladder/results/<date>-kickstart
+
+run_model: claude-sonnet-5
+run_effort: medium
+max_turns: 60
+reps: 10
+
+scorer:
+  model: claude-opus-5
+  effort: high
+
+tasks:
+  07-fabric-merge-state-tracing:
+    task_file: bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md
+    pinned_sha: 72c23d9eecc1fa55add567622093a8bbbfba8c1d
+    schema: exploration
+    fasit: bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.fasit.json
+
+# The harness itself resolves this environment variable at startup, falling back to the scratch env
+# file when it is unset in the process environment.
+source_repo: env:LADDER_LOOMYARD_REPO
+
+# The glyph list the pack subcommand resolves, in the order the three cards' Uses: lists carry it.
+pack_targets:
+  - internal/fabriccli#addWeftVerbs
+  - internal/fabricengine#Fabric.MergeInProgress
+  - internal/fabricengine#Fabric.MergeContinue
+  - internal/fabricengine#mergeInProgressReason
+  - internal/fabricengine#Fabric.mergeRecordExists
+  - internal/fabricengine#Fabric.foreignMergeStatePresent
+  - internal/fabricengine#ErrMergeInProgress
+  - internal/gitrepo#Repo.MergeHeadPresent
+  - internal/mergeresolve#Resolver.Resolve
+
+configs:
+  - id: e0-names
+    ladder: e
+    task: 07-fabric-merge-state-tracing
+    allowed: []
+    control: true
+    card: bench/loomyard-eval/cards/07-e0-names.md
+  - id: e1-pack
+    ladder: e
+    task: 07-fabric-merge-state-tracing
+    allowed: []
+    # Explicit and mandatory: an omitted control: key defaults to true for a tool-less cell, which
+    # would make all three e-cells controls and fail validate's one-control-per-letter rule.
+    control: false
+    pack: true
+    card: bench/loomyard-eval/cards/07-e1-pack.md
+  - id: e2-files
+    ladder: e
+    task: 07-fabric-merge-state-tracing
+    allowed: []
+    # Explicit and mandatory, for the same reason as e1-pack above.
+    control: false
+    card: bench/loomyard-eval/cards/07-e2-files.md
