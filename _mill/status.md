@@ -57,7 +57,9 @@ batches:
     commit_sha: 727d40110ab3b07277d6c5f27ce81e493d2e54dc
     verify_baseline_failures: []
   - name: pack-generation
-    state: pending
+    state: running
+    implementer_session: 05dbab34-3330-4ffd-8870-d35e56e51e33
+    start_sha: c8bbb5cac6504d61cf9683cc9d3bcbb9584fe834
     verify_baseline_failures: []
   - name: run-gate-and-subcommand
     state: pending
