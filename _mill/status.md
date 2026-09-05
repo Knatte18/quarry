@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -45,6 +45,7 @@ blocked  '2026-09-05T13:05:23Z'
 holistic-reviewing  '2026-09-05T13:10:56Z'
 holistic-approved  '2026-09-05T13:14:06Z'
 done  '2026-09-05T13:14:42Z'
+pr-pending  '2026-09-05T13:17:15Z'
 ```
 
 ## Batches
