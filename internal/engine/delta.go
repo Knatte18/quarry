@@ -536,6 +536,83 @@ func removeKeys(syms []Symbol, remove map[symbolKey]bool) []Symbol {
 	return out
 }
 
+// sortSymbols sorts syms in place by file ascending, then Start ascending, then id ascending, then
+// kind ascending — symbolsOfUnit's existing file-then-Start rule with a total tie-break appended.
+// The tie-break is load-bearing, not decoration: the const and var builders give every name
+// declared in one spec the same Start and End, so file-then-Start alone cannot separate them, and
+// without it a stable sort would preserve whatever order the table's map iteration happened to
+// produce — randomised per run, since Go deliberately randomises map iteration order. The pair of
+// id and kind is unique because it is the symbol table's own key. This is ordering, never ranking.
+func sortSymbols(syms []Symbol) {
+	sort.Slice(syms, func(i, j int) bool {
+		a, b := syms[i], syms[j]
+		if a.File != b.File {
+			return a.File < b.File
+		}
+		if a.Start != b.Start {
+			return a.Start < b.Start
+		}
+		if a.ID != b.ID {
+			return a.ID < b.ID
+		}
+		return a.Kind < b.Kind
+	})
+}
+
+// sortLocations sorts locs in place by file ascending then Start ascending. A ModifiedSymbol's
+// Before array is independently sorted this way and is aligned with its After array by nothing: a
+// key held by several declarations has no per-occurrence identity to align by.
+func sortLocations(locs []SymbolLocation) {
+	sort.Slice(locs, func(i, j int) bool {
+		if locs[i].File != locs[j].File {
+			return locs[i].File < locs[j].File
+		}
+		return locs[i].Start < locs[j].Start
+	})
+}
+
+// sortDeltaAnswer puts every array of a DeltaAnswer into its stated total order, in place. created
+// and deleted, and each ModifiedSymbol's After array, sort by sortSymbols' rule; each
+// ModifiedSymbol's Before array sorts independently by sortLocations' rule. modified itself sorts
+// by id ascending then kind ascending — the table key itself, so the order never depends on which
+// occurrence was seen first. renamed sorts by the From symbol's id ascending then the To symbol's
+// id ascending. candidates sorts by the deleted symbol's id ascending then its kind ascending, with
+// the candidates inside each entry left in the order classifyEvidenceTier already gave them. files
+// is never sorted: it keeps the input batch's own order, unchanged, so a caller can index it
+// against what it submitted. Every rule here is ordering, never ranking.
+func sortDeltaAnswer(created, deleted []Symbol, modified []ModifiedSymbol, renamed []RenamedPair, candidates []RenameCandidateEntry) {
+	sortSymbols(created)
+	sortSymbols(deleted)
+
+	sort.Slice(modified, func(i, j int) bool {
+		a, b := modified[i], modified[j]
+		if a.ID != b.ID {
+			return a.ID < b.ID
+		}
+		return a.Kind < b.Kind
+	})
+	for i := range modified {
+		sortSymbols(modified[i].After)
+		sortLocations(modified[i].Before)
+	}
+
+	sort.Slice(renamed, func(i, j int) bool {
+		a, b := renamed[i], renamed[j]
+		if a.From.ID != b.From.ID {
+			return a.From.ID < b.From.ID
+		}
+		return a.To.ID < b.To.ID
+	})
+
+	sort.Slice(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		if a.ID != b.ID {
+			return a.ID < b.ID
+		}
+		return a.Kind < b.Kind
+	})
+}
+
 // Delta compares two versions of a batch of files, extracted with the same Strategy every other
 // query in this package uses, and returns the resulting symbol-table delta. Its returned error is
 // non-nil only for a failure of the call as a whole; a single entry's own extraction failure is
@@ -567,6 +644,8 @@ func (r *Repo) Delta(entries []DeltaEntry) (DeltaAnswer, error) {
 
 	created = removeKeys(created, assertedCreated)
 	deleted = removeKeys(deleted, assertedDeleted)
+
+	sortDeltaAnswer(created, deleted, modified, renamed, candidates)
 
 	return DeltaAnswer{
 		Files:            files,
