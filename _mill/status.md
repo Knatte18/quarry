@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r5
+phase: discussion-gap-fix-r6
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: null
@@ -20,4 +20,5 @@ discussion-gap-fix-r2  '2026-09-05T14:51:34Z'
 discussion-gap-fix-r3  '2026-09-05T14:59:51Z'
 discussion-gap-fix-r4  '2026-09-05T15:06:57Z'
 discussion-gap-fix-r5  '2026-09-05T15:14:35Z'
+discussion-gap-fix-r6  '2026-09-05T15:23:05Z'
 ```
