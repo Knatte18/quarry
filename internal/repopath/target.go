@@ -1,6 +1,6 @@
-// target.go declares repoRelPath and repoRelTarget, the pure path arithmetic behind RepoRelPath
-// and RepoRelTarget, the exported functions a caller uses to convert a caller-supplied target into
-// a clean, forward-slash, repository-relative path before the engine ever sees it.
+// target.go declares repoRelPath and repoRelTarget, the pure path arithmetic behind RepoRelTarget,
+// the exported function a caller uses to convert a caller-supplied target into a clean,
+// forward-slash, repository-relative path before the engine ever sees it.
 
 package repopath
 
@@ -26,9 +26,8 @@ import (
 // Native separators are accepted on input; the returned path is always forward-slash and
 // repository-root relative, which is the form the engine takes and emits. repoRelPath returns the
 // cleaned relative form even when it begins with "..": it does not reject a target that leaves the
-// root. A caller that wants a target that escapes the root to reach the engine — so the engine's
-// own outside-repository rule produces the answer, rather than this package synthesising a second
-// copy of it — calls RepoRelPath. It returns an error only when filepath.Rel itself fails, and
+// root. repoRelTarget, below, is the only caller, and it applies the escape rejection itself once
+// this arithmetic is done. repoRelPath returns an error only when filepath.Rel itself fails, and
 // that error is quarry.ErrTargetOutsideRepo.
 func repoRelPath(root, base, target string) (string, error) {
 	var abs string
@@ -48,14 +47,6 @@ func repoRelPath(root, base, target string) (string, error) {
 	// filepath.Rel returns "." when the target is the root itself, which the engine accepts as
 	// the root.
 	return path.Clean(relSlash), nil
-}
-
-// RepoRelPath exports repoRelPath for callers outside this package that want the arithmetic-only
-// conversion, without RepoRelTarget's escape rejection — the CLI's resolve verb calls this so a
-// target that escapes the root is passed through to the engine, letting the engine's own
-// outside-repository rule produce the answer, rather than rejecting the target here.
-func RepoRelPath(root, base, target string) (string, error) {
-	return repoRelPath(root, base, target)
 }
 
 // repoRelTarget converts target the same way repoRelPath does, then rejects a result that leaves
