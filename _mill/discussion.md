@@ -116,11 +116,13 @@ convention a later edit can quietly break.
 - Decision: the `glyphs` view's answer is a new, flat, non-recursive value:
 
   ```go
-  // GlyphsAnswer is the glyphs view's whole answer.
+  // GlyphsAnswer is the glyphs view's whole answer. It carries no JSON tags: this type is the Go
+  // value, and the wire shape is glyphsEnvelope's (see glyphs-json-shadow-struct), so there is
+  // exactly one description of the emitted key set and it cannot disagree with itself.
   type GlyphsAnswer struct {
-      Target     string   `json:"target"`
-      Symbols    []Symbol `json:"symbols"`
-      Incomplete []string `json:"incomplete,omitempty"`
+      Target     string
+      Symbols    []Symbol
+      Incomplete []string
   }
   ```
 
@@ -130,8 +132,9 @@ convention a later edit can quietly break.
   is every file entry in the answer whose `Error` or `Lossy` field was set, as a repository-relative
   path, sorted, omitted when empty.
 
-  Two wire details are fixed here rather than left to the renderer: `Symbols` carries `json:"symbols"`
-  with **no** `omitempty`, and the renderer builds its slice with `make([]glyphSymbol, 0, n)`, so a
+  Two wire details are fixed here, and both are properties of the envelope in
+  `glyphs-json-shadow-struct`, not of this type: its `Symbols` field carries `json:"symbols"` with
+  **no** `omitempty` and the renderer builds that slice with `make([]glyphSymbol, 0, n)`, so a
   zero-symbol answer emits `"symbols": []` and never `"symbols": null` — a consumer parsing this
   view iterates the key unconditionally. `Target` is a verbatim echo of the target string handed to
   `GlyphView`; the *callers* normalise, so the two surfaces agree: the CLI passes the value
@@ -175,10 +178,30 @@ convention a later edit can quietly break.
   }
   ```
 
-  `RenderGlyphsJSON` maps each `Symbol` into one of these and encodes the result through the same
-  `renderJSON` helper every other success renderer uses. The `GlyphsAnswer` a Go caller receives is
-  unchanged — it carries `[]Symbol` — so the shadow struct is a marshalling detail of one renderer,
-  never a second answer type. `internal/engine/answer.go` is not modified.
+  The value `RenderGlyphsJSON` hands to `renderJSON` is never a `GlyphsAnswer` and never a bare
+  array — it is the envelope this decision declares:
+
+  ```go
+  // glyphsEnvelope is the glyphs view's whole wire shape: the one value RenderGlyphsJSON encodes.
+  type glyphsEnvelope struct {
+      Target     string        `json:"target"`
+      Symbols    []glyphSymbol `json:"symbols"`
+      Incomplete []string      `json:"incomplete,omitempty"`
+  }
+  ```
+
+  `RenderGlyphsJSON(a GlyphsAnswer) ([]byte, error)` builds one of these — copying `Target` and
+  `Incomplete` across, mapping each `Symbol` into a `glyphSymbol`, and allocating the slice with
+  `make([]glyphSymbol, 0, len(a.Symbols))` so an empty answer emits `[]` rather than `null` — and
+  encodes it through the same `renderJSON` helper every other success renderer uses.
+
+  `GlyphsAnswer` therefore carries **no JSON tags at all** (see its declaration in
+  `glyphs-answer-shape`). That is the disposition, not an oversight: tags on it would describe a
+  document nothing ever emits, and — because `Symbol.Signature` has no `omitempty` — a facade caller
+  who called `json.Marshal` on the answer directly would get `"signature": ""` on every symbol, a
+  different document from `RenderGlyphsJSON`'s under the same type's own tags. An untagged struct
+  makes that mistake visible instead of plausible: there is one wire shape, `glyphsEnvelope`'s, and
+  one function that produces it. `internal/engine/answer.go` is not modified.
 - Rationale: `Symbol.Signature`'s tag is `json:"signature"` with **no** `omitempty`
   (`internal/engine/answer.go:85`), so a cleared `Signature` marshals as `"signature": ""` on every
   symbol — the promised key set is unreachable by clearing fields alone. Of the two ways out, this
@@ -218,6 +241,16 @@ convention a later edit can quietly break.
   in the complete answer (`FileEntry.Lossy`, `FileEntry.Error`); dropping them here would be the
   view *losing information that changes the answer's meaning*, which is different from dropping a
   docstring.
+- **Scope of the invariant.** "Absent line means absent symbol" holds for the frozen `glyphs`
+  preset, which is `--depth all`, and there only. A direct `toc --view glyphs --depth N` answer is
+  truncated by construction: directories below the cut contribute no symbols, and they contribute
+  **nothing to `Incomplete` either**. That is deliberate and not a hole to plug — `GlyphView` is a
+  pure function over a finished `DirAnswer`, and a depth-cut `DirAnswer` with no `Files` and no
+  `Dirs` is byte-for-byte indistinguishable from a genuinely empty leaf directory, so the
+  projection has nothing to detect. The caller who passed `--depth N` is the one who knows the
+  answer is bounded; the verb that promises completeness is `glyphs`, which never passes one. State
+  this in `docs/rewrite-plan.md` §5's view paragraph too, so the promise and its scope travel
+  together.
 - Rejected: silently omitting them (a wrong negative at the consumer, undetectable); carrying each
   file's full error string (the view's line grammar is one record per line and an OS error message
   is arbitrary prose — the path is enough to send the caller to `toc` for the detail, which is the
@@ -611,19 +644,38 @@ No `CONSTRAINTS.md` at the hub root. From `CLAUDE.md` and the task body:
 - `glyphs-dir-text.txt` — `glyphs --text internal/logger`
 - `glyphs-file.txt` — `glyphs internal/logger/logger.go`
 - `glyphs-file-text.txt` — `glyphs --text internal/logger/logger.go`
-- `toc-view-glyphs-depth.txt` — `toc --view glyphs --depth 1 <dir-with-a-subtree>` (the
-  directory-with-depth case; it is a `toc` invocation rather than a `glyphs` one precisely because
-  the preset is frozen at `--depth all`). No `--symbols` in this invocation, deliberately: under
+- `toc-view-glyphs-depth.txt` — `toc --view glyphs --depth 1 <D>` (the directory-with-depth case;
+  it is a `toc` invocation rather than a `glyphs` one precisely because the preset is frozen at
+  `--depth all`). No `--symbols` in this invocation, deliberately: under
   `view-glyphs-implies-symbols` the view supplies that default, and this golden is what proves it
   — a non-empty symbol list here *is* the assertion. A version of this row that spelled `--symbols`
   would pass whether the default works or not.
 
-Pick a directory target that actually has a subdirectory with symbols at the pin —
-`internal/logger` has none, and the point of the case is that a nested level's symbols appear in
-the flat list with their own `file` values. Confirm the choice by running
-`quarry toc --depth 1 <dir>` against the checkout before committing the golden; if no suitable
-directory exists at the pin, say so in `testdata/INDEX.md` rather than committing a golden that
-silently proves nothing.
+**The depth golden's target `<D>`.** The file inventory is unconditional: this golden is always
+committed, always one file, and the counts above (`INDEX.md`'s row set and its "fifteen files",
+`after_test.go`'s header count) do not depend on the choice — only the target string inside the
+row and the invocation line varies, and both are written from the same value. `internal/logger`
+cannot serve: its committed golden `testdata/toc-dir.txt` has no `dirs` key at the pin, so it has
+no subdirectory and a depth golden there would prove nothing.
+
+Selection rule, in order, first match wins — run each against the pinned checkout with
+`quarry toc --depth 1 <candidate>` and take the first whose answer has a `dirs` entry that itself
+has `files`:
+
+1. `internal/reedengine`
+2. `internal/shedadapters`
+3. `internal/fabricengine`
+4. `.` — the repository root, which has subdirectories by construction and is therefore the
+   guaranteed fallback, never a "no suitable directory" outcome.
+
+Candidates 1–3 are packages this repository's own bench fixtures under `bench/loomyard-eval/tasks/`
+already reference by path, so they exist at the pin; whether each has a *subdirectory* is what the
+probe settles, and this machine has no `LADDER_LOOMYARD_REPO` checkout to settle it from here.
+Size bound: the committed golden must stay under ~200 lines. If the first match exceeds it, move to
+the next candidate; if `.` itself exceeds it, use `--depth 1` on `.`'s smallest subdirectory that
+has one, and record the chosen target and the reason in `testdata/INDEX.md`'s row for this file.
+The chosen target is recorded there either way, because a reader of the INDEX must be able to see
+which subtree the depth case actually covers.
 
 **The byte-identity golden** — its own test function, not a golden file: for each of a file target
 and a directory target, and for each of JSON and `--text`, run `Run(["glyphs", "--root", repo,
