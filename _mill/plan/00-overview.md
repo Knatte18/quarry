@@ -48,11 +48,6 @@ batches:
     file: 06-benchmark-content.md
     depends-on: [1, 2, 4]
     verify: go test ./bench/loomyard-eval/ladder/internal/ladder/ -run 'TestPreMatrix|TestLoadLadder_RealKickstartFile'
-  - number: 7
-    name: matrix-and-writeup
-    file: 07-matrix-and-writeup.md
-    depends-on: [5, 6]
-    verify: go test ./bench/loomyard-eval/ladder/internal/ladder/ -run 'TestPreMatrix'
 ```
 
 ## Shared Decisions
