@@ -49,10 +49,15 @@ func isASCIIControl(r rune) bool {
 // name. input is the original whole string Parse was given, carried through so every *ParseError
 // this function returns has Input set to the whole string rather than a half. parseGo validates
 // the unit half first and the member half second, so a string failing both reports the unit's
-// reason.
+// reason. An empty member is the self form and is admitted right after the unit half validates,
+// without reaching checkGoMember at all: "#", ".#" and "a//b#" are still rejects, because their
+// unit halves fail first.
 func parseGo(input, unit, member string) (Glyph, error) {
 	if err := checkGoUnit(input, unit); err != nil {
 		return Glyph{}, err
+	}
+	if member == "" {
+		return Glyph{Lang: Go, Unit: unit}, nil
 	}
 	owner, name, err := checkGoMember(input, member)
 	if err != nil {
@@ -100,10 +105,6 @@ func checkGoMember(input, member string) (owner []string, name string, err error
 	if r, ok := firstOccurrence(member, '[', ']'); ok {
 		return nil, "", &ParseError{Lang: Go, Input: input, Reason: ReasonMemberTypeParams, Detail: fmt.Sprintf("%q", r)}
 	}
-	if member == "" {
-		return nil, "", &ParseError{Lang: Go, Input: input, Reason: ReasonMemberEmpty}
-	}
-
 	components := strings.Split(member, ".")
 	for _, c := range components {
 		if c == "" {

@@ -27,8 +27,6 @@ const (
 	ReasonUnitDotSegment Reason = "unit_dot_segment"
 	// ReasonUnitBadRune fires when the unit contains a rune the language's alphabet does not allow.
 	ReasonUnitBadRune Reason = "unit_bad_rune"
-	// ReasonMemberEmpty fires when the member half is the empty string.
-	ReasonMemberEmpty Reason = "member_empty"
 	// ReasonMemberEmptyComponent fires when a "."-separated component of the member is empty.
 	ReasonMemberEmptyComponent Reason = "member_empty_component"
 	// ReasonMemberTooDeep fires when the member has more "."-separated components than the
@@ -66,7 +64,6 @@ var Reasons = []Reason{
 	ReasonUnitEmptySegment,
 	ReasonUnitDotSegment,
 	ReasonUnitBadRune,
-	ReasonMemberEmpty,
 	ReasonMemberEmptyComponent,
 	ReasonMemberTooDeep,
 	ReasonMemberNotIdentifier,
@@ -88,7 +85,6 @@ var reasonText = map[Reason]string{
 	ReasonUnitEmptySegment:     "unit has an empty segment",
 	ReasonUnitDotSegment:       "unit has a \".\" or \"..\" segment",
 	ReasonUnitBadRune:          "unit contains a rune the language's alphabet does not allow",
-	ReasonMemberEmpty:          "member is empty",
 	ReasonMemberEmptyComponent: "member has an empty component",
 	ReasonMemberTooDeep:        "member has more components than the language allows",
 	ReasonMemberNotIdentifier:  "member component is not a valid identifier",
