@@ -54,9 +54,9 @@ batches:
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-05T17:47:42Z'
   - name: goldens-and-docs
-    state: pending
-    implementer_session: 73ea5979-52e1-4d8f-9dfe-3a9c70fe1021
-    start_sha: 4dff18863012a6c89312beca2a5945e86969b1c9
+    state: running
+    implementer_session: 40a970d6-b2ae-458e-89b3-b80abbde3380
+    start_sha: 58da06cd51303c4caa75e9cb7a14b70dc3158216
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-05T18:04:03Z'
 ```
