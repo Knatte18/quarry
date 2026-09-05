@@ -24,11 +24,14 @@ from it, or edits prose.
 
 Batch-local decisions beyond `## Shared Decisions` in the overview:
 
-- **The depth golden's target is chosen by a probe, not by the plan.** The plan cannot name it,
-  because choosing it requires running a query against the pinned checkout, which this plan was
-  written without. Card 14 carries the selection rule and the tie-breaks; whatever it selects is
-  recorded in the golden table row, in the invocation line inside the golden file, and in the index
-  row, all three written from the one chosen value.
+- **The depth golden's target is named by the plan, not chosen by a probe at implementation time.**
+  The discussion left it to an ordered candidate probe because it was written without a checkout to
+  settle it from. That probe was run while this plan was under review, against a clone of
+  `/home/knatte/Code/loomyard/wts/loomyard` detached at `72c23d9`, and its result retires the rule
+  rather than confirming it: of the whole repository at that pin, exactly three directories have a
+  subdirectory that itself holds Go files, and the discussion's own fallback is the worst of the
+  four candidates, not the safe one. Card 14 carries the measurements and the single target they
+  select. Do not re-run the candidate ladder.
 - **The five new goldens open a red window inside this batch, exactly as the existing fifteen did.**
   `internal/cli/after_test.go`'s own file comment already documents and justifies that window for
   its own batch. Card 14 adds five rows that fail until card 15 generates their files; the batch's
@@ -43,23 +46,46 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   - `internal/cli/loomyard_test.go`
   - `internal/cli/testdata/INDEX.md`
   - `internal/cli/flags.go`
+  - `internal/cli/cli_test.go`
 - **Edits:**
   - `internal/cli/after_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** First choose the depth golden's target. Against the checkout at
-  `.scratch/loomyard-pin`, run `quarry toc --depth 1 <candidate>` for each candidate in this order
-  and take the first whose answer carries a `dirs` entry that itself carries `files`:
-  `internal/reedengine`, then `internal/shedadapters`, then `internal/fabricengine`, then `.` — the
-  repository root, which has subdirectories by construction and is therefore a guaranteed fallback,
-  never a "no suitable directory" outcome. Then apply the size bound: the golden this target
-  produces must stay under roughly 200 lines; if the first match exceeds it, move to the next
-  candidate, and if `.` itself exceeds it, use the smallest subdirectory of `.` that has a
-  subdirectory of its own. Note that `internal/logger` cannot serve, whatever the probe says: its
-  committed golden has no `dirs` key at this pin, so a depth golden there would prove nothing.
-  Record the chosen target — it is written into three places, all from this one value: the table row
-  below, the invocation line inside the generated golden, and card 16's index row.
+- **Requirements:** The depth golden's target and format are fixed by this card and are not
+  re-derived: the invocation is `toc --text --view glyphs --depth 1 internal/boardengine`.
+
+  Do not run the discussion's candidate ladder. It was run during this plan's own review, against a
+  clone of the source repository detached at `72c23d9`, and every one of its four candidates fails:
+  `internal/shedadapters` has no subdirectory at all at that pin, so it can never satisfy the
+  "a `dirs` entry that itself carries `files`" test; `internal/reedengine` has one but 67 Go files
+  in scope and 616 symbols at `--depth 1`; `internal/fabricengine` is larger still; and the ladder's
+  own guaranteed fallback, the repository root at `--depth 1`, yields **zero** symbols, because no
+  Go file sits at the root or one level below it. A zero-symbol depth golden would assert the exact
+  opposite of what this row exists to assert. Exactly three directories in the repository at that
+  pin have a subdirectory holding Go files — `internal/boardengine` (18 own files plus 6 in
+  `boardtest`), `internal/shuttleengine` (22 plus 18), and `internal/reedengine` (67 plus 12) — and
+  `internal/boardengine` is the smallest of the three.
+
+  The format is `--text` rather than JSON, and that is the size bound doing its job rather than a
+  stylistic preference: `internal/boardengine` at `--depth 1` carries 172 symbols, which is 172
+  lines of the glyphs text view and roughly 1,200 lines of its JSON, against a bound of about 200
+  and a largest existing golden of 254 lines (`toc-file.txt`). No JSON coverage is lost by the
+  choice — two of the four other new goldens are JSON, and card 10's machine-independent
+  `internal/cli/cli_test.go` cases already assert the JSON key set for a `toc --view glyphs`
+  invocation with no symbols flag.
+
+  What the row still proves is unchanged and is worth stating in a comment beside it: 172 symbols
+  rather than zero is the assertion that the view's implicit symbols default works, and those
+  symbols span `internal/boardengine` and `internal/boardengine/boardtest`, which is the assertion
+  that the flat projection crosses directory boundaries and fills each line's file prefix. Note
+  that `internal/logger`, the target the other four goldens use, cannot serve here: its committed
+  golden has no `dirs` key at this pin, so it has no subdirectory and a depth golden there would
+  prove neither property.
+
+  If the generated golden turns out not to match these numbers, stop and report it rather than
+  adjusting the target: the pin is fixed, so a mismatch means the measurement or the pin resolution
+  is wrong, and picking a different directory would bury that.
 
   Then add five rows to `afterGoldenCases` in `internal/cli/after_test.go`, each with
   `exitCode: exitOK`, each spelling its `invocation` suffix literally rather than deriving it from
@@ -71,7 +97,7 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   - golden `glyphs-file.txt`, verb `glyphs`, invocation `internal/logger/logger.go`;
   - golden `glyphs-file-text.txt`, verb `glyphs`, invocation `--text internal/logger/logger.go`;
   - golden `toc-view-glyphs-depth.txt`, verb `toc`, invocation
-    `--view glyphs --depth 1 <the probed target>`.
+    `--text --view glyphs --depth 1 internal/boardengine`.
 
   The fifth row carries no `--symbols` token, and that omission is deliberate and load-bearing: the
   view supplies that default, and a non-empty symbol list in this golden *is* the assertion that
@@ -151,9 +177,10 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
 - **Requirements:** The index's before-to-after table is total — every after-side file has its own
   row and its own exit-code cell — so it gains one row per new golden, each in the existing
   `| *(none)* | <file> | 0 | new: <what it shows> |` shape, since none of the five has a before-side
-  counterpart. The depth row's note must name the target card 14's probe chose and say why that
-  subtree rather than `internal/logger`, so a reader can see which subtree the depth case actually
-  covers; it must also state why the row is a `toc` invocation rather than a `glyphs` one.
+  counterpart. The depth row's note must name `internal/boardengine` and say why that subtree
+  rather than `internal/logger` — which has no subdirectory at this pin — so a reader can see which
+  subtree the depth case actually covers; it must also state why the row is a `toc` invocation
+  rather than a `glyphs` one, and why it is the one new golden in text form only.
 
   Update the counts: the table's own prose says the table spans three verbs — it spans four now —
   and the closing section says "These fifteen files", which becomes twenty. Both the index and
