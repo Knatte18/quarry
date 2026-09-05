@@ -14,9 +14,9 @@ type Language string
 const Go Language = "go"
 
 // Glyph is the parsed form of a glyph string: a symbol's unit and member, split into their
-// components. A Glyph built by hand rather than by Parse is the builder's responsibility — this
-// package exports no constructor and no Validate method, and String does not check the value it is
-// given.
+// components. A Glyph built by hand rather than by Parse or Self is the builder's responsibility —
+// Self is the one constructor this package exports, there is no Validate method, and String does
+// not check the value it is given.
 type Glyph struct {
 	// Lang is the language whose alphabet this Glyph's Unit and member were parsed against.
 	Lang Language
@@ -30,6 +30,16 @@ type Glyph struct {
 	// Params is nil for Go always. Its nil-versus-non-nil state, not its length, is what decides
 	// whether String prints parentheses: a non-nil empty slice prints "()".
 	Params []string
+}
+
+// IsSelf reports whether g is the self form: a glyph naming its unit's whole directory or file
+// rather than a member within it. All three of Owner, Name and Params are tested, not merely Owner
+// and Name, because String prints "()" for a non-nil empty Params: its nil-versus-non-nil state,
+// not its length, decides the parentheses, so a hand-built Glyph{Unit: "a", Params: []string{}}
+// would report true here while printing "a#()", breaking the property that removing the trailing
+// "#" yields the plain path.
+func (g Glyph) IsSelf() bool {
+	return len(g.Owner) == 0 && g.Name == "" && g.Params == nil
 }
 
 // String is a total pure printer: it never returns an error, never panics, and never validates. It

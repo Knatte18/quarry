@@ -108,6 +108,9 @@ func tocResult(repo *quarry.Repo, root string, in tocInput) *mcp.CallToolResult 
 		if errors.Is(err, quarry.ErrTargetOutsideRepo) {
 			return errorResult("target outside repository: " + in.Target)
 		}
+		if errors.Is(err, quarry.ErrTargetHasSeparator) {
+			return errorResult("target contains the glyph separator \"#\": " + in.Target)
+		}
 		return errorResult("internal error: " + err.Error())
 	}
 

@@ -64,6 +64,11 @@ type Status = engine.Status
 // doc comments make below for errors.Is.
 type NotATypeError = engine.NotATypeError
 
+// SelfGlyphError is an alias for engine.SelfGlyphError, not a re-declaration, so that
+// errors.As(err, &selfGlyph) against *quarry.SelfGlyphError succeeds for a caller that never
+// imports the engine — the same transitivity argument NotATypeError's own doc comment makes above.
+type SelfGlyphError = engine.SelfGlyphError
+
 // The four Status values a resolve or expand query ever emits, aliased from the engine so a caller
 // can name them without importing internal/engine.
 const (
@@ -87,6 +92,10 @@ var ErrTargetNotFound = engine.ErrTargetNotFound
 // ErrTargetOutsideRepo is the engine's own ErrTargetOutsideRepo value, for the same reason
 // ErrTargetNotFound is: it is the same value, not a copy, which is what keeps errors.Is transitive.
 var ErrTargetOutsideRepo = engine.ErrTargetOutsideRepo
+
+// ErrTargetHasSeparator is the engine's own ErrTargetHasSeparator value, for the same reason
+// ErrTargetNotFound is: it is the same value, not a copy, which is what keeps errors.Is transitive.
+var ErrTargetHasSeparator = engine.ErrTargetHasSeparator
 
 // ErrLanguageUnsupported is the engine's own ErrLanguageUnsupported value, for the same reason
 // ErrTargetNotFound is: it is the same value, not a copy, which is what keeps errors.Is transitive.

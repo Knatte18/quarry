@@ -187,7 +187,7 @@ func TestRenderResolveJSON(t *testing.T) {
 		{"NotFoundUnitFound", ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusFound}},
 		{"NotFoundUnitNotFound", ResolveResult{Target: "pkg#Missing", ID: "pkg#Missing", Status: StatusNotFound, Unit: StatusNotFound}},
 		{"PreResolutionRejection", ResolveResult{Target: "#bad", Error: "engine: bad glyph", Reason: "no_unit"}},
-		{"PathResult", ResolveResult{Target: "pkg", Status: StatusFound, Dir: &DirAnswer{Dir: "pkg"}}},
+		{"PathResult", ResolveResult{Target: "pkg", Status: StatusFound, Listing: &DirAnswer{Dir: "pkg"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -216,14 +216,14 @@ func TestRenderResolveJSON_KeyOrder(t *testing.T) {
 	sym := Symbol{ID: "pkg#Sym", Kind: KindFunction, Start: 1, End: 2, Signature: "func Sym()"}
 	r := ResolveResult{
 		Target: "pkg#Sym", ID: "pkg#Sym", Status: StatusFound,
-		Symbols: []Symbol{sym}, Dir: &DirAnswer{Dir: "pkg"},
+		Symbols: []Symbol{sym}, Listing: &DirAnswer{Dir: "pkg"},
 	}
 	got, err := RenderResolveJSON(r)
 	if err != nil {
 		t.Fatalf("RenderResolveJSON() error = %v", err)
 	}
 	assertKeyOrder(t, string(got), []string{
-		`"target"`, `"id"`, `"status"`, `"symbols"`, `"dir"`,
+		`"target"`, `"id"`, `"status"`, `"symbols"`, `"listing"`,
 	})
 }
 
