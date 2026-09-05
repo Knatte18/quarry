@@ -1,0 +1,29 @@
+$ quarry glyphs --text internal/logger/logger.go
+
+internal/logger/logger.go:145-146 var internal/logger#levelVar
+internal/logger/logger.go:148-149 var internal/logger#out
+internal/logger/logger.go:151-153 var internal/logger#currentStderr
+internal/logger/logger.go:155-163 function internal/logger#stderrHandlerSnapshot
+internal/logger/logger.go:165-171 var internal/logger#log
+internal/logger/logger.go:173-195 type internal/logger#dualHandler
+internal/logger/logger.go:197-201 function internal/logger#newDualHandler
+internal/logger/logger.go:203-208 method internal/logger#dualHandler.stderr
+internal/logger/logger.go:210-214 method internal/logger#dualHandler.Enabled
+internal/logger/logger.go:216-239 method internal/logger#dualHandler.Handle
+internal/logger/logger.go:241-250 method internal/logger#dualHandler.WithAttrs
+internal/logger/logger.go:252-260 method internal/logger#dualHandler.WithGroup
+internal/logger/logger.go:262-267 type internal/logger#durableWriter
+internal/logger/logger.go:269-279 method internal/logger#durableWriter.Write
+internal/logger/logger.go:281-288 type internal/logger#durableHandler
+internal/logger/logger.go:290-294 function internal/logger#newDurableHandler
+internal/logger/logger.go:296-300 method internal/logger#durableHandler.Enabled
+internal/logger/logger.go:302-306 method internal/logger#durableHandler.Handle
+internal/logger/logger.go:308-314 method internal/logger#durableHandler.withAttrs
+internal/logger/logger.go:316-320 method internal/logger#durableHandler.withGroup
+internal/logger/logger.go:322-325 function internal/logger#init
+internal/logger/logger.go:327-349 function internal/logger#configureFromEnv
+internal/logger/logger.go:351-360 function internal/logger#Debug
+internal/logger/logger.go:362-367 function internal/logger#Info
+internal/logger/logger.go:369-374 function internal/logger#Warn
+internal/logger/logger.go:376-388 function internal/logger#SetVerbosity
+internal/logger/logger.go:390-413 function internal/logger#SetOutput

@@ -1,10 +1,12 @@
 // render.go declares the JSON renderers the facade exports: RenderJSON, RenderResolveJSON,
-// RenderExpandJSON, RenderDeltaJSON and RenderNameJSON, the five successful envelopes, sharing one
-// unexported encoder configuration in renderJSON, and RenderErrorJSON, the failure envelope. All are
-// package-level functions rather than methods, per the overview's alias-types-carry-no-methods
-// decision — DirAnswer, ResolveResult, ExpandAnswer and NameResult are aliases for engine types, and
-// GitDeltaAnswer is a facade type embedding one, and Go forbids a method declared here from binding
-// to any of them.
+// RenderExpandJSON, RenderDeltaJSON and RenderNameJSON, five of the six successful envelopes,
+// sharing one unexported encoder configuration in renderJSON, and RenderErrorJSON, the failure
+// envelope. The sixth successful envelope, RenderGlyphsJSON, shares that same renderJSON
+// configuration but is declared in quarry/view.go, alongside the glyphs view's own answer type and
+// shadow envelope, rather than here. All are package-level functions rather than methods, per the
+// overview's alias-types-carry-no-methods decision — DirAnswer, ResolveResult, ExpandAnswer and
+// NameResult are aliases for engine types, and GitDeltaAnswer is a facade type embedding one, and Go
+// forbids a method declared here from binding to any of them.
 
 package quarry
 
