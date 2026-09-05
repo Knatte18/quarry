@@ -1,5 +1,7 @@
-// repo.go declares Repo, the facade's entry point, Open, which constructs one, and the TOC query
-// that delegates to the engine unchanged.
+// repo.go declares Repo, the facade's entry point, Open, which constructs one, the TOC query that
+// delegates to the engine unchanged, the Glyphs query composing TOC with a projection, and
+// GlyphsOptions, the frozen option value Glyphs queries under and internal/cli's own preset
+// compares itself against.
 
 package quarry
 
@@ -34,6 +36,40 @@ func Open(root string) (*Repo, error) {
 // against the facade's sentinels for a caller that never imports the engine.
 func (r *Repo) TOC(target string, opts TOCOptions) (DirAnswer, error) {
 	return r.engine.TOC(target, opts)
+}
+
+// GlyphsOptions returns the frozen options the glyphs preset expands to: Depth: DepthAll and
+// Symbols pointing to a true. It returns a fresh value on each call — including a fresh *bool for
+// Symbols — so a caller cannot mutate a shared one through the returned pointer.
+//
+// GlyphsOptions is exported rather than unexported because internal/cli's own drift test parses
+// the CLI's preset tokens and compares that parse against this value, and that test cannot live in
+// this package: internal/cli imports quarry, and the reverse import would be a cycle. See the
+// overview's glyphs-options-is-exported Shared Decision.
+func GlyphsOptions() TOCOptions {
+	symbols := true
+	return TOCOptions{Depth: DepthAll, Symbols: &symbols}
+}
+
+// Glyphs answers a glyphs query for target, a repository-relative path with "" and "." both
+// meaning the root: it maps an empty target to ".", queries TOC under GlyphsOptions, and projects
+// the result through GlyphView. On a non-nil error it returns the zero GlyphsAnswer and that error
+// unchanged, so errors.Is(err, ErrTargetNotFound) keeps working through it exactly as it does
+// through TOC.
+//
+// The normalisation happens here, not in GlyphView, because TOC accepts "" and "." as the same
+// query: without normalising here, one query would have two spellings in its own answer's Target
+// field, and GlyphView is deliberately a verbatim echo of what it is handed.
+func (r *Repo) Glyphs(target string) (GlyphsAnswer, error) {
+	normalised := target
+	if normalised == "" {
+		normalised = "."
+	}
+	a, err := r.TOC(normalised, GlyphsOptions())
+	if err != nil {
+		return GlyphsAnswer{}, err
+	}
+	return GlyphView(normalised, a), nil
 }
 
 // Resolve answers every target in targets, positionally, exactly as the engine's own Resolve does:
