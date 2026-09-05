@@ -3,7 +3,7 @@
 ```yaml
 task: 'P2 — diff-to-symbols: changed file versions to symbol-table delta (roadmap 2c)'
 slug: 'diff-to-symbols'
-approved: false
+approved: true
 started: '20260905-154250'
 parent: 'main'
 root: ""
