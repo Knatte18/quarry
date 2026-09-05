@@ -129,7 +129,12 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
   `reasonText[ReasonNoSeparator]` is rewritten to name the fix, and `Parse` sets `Detail` to
   `s + "#"` so the message shows the exact spelling the caller wanted. The rendered line reads:
   `glyph: parse "internal/logger" as go: a glyph needs a "#"; a path is addressed as its own glyph by
-  appending one (internal/logger#)`.
+  appending one to its repository-relative form (internal/logger#)`.
+  The clause "to its repository-relative form" is **required, not decorative** — see the Risks entry
+  on cwd-relative targets. `Detail` echoes the caller's argument verbatim, so for a cwd-relative
+  argument it shows `logger.go#`, which is not a working glyph; without the clause the hint misleads
+  exactly the caller it is aimed at. This sentence is the authoritative wording, and it is what
+  Testing item 2's one message-shape test pins.
 - **Rationale:** one implementation of the grammar. `expand` already routes a bare path through this
   same reason, so the two verbs agree by construction rather than by two matching checks. Carrying
   the fix in `Detail` means the actionable half is data, not prose a caller has to parse.
@@ -475,8 +480,10 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
 2. `glyph/parse_test.go` — the reject table. `internal/logger` → `no_separator` with `Detail ==
    "internal/logger#"`; `a#b#c` and `a#b#` → `multiple_separators`; `#` → `unit_empty`; `.#` and
    `a/../b#` → `unit_dot_segment`; `a//b#` → `unit_empty_segment`. Assert the `Reason` value, not the
-   message text, except for one message-shape test on `no_separator` that pins the actionable
-   sentence.
+   message text, except for one message-shape test on `no_separator` that pins D4's authoritative
+   sentence verbatim — including the "to its repository-relative form" clause, which is the whole
+   point of the test. A cwd-relative argument row (`logger.go` → `Detail == "logger.go#"`) is part of
+   this table, so the test shows the clause doing its work on the exact input it exists for.
 3. `glyph/string_test.go` — `Glyph{Lang: Go, Unit: "a/b"}.String() == "a/b#"`, and the round trip
    `Parse(Go, s).String() == s` for every self-form row in test 1.
 4. `glyph/errors_test.go` (or wherever `Reasons` is currently exercised) — `Reasons` still enumerates
@@ -541,10 +548,11 @@ target list, and the T3 round trip.
   State it in `docs/glyph.md` §5 rather than leaving a reader to discover it.
 - **Cwd-relative resolve targets stop working** (D6). `quarry resolve logger.go` from inside
   `internal/logger` used to answer; the new spelling is `internal/logger/logger.go#` from anywhere.
-  Deliberate, and the `no_separator` message names the fix — but it names `logger.go#`, the cwd-local
-  spelling, which is *not* the working glyph. The message must therefore say the appended form is
-  repository-relative, or the actionable hint will mislead exactly the caller it is aimed at. Treat
-  this as a required detail of D4's message wording, not an optional polish.
+  Deliberate, and the `no_separator` message names the fix — but `Detail` names `logger.go#`, the
+  cwd-local spelling, which is *not* the working glyph. **Resolved in D4:** the message says the
+  appended form is repository-relative, and D4's quoted sentence carries that clause and is the
+  authoritative wording the message-shape test pins (Testing item 2). Recorded here as the reason
+  that clause is not optional, not as an open question.
 - **`ReasonMemberEmpty` is an exported constant leaving the API.** Free today (zero external
   consumers) and recorded in the squash message.
 
