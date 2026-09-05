@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-engine-maker
 slug: glyph-maker
 branch: glyph-maker
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r2  '2026-09-05T14:48:23Z'
 plan-fix-r2  '2026-09-05T14:49:42Z'
 planned  '2026-09-05T14:49:51Z'
 implementing  '2026-09-05T14:50:21Z'
+approved-engine-maker  '2026-09-05T14:57:05Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-09-05T14:50:21Z'
 ```yaml
 batches:
   - name: engine-maker
-    state: running
+    state: approved
     implementer_session: 29021cc8-48ed-4d30-a62a-87c27704d8b3
     start_sha: c0098adf63f09e22d48773cc6d28adb2b5bfe638
+    commit_sha: e6faa9473b90af02f8d00023b780e9bfe2a927e2
     verify_baseline_failures: []
   - name: facade-and-renderers
     state: pending
