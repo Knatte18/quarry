@@ -11,6 +11,8 @@
 package engine
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -98,4 +100,53 @@ func PackageClause(base string, src []byte) (clause string, ok bool) {
 		return "", false
 	}
 	return clause, true
+}
+
+// ClauseMapForFiles reads each base name in bases from the directory dirRel under the repository
+// root and records the clause PackageClause returns for it when PackageClause reports ok. It
+// applies the same extension guard dirPackage does ahead of its own read, so a base name whose
+// extension names no language is never opened, and it does not check UTF-8 validity itself: card 6
+// puts that check inside PackageClause, so this on-disk caller and the revision-side caller batch 6
+// adds both get it from the one place that check now lives.
+//
+// It takes a caller-supplied file list rather than enumerating dirRel itself, and that is
+// deliberate: the caller chooses one enumeration rule and applies it to both sides of a comparison,
+// so a directory's dominant clause can never differ between the two sides through a difference in
+// which files were counted. For the same reason it does not apply the engine's own ignore set —
+// the caller's enumeration rule is what decides which files count, not this method's own filtering.
+//
+// A base name it cannot read, whose bytes are not valid UTF-8, that fails to parse, or whose clause
+// is empty is skipped and records no clause in the returned map — the same rule dirPackage already
+// applies to a file that casts no vote — and none of those is an error: a base name listed by the
+// caller but deleted from the working tree is a routine input for the delta verb, not a failure of
+// the whole call. The returned error is reserved for a failure of the call itself, such as dirRel
+// naming a directory this process cannot read.
+func (r *Repo) ClauseMapForFiles(dirRel string, bases []string) (map[string]string, error) {
+	dirPath := r.absDir(dirRel)
+	info, err := os.Stat(dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("engine: read dir %q: %w", dirRel, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("engine: read dir %q: not a directory", dirRel)
+	}
+
+	clauses := make(map[string]string, len(bases))
+	for _, base := range bases {
+		if _, ok := LanguageForExtension(filepath.Ext(base)); !ok {
+			continue
+		}
+		src, err := os.ReadFile(filepath.Join(dirPath, base))
+		if err != nil {
+			// A base name naming a file absent from the working tree, or one this process cannot
+			// read, records no clause — the same rule dirPackage applies on pass one of the walk.
+			continue
+		}
+		clause, ok := PackageClause(base, src)
+		if !ok {
+			continue
+		}
+		clauses[base] = clause
+	}
+	return clauses, nil
 }
