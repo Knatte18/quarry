@@ -41,7 +41,8 @@ convention a later edit can quietly break.
   answer, carrying per symbol only `id`, `kind`, `file` and the `start`–`end` span, plus an
   explicit list of files that could not be fully read or parsed.
 - A pure, exported projection in the facade that turns a complete `DirAnswer` into that shape,
-  plus its JSON and text renderers.
+  plus its JSON and text renderers — the JSON one marshalling through an unexported shadow struct
+  so the view's key set is stated rather than inherited from the engine's `omitempty` placement.
 - A `glyphs` verb on the CLI, implemented as an argv rewrite to a frozen `toc` flag expansion —
   one preset table, one code path.
 - A byte-identity golden test proving `quarry glyphs <target>` is byte-identical to its documented
@@ -119,20 +120,70 @@ convention a later edit can quietly break.
   with `Doc`, `Signature` and `SigEnd` cleared and `File` filled with the symbol's
   repository-relative path. `Target` echoes the query's repository-relative target. `Incomplete`
   is every file entry in the answer whose `Error` or `Lossy` field was set, as a repository-relative
-  path, sorted, omitted when empty.
+  path, sorted, omitted when empty. The *Go value* a facade caller receives therefore carries
+  `Symbol`, unchanged; the *emitted JSON* drops the three cleared keys by the mechanism the
+  `glyphs-json-shadow-struct` decision below fixes, because clearing a field is not by itself
+  enough to keep it out of the JSON (`Symbol.Signature`'s tag is `json:"signature"` with no
+  `omitempty`).
 - Rationale: the roadmap's own words are "a flat projection … no recursive envelope", and
   `Symbol.File` exists for exactly this case — its doc comment already says it is empty inside a
   toc answer because the symbol sits in its file's entry, and filled where entries span files
   (`resolve`, `expand`). A flat list spanning files is that case. Reusing `Symbol` rather than
   declaring a narrower line type keeps one symbol shape across all four queries, which is the
   property `internal/cli/testdata/INDEX.md` already records as what distinguishes the rewritten CLI
-  from V1 — and the cleared fields simply drop out of the JSON, because `doc`, `signature` and
-  `sigend` all carry `omitempty` while `id`, `kind`, `file`, `start` and `end` do not.
+  from V1.
 - Rejected: the same nested `DirAnswer` with fields blanked (keeps the recursive envelope the
   roadmap explicitly excludes, and leaves a caller walking `dirs`/`files` to find symbols — the
   planner would have to reimplement the flattening); a bespoke `GlyphLine` struct (a second symbol
   shape, and the drift `Symbol`'s own stored-`ID` design exists to prevent); a bare top-level JSON
   array (no room for `incomplete`, and every other quarry answer is an object).
+
+### glyphs-json-shadow-struct
+
+- Decision: the glyphs view's JSON is produced through a small unexported shadow struct in
+  `quarry/view.go`, not by marshalling `Symbol` directly:
+
+  ```go
+  // glyphSymbol is the glyphs view's wire shape for one symbol: exactly the five keys the view
+  // promises, in Symbol's own declaration order, with Symbol's own tag spellings.
+  type glyphSymbol struct {
+      ID    string `json:"id"`
+      Kind  Kind   `json:"kind"`
+      File  string `json:"file"`
+      Start int    `json:"start"`
+      End   int    `json:"end"`
+  }
+  ```
+
+  `RenderGlyphsJSON` maps each `Symbol` into one of these and encodes the result through the same
+  `renderJSON` helper every other success renderer uses. The `GlyphsAnswer` a Go caller receives is
+  unchanged — it carries `[]Symbol` — so the shadow struct is a marshalling detail of one renderer,
+  never a second answer type. `internal/engine/answer.go` is not modified.
+- Rationale: `Symbol.Signature`'s tag is `json:"signature"` with **no** `omitempty`
+  (`internal/engine/answer.go:85`), so a cleared `Signature` marshals as `"signature": ""` on every
+  symbol — the promised key set is unreachable by clearing fields alone. Of the two ways out, this
+  one leaves the engine's key set untouched, which matters because that file's own doc comment
+  states the emitted key set is closed and changed only by an explicit decision, and because "no
+  existing envelope changes" is this task's constraint and "the existing goldens must not need
+  regeneration" is its done-criterion. A shadow struct also makes the view's key set *stated in one
+  readable place* rather than implied by which tags happen to carry `omitempty` — a later
+  `omitempty` added to `Symbol` for some other reason cannot silently change this view's output.
+  The one-symbol-shape rationale in `glyphs-answer-shape` is about the value every query answers
+  with, which is still `Symbol`; two renderers projecting one value differently is what `render.go`
+  already does across `RenderJSON`/`RenderResolveJSON`/`RenderExpandJSON`.
+- Rejected: **(b) adding `omitempty` to `Symbol.Signature`** in `internal/engine/answer.go` — it
+  would work, and no committed golden emits an empty `signature` today (every `toc --symbols`,
+  `resolve` and `expand` answer fills it, since `SignatureCut` falls back to the declaration's own
+  trimmed text when there is no body), but it is a change to a key set the engine declares closed,
+  made from a task whose constraint is that no existing envelope changes — the risk is that a
+  symbol whose signature is legitimately empty would silently lose the key for `toc`, `resolve` and
+  `expand` too, which is a contract change three verbs did not ask for. A custom `MarshalJSON` on a
+  local defined type over `Symbol` — same effect, but it hides the key set inside a method body and
+  `render.go`'s own header records that the alias types deliberately carry no methods.
+- Consequence for the implementer: the `Doc`/`Signature`/`SigEnd` clearing in `GlyphView` is
+  therefore about the *Go value* a facade caller sees (and about the text renderer, which reads
+  fields directly), not about the JSON. Both are worth asserting: a `GlyphView` table test on the
+  cleared fields, and a JSON test on the emitted key set.
 
 ### incomplete-is-explicit
 
@@ -363,8 +414,13 @@ package.
 
 **The engine's answer shape** (`internal/engine/answer.go`) is the file whose doc comment states
 that the emitted key set is closed and that no field is added or renamed without a corresponding
-decision. This task adds no field to `Symbol`, `FileEntry` or `DirAnswer` — `GlyphsAnswer` is a new
-type in the facade, over the same `Symbol`. `FileEntry.Symbols` is a `*[]Symbol` specifically so
+decision. This task adds no field to `Symbol`, `FileEntry` or `DirAnswer`, and changes no tag on
+one — `GlyphsAnswer` is a new type in the facade, over the same `Symbol`. Read the tags there
+before writing the renderer: `Signature` is `json:"signature"` with **no** `omitempty`
+(`:85`), `File` is `json:"file,omitempty"` (`:72`), while `Doc` (`:88`) and `SigEnd` (`:80`) do
+carry `omitempty`. That asymmetry is the whole reason for the shadow struct — see
+`glyphs-json-shadow-struct`. Note also that `Symbol.Glyph` is `json:"-"` and `HeadStart`/`HeadEnd`
+likewise, so they are never a concern for any renderer. `FileEntry.Symbols` is a `*[]Symbol` specifically so
 "not requested" is distinguishable from "requested, none found"; the projection must treat a nil
 `Symbols` as "no symbols to contribute" and not as an error, even though the frozen preset always
 requests them (a hand-built answer in a table test will have nil entries).
@@ -441,8 +497,13 @@ No `CONSTRAINTS.md` at the hub root. From `CLAUDE.md` and the task body:
   string), an answer with only incomplete files, one with both, and the no-trailing-whitespace /
   single-trailing-newline contract.
 - The glyphs JSON renderer — the key set (`target`, `symbols`, `incomplete`), `incomplete` omitted
-  when empty, `doc`/`signature`/`sigend` absent from every symbol, and the shared `renderJSON` byte
-  contract (two-space indent, one trailing newline).
+  when empty, and each symbol object carrying exactly `id`, `kind`, `file`, `start`, `end` in that
+  order, with `doc`, `signature` and `sigend` absent. The `signature` case is the load-bearing one
+  and deserves its own named case: it is absent because of the shadow struct
+  (`glyphs-json-shadow-struct`), not because of an `omitempty` — a test that only checks a symbol
+  *with* a signature proves nothing, so assert on a symbol whose `Signature` was non-empty in the
+  complete answer. Plus the shared `renderJSON` byte contract (two-space indent, one trailing
+  newline, no HTML escaping).
 - `preset-single-source` — the CLI preset tokens parsed through `parseArgs` yield the same depth and
   symbols the facade's `glyphsOptions()` carries.
 
@@ -493,3 +554,4 @@ side too.
 - **Q:** Does the view carry `sigend`? **A:** [auto-pick] no; the span is `start`–`end`. **Why:** "where does the body begin" is a question about reading the code, which is `toc`'s job, one flag away.
 - **Q:** What does the byte-identity golden cover? **A:** [auto-pick] a file target and a directory target, each in JSON and `--text` — four pairs, comparing stdout, stderr and exit code. **Why:** the two target shapes take different engine paths (`walkDir` vs `fileTargetAnswer`) and the two formats are separate renderers.
 - **Q:** How is the "directory with `--depth`" golden expressed, given the preset is frozen at `--depth all`? **A:** [auto-pick] as a `toc --view glyphs --depth 1` invocation. **Why:** it is a view case, not a preset case; forcing it through `glyphs` would require the override the frozen-preset rule forbids.
+- **Q:** [review r1 gap] `Symbol.Signature` has no `omitempty`, so clearing the field emits `"signature": ""` — how does the glyphs view actually produce its promised key set? **A:** [auto-pick] an unexported shadow struct in `quarry/view.go` that the JSON renderer maps each `Symbol` into, encoded through the existing `renderJSON`. **Why:** it leaves `internal/engine/answer.go`'s declared-closed key set untouched, which the task's "no existing envelope changes" constraint and its "existing goldens must not need regeneration" done-criterion both require; adding `omitempty` to `Symbol.Signature` would instead change the contract of `toc`, `resolve` and `expand` as collateral. Rejected alongside it: a custom `MarshalJSON` on a local type, since `render.go` records that the alias types deliberately carry no methods.
