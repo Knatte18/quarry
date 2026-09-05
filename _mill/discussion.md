@@ -51,7 +51,15 @@ convention a later edit can quietly break.
 - Goldens over the pinned Loomyard checkout for the glyphs view on a file, a directory, and a
   directory with `--depth`.
 - `docs/rewrite-plan.md` §5: one paragraph on the view mechanism, one on the preset rule.
-- `usageText` gains the verb, the flag, and the preset's expansion spelled literally.
+- `usageText` gains the verb, the flag, and the preset's expansion spelled literally; the two
+  `"no verb given; expected: …"` literals in `internal/cli/flags.go` gain `glyphs`, and the two
+  `flags_test.go` rows pinning them change with them.
+- `internal/cli/testdata/INDEX.md`: a row per new golden in the before-to-after table, its
+  "fifteen files" count updated (and the same count in `internal/cli/after_test.go`'s header
+  comment), and one sentence distinguishing this view from the retired compact view the file
+  already records as deliberately gone.
+- `docs/roadmap.md`: point 2a is removed on completion — the file's own header says it "only ever
+  says what is ahead", and this task is what makes 2a past. Points 2b and 2c are left alone.
 
 **Out:**
 
@@ -120,7 +128,19 @@ convention a later edit can quietly break.
   with `Doc`, `Signature` and `SigEnd` cleared and `File` filled with the symbol's
   repository-relative path. `Target` echoes the query's repository-relative target. `Incomplete`
   is every file entry in the answer whose `Error` or `Lossy` field was set, as a repository-relative
-  path, sorted, omitted when empty. The *Go value* a facade caller receives therefore carries
+  path, sorted, omitted when empty.
+
+  Two wire details are fixed here rather than left to the renderer: `Symbols` carries `json:"symbols"`
+  with **no** `omitempty`, and the renderer builds its slice with `make([]glyphSymbol, 0, n)`, so a
+  zero-symbol answer emits `"symbols": []` and never `"symbols": null` — a consumer parsing this
+  view iterates the key unconditionally. `Target` is a verbatim echo of the target string handed to
+  `GlyphView`; the *callers* normalise, so the two surfaces agree: the CLI passes the value
+  `repopath.RepoRelTarget` already produced (`.` for the root), and `Repo.Glyphs` maps an empty
+  target to `"."` before both its `TOC` call and the echo, because `Repo.TOC` accepts `""` and `"."`
+  as the same query (`quarry/repo.go:30`) and one query must not have two spellings in its own
+  answer.
+
+  The *Go value* a facade caller receives therefore carries
   `Symbol`, unchanged; the *emitted JSON* drops the three cleared keys by the mechanism the
   `glyphs-json-shadow-struct` decision below fixes, because clearing a field is not by itself
   enough to keep it out of the JSON (`Symbol.Signature`'s tag is `json:"signature"` with no
@@ -252,6 +272,60 @@ convention a later edit can quietly break.
   package tree gets a partial index and cannot tell); passing the caller's own `--depth` through
   (not a frozen preset — see `preset-is-frozen`).
 
+### view-glyphs-implies-symbols
+
+- Decision: under `--view glyphs`, an absent `--symbols`/`--no-symbols` defaults to **on**, and an
+  explicit `--no-symbols` is a usage error (exit 2): `--no-symbols is not valid with --view glyphs`.
+  Mechanically, `parseArgs` sets `req.symbols` to a pointer to `true` when the view is `glyphs` and
+  `req.symbols` is still nil, after all flags are read. The frozen preset still spells `--symbols`
+  explicitly, so it does not depend on this default; the default exists for a direct
+  `toc --view glyphs` invocation.
+- Rationale: the engine's own per-target default for `TOCOptions.Symbols` is nil ⇒ **false for a
+  directory target** (`internal/engine/answer.go:256-259`), so `toc --view glyphs <dir>` with no
+  `--symbols` would answer with an empty symbol list — a view whose entire content is symbols,
+  returning none, and indistinguishable at the consumer from "this directory declares nothing".
+  That is the same wrong-negative failure `incomplete-is-explicit` exists to prevent, arriving by a
+  different door. `--no-symbols` is rejected rather than honoured for the same reason: it asks for
+  a view of nothing, which is a caller mistake, not a query.
+- Rejected: leaving the engine's nil-default in force and calling the empty answer honest (the
+  footgun above, in the one invocation a caller reaches for when they *don't* want to spell the
+  preset); silently ignoring `--no-symbols` under `--view glyphs` (a flag that is accepted and does
+  nothing is worse than one that is rejected); moving the default into the engine (it would change
+  the viewless `toc` contract, which is out of scope).
+- Note this is a *default*, not a filter: `--view full --no-symbols` and viewless `--no-symbols`
+  are untouched, so "no view is ever forced" still holds — the complete answer, with or without
+  symbols, stays exactly one flag away.
+
+### glyphs-usage-errors-name-glyphs
+
+- Decision: every usage error a `glyphs` invocation can produce names `glyphs`, never `toc`. This
+  is achieved by validating the *user's own* tokens in the `glyphs` branch of `parseArgs`, **before**
+  the argv rewrite, and returning the rejection from there:
+  - any of `--view`, `--depth`, `--symbols`, `--no-symbols` (in either the `--flag value` or
+    `--flag=value` form) → `usageError("--depth is not valid for glyphs")` etc., the existing
+    `"%s is not valid for %s"` format with `glyphs` as the verb;
+  - `--unit` → the same message, with `glyphs` as the verb;
+  - any other unrecognised flag → the existing verb-free `unknown flag: %s`;
+  - a non-flag token count other than one → `glyphs takes exactly one target, got %d`.
+
+  The pre-scan splits each token with the same `strings.Cut` on the first `=` the main loop uses,
+  and consumes a following token as a value for `--root` (the one value-taking flag `glyphs`
+  accepts) exactly as the main loop's `nextValue()` does, so a target is never miscounted as a
+  flag's value or vice versa. Only after the pre-scan passes is the argv rewritten and re-parsed as
+  `toc`. The re-parse therefore cannot produce a usage error; if it ever does, its message names
+  `toc`, and that branch is unreachable by construction — worth a sentence in the code saying so,
+  in the style `Run`'s own unreachable-default branches already use.
+- Rationale: `preset-is-frozen` promises rejections naming the verb the caller typed, and after the
+  rewrite `req.verb` is `"toc"`, so the existing target-count message at `internal/cli/flags.go:166`
+  would emit `toc takes exactly one target, got 2` for `quarry glyphs a b` — naming a verb the
+  caller never typed, about flags they never passed. A caller cannot act on that.
+- Rejected: threading a "display verb" through the whole parser and spelling every message from it
+  (the toc-only flag guards would then have to reject the preset's *own* injected `--view`,
+  `--depth` and `--symbols` tokens, requiring a positional exemption for the injected prefix —
+  more machinery, and a rule that is easy to get subtly wrong); accepting `toc`-named errors as a
+  documented quirk (contradicts `preset-is-frozen` and is exactly the leak the verb exists to
+  avoid).
+
 ### preset-is-frozen
 
 - Decision: `glyphs` accepts `--text` and `--root` and nothing else. `--view`, `--depth`,
@@ -325,9 +399,14 @@ convention a later edit can quietly break.
 
   e.g. `internal/logger/logger.go:155-163 function internal/logger#stderrHandlerSnapshot`. No
   directory line, no file line, no header, no docstring, no signature, no `(sig …)` clause. The
-  incomplete block, when present, follows per `incomplete-is-explicit`. The rendered string has no
-  trailing whitespace on any line and ends with exactly one `\n`, matching `RenderText`'s existing
-  contract; an answer with no symbols and no incomplete files renders as the empty string.
+  incomplete block, when present, follows per `incomplete-is-explicit`.
+
+  `RenderGlyphsText` states its own byte contract rather than borrowing `RenderText`'s, because the
+  two differ in exactly one case: an answer with no symbols and no incomplete files renders as the
+  **empty string**, which `RenderText`'s "ends with exactly one `\n`" rule (`quarry/text.go:19`)
+  does not admit. The contract is: no trailing whitespace on any line; every non-empty rendering
+  ends with exactly one `\n`; an empty answer renders as `""`. Emitting a bare `"\n"` for an empty
+  answer would put a blank line on a caller's stdout that says nothing.
 - Rationale: `kind` must be spelled explicitly here, because in the existing symbol line the kind is
   only inferable from the signature — which this view drops. Leading with the file keeps the lines
   sortable and greppable by location, matching the existing `writeSymbolLine`'s own file-prefix
@@ -379,11 +458,19 @@ convention a later edit can quietly break.
 
 **The CLI.** `internal/cli/flags.go` holds `request` and the hand-rolled `parseArgs`; the parser is
 hand-rolled because `flag` cannot express `--depth all` alongside `--depth 3`. The verb gate is a
-literal four-way string comparison and the `"no verb given"` and `"unknown verb"` messages both
-enumerate the verbs — three sites to extend for `glyphs`, plus the `--root` validity check (which
-excludes `name` by name) and each query flag's `verb != "toc"` guard. Value flags are read through
-the local `nextValue()` closure, which handles both `--flag=value` and `--flag value`; `--view`
-follows it.
+literal four-way string comparison (`flags.go:73`). Read the three message sites carefully, because
+they are not alike: the two `"no verb given; expected: toc, resolve, expand, or name"` literals
+(`:66` and `:71`) **do** enumerate the verbs and therefore gain `glyphs`; `"unknown verb: %s"`
+(`:74`) does **not** enumerate and is left exactly as it is. `flags_test.go` pins all three strings
+(`:156`, `:157`, `:158`), so the two enumerating rows change with the literals and the
+`unknown-verb` row does not. Extending the enumeration is not a behaviour change the constraints
+forbid — the sentence lists the verbs that exist, and one now does; leaving `glyphs` out of it
+would make the CLI advertise a verb set it does not have.
+
+Beyond the verb gate: the `--root` validity check excludes `name` by name, and each query flag
+carries its own `verb != "toc"` guard. Value flags are read through the local `nextValue()`
+closure, which handles both `--flag=value` and `--flag value`; `--view` follows it, and the
+`glyphs` pre-scan (`glyphs-usage-errors-name-glyphs`) mirrors its value-consuming rule.
 
 `internal/cli/cli.go` holds `Run` and the four per-verb pipelines. Under the `rewrite-mechanism`
 decision, `Run` needs no change at all: `req.verb` is already `"toc"` by the time it dispatches.
@@ -479,10 +566,17 @@ No `CONSTRAINTS.md` at the hub root. From `CLAUDE.md` and the task body:
 **Pure table tests, no repository (the bulk of the value):**
 
 - `parseArgs` — TDD candidate. `--view full`, `--view glyphs`, `--view=glyphs`, `--view` with no
-  value, an unknown `--view` value, `--view` on `resolve`/`expand`/`name`; the `glyphs` verb with
-  no flags, with `--text`, with `--root`, with each of `--view`/`--depth`/`--symbols`/`--no-symbols`
-  (each rejected), with zero and with two targets; `glyphs` in the `--help` scan (help still wins);
-  the `unknown verb` and `no verb given` messages now naming five verbs. The load-bearing case:
+  value, an unknown `--view` value, `--view` on `resolve`/`expand`/`name`; `--view glyphs` with no
+  symbols flag (yields `symbols` pointing to `true`), with `--symbols` (unchanged), and with
+  `--no-symbols` (rejected, message named); `--view full --no-symbols` and viewless `--no-symbols`
+  still yielding `false`, which is what proves the default is scoped to the glyphs view. The
+  `glyphs` verb with no flags, with `--text`, with `--root <path>` and `--root=<path>`, with each of
+  `--view`/`--depth`/`--symbols`/`--no-symbols`/`--unit` (each rejected, and each expected message
+  asserted to name **`glyphs`**, never `toc` — that is the whole point of the pre-scan), with an
+  unknown flag, with zero and with two targets (`glyphs takes exactly one target, got N`), and the
+  miscounting case the pre-scan exists to get right: `glyphs --root <path> <target>` is one target,
+  not two. `glyphs` in the `--help` scan (help still wins). The two `no verb given` messages now
+  naming five verbs; `unknown verb: bogus` unchanged. The load-bearing case:
   `parseArgs(["glyphs", "x"])` returns a `request` deep-equal to `parseArgs(["toc", "--view",
   "glyphs", "--depth", "all", "--symbols", "x"])` — the rewrite asserted at the parser, before any
   rendering.
@@ -493,11 +587,15 @@ No `CONSTRAINTS.md` at the hub root. From `CLAUDE.md` and the task body:
   through `joinRel` including the `Dir == "."` root case; `Doc`/`Signature`/`SigEnd` cleared on
   every symbol; the input `DirAnswer` not mutated (the projection copies — a shared-backing-array
   bug here would corrupt a caller's own answer).
-- The glyphs text renderer — the line grammar for each kind, an answer with no symbols (empty
-  string), an answer with only incomplete files, one with both, and the no-trailing-whitespace /
-  single-trailing-newline contract.
+- The glyphs text renderer — the line grammar for each kind, an answer with no symbols and no
+  incomplete files (exactly `""`, per `text-line-shape`'s own contract — not `"\n"`), an answer
+  with only incomplete files, one with both, and the no-trailing-whitespace /
+  single-trailing-newline-when-non-empty contract.
 - The glyphs JSON renderer — the key set (`target`, `symbols`, `incomplete`), `incomplete` omitted
-  when empty, and each symbol object carrying exactly `id`, `kind`, `file`, `start`, `end` in that
+  when empty, a zero-symbol answer emitting `"symbols": []` and never `"symbols": null` (the
+  `make([]glyphSymbol, 0, n)` rule — this fails if the slice is left nil, so it is its own case),
+  `target` echoed as `"."` for both `Glyphs("")` and `Glyphs(".")`, and each symbol object carrying
+  exactly `id`, `kind`, `file`, `start`, `end` in that
   order, with `doc`, `signature` and `sigend` absent. The `signature` case is the load-bearing one
   and deserves its own named case: it is absent because of the shadow struct
   (`glyphs-json-shadow-struct`), not because of an `omitempty` — a test that only checks a symbol
@@ -513,13 +611,19 @@ No `CONSTRAINTS.md` at the hub root. From `CLAUDE.md` and the task body:
 - `glyphs-dir-text.txt` — `glyphs --text internal/logger`
 - `glyphs-file.txt` — `glyphs internal/logger/logger.go`
 - `glyphs-file-text.txt` — `glyphs --text internal/logger/logger.go`
-- `toc-view-glyphs-depth.txt` — `toc --view glyphs --depth 1 internal/logger` (the directory-with-depth
-  case; it is a `toc` invocation rather than a `glyphs` one precisely because the preset is frozen
-  at `--depth all`)
+- `toc-view-glyphs-depth.txt` — `toc --view glyphs --depth 1 <dir-with-a-subtree>` (the
+  directory-with-depth case; it is a `toc` invocation rather than a `glyphs` one precisely because
+  the preset is frozen at `--depth all`). No `--symbols` in this invocation, deliberately: under
+  `view-glyphs-implies-symbols` the view supplies that default, and this golden is what proves it
+  — a non-empty symbol list here *is* the assertion. A version of this row that spelled `--symbols`
+  would pass whether the default works or not.
 
-Pick a directory target with a real subtree for the depth case if `internal/logger` has no
-subdirectory at the pin — the point of the case is that a nested level's symbols appear in the flat
-list with their own `file` values.
+Pick a directory target that actually has a subdirectory with symbols at the pin —
+`internal/logger` has none, and the point of the case is that a nested level's symbols appear in
+the flat list with their own `file` values. Confirm the choice by running
+`quarry toc --depth 1 <dir>` against the checkout before committing the golden; if no suitable
+directory exists at the pin, say so in `testdata/INDEX.md` rather than committing a golden that
+silently proves nothing.
 
 **The byte-identity golden** — its own test function, not a golden file: for each of a file target
 and a directory target, and for each of JSON and `--text`, run `Run(["glyphs", "--root", repo,
@@ -555,3 +659,9 @@ side too.
 - **Q:** What does the byte-identity golden cover? **A:** [auto-pick] a file target and a directory target, each in JSON and `--text` — four pairs, comparing stdout, stderr and exit code. **Why:** the two target shapes take different engine paths (`walkDir` vs `fileTargetAnswer`) and the two formats are separate renderers.
 - **Q:** How is the "directory with `--depth`" golden expressed, given the preset is frozen at `--depth all`? **A:** [auto-pick] as a `toc --view glyphs --depth 1` invocation. **Why:** it is a view case, not a preset case; forcing it through `glyphs` would require the override the frozen-preset rule forbids.
 - **Q:** [review r1 gap] `Symbol.Signature` has no `omitempty`, so clearing the field emits `"signature": ""` — how does the glyphs view actually produce its promised key set? **A:** [auto-pick] an unexported shadow struct in `quarry/view.go` that the JSON renderer maps each `Symbol` into, encoded through the existing `renderJSON`. **Why:** it leaves `internal/engine/answer.go`'s declared-closed key set untouched, which the task's "no existing envelope changes" constraint and its "existing goldens must not need regeneration" done-criterion both require; adding `omitempty` to `Symbol.Signature` would instead change the contract of `toc`, `resolve` and `expand` as collateral. Rejected alongside it: a custom `MarshalJSON` on a local type, since `render.go` records that the alias types deliberately carry no methods.
+- **Q:** [review r2 gap] What does `toc --view glyphs` do without `--symbols`, or with `--no-symbols`? **A:** [auto-pick] the view defaults absent-symbols to on and rejects `--no-symbols` with a named usage error. **Why:** the engine's nil-default is *false* for a directory target (`internal/engine/answer.go:256-259`), so the view's most natural direct invocation would answer with an empty symbol list — the same wrong-negative `incomplete-is-explicit` exists to prevent. The depth golden is respelled to rely on this default, so it proves it.
+- **Q:** [review r2 gap] After the argv rewrite `verb` is `"toc"`, so `quarry glyphs a b` would say `toc takes exactly one target` — which verb do a glyphs invocation's usage errors name? **A:** [auto-pick] always `glyphs`, by validating the user's own tokens in a pre-scan *before* the rewrite. **Why:** `preset-is-frozen` promises rejections naming the typed verb; an error naming `toc` about flags the caller never passed is unactionable. Rejected: threading a display verb through the parser, which would then have to exempt the preset's own injected tokens positionally.
+- **Q:** [review r2] Does `unknown verb: %s` gain a verb enumeration? **A:** [auto-pick] no — it never enumerated (`flags.go:74`); only the two `no verb given` literals do, and those gain `glyphs` along with the two `flags_test.go` rows pinning them. **Why:** the technical-context claim that all three enumerate was false; correcting it also scopes the message change to the two sites that are actually lists.
+- **Q:** [review r2] What is a zero-symbol answer's wire shape, and does the text renderer really share `RenderText`'s contract? **A:** [auto-pick] `"symbols": []` (never `null`, via `make([]glyphSymbol, 0, n)`), and the text renderer states its own contract: empty answer renders as `""`. **Why:** `Symbols` has no `omitempty`, so a nil slice would marshal as `null` and force every consumer to nil-check; and `RenderText`'s "ends with exactly one `\n`" cannot describe an empty rendering.
+- **Q:** [review r2] `Repo.TOC` accepts both `""` and `"."` for the root — which does `Target` echo? **A:** [auto-pick] `"."`; `Repo.Glyphs` normalises an empty target before both the query and the echo, and `GlyphView` stays a verbatim echo of what it is handed. **Why:** one query must not have two spellings in its own answer, and the CLI already passes the normalised form from `RepoRelTarget`.
+- **Q:** [review r2] Are the roadmap edit and the INDEX.md updates in scope? **A:** [auto-pick] yes — both added to Scope "In" explicitly. **Why:** a plan writer enumerates work from that list; naming them only in Technical context is how required artefacts get dropped.
