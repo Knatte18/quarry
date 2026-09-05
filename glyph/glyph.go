@@ -32,6 +32,16 @@ type Glyph struct {
 	Params []string
 }
 
+// IsSelf reports whether g is the self form: a glyph naming its unit's whole directory or file
+// rather than a member within it. All three of Owner, Name and Params are tested, not merely Owner
+// and Name, because String prints "()" for a non-nil empty Params: its nil-versus-non-nil state,
+// not its length, decides the parentheses, so a hand-built Glyph{Unit: "a", Params: []string{}}
+// would report true here while printing "a#()", breaking the property that removing the trailing
+// "#" yields the plain path.
+func (g Glyph) IsSelf() bool {
+	return len(g.Owner) == 0 && g.Name == "" && g.Params == nil
+}
+
 // String is a total pure printer: it never returns an error, never panics, and never validates. It
 // prints Unit, "#", the Owner chain and Name joined by ".", and Params in parentheses when Params
 // is non-nil — including when Params is a non-nil empty slice, which prints "()".
