@@ -77,6 +77,38 @@ func TestTOCErrors_TargetOutsideRepository(t *testing.T) {
 	}
 }
 
+// TestTOCErrors_TargetHasSeparator pins that a target carrying the glyph grammar's "#" separator
+// reaches the server's error surface with the separator message, byte-identical to the sentence
+// internal/cli/cli.go's runTOC emits for the same condition, rather than falling into the
+// internal-error else-arm: that arm still produces an error result and would pass a shape-only
+// assertion, which is exactly the failure this test guards against.
+func TestTOCErrors_TargetHasSeparator(t *testing.T) {
+	client := connectedClient(t, fixtureRepoRoot(t))
+
+	const target = "alpha#bravo"
+	got, err := client.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "toc",
+		Arguments: map[string]any{"target": target},
+	})
+	if err != nil {
+		t.Fatalf("CallTool(target=%q): %v", target, err)
+	}
+	if !got.IsError {
+		t.Fatalf("CallTool(target=%q): IsError = false; want true", target)
+	}
+	if len(got.Content) != 1 {
+		t.Fatalf("CallTool(target=%q): %d content blocks; want 1", target, len(got.Content))
+	}
+	text, ok := got.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("CallTool(target=%q): content block is a %T; want *mcp.TextContent", target, got.Content[0])
+	}
+	want := string(quarry.RenderErrorJSON(`target contains the glyph separator "#": ` + target))
+	if text.Text != want {
+		t.Errorf("CallTool(target=%q) text = %q; want %q", target, text.Text, want)
+	}
+}
+
 func TestTOCErrors_BrokenSymlinkNeverFollowed(t *testing.T) {
 	root := writeScratchTree(t, "toc-errors-broken-symlink", map[string]string{
 		"placeholder.go": "package placeholder\n",
