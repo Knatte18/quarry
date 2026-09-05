@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: diff-to-symbols
 branch: diff-to-symbols
-plan: null
+plan: _mill/plan
 parent: main
 task: 'P2 — diff-to-symbols: changed file versions to symbol-table delta (roadmap 2c)'
 task_description: |
@@ -23,4 +23,5 @@ discussion-gap-fix-r5  '2026-09-05T15:14:35Z'
 discussion-gap-fix-r6  '2026-09-05T15:23:05Z'
 blocked  '2026-09-05T15:23:18Z'
 discussed  '2026-09-05T15:39:35Z'
+planning  '2026-09-05T15:54:52Z'
 ```
