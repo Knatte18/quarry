@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: glyph-maker
 branch: glyph-maker
-plan: null
+plan: _mill/plan
 parent: main
 task: 'The glyph-maker: declaration to glyph (P1, roadmap 2b)'
 task_description: |
@@ -22,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-05T14:07:23Z'
 discussion-gap-fix-r5  '2026-09-05T14:14:53Z'
 discussion-gap-fix-r6  '2026-09-05T14:20:48Z'
 discussed  '2026-09-05T14:20:48Z'
+planning  '2026-09-05T14:30:54Z'
 ```
