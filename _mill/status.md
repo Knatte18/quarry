@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-docs-inventory
+phase: holistic-reviewing
 slug: glyph-maker
 branch: glyph-maker
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-facade-and-renderers  '2026-09-05T15:02:12Z'
 approved-naming-round-trip  '2026-09-05T15:07:23Z'
 approved-cli-verb  '2026-09-05T15:16:16Z'
 approved-docs-inventory  '2026-09-05T15:21:14Z'
+holistic-reviewing  '2026-09-05T15:21:50Z'
 ```
 
 ## Batches
