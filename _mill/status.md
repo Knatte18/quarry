@@ -53,7 +53,8 @@ batches:
     self_resolve_remint_at: '2026-09-05T17:47:42Z'
   - name: goldens-and-docs
     state: running
-    implementer_session: 72880d36-0e5f-4386-b794-3e5b9d22c52c
-    start_sha: 62393db7556632e23d19fc900a8a48b436c73472
+    implementer_session: 73ea5979-52e1-4d8f-9dfe-3a9c70fe1021
+    start_sha: 4dff18863012a6c89312beca2a5945e86969b1c9
     verify_baseline_failures: []
+    self_resolve_remint_at: '2026-09-05T18:04:03Z'
 ```
