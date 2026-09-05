@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-goldens-history-docs
+phase: holistic-reviewing
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -46,6 +46,7 @@ approved-facade-delta  '2026-09-05T17:50:57Z'
 approved-delta-renderers  '2026-09-05T17:58:10Z'
 approved-cli-delta-verb  '2026-09-05T18:10:12Z'
 approved-goldens-history-docs  '2026-09-05T18:20:47Z'
+holistic-reviewing  '2026-09-05T18:21:16Z'
 ```
 
 ## Batches
