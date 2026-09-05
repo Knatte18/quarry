@@ -240,6 +240,30 @@ construction, and there is never a parallel naming rulebook that can drift from 
   its unreachable branches rather than letting one fall through to a success shape.
 - Rejected: one `parse` word for every failure — the caller cannot then tell "your fragment is
   malformed" from "your fragment declared two things", which are different fixes.
+- **The `Error` sentence for each reason**, since the text renderer prints it and two goldens pin
+  its bytes. Each is single-line and **does not repeat the target**, which the text view already
+  prints ahead of it (`<target> error <reason>: <message>`):
+
+  | reason | `Error` sentence |
+  | --- | --- |
+  | `parse` | `declaration does not parse` |
+  | `no_declaration` | `declaration declares no symbol` |
+  | `several_declarations` | `declaration declares N symbols; exactly one is required` |
+  | `internal` | `internal error: ` + the underlying error's own text |
+  | *(propagated)* | the `*glyph.ParseError`'s own `Error()` text, whole |
+
+  `several_declarations` carries the count because "two" and "eleven" are different mistakes and
+  the number is free — the maker counted them to reject the entry.
+  The propagated row is the one sentence that does name the target, since glyph composes it that
+  way; that is the same exception `cli.go`'s own contract rule already grants `runExpand`'s
+  `*glyph.ParseError` branch, on the grounds that `glyph` is a public package the contract names
+  rather than an internal one whose name would leak.
+  The `internal` row's sentence is the only one carrying a wrapped chain, matching exit 3's
+  existing rule that it alone carries `err.Error()` whole behind one prefix.
+- **The missing-`--unit` usage sentence** is `--unit is required for name`, following the existing
+  per-verb rejection shape (`--depth is not valid for resolve`) rather than the value-shape one
+  (`--unit requires a value`, which is what a bare `--unit` with no value gets from the existing
+  `nextValue` path).
 
 ### Accepted declaration forms
 
@@ -324,14 +348,28 @@ construction, and there is never a parallel naming rulebook that can drift from 
   through the payload path would make `quarry name` report exit 1 for a condition the help text
   says is exit 3.
 - The facade keeps carrying `internal` as a per-entry reason regardless, because a batch must not
-  lose the other entries' good answers to one entry's internal failure. The divergence is only in
-  how the *CLI*, which renders one entry, maps it — and it is the one place a `NameResult` does
-  not round-trip to its own exit code through `codeForNameResult` alone.
+  lose the other entries' good answers to one entry's internal failure. The CLI, which renders one
+  entry, is where the two diverge: `codeForNameResult` maps the reason to exit 3 correctly, but
+  the *bytes* differ — the error envelope rather than the payload.
+- **`runName`'s step order, stated explicitly, because the two rules below are otherwise
+  contradictory:**
+  1. Call the facade. Take the single result.
+  2. **Check `Reason == internal` first, before rendering anything.** If it is, take `fail`'s path
+     — compact error envelope on stdout, the same sentence on stderr, exit 3 — and return. No
+     payload is written on this route.
+  3. Otherwise render the payload (`RenderNameText` under `--text`, `RenderNameJSON` otherwise),
+     write it to stdout, and only then compute and return `codeForNameResult(result)`. The
+     payload-before-code order matters for the same reason it does in `runResolve`: a negative
+     answer must be rendered, not replaced by the failure envelope.
+  Read out of order — payload first, then the `internal` check — these two rules would emit a
+  success payload *followed by* an error envelope on the same stdout. The check comes first.
 - Rationale: the D2 rule stated in `docs/rewrite-plan.md` §5 — a negative answer renders its
   payload with exit 1, and the error envelope is only for usage and internal errors with no
   payload. A malformed declaration is a negative answer *about the declaration*, which the maker
   answers with a reason; it is not a usage error.
-- The payload is written to stdout before the exit code is computed, matching `runResolve`.
+- On the payload route the bytes are written to stdout before the exit code is computed, matching
+  `runResolve` — but that route is reached only after the `internal` check above, per `runName`'s
+  stated step order.
 
 ### Text view
 
@@ -594,13 +632,17 @@ Table tests over the maker function directly, no fixtures on disk, no repository
 4. For every excluded symbol, assert the maker returns a per-entry *error* — never a wrong id.
    This is what keeps the exclusions honest rather than a silent skip.
 5. Guard against a vacuous pass with **three pinned counts, not a fuzzy threshold**: the harvest
-   total, the in-contract count, and the excluded count are constants in the test, produced by the
-   first run against `72c23d9` and regenerated only under the existing `-update` flag, exactly as
-   this package's other Loomyard goldens are. The checkout is pinned, so these numbers are stable,
-   and any drift — an extractor change, a partition bug — fails loudly and attributably instead of
-   passing under a threshold wide enough to hide it. A ratio or an "implausibly small" judgement
-   would have to be chosen without knowing the repository, and two plan writers would choose two
-   different gates.
+   total, the in-contract count, and the excluded count. They live in **a counts golden file,
+   `internal/engine/testdata/loomyard/naming-counts.json`**, compared and rewritten by the same
+   `compareGolden` mechanism (`golden_test.go:113-119`) the package's other Loomyard goldens use,
+   under the existing `-update` flag. A Go `const` cannot be rewritten by a flag, so "constants
+   regenerated under `-update`" — the earlier draft's phrasing — was two mechanisms that cannot
+   both hold; a golden file is the half that keeps `-update` working, and `-update`'s own
+   description already says "the Loomyard goldens under testdata/loomyard", which this file is.
+   The checkout is pinned, so the numbers are stable, and any drift — an extractor change, a
+   partition bug — fails loudly and attributably instead of passing under a threshold wide enough
+   to hide it. A ratio or an "implausibly small" judgement would have to be chosen without knowing
+   the repository, and two plan writers would choose two different gates.
    Alongside the constants, one cheap structural floor that holds before they are filled in on the
    first run: **the in-contract count must be greater than zero and the excluded count must be
    strictly less than the harvest total** — a partition bug that sweeps everything into one side
@@ -644,6 +686,32 @@ files. They are machine-independent — the maker reads no repository — so unl
 Loomyard goldens they run everywhere with no environment gate. `docs/research/output-formats/after/`
 is a frozen research record and must not be added to.
 
+`internal/cli` has no `testdata/` directory today, and its one golden helper is not reusable here,
+so the harness has to be stated rather than assumed:
+
+- **Compare/update helper.** A new `compareNameGolden(t, name, got string)` reading
+  `testdata/name/<name>`, shaped exactly like `compareAfterGolden` (`after_test.go:189-211`):
+  byte-for-byte comparison, or a write under the update flag. It cannot reuse
+  `compareAfterGolden` itself — that function hard-codes the
+  `../../docs/research/output-formats/after/` path, and its caller `TestAfterGoldens` is gated by
+  `loomyardRepo(t)`, both wrong for a table that must run on a machine with no checkout.
+- **The update flag is reused, not added.** `flag.Bool` panics on a duplicate name within one
+  binary, and `internal/cli` already declares `-update` (`loomyard_test.go:29`). So the new table
+  honours that same flag — which makes its description, *"regenerate the after/ goldens under
+  docs/research/output-formats/after from the current LADDER_LOOMYARD_REPO checkout"*, wrong in
+  both halves for these files: they are not under `after/` and need no checkout. **Widen that flag
+  description and its doc comment, and add both to the docs inventory** — this is a fourth
+  inventory site the earlier predicate would not have surfaced, since it counts no surface.
+- **File body: the payload bytes and nothing else.** No `$ quarry ...` invocation header. The
+  header on the `after/` goldens exists because those files are read as evidence documents in the
+  research record; these are regression fixtures. It also matters concretely: a header would make
+  each `.json` golden invalid JSON, and the engine's own `testdata/loomyard/*.json` goldens are
+  pure payload with no header — that is the precedent a `testdata/` golden follows.
+- **Exit code is pinned per row, in the table, not in the file.** Each of the six cases carries its
+  expected exit code alongside its two golden names: 0 for the four answering cases, 1 for the
+  malformed and multi-symbol rejections. Pinning the code in the table rather than in the file
+  body keeps the golden byte-comparable against raw stdout.
+
 **Docs and the verb-set inventory.**
 
 This task adds a fourth verb, a fourth facade query, a fourth JSON success renderer and a fourth
@@ -668,7 +736,24 @@ Prose and contract:
   original claim is not quietly falsified.
 - `README.md:3` — "three" and the verb list → four, `toc`, `resolve`, `expand`, `name`.
 - `internal/cli/doc.go:11,13` — "The command has three verbs" plus the per-verb sentences → add
-  `name`'s.
+  `name`'s: it takes a declaration head, which is neither a path nor a glyph.
+- `internal/cli/doc.go:15-20` — **extend.** "A target is handed to the facade verbatim ... whenever
+  the verb takes a glyph" is true of `name` for the same reason (no path arithmetic, no stat), but
+  its stated condition excludes it; widen the condition from "whenever the verb takes a glyph" to
+  "whenever the verb does not take a path". The paragraph's closing sentence, "'toc' is the only
+  verb that still takes a path", stays true as written and needs no edit — worth stating so the
+  next reader does not change it twice.
+- `internal/cli/doc.go:22-29` — **extend.** The negative-answer paragraph says such an answer is
+  "a payload carrying a status word (or, for the pre-resolution case, an error field of its own)".
+  `name`'s negative payload carries `error`/`reason` and no status at all, which the parenthetical
+  anticipates in shape but attributes only to `resolve`'s pre-resolution rejection; name the maker
+  there explicitly. This paragraph also states what the `ok` key does and does not mean, which is
+  the rule the no-`ok` decision above rests on — extending it keeps that rule's own statement true.
+- `internal/cli/doc.go:31-39` — **keep, no edit.** The classification paragraph says `glyph.Parse`
+  is the single classifier and that no surface tests a target for `"#"`. `name` adds no
+  classification of any kind: its target is a fragment handed to the extractor, never tested for a
+  separator, so the paragraph stays true. Listed here because a reader auditing the file will ask,
+  and "no change" is a disposition.
 
 Facade surface counts (the class the first two drafts' predicate could not reach):
 
@@ -748,4 +833,8 @@ Not touched:
 - **Q:** How is "`name` dispatches before root resolution" tested, given the scratch-tree helper builds inside the repository? **A:** [r3] `t.Chdir("/")`, asserting `name` exits 0 and `toc` exits 2 from there. **Why:** `Run` resolves the root from `os.Getwd()`, so only a working-directory change reaches the no-root state; Go 1.26 has `t.Chdir`, and it makes `cli.go:150-152`'s "which these tests never do" stale, to be updated in the same edit.
 - **Q:** What exit code does the `internal` reason produce? **A:** [r3] exit 3 through `fail`'s error envelope, not exit 1 with a payload. **Why:** an unwired grammar says nothing about the caller's declaration, and `usage.go` already promises exit 3 for internal errors; the facade still carries it per-entry so a batch loses nothing.
 - **Q:** Does the naming round trip call `assertSymbolRoundTrip`? **A:** [r3] no — its own `TOC` walk plus the shared collector. **Why:** that helper's second half re-runs a per-unit span lookup this test does not need, and its doc comment names go test's default timeout as a live constraint at Loomyard scale.
+- **Q:** How are the new CLI goldens compared and regenerated? **A:** [r4] a new `compareNameGolden` helper over `testdata/name/`, honouring the package's existing `-update` flag, whose description must be widened. **Why:** `compareAfterGolden` hard-codes the frozen `after/` path and its caller is gated on a Loomyard checkout; `flag.Bool` panics on a duplicate name, so a second `-update` is impossible.
+- **Q:** What do the golden files contain? **A:** [r4] the payload bytes only — no `$ quarry` header — with the exit code pinned in the table. **Why:** a header would make each `.json` golden invalid JSON, and the engine's own `testdata/loomyard/*.json` goldens are pure payload; `after/`'s header exists because those files are evidence documents.
+- **Q:** How are the three round-trip counts pinned, given a `const` cannot be rewritten by a flag? **A:** [r4] a counts golden at `internal/engine/testdata/loomyard/naming-counts.json` through the existing `compareGolden`. **Why:** it is the half of "constants regenerated under -update" that can actually hold, and `-update`'s description already names that directory.
+- **Q:** What are the `Error` sentences for the maker's four reasons? **A:** [r4] spelled as a table in the reason-vocabulary decision, none repeating the target. **Why:** the text renderer prints the target ahead of the message, and two goldens pin these bytes.
 - **Q:** How does the text view survive a multi-line declaration head? **A:** [r2] `normalizeProse` the echoed target, as every `Signature` already is; JSON keeps the byte-verbatim echo. **Why:** an ungrouped var's signature is the whole declaration text and can span lines, which would break the one-record-per-line invariant.
