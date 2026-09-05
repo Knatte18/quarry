@@ -52,7 +52,9 @@ batches:
     commit_sha: 59444c87b0845fdc5415d6b96260eec0662daba3
     verify_baseline_failures: []
   - name: expand-gate-and-sentinel
-    state: pending
+    state: running
+    implementer_session: b9396fc4-ce42-433f-b949-2f238e3c1014
+    start_sha: ad3d1e6fae088ac893a2d04cf7290a2d7bf70c4a
     verify_baseline_failures: []
   - name: cli-repopath-mcp
     state: pending
