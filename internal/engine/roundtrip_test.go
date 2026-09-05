@@ -5,6 +5,12 @@
 // the same assertion, factored into assertSymbolRoundTrip so neither case copies the other, over a
 // whole Loomyard checkout, gated by loomyard_test.go's environment helper and skipped under
 // -short.
+//
+// harvestWalkSymbols is the harvest half of assertSymbolRoundTrip, extracted so
+// TestRoundTrip_LoomyardNaming (naming_roundtrip_test.go) can consume the one walk collector without
+// also paying for assertSymbolRoundTrip's per-unit span lookup, which answers a question that test
+// does not ask. collectWalkSymbols carries each symbol's signature, kind and enclosing file's lossy
+// flag alongside its id and unit, for that same consumer.
 
 package engine
 
@@ -29,11 +35,19 @@ type spanTuple struct {
 }
 
 // roundTripSymbol is one glyph's span as the walk listed it, with the glyph unit carried alongside
-// so the caller can group by unit before looking anything up.
+// so the caller can group by unit before looking anything up. signature and kind are the walked
+// symbol's own Signature and Kind, and lossy is the enclosing FileEntry's own Lossy flag — carried
+// for TestRoundTrip_LoomyardNaming (naming_roundtrip_test.go), which predicts an id and kind from
+// signature and unit alone and uses lossy to assert that no symbol harvested from a partially parsed
+// file is present, rather than letting one silently fail its zero-misses check. The two existing
+// round trips ignore all three fields.
 type roundTripSymbol struct {
-	id    string
-	unit  string
-	tuple spanTuple
+	id        string
+	unit      string
+	tuple     spanTuple
+	signature string
+	kind      Kind
+	lossy     bool
 }
 
 // collectWalkSymbols recursively appends every symbol in d's tree to out, composing each one's File
@@ -57,12 +71,37 @@ func collectWalkSymbols(d DirAnswer, out *[]roundTripSymbol) {
 					SigEnd: sym.SigEnd,
 					End:    sym.End,
 				},
+				signature: sym.Signature,
+				kind:      sym.Kind,
+				lossy:     fe.Lossy,
 			})
 		}
 	}
 	for _, child := range d.Dirs {
 		collectWalkSymbols(child, out)
 	}
+}
+
+// harvestWalkSymbols is the harvest half of assertSymbolRoundTrip: it calls TOC on r's root with
+// DepthAll and symbols on, fatal on error, runs collectWalkSymbols over the result, and fatals when
+// the walk collected zero symbols. It exists so a caller that wants the one walk collector's output
+// without assertSymbolRoundTrip's own per-unit span lookup — TestRoundTrip_LoomyardNaming
+// (naming_roundtrip_test.go) is the one such caller — has a single place to get it, keeping this
+// package to exactly one walk collector rather than two that could drift apart.
+func harvestWalkSymbols(t *testing.T, r *Repo) []roundTripSymbol {
+	t.Helper()
+
+	root, err := r.TOC(".", TOCOptions{Depth: DepthAll, Symbols: boolPtr(true)})
+	if err != nil {
+		t.Fatalf(`TOC(".", {Depth: DepthAll, Symbols: true}) failed: %v`, err)
+	}
+
+	var walked []roundTripSymbol
+	collectWalkSymbols(root, &walked)
+	if len(walked) == 0 {
+		t.Fatal("collected zero symbols from the walk; the round trip has nothing to check")
+	}
+	return walked
 }
 
 // tupleSetDiff reports the multiset difference between want and got: missing holds every tuple want
@@ -111,16 +150,7 @@ func tupleSetDiff(want, got []spanTuple) (missing, extra []spanTuple) {
 func assertSymbolRoundTrip(t *testing.T, r *Repo) []roundTripSymbol {
 	t.Helper()
 
-	root, err := r.TOC(".", TOCOptions{Depth: DepthAll, Symbols: boolPtr(true)})
-	if err != nil {
-		t.Fatalf(`TOC(".", {Depth: DepthAll, Symbols: true}) failed: %v`, err)
-	}
-
-	var walked []roundTripSymbol
-	collectWalkSymbols(root, &walked)
-	if len(walked) == 0 {
-		t.Fatal("collected zero symbols from the walk; the round trip has nothing to check")
-	}
+	walked := harvestWalkSymbols(t, r)
 
 	byUnit := make(map[string][]roundTripSymbol)
 	for _, sym := range walked {
