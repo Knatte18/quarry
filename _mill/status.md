@@ -65,7 +65,9 @@ batches:
     commit_sha: 2fc79dc80c2575229547d6de36ff0948c2ae9cd9
     verify_baseline_failures: ["FAIL\t./internal/gitsrc [setup failed]"]
   - name: delta-types-and-tokens
-    state: pending
+    state: running
+    implementer_session: 1e753e00-e33d-4bdb-835e-3c39d67f5f90
+    start_sha: c6e473aa6c59929058d12dd88eca953839572c65
     verify_baseline_failures: []
   - name: delta-core
     state: pending
