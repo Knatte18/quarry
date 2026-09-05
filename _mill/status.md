@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-delta-verb
+phase: approved-goldens-history-docs
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -45,6 +45,7 @@ approved-delta-core  '2026-09-05T17:37:41Z'
 approved-facade-delta  '2026-09-05T17:50:57Z'
 approved-delta-renderers  '2026-09-05T17:58:10Z'
 approved-cli-delta-verb  '2026-09-05T18:10:12Z'
+approved-goldens-history-docs  '2026-09-05T18:20:47Z'
 ```
 
 ## Batches
@@ -100,8 +101,9 @@ batches:
     commit_sha: 111f63c85c2dcaa6c1452dbba3e1ed102a0e303b
     verify_baseline_failures: []
   - name: goldens-history-docs
-    state: running
+    state: approved
     implementer_session: b015ed04-ce07-4a30-9f5b-8a15ced37212
     start_sha: 47a79ea7b0ca5838a3d2161ea37252c11ec4586d
+    commit_sha: 74f7dc97a73bba5f0c14b42385687f0195559c9c
     verify_baseline_failures: []
 ```
