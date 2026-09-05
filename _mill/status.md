@@ -35,9 +35,14 @@ implementing  '2026-09-05T17:37:37Z'
 ```yaml
 batches:
   - name: facade-glyphs-view
-    state: pending
+    state: running
+    implementer_session: 33b81f0b-938e-4f2e-aacf-9d2996eabf6f
+    start_sha: c8d4764a0de88c64bac78470e6f5eb4021400294
+    verify_baseline_failures: []
   - name: cli-view-flag-and-glyphs-verb
     state: pending
+    verify_baseline_failures: []
   - name: goldens-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
