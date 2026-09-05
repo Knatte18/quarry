@@ -3,7 +3,7 @@
 ```yaml
 task: 'Kick-start pack bench: pre-resolved glyph spans in the prompt (M4)'
 slug: ladder-kickstart
-approved: false
+approved: true
 discussion_sha: c3dcea342e86b0be6ced2bc6e5a6e3fbd2bebff5
 started: '20260905-113436'
 parent: main
