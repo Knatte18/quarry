@@ -134,6 +134,13 @@ func Run(ctx context.Context, opts RunOptions) (exitNonZero bool, err error) {
 		return false, err
 	}
 
+	// Verified immediately after the first provenance write and before the server-build block, so a
+	// missing card or a stale pack costs one stat and one hash comparison, not an API call or a
+	// server build.
+	if err := verifyCardsAndPack(l, selectedConfigs, prov, quarryRepoRoot); err != nil {
+		return false, err
+	}
+
 	// A resumed root whose provenance already carries memory-path hashes has its memory paths
 	// scanned before the first new repetition -- a resumed run otherwise skips the very repetition
 	// that would reveal them. A record carrying hashes whose paths file is missing is treated as
@@ -246,6 +253,72 @@ func resolveSelectedCells(l *Ladder, selected []string) ([]Config, error) {
 		configs = append(configs, cfg)
 	}
 	return configs, nil
+}
+
+// verifyCardsAndPack runs the two pre-rep-1 checks that keep a bad card or a stale pack from costing
+// an API call: first, that every selectedConfigs entry declaring a non-empty card names a card file
+// that actually exists under quarryRepoRoot; second, when l declares a pack cell, that the sha256 of
+// that cell's card's sentinel-delimited block equals prov's own recorded kickstart_pack.pack_sha256.
+// The second check is skipped entirely when l declares no pack cell, which is what keeps every
+// existing ladder file and every committed results root behaving exactly as it does today.
+//
+// This deliberately never compares quarryRepoRoot's own commit or dirty flag against the
+// kickstart_pack block's recorded QuarryCommit/QuarryDirty. Two reasons, both load-bearing: prov's
+// top-level QuarryCommit and QuarryDirty are derived by MergeProvenance from the latest invocation, so
+// the two sides differ after any commit between "ladder pack" and "ladder run" -- and committing the
+// generated card is exactly such a commit, and the intended workflow, so a gate on it would brick the
+// root for doing the right thing. And QuarryDirty is vacuously true on both sides the moment the pack
+// command writes a tracked card, so a gate on it would always be satisfied and would not be a gate at
+// all. What actually enforces the never-edit-the-code-under-test rule is the per-invocation record in
+// prov.Invocations, which makes a mid-matrix edit visible and auditable afterwards -- not this gate.
+//
+// The operator workflow this gate assumes: run "ladder pack" to generate the pack, inspect its
+// output, commit the generated card together with the ladder file and the task and fasit files, then
+// start the matrix with "ladder run". Committing between the pack and the run is expected and is not
+// a freshness violation.
+func verifyCardsAndPack(l *Ladder, selectedConfigs []Config, prov *Provenance, quarryRepoRoot string) error {
+	for _, cfg := range selectedConfigs {
+		if cfg.Card == "" {
+			continue
+		}
+		path := resolveRepoRelative(quarryRepoRoot, cfg.Card)
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("verify cards and pack: cell %s: card %s: %w", cfg.ID, path, err)
+		}
+	}
+
+	var packCfg *Config
+	for i := range l.Configs {
+		if l.Configs[i].Pack {
+			packCfg = &l.Configs[i]
+			break
+		}
+	}
+	if packCfg == nil {
+		return nil
+	}
+
+	if prov.KickstartPack == nil {
+		return fmt.Errorf("verify cards and pack: results root %s carries no kickstart_pack record; run the pack subcommand first", prov.LadderFile)
+	}
+
+	cardPath := resolveRepoRelative(quarryRepoRoot, packCfg.Card)
+	cardData, err := os.ReadFile(cardPath)
+	if err != nil {
+		return fmt.Errorf("verify cards and pack: read pack cell %s's card %s: %w", packCfg.ID, cardPath, err)
+	}
+	block, err := ExtractPackBlock(string(cardData))
+	if err != nil {
+		return fmt.Errorf("verify cards and pack: extract pack block from %s: %w", cardPath, err)
+	}
+	gotHash := PackBlockSHA256(block)
+	if gotHash != prov.KickstartPack.PackSHA256 {
+		return fmt.Errorf(
+			"verify cards and pack: pack cell %s's card %s hashes to %s, provenance records %s -- run the pack subcommand again",
+			packCfg.ID, cardPath, gotHash, prov.KickstartPack.PackSHA256,
+		)
+	}
+	return nil
 }
 
 // repKey is the cell-and-repetition key Provenance.ServerHashes and Provenance.SessionFingerprints
