@@ -115,11 +115,11 @@ func codeForExpandAnswer(a quarry.ExpandAnswer) int {
 // runExpand's error-branch classification and its exit code stay one table-tested source rather
 // than two things that can drift apart.
 //
-// It returns exitOK for a nil error. When errors.As reaches a *quarry.NotATypeError or a
-// *glyph.ParseError, it returns exitNegative — checked by type, never by parsing the error's own
-// message. Anything else returns exitInternal, which is what routes the missing-head-span
-// invariant failure, returned by the engine as a plain formatted error naming an invariant
-// violation in the walk, to exit 3 with no message parsing anywhere.
+// It returns exitOK for a nil error. When errors.As reaches a *quarry.NotATypeError, a
+// *glyph.ParseError, or a *quarry.SelfGlyphError, it returns exitNegative — checked by type, never
+// by parsing the error's own message. Anything else returns exitInternal, which is what routes the
+// missing-head-span invariant failure, returned by the engine as a plain formatted error naming an
+// invariant violation in the walk, to exit 3 with no message parsing anywhere.
 func codeForExpandError(err error) int {
 	if err == nil {
 		return exitOK
@@ -130,6 +130,10 @@ func codeForExpandError(err error) int {
 	}
 	var parseErr *glyph.ParseError
 	if errors.As(err, &parseErr) {
+		return exitNegative
+	}
+	var selfErr *quarry.SelfGlyphError
+	if errors.As(err, &selfErr) {
 		return exitNegative
 	}
 	return exitInternal
@@ -408,7 +412,12 @@ func runExpand(req request, root string, stdout, stderr io.Writer) int {
 		}
 		var parseErr *glyph.ParseError
 		if errors.As(err, &parseErr) {
-			msg := "expand " + req.target + ": " + string(parseErr.Reason)
+			msg := "expand: " + parseErr.Error()
+			return fail(stdout, stderr, codeForExpandError(err), msg, false)
+		}
+		var selfErr *quarry.SelfGlyphError
+		if errors.As(err, &selfErr) {
+			msg := "expand " + selfErr.ID + ": not a type, self"
 			return fail(stdout, stderr, codeForExpandError(err), msg, false)
 		}
 		return fail(stdout, stderr, codeForExpandError(err), "internal error: "+err.Error(), false)
