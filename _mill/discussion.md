@@ -312,9 +312,21 @@ construction, and there is never a parallel naming rulebook that can drift from 
 ### Exit codes
 
 - Decision: a named `codeForNameResult(r NameResult) int`, table-testable exactly as
-  `codeForResolveResult` and `codeForExpandAnswer` are: `exitOK` when `ID` is non-empty,
-  `exitNegative` when `Error` is non-empty, `exitInternal` for the shape where neither is set
-  (unreachable; spelled so it cannot route to zero).
+  `codeForResolveResult` and `codeForExpandAnswer` are: `exitOK` when `ID` is non-empty;
+  **`exitInternal` when `Reason` is `internal`**; `exitNegative` for any other non-empty `Error`;
+  `exitInternal` for the shape where neither `ID` nor `Error` is set (unreachable; spelled so it
+  cannot route to zero).
+- **The `internal` reason is not a negative answer, and the CLI must not render it as one.** An
+  unwired grammar or a nil tree says nothing about the caller's declaration, so that entry takes
+  `fail`'s path — the compact error envelope on stdout, the same sentence on stderr, exit 3, no
+  payload — exactly as `usage.go`'s "3 internal error" line already promises and as the D2 rule
+  requires (the error envelope is for usage and internal errors with no payload). Routing it
+  through the payload path would make `quarry name` report exit 1 for a condition the help text
+  says is exit 3.
+- The facade keeps carrying `internal` as a per-entry reason regardless, because a batch must not
+  lose the other entries' good answers to one entry's internal failure. The divergence is only in
+  how the *CLI*, which renders one entry, maps it — and it is the one place a `NameResult` does
+  not round-trip to its own exit code through `codeForNameResult` alone.
 - Rationale: the D2 rule stated in `docs/rewrite-plan.md` §5 — a negative answer renders its
   payload with exit 1, and the error envelope is only for usage and internal errors with no
   payload. A malformed declaration is a negative answer *about the declaration*, which the maker
@@ -547,6 +559,23 @@ Table tests over the maker function directly, no fixtures on disk, no repository
    collector keeps the two round trips reading the same harvest, which is the property that makes
    "prediction ≡ extraction" checkable at all. A parallel collector would be a second harvest that
    can drift from the first — the same argument the maker itself rests on.
+   **Which walk this test consumes:** its own `TOC(".", TOCOptions{Depth: DepthAll, Symbols: on})`
+   followed by `collectWalkSymbols` — the harvest half of `assertSymbolRoundTrip` — and **not**
+   `assertSymbolRoundTrip` itself. That helper's second half is the per-unit span lookup, which
+   costs one parse pass per unit directory over whole real files and answers a question
+   (do the spans agree?) that `TestRoundTrip_Loomyard` already asks and this test does not. Extract
+   the harvest into a small shared helper both call, so there is still exactly one collector.
+   **Runtime budget, and why the timeout constraint is not violated:** `assertSymbolRoundTrip`'s
+   doc comment (`roundtrip_test.go:100-104`) names go test's default timeout as a live constraint
+   at Loomyard scale, so it must be answered rather than ignored. The maker adds one `WithTree`
+   call per harvested symbol — two for a head that takes the completion retry — but each parses a
+   three-line synthetic file, not a real source file, so the per-call cost is a parser
+   construction plus a trivial parse rather than a whole-file parse. The shape of the cost is
+   therefore linear in the *symbol* count with a small constant, against the existing helper's
+   per-*unit* whole-file passes. The test is `-short`-skipped like every other whole-repository
+   pass here. If the run nonetheless lands near the default timeout, the mitigation is to raise
+   `-timeout` for this one test rather than to sample the harvest: sampling would silently weaken
+   the zero-misses criterion, which is the one thing this test exists to assert.
 2. Partition the harvest into *in-contract* and *excluded*, by the declared non-goals. The
    partition key for the multi-name-spec exclusion is the 5-tuple **(unit, File, Start, End,
    Signature)**: a spec's several names produce symbols agreeing on all five, so "two or more
@@ -584,10 +613,23 @@ Table tests over the maker function directly, no fixtures on disk, no repository
   `toc`/`resolve`/`expand`; `--depth`/`--symbols`/`--no-symbols`/`--root` rejected for `name`;
   `--text` accepted; exactly one target enforced.
 - `codeForNameResult` table test, direct, like the three existing mappers.
-- `Run` end-to-end on a machine with no repository root reachable — asserts `quarry name` still
-  answers, proving the dispatch happens before root resolution. Use the existing scratch-tree
-  helper for a directory outside any repository if one is reachable; otherwise assert the
-  ordering structurally.
+- **`Run` from a directory inside no repository — `t.Chdir("/")`.** This is the direct proof that
+  `name` dispatches before root resolution, and it is reachable: `Run` resolves the root from
+  `os.Getwd()` (`cli.go:271`), the filesystem root has no `.git` above it, and Go 1.26 (`go.mod`)
+  has `testing.T.Chdir`, which restores the working directory itself and fails a parallel test
+  rather than corrupting one. The test asserts **both halves in one place**: from `/`,
+  `quarry name --unit u/v "func F() error"` exits 0 with the right id, while `quarry toc .` exits
+  2 with `"no repository root found above /; pass --root"`. One without the other proves nothing —
+  the second half is what shows the first is not passing for some unrelated reason.
+- Note the premise this replaces: an earlier draft proposed using the scratch-tree helper for a
+  directory outside any repository. That is not achievable — `writeScratchTree`
+  (`internal/cli/scratchtree_test.go:39`) builds under the module root's `.scratch/`, which is
+  inside this repository, and `Run` never takes a path argument to resolve the root from.
+  `cli.go:150-152` says as much: the no-root case is unreachable without changing the process
+  working directory, "which these tests never do". `t.Chdir` is precisely the sanctioned way to
+  change it, so this test makes that comment's parenthetical stale — update it in the same edit.
+- No writes are involved: the test changes directory to `/` and reads nothing there, so the
+  never-write-to-a-system-directory rule is untouched.
 - `usageText` assertions extended for the `name` rows.
 - **Multi-line head, both views:** a declaration head spanning lines (an ungrouped var with a
   composite literal, or a function with a multi-line parameter list) rendered under `--text` has
@@ -604,11 +646,15 @@ is a frozen research record and must not be added to.
 
 **Docs and the verb-set inventory.**
 
-Adding a fourth verb makes every statement of "three verbs" or of the verb list stale. The
-inventory below was produced by *searching* for the verb set and the word "three" across the tree,
-not by naming the files that came to mind — a three-file list was the first draft's error. Every
-site found has a stated disposition; a plan writer should re-run the search rather than trust this
-list to still be exhaustive.
+This task adds a fourth verb, a fourth facade query, a fourth JSON success renderer and a fourth
+text renderer. **The search predicate is therefore not "statements of the verb set" — that one
+structurally cannot find a renderer-count or facade-method-count sentence, and missing five of
+them was the second draft's error.** The predicate is: *any statement that counts or enumerates a
+quarry surface this task extends* — verbs, facade query methods, renderers, envelopes. In
+practice: search for the verb names together, for `Render` together with a number word, and for
+the number words themselves (`three`, `seven`) across `*.go` and `*.md`, then read each hit and
+decide whether the count is one this task changes. Every site below has a stated disposition; a
+plan writer should re-run the search rather than trust this list to still be exhaustive.
 
 Prose and contract:
 
@@ -623,6 +669,21 @@ Prose and contract:
 - `README.md:3` — "three" and the verb list → four, `toc`, `resolve`, `expand`, `name`.
 - `internal/cli/doc.go:11,13` — "The command has three verbs" plus the per-verb sentences → add
   `name`'s.
+
+Facade surface counts (the class the first two drafts' predicate could not reach):
+
+- `quarry/doc.go:7` — "the package exposes three query methods, not one: TOC, Resolve and Expand"
+  → four, naming `Name`. The sentence's rhetorical point ("not one") survives; only the count and
+  the list change.
+- `quarry/doc.go:11` — "The package owns seven renderers" → nine, once `RenderNameJSON` and
+  `RenderNameText` land. The sentence goes on to enumerate them in three groups; `Name`'s two join
+  the JSON-success group and the text group respectively.
+- `quarry/doc.go:13-14` — "the three text renderers, RenderText, RenderResolveText and
+  RenderExpandText" → four; and "The three JSON success renderers ... share one encoder
+  configuration" → four. The second is load-bearing, not cosmetic: it is the sentence that states
+  the byte-contract-cannot-drift property, and `RenderNameJSON` is inside that guarantee because
+  it delegates to `renderJSON`.
+- `quarry/render.go:2` — "the three successful envelopes" → four.
 
 Help text and messages:
 
@@ -645,11 +706,18 @@ Tests that pin the counts (they fail loudly, which is the point — none is a si
 
 - `internal/cli/flags_test.go:156,158` — the two expected message strings.
   `flags_test.go:218` — `TestParseArgs_ThreeVerbGate`, whose name and table both encode three.
-- `internal/cli/after_test.go:4` — "The table spans three verbs".
 
-Not touched: `internal/cli/scratchtree_test.go:26,36` and `docs/rewrite-plan.md:147,172`, where
-"three" counts directory levels, validation layers and harness rules — unrelated to verbs.
-`docs/research/output-formats/after/` is a frozen record and is not updated.
+Not touched:
+
+- `internal/cli/after_test.go:4` — "The table spans three verbs" **stays true and is left alone.**
+  That table drives the frozen `docs/research/output-formats/after/` goldens, which this task does
+  not add to, so the comment neither goes stale nor fails; listing it among the loud failures
+  would have been misleading. `name`'s goldens live in `internal/cli/testdata/name/` and are a
+  separate table.
+- `internal/cli/scratchtree_test.go:26,36` and `docs/rewrite-plan.md:147,172` — "three" counts
+  directory levels, validation layers and harness rules, unrelated to any surface this task
+  extends.
+- `docs/research/output-formats/after/` — a frozen research record.
 
 ## Q&A log
 
@@ -677,4 +745,7 @@ Not touched: `internal/cli/scratchtree_test.go:26,36` and `docs/rewrite-plan.md:
 - **Q:** Is a complete interface declaration accepted? **A:** [r2] no — head-only or empty-bodied. **Why:** measured: `goTypeSymbols` appends the interface's method symbols, so a populated interface yields 1+N symbols and hits the exactly-one rule. A populated struct does agree with its head, because struct fields are not listable declarations.
 - **Q:** What is the multi-name-spec partition key? **A:** [r2] the 5-tuple (unit, File, Start, End, Signature). **Why:** without `File`, build-tag twins sharing a signature and span across two files would be excluded and then asserted to fail, which they will not.
 - **Q:** How is the vacuous-pass guard quantified? **A:** [r2] three counts pinned as constants against `72c23d9`, regenerated under `-update`, plus a structural floor that holds before they are known. **Why:** the checkout is pinned, so exact counts are stable and drift is loud; a ratio would have to be guessed without knowing the repository.
+- **Q:** How is "`name` dispatches before root resolution" tested, given the scratch-tree helper builds inside the repository? **A:** [r3] `t.Chdir("/")`, asserting `name` exits 0 and `toc` exits 2 from there. **Why:** `Run` resolves the root from `os.Getwd()`, so only a working-directory change reaches the no-root state; Go 1.26 has `t.Chdir`, and it makes `cli.go:150-152`'s "which these tests never do" stale, to be updated in the same edit.
+- **Q:** What exit code does the `internal` reason produce? **A:** [r3] exit 3 through `fail`'s error envelope, not exit 1 with a payload. **Why:** an unwired grammar says nothing about the caller's declaration, and `usage.go` already promises exit 3 for internal errors; the facade still carries it per-entry so a batch loses nothing.
+- **Q:** Does the naming round trip call `assertSymbolRoundTrip`? **A:** [r3] no — its own `TOC` walk plus the shared collector. **Why:** that helper's second half re-runs a per-unit span lookup this test does not need, and its doc comment names go test's default timeout as a live constraint at Loomyard scale.
 - **Q:** How does the text view survive a multi-line declaration head? **A:** [r2] `normalizeProse` the echoed target, as every `Signature` already is; JSON keeps the byte-verbatim echo. **Why:** an ungrouped var's signature is the whole declaration text and can span lines, which would break the one-record-per-line invariant.
