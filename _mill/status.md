@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -48,6 +48,7 @@ approved-cli-delta-verb  '2026-09-05T18:10:12Z'
 approved-goldens-history-docs  '2026-09-05T18:20:47Z'
 holistic-reviewing  '2026-09-05T18:21:16Z'
 holistic-approved  '2026-09-05T18:25:31Z'
+done  '2026-09-05T18:26:02Z'
 ```
 
 ## Batches
