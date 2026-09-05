@@ -207,10 +207,15 @@ func ReadProvenance(resultsRoot string) (*Provenance, error) {
 	return &p, nil
 }
 
-// WriteProvenance writes p to resultsRoot/provenance.json.
+// WriteProvenance writes p to resultsRoot/provenance.json, creating resultsRoot when it does not
+// already exist -- this is the single write that runs first against a fresh results root, before
+// anything else in a run has created a directory.
 func WriteProvenance(resultsRoot string, p *Provenance) error {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
+		return fmt.Errorf("write provenance: %w", err)
+	}
+	if err := os.MkdirAll(resultsRoot, 0o755); err != nil {
 		return fmt.Errorf("write provenance: %w", err)
 	}
 	path := filepath.Join(resultsRoot, ProvenanceFile)
