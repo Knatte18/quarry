@@ -99,11 +99,11 @@ implements is either in the overview or in `_mill/discussion.md`'s `## Decisions
 - **Context:**
   - `internal/engine/answer.go`
   - `quarry/quarry.go`
-  - `quarry/render.go`
   - `quarry/render_test.go`
 - **Edits:**
   - `quarry/view.go`
   - `quarry/view_test.go`
+  - `quarry/render.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -135,6 +135,14 @@ implements is either in the overview or in `_mill/discussion.md`'s `## Decisions
   clearing fields alone; that adding `omitempty` there was rejected because it would change a key
   set three verbs share and that file declares closed; and that a custom `MarshalJSON` was rejected
   because `quarry/render.go`'s own header records that these types deliberately carry no methods.
+
+  `quarry/render.go` is edited by this card for one reason only: its file header enumerates the
+  renderers the facade exports and calls them "the four successful envelopes, sharing one
+  unexported encoder configuration in renderJSON". After this card there is a fifth success
+  renderer sharing that same configuration, declared in `quarry/view.go` rather than here. Correct
+  the enumeration and say where the fifth lives, so a reader of that header is not told the sharing
+  set is closed at four. Change nothing else in the file — no renderer's code, no tag, no
+  `renderJSON` behaviour.
 
   Add cases to `quarry/view_test.go`, asserting on the rendered bytes rather than a decoded map so
   key order is checkable: the envelope's key set and order (`target`, `symbols`, `incomplete`);
@@ -228,7 +236,12 @@ implements is either in the overview or in `_mill/discussion.md`'s `## Decisions
   `writeScratchTree`, `Open` it, and assert `Glyphs(target)` is deep-equal to
   `GlyphView(target, <the answer from TOC(target, GlyphsOptions())>)` computed in the test, for a
   directory target. Add a second case asserting `Glyphs("")` and `Glyphs(".")` both return
-  `Target == "."`. Do not add a Loomyard checkout gate to this package — see the overview's
+  `Target == "."`. Add a third for the error branch, which nothing else in this plan reaches — the
+  CLI's own glyphs path calls `TOC` and `GlyphView` directly and never calls this method, so if
+  this case is not written the pass-through contract is untested everywhere: `Glyphs` on a target
+  that does not exist in the fixture must return the zero `GlyphsAnswer` and an error satisfying
+  `errors.Is(err, ErrTargetNotFound)`, which is the whole reason the method returns the engine's
+  error unchanged rather than wrapping it. Do not add a Loomyard checkout gate to this package — see the overview's
   `the-facade-drift-test-uses-a-scratch-tree` Shared Decision.
 
   This card also makes `quarry/repo.go`'s own file header stale, and it is updated in this same
@@ -266,11 +279,19 @@ implements is either in the overview or in `_mill/discussion.md`'s `## Decisions
   A third sentence in the same comment must change with them, and editing only the two counts would
   leave the file self-contradictory: the second paragraph opens by stating that the package adds no
   behaviour of its own, immediately before the sentence this card is adding `Glyphs` to. Rewrite
-  that opening so the claim is scoped to what still holds — the answer types are the engine's, and
-  the four delegating queries add no filtering, re-shaping or defaulting — and so the one exception
-  is stated there rather than contradicted two sentences later. Do not weaken it into vagueness:
-  the no-added-behaviour posture is a real property of the other four queries and is why the aliases
-  work at all.
+  that opening so the claim is scoped to what still holds, and be precise about what "the answer
+  types" now covers: every type reached through the four delegating queries is an alias for an
+  engine type, and those four add no filtering, re-shaping or defaulting — but `GlyphsAnswer` is
+  this package's own defined struct, not an alias, so "the answer types are the engine's" would be
+  stale the day it is written. Say "the engine's types, plus this package's one projected answer
+  type". Do not weaken the sentence into vagueness: the no-added-behaviour posture is a real
+  property of the other four queries and is why the aliases work at all.
+
+  The same paragraph's renderer sentence carries a second claim this task falsifies: it calls the
+  renderers "the only code it owns beyond the queries themselves", which `GlyphView`, `glyphSymbol`
+  and `glyphsEnvelope` are not. Dispose of that clause explicitly rather than editing the count
+  around it — the projection is the package's own code, and saying so is the honest form of the
+  same point that sentence was making.
 - **Commit:** `docs(quarry): update the package comment's query and renderer counts`
 
 ## Batch Tests

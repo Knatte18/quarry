@@ -228,6 +228,12 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   the pre-scan has already rejected everything it could reject, and that if it ever did, its
   message would name `toc`.
 
+  This card adds a third package-level declaration to a file whose own header says it "declares
+  request, the parsed shape of one invocation, and parseArgs, the hand-rolled parser that produces
+  it" — update that header to name `glyphsPreset` too, and say in one clause what it is. Card 4
+  applies the same rule to the facade's own file header for the same reason; the two must not
+  diverge on whether a new package-level declaration obliges a header update.
+
   Extend `parseArgs`'s doc comment: the verb gate now accepts five verbs; `glyphs` is a frozen
   preset validated against its own flag rules and then rewritten to its `toc` expansion, so nothing
   downstream — not the dispatch switch, not `runTOC`, not the renderers — can tell a `glyphs`
@@ -322,10 +328,12 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
 - **Context:**
   - `internal/cli/flags.go`
   - `internal/cli/cli.go`
+  - `internal/cli/name_test.go`
 - **Edits:**
   - `internal/cli/usage.go`
   - `internal/cli/doc.go`
-- **Creates:** none
+- **Creates:**
+  - `internal/cli/usage_test.go`
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** In `internal/cli/usage.go`, extend `usageText` under its own stated rules —
@@ -360,6 +368,23 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   paragraph immediately following, which says `toc` is the only verb this package converts with
   `internal/repopath/` before the engine sees the target — still true, and now true for a second
   spelling of the same verb.
+
+  Create `internal/cli/usage_test.go` and pin the additions, following the pattern
+  `TestUsageText_NameVerb` in `internal/cli/name_test.go` already establishes for a verb's usage
+  line, its flag row and the ASCII-only rule. `TestUsageText_GlyphsVerb` asserts `usageText`
+  contains the `glyphs` usage line, contains a `--view <name>` flag row, and carries no byte at or
+  above 0x80.
+
+  Then add the assertion that is the point of the file rather than a copy of the pattern:
+  `usageText` must contain `strings.Join(glyphsPreset, " ")`, read from the variable, so the help
+  text's spelling of the expansion and the real preset cannot drift. The discussion's
+  `preset-expansion` decision names `usageText` as one of three places those tokens are spelled,
+  and card 12's identity test deliberately does **not** read `glyphsPreset` — so without this
+  assertion nothing mechanically ties the help text to the preset, and a batch verify stays green
+  while `--help` documents an expansion the CLI no longer runs. State that contrast in the test's
+  doc comment: reading the variable is correct here for the same reason it is correct in card 13
+  and wrong in card 12 — this test asserts that two spellings agree, not that one matches a fixed
+  documented value.
 - **Commit:** `docs(cli): usageText and the package comment gain the glyphs verb and --view`
 
 ### Card 12: the byte-identity test
