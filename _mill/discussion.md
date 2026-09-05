@@ -62,6 +62,8 @@ extracting files that did not change; correctness lives entirely in the table co
 - Goldens (JSON and text) for created, deleted, modified, exact-tier rename, evidence-tier rename,
   a mixed batch, and a per-entry extraction failure inside an otherwise good batch.
 - A T3-style real-history test pinned to `d413ceb..49304ca` in this repository.
+- An honest amendment to the "facade adds no behaviour of its own" claim in **both**
+  `quarry/doc.go` and `quarry/repo.go`'s `Open` doc comment, naming `DeltaGit` as the exception.
 - One new paragraph in `docs/rewrite-plan.md` §5, and one line in §7's mechanical-use list.
 
 **Out:**
@@ -153,6 +155,55 @@ extracting files that did not change; correctness lives entirely in the table co
 - Rejected: one flat list with a `change` discriminator field (loses the tier separation the
   contract is built on, and forces every consumer to filter); per-file grouping (renames are
   unit-wide, so a per-file grouping would have to duplicate or split every cross-file pair).
+
+### Every array in the answer has a stated, deterministic order
+
+- Decision: the answer's ordering is total, and every rule is documented as **ordering, never
+  ranking**:
+  - `created`, `deleted` and the `after` array of a `modified` entry: **file ascending, then `Start`
+    ascending** — the same `sort.SliceStable` rule `symbolsOfUnit` already applies, so a delta's
+    symbol order matches the order the same symbols come back from `resolve`.
+  - `modified`: **`id` ascending, then `kind` ascending**, the table key itself, so the order does
+    not depend on which occurrence happened to be seen first.
+  - `renamed`: **`from.id` ascending, then `to.id` ascending.**
+  - `rename_candidates` entries: **deleted `id` ascending**; candidates *within* an entry keep the
+    similarity-then-`id` order already stated in the evidence-tier decision.
+  - `files`: **the input batch's own order**, unchanged, so a caller can index it against what it
+    submitted.
+  - a `modified` entry's `before` array: **positionally aligned with nothing** — it is independently
+    sorted file-then-`start`, because a multi-occurrence key has no occurrence identity to align by.
+- Rationale: the symbol table is keyed by `(ID, Kind)` and Go's map iteration order is deliberately
+  randomised, so an answer assembled by ranging over it is non-deterministic. Committed JSON and
+  text goldens — which the task's "Done when" requires for seven cases — cannot be byte-stable
+  without this, and a pipeline diffing two delta outputs would see phantom changes. Reusing
+  `symbolsOfUnit`'s existing file-then-line rule rather than inventing one keeps a symbol list
+  ordered the same way wherever a caller meets it.
+- Rejected: leaving order unspecified (goldens impossible, and the plan would have to invent a rule
+  anyway); ordering `created`/`deleted` by `id` (breaks the file-then-line convention every other
+  symbol list in quarry follows).
+
+### The repository root must be git's top-level
+
+- Decision: `DeltaGit` verifies `git -C <root> rev-parse --show-toplevel` and requires it to equal
+  `<root>`. Two failures, both with quarry's own sentence and neither carrying git's raw message:
+  - not a git repository at all → **exit 2**, `not a git repository: <root>`;
+  - a git repository whose top-level is elsewhere → **exit 2**,
+    `--root is not the repository top-level: <root> (top-level is <toplevel>)`.
+  `internal/gitsrc` returns two sentinels (`ErrNotARepository`, `ErrRootNotTopLevel`) that the CLI
+  matches with `errors.Is`, alongside `ErrUnknownRevision`.
+- Rationale: `repopath.ResolveRoot` accepts **any existing directory** for `--root` and skips `.git`
+  discovery entirely — it stats the path and returns it. So `git -C <root>` can legitimately run
+  inside a repository whose top-level is *above* `<root>`, and `git diff --name-status` and
+  `git ls-tree` then emit paths relative to the **git top-level** while quarry consumes them as
+  `<root>`-relative. Every path in the answer would be silently wrong, and the pathspec would select
+  the wrong subtree. A `--root` outside any repository is worse still: every git call fails and the
+  user gets exit 3 with git's raw message for what is plainly a usage mistake. Requiring equality
+  and refusing loudly is the honest option; only this verb needs it, because only this verb consults
+  git, so `toc`, `resolve` and `expand` keep accepting any directory exactly as they do today.
+- Rejected: translating between the two prefixes (doable, but it makes every path in the answer
+  depend on a relationship the caller cannot see, and silently changes what a pathspec means);
+  letting git's own failure surface as exit 3 (reports a usage mistake as an internal error, which
+  `Run`'s doc comment forbids).
 
 ### What `modified` means, and the `changed` field
 
@@ -495,16 +546,37 @@ extracting files that did not change; correctness lives entirely in the table co
   `(*engine.Repo).ClauseMapForFiles` with that list, and then the same `UnitsForClauseMap`.
   `internal/gitsrc` never sees a clause, a unit, or a tree-sitter node.
 
-  **One enumeration rule, both sides.** The set of files a directory's clause vote is taken over is
-  produced by a single function in the facade, applied identically to each side: *every `.go` file
-  git lists for that directory on that side* — `git ls-tree` for a revision side, and
-  `git ls-files --cached --others --exclude-standard` for the working-tree side. Both are
-  tracked-inclusive and neither applies the engine's `ignoreSet`, so a tracked-but-gitignored `.go`
-  file votes on **both** sides or neither. This is the property the comparison depends on: a
-  `dirPkg` that differs between the sides changes the unit, which changes every glyph in the
-  directory, which turns the whole directory into a create-plus-delete storm. Reading the
-  working-tree side from disk is a detail of *how the bytes are fetched*, never of *which files
-  count*.
+  **One enumeration rule, both sides.** The rule is stated as a *set*, not as a command: **the
+  immediate `.go` children of the directory — never a subdirectory's files.** That is what
+  `dirPackage` votes over (`walkDir` reads one directory with `os.ReadDir` and recurses separately),
+  and the unit is a per-directory fact, so a subdirectory's clause must never enter this
+  directory's vote.
+
+  The two commands are unequal and must each be trimmed to that set:
+  - revision side: `git ls-tree --name-only <rev> <dir>/` is **non-recursive** already, so it yields
+    the immediate entries; drop any name that is not a `.go` file.
+  - working-tree side: `git ls-files --cached --others --exclude-standard -- <dir>/` is **inherently
+    recursive** and has no non-recursive mode, so its output is filtered to paths with **no further
+    `/` after the `<dir>/` prefix**, then to `.go` files.
+
+  Without that trim the working-tree side sweeps in subdirectory files the revision side never sees
+  — `internal/engine/treesitter/treesitter.go`, clause `treesitter`, would vote in
+  `internal/engine`'s ballot on one side only — and the two sides' `dirPkg` can disagree. That
+  disagreement changes the unit, which changes every glyph in the directory, which turns the whole
+  directory into a create-plus-delete storm: the exact failure this decision exists to prevent.
+
+  Both commands are tracked-inclusive and neither applies the engine's `ignoreSet`, so a
+  tracked-but-gitignored `.go` file votes on **both** sides or neither. Reading the working-tree
+  side's bytes from disk is a detail of *how the bytes are fetched*, never of *which files count*.
+
+  **A listed file that cannot be read contributes no clause.** `git ls-files --cached` lists index
+  entries whether or not the file is present in the working tree, so a `.go` file deleted but not
+  staged — a routine case for this verb — is handed to `ClauseMapForFiles` and cannot be read. That
+  method **skips** such a base name and records no clause for it, exactly as `dirPackage` already
+  does today for an unreadable file, invalid UTF-8, a parse failure, or an empty clause. It does
+  **not** return an error for it: a plain unstaged deletion must never fail the whole `DeltaGit`
+  call. `ClauseMapForFiles`' `error` return is reserved for a failure of the call itself, never for
+  one file's absence.
 - Rationale: the task fixes the layering — the core takes byte pairs and knows nothing about git —
   and the reason is testability: a pure core needs no repository, no fixture tree and no commits to
   be exercised exhaustively. Putting `DeltaGit` on the facade rather than only in the CLI is what
@@ -521,7 +593,9 @@ extracting files that did not change; correctness lives entirely in the table co
 ### Git plumbing: exactly which calls, and `--no-renames`
 
 - Decision: `internal/gitsrc` runs exactly these, all read-only, all with `git -C <root>`:
-  - `git rev-parse --verify <rev>^{commit}` for each supplied revision, **first**, so an
+  - `git rev-parse --show-toplevel`, **first of all**, to verify `<root>` is itself the repository
+    top-level (see "The repository root must be git's top-level").
+  - `git rev-parse --verify <rev>^{commit}` for each supplied revision, next, so an
     unresolvable revision is reported as such rather than surfacing as a failed diff (see the
     exit-code decision).
   - `git diff --name-status --no-renames <from> <to> -- <pathspec>` for the changed-path list when
@@ -536,7 +610,9 @@ extracting files that did not change; correctness lives entirely in the table co
     `git show` for each `.go` file's bytes, which the facade turns into clauses via
     `engine.PackageClause`. The working-tree side is enumerated with
     `git ls-files --cached --others --exclude-standard -- <dir>/` and read from disk via
-    `(*engine.Repo).ClauseMapForFiles`, so both sides vote over the same rule.
+    `(*engine.Repo).ClauseMapForFiles`. Both listings are trimmed to the directory's **immediate**
+    `.go` children before voting — `ls-tree` is non-recursive already, `ls-files` is not — so both
+    sides vote over the same set.
   Nothing else. No `checkout`, no `stash`, no index write, no config write, no `-M`/`-C`.
 
   **The status letter is mapped explicitly, and the mapping is total:**
@@ -631,7 +707,9 @@ extracting files that did not change; correctness lives entirely in the table co
     "`<flag>` is not valid for `<verb>`" message shape `--depth` already uses. `--depth`,
     `--symbols` and `--no-symbols` are rejected for `delta` the same way.
   - **An unresolvable revision is exit 2**, with quarry's own sentence — `unknown revision: <rev>`,
-    the value spelled exactly as given — and the usage text on stderr. `internal/gitsrc` runs
+    the value spelled exactly as given — and the usage text on stderr. A `<root>` that is not a git
+    repository, or is not that repository's top-level, is exit 2 the same way (see "The repository
+    root must be git's top-level"). `internal/gitsrc` runs
     `git rev-parse --verify <rev>^{commit}` for each supplied revision before anything else and
     returns a distinguishable sentinel (`gitsrc.ErrUnknownRevision`) that the CLI checks with
     `errors.Is`, never by parsing git's message.
@@ -740,6 +818,13 @@ element) — both are true and neither is redundant; and an interface method's o
 always empty, so two interface methods differing only in their signatures are correctly compared
 through the signature stream, not the body one.
 
+**`Symbol.File` is filled by the caller, not the strategy.** `Strategy.Symbols(unit, root, src)`
+leaves `File` empty — `symbolsOfDir` assigns `sym.File = fileRel` at its own call site, and
+`walkDir` leaves it empty because a toc symbol already sits inside its file's entry. The delta core
+must therefore set `File` itself, from the entry's own `path`, on **each side** independently: the
+`changed:["file"]` dimension, a `modified` entry's `before` block, and a `renamed` pair's `from`/`to`
+all read it, and all three would silently compare empty strings otherwise.
+
 **`Symbol` carries no byte offsets today.** `Strategy.Symbols(unit, root, src)` returns `[]Symbol`
 and nothing else, and byte offsets appear only inside `nodes.go`'s `SignatureCut`. The three new
 JSON-hidden fields are the whole seam; no `Strategy` method is added, and the delta core does not
@@ -757,6 +842,11 @@ the key set additively and change nothing existing.
 **`Symbol.HeadStart`/`HeadEnd` are JSON-hidden** and consumed only by `expand`. The delta core
 carries them through unchanged and never compares them — they are a projection of the same
 declaration node the other spans come from.
+
+**Two doc comments carry the "adds no behaviour" claim, not one.** `quarry/doc.go` says the facade
+"adds no behaviour of its own", and `quarry/repo.go`'s `Open` doc comment repeats it verbatim
+("the facade adds no behaviour of its own"). `DeltaGit` is the first method that does more than
+delegate, so **both** need the same honest amendment; amending only `doc.go` leaves the other false.
 
 **Facade aliasing.** `quarry/quarry.go` exposes engine types as **aliases** (`type DirAnswer =
 engine.DirAnswer`), not defined types, so an external importer can name them without importing
@@ -800,12 +890,16 @@ how the tests already invoke git.
 **Real-history pin.** `49304ca` ("Glyph self-form and the resolve contract", C1) has parent
 `d413ceb`. Over `internal/engine/` it modifies `answer.go`, `expand.go`, `repo.go`, `resolve.go`,
 `walk.go`; over `glyph/` it modifies `doc.go`, `errors.go`, `glyph.go`, `golang.go`, `parse.go` and
-adds `self.go`. It contains, verifiably:
-- **created**: `glyph#Self`, `glyph#Glyph.IsSelf`, `internal/engine#SelfGlyphError.Error`,
+adds `self.go`. The assertions below are **presence-only over the in-scope subset** — "these
+symbols appear in this list" — never exact-set equality, because the full sets were not enumerated
+here and two of the known deletes fall outside the pinned directories:
+- **created** (in scope): `glyph#Self`, `glyph#Glyph.IsSelf`, `internal/engine#SelfGlyphError`
+  (the type, declared in `expand.go`) and `internal/engine#SelfGlyphError.Error` (its method),
   `internal/engine#Repo.resolveSelfTarget`.
-- **deleted**: `internal/engine#Repo.resolvePathTarget`, `internal/repopath#RepoRelPath`,
-  `internal/cli#isGlyphTarget` (the latter two outside the two pinned directories).
-- **modified**: several, across both units.
+- **deleted** (in scope): `internal/engine#Repo.resolvePathTarget`. Also deleted in this commit but
+  **outside** the `glyph/` + `internal/engine/` scoping, and therefore not asserted by this test:
+  `internal/repopath#RepoRelPath` and `internal/cli#isGlyphTarget`.
+- **modified**: several, across both units; asserted as "at least one per unit", not enumerated.
 - **an evidence-tier rename**: `Repo.resolvePathTarget` → `Repo.resolveSelfTarget` — same unit
   (`internal/engine`), same owner (`Repo`), same kind (method), different name, and a changed body
   and signature (`target string` → `unit string`), which is exactly the demotion the evidence tier
@@ -948,12 +1042,25 @@ error, not a panic. Additionally:
   tracked-but-gitignored `.go` file asserts that file votes on the revision side and on the
   working-tree side alike, so `dirPkg` — and therefore every glyph unit in the directory — agrees.
   A divergence here turns a whole directory into a create-plus-delete storm, so this is asserted
-  directly rather than left to follow from the enumeration code.
+  directly rather than left to follow from the enumeration code;
+- **the immediate-children trim**: a fixture directory with a `.go` file in a *subdirectory*
+  declaring a different package asserts that file votes on **neither** side — `git ls-files` is
+  recursive and `git ls-tree` is not, so without the trim the two sides disagree;
+- **an unstaged deletion**: a `.go` file removed from the working tree but still in the index is
+  listed by `git ls-files --cached`, and `ClauseMapForFiles` asserted to skip it and record no
+  clause rather than return an error — a plain deletion must not fail the whole call;
+- **root-vs-top-level**: a `--root` pointing at a subdirectory of a repository asserted to produce
+  `ErrRootNotTopLevel`, and a `--root` outside any repository `ErrNotARepository`, both before any
+  diff runs.
 
 **`quarry` facade and renderers.** Key-order and byte-contract tests for `RenderDeltaJSON`
 mirroring the existing `TestRenderExpandJSON_KeyOrder` shape; a text-view test mirroring
 `TestRenderExpandText`. A test asserting `DeltaGit` on a fixture repository agrees with
 `Delta` called on the same entries assembled by hand — the two paths must not be able to disagree.
+
+**Ordering.** One test asserts every top-level array's stated order (see the ordering decision) on a
+batch large enough that Go's randomised map iteration would surface — the goldens below are
+byte-unstable without it, so this is asserted directly rather than relied upon implicitly.
 
 **Goldens.** Committed golden files (JSON and text) under `internal/engine/testdata/delta/` or
 `internal/cli/testdata/`, following the existing `compareGolden`/`compareAfterGolden` pattern
@@ -974,15 +1081,17 @@ never git's raw message**; a git invocation failing for another reason → exit 
 `--text` producing the text view; **a pathspec matching nothing → exit 0 with an empty delta**, and
 a target naming a path that no longer exists but did at `--from` → exit 0 with that path's symbols
 in `deleted`, proving `delta` performs no stat where `runTOC` does. A `codeForDelta` table test
-mirroring `TestCodeForTOCError`.
+mirroring `TestCodeForTOCError`; a `--root` that is a subdirectory of a repository, and one outside
+any repository, each → exit 2 with quarry's own sentence rather than exit 3 with git's.
 One test must pin the **target-resolution** rule: `delta .` run from a subdirectory scopes to that
 subdirectory, and produces the same scope `toc .` does from the same directory — the two verbs
 resolve one argument the same way or the CLI has two meanings for it.
 
 **Real-history check (T3-style).** One test running `DeltaGit("d413ceb", "49304ca", ...)` against
 this repository, scoped separately to `glyph/` and to `internal/engine/`, asserting a hand-verified
-expectation: the created and deleted sets listed under "Real-history pin" above, at least one
-`modified` entry per unit, and the `resolvePathTarget` → `resolveSelfTarget` pair present in
+expectation: **presence** of each symbol listed under "Real-history pin" above in its stated list
+(never exact-set equality — the pin's sets are explicitly partial), at least one `modified` entry
+per unit, and the `resolvePathTarget` → `resolveSelfTarget` pair present in
 `rename_candidates` (not in `renamed`) with `signature_identical_modulo_name: false`. The test must
 skip cleanly — never fail — when either revision is unreachable (a shallow clone), following the
 asymmetry `loomyardRepo`'s doc comment already establishes for a missing versus a wrong-commit
@@ -1039,3 +1148,10 @@ verb. No other document changes on this branch.
 - **Q:** [review r4, NIT] "Buckets each leaf into the stream its start byte falls in" is singular, but symbol spans nest and overlap. **A:** [auto-pick] A leaf is assigned to **every** containing symbol range; the overlap is intended. **Why:** an interface `method_elem`'s leaves belong to the interface's body stream and to that method's own signature stream at once, and `const a, b = 1, 2`'s symbols share one span verbatim.
 - **Q:** [review r4, NIT] "Per changed directory, not per changed file" understated the clause-vote cost. **A:** [auto-pick] Restated: one `git show` spawn plus one parse per `.go` file of every changed directory, on both sides — roughly 40 spawns for a one-file change in `internal/engine/`. **Why:** the primary consumer calls this per card, so the plan must price it; the two available mitigations (skip directories with no changed `.go` file, read the working-tree side from disk) are noted and neither is a cache.
 - **Q:** [review r4, NIT] Rename pairing is "unit-wide across the batch", but the batch is pathspec-scoped. **A:** [auto-pick] State that classification is relative to the scoped batch: a rename whose other half falls outside the target is a plain `deleted` with no candidate. **Why:** quarry cannot pair against a symbol it was never given, and Loomyard's scope guard passes narrow batches by design.
+- **Q:** [review r5, BLOCKING] "One enumeration rule, both sides" named two commands that do not agree — `git ls-tree` is non-recursive, `git ls-files` is inherently recursive. **A:** [auto-pick] State the rule as a *set* — the directory's immediate `.go` children — and trim each command to it (`ls-files` output filtered to paths with no further `/` after the prefix). **Why:** otherwise `internal/engine/treesitter/treesitter.go` votes in `internal/engine`'s ballot on one side only, the two `dirPkg` values diverge, and the directory becomes a create-plus-delete storm — the exact failure the decision exists to prevent.
+- **Q:** [review r5, BLOCKING] No ordering was stated for `created`, `deleted`, `modified`, `renamed` or `rename_candidates`, yet they are built from a `(ID, Kind)`-keyed map. **A:** [auto-pick] A total ordering rule per array — file-then-`Start` for symbol lists (reusing `symbolsOfUnit`'s rule), key order for `modified`, `id` order for the rename arrays, input order for `files` — documented as ordering, never ranking. **Why:** Go randomises map iteration, so the seven required goldens cannot be byte-stable without it, and a pipeline diffing two deltas would see phantom changes.
+- **Q:** [review r5, BLOCKING] `repopath.ResolveRoot` accepts any directory for `--root` and skips `.git` discovery, so `git -C <root>` can run in a repository whose top-level is above `<root>`. **A:** [auto-pick] Verify `git rev-parse --show-toplevel` equals `<root>`; a mismatch and a non-repository are each exit 2 with quarry's own sentence, via `errors.Is` sentinels. **Why:** git emits paths relative to the top-level while quarry consumes them as root-relative, so every path in the answer would be silently wrong; and a `--root` outside a repository would report a usage mistake as exit 3 with git's raw message.
+- **Q:** [review r5, BLOCKING] `git ls-files --cached` lists index entries whether or not the file is on disk, so an unstaged deletion is handed to `ClauseMapForFiles`, which reads from disk. **A:** [auto-pick] `ClauseMapForFiles` skips a base name it cannot read or decode and records no clause, matching `dirPackage`; its `error` return is reserved for a failure of the call itself. **Why:** an unstaged deletion is the routine case this verb exists to report and must never fail the whole `DeltaGit` call.
+- **Q:** [review r5, NIT] `Strategy.Symbols` leaves `Symbol.File` empty — who fills it? **A:** [auto-pick] The delta core, from each entry's own `path`, per side. **Why:** `changed:["file"]`, the `before` block and the `renamed` pair all read it, and all three would silently compare empty strings otherwise.
+- **Q:** [review r5, NIT] The real-history pin's created/deleted sets read as exact-set assertions but are partial (`SelfGlyphError` the type is missing; two deletes are out of scope). **A:** [auto-pick] Complete the in-scope lists, mark the two out-of-scope deletes as such, and state the assertions are presence-only. **Why:** an exact-set reading would make the test fail on symbols the pin never claimed to enumerate.
+- **Q:** [review r5, NIT] The "facade adds no behaviour of its own" claim sits in `quarry/repo.go` as well as `quarry/doc.go`. **A:** [auto-pick] Amend both. **Why:** amending only `doc.go` leaves the other doc comment false once `DeltaGit` lands.
