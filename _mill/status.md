@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -43,6 +43,7 @@ holistic-fixing  '2026-09-05T13:04:20Z'
 blocked  '2026-09-05T13:05:23Z'
 blocked  '2026-09-05T13:05:23Z'
 holistic-reviewing  '2026-09-05T13:10:56Z'
+holistic-approved  '2026-09-05T13:14:06Z'
 ```
 
 ## Batches

@@ -1,0 +1,22 @@
+MILL_REVIEW_BEGIN
+# Review: Kick-start pack bench: pre-resolved glyph spans in the prompt (M4) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: sonnethigh
+reviewed_file: plan/ + source
+date: 2026-09-05
+```
+
+## Findings
+
+### [BLOCKING:consistency] Pinned commit SHA is 39 hex characters, not 40
+**Location:** `bench/loomyard-eval/ladder/ladder-kickstart.yaml:80`, `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md:9,12`, `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.fasit.json:5,11`
+**Issue:** `72c23d9eecc1fa55add567622093a8bbbfba8c1d` is 39 characters (verified by manual count), one short of a full SHA-1, yet card 24 explicitly requires "the full forty-character form of the commit ... the file must carry the full SHA, matching how the existing file spells its own pin." `ladder-toc.yaml`'s own pin (`975578cda8d6f3a81580bd4e73725e060211b766`, used as a regression fixture in `config_test.go`) is a genuine 40-char SHA-1, confirming the convention this file was supposed to match. The value is wrong consistently across all three files (ladder file, task file's setup section and worktree-add command, fasit's `_meta.pinned_sha` and cross-check note), so it looks like a dropped character during authoring rather than three independent typos.
+**Fix:** Recover the correct 40-character SHA-1 for "Surface merge-in-progress in fabric status" and correct it in all three files; add or extend a pre-matrix check that rejects a `pinned_sha` whose length is not 40 hex characters, so a future truncation is caught offline instead of at `git worktree add` time.
+
+## Verdict
+
+REQUEST_CHANGES
+Pinned commit SHA is 39 hex characters everywhere it appears, violating the plan's explicit 40-char requirement.
+MILL_REVIEW_END
