@@ -9,6 +9,15 @@ verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli
 depends-on: [2]
 ```
 
+## Prior failure
+
+- Round 1: "Card 15 requires go test ./internal/engine/ to pass with Loomyard cases executed, but
+  TestRoundTrip_LoomyardNaming fails on a missing testdata/loomyard/naming-counts.json golden that
+  is confirmed pre-existing (identical failure reproduces on main with the same pinned checkout)
+  and unrelated to this task; the only fix is generating that golden under
+  internal/engine/testdata/, forbidden by the overview's no-file-under-internal-engine-is-modified
+  Shared Decision (applies to all batches)."
+
 ## Batch Scope
 
 This batch turns the working verb into committed evidence and updates the two documents that
