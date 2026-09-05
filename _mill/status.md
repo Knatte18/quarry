@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-run-gate-and-subcommand
+phase: approved-benchmark-content
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -34,6 +34,7 @@ approved-provenance  '2026-09-05T12:17:51Z'
 approved-control-sweep-and-card  '2026-09-05T12:27:24Z'
 approved-pack-generation  '2026-09-05T12:38:12Z'
 approved-run-gate-and-subcommand  '2026-09-05T12:43:22Z'
+approved-benchmark-content  '2026-09-05T12:51:41Z'
 ```
 
 ## Batches
@@ -71,9 +72,10 @@ batches:
     commit_sha: 4bf27782d12364036974f9aab73f7c1070844650
     verify_baseline_failures: []
   - name: benchmark-content
-    state: running
+    state: approved
     implementer_session: 16080d50-a0b5-48ba-b338-c21bc4fc2515
     start_sha: 33657e53d0cbe6067fcba792d9c75994e54db774
+    commit_sha: 7ffce729b50eb39529305b6121d2a6cf799b2415
     verify_baseline_failures: []
   - name: matrix-and-writeup
     state: pending
