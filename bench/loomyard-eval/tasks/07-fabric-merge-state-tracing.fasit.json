@@ -1,0 +1,75 @@
+{
+  "_meta": {
+    "task": "07-fabric-merge-state-tracing",
+    "type": "exploration",
+    "pinned_sha": "72c23d9eecc1fa55add567622093a8bbbfba8c1d",
+    "scope": [
+      "internal/fabriccli", "internal/fabricengine", "internal/gitrepo", "internal/mergeresolve"
+    ],
+    "date": "2026-09-05",
+    "arm": "C",
+    "role": "reference/fasit agent -- unlimited time/token budget, produces the ground-truth answer the other two arms are scored against; cross-checked with a second independent method, `go build ./...` at the pinned SHA, which succeeds cleanly, plus `git show 72c23d9eecc1fa55add567622093a8bbbfba8c1d:<file>` confirming every symbol named below is present exactly as described",
+    "see_also": "conclusion.md (analysis/verdict), summary.json (per-cell metrics), pack-resolve.json (the resolved spans e1's card carries)"
+  },
+  "relevant_files": [
+    "internal/fabriccli/weft_verbs.go",
+    "internal/fabricengine/mergelifecycle.go",
+    "internal/fabricengine/mergeguards.go",
+    "internal/fabricengine/mergestate.go",
+    "internal/fabricengine/mergeerrors.go",
+    "internal/gitrepo/merge.go",
+    "internal/mergeresolve/mergeresolve.go"
+  ],
+  "key_symbols": [
+    {
+      "name": "fabriccli.addWeftVerbs",
+      "file": "internal/fabriccli/weft_verbs.go",
+      "role": "Wires the weft-git and merge-lifecycle verbs onto the fabric parent command; the status verb's handler calls Fabric.MergeInProgress and reports its result as merge_in_progress alongside Status's own change list."
+    },
+    {
+      "name": "fabricengine.Fabric.MergeInProgress",
+      "file": "internal/fabricengine/mergelifecycle.go",
+      "role": "Reports whether fabric has a merge in progress on this pair by returning mergeRecordExists()'s bare boolean; it never consults foreignMergeStatePresent and never errors on foreign state alone."
+    },
+    {
+      "name": "fabricengine.Fabric.MergeContinue",
+      "file": "internal/fabricengine/mergelifecycle.go",
+      "role": "Concludes an in-progress merge once every conflict is resolved in the worktree; when no fabric record exists it returns mergeStateOrForeignErr()'s verdict instead of proceeding."
+    },
+    {
+      "name": "fabricengine.mergeInProgressReason",
+      "file": "internal/fabricengine/mergeguards.go",
+      "role": "Guard predicate that reports mergeReasonAlreadyInProgress when mergeRecordExists() is true; this is the check Merge/MergeIn's precondition stage runs before starting a new merge attempt."
+    },
+    {
+      "name": "fabricengine.Fabric.mergeRecordExists",
+      "file": "internal/fabricengine/mergestate.go",
+      "role": "Reads the on-disk per-pair merge-state record fabric itself writes before mutating anything; true only when fabric, not an operator, started the in-progress merge."
+    },
+    {
+      "name": "fabricengine.Fabric.foreignMergeStatePresent",
+      "file": "internal/fabricengine/mergestate.go",
+      "role": "Reads MERGE_HEAD and the conflicted-index list on both the warp and weft sides via gitrepo probes; true when plain git-level merge state exists that fabric did not itself start."
+    },
+    {
+      "name": "fabricengine.ErrMergeInProgress",
+      "file": "internal/fabricengine/mergeerrors.go",
+      "role": "The single typed, side-free error Commit, Pull, Checkout and Remove all return while a fabric merge record exists on the pair, refusing the mutation before touching anything."
+    },
+    {
+      "name": "gitrepo.Repo.MergeHeadPresent",
+      "file": "internal/gitrepo/merge.go",
+      "role": "Low-level probe wrapping `git rev-parse --verify --quiet MERGE_HEAD`; the read-only evidence foreignMergeStatePresent reads on each side to detect plain git merge state."
+    },
+    {
+      "name": "mergeresolve.Resolver.Resolve",
+      "file": "internal/mergeresolve/mergeresolve.go",
+      "role": "The automated conflict resolver's entry point: aborts any leftover in-progress merge first for crash recovery, calls Fabric.MergeIn, and on conflicts drives up to two conflict-resolution sessions before staging and concluding through Fabric's own verbs, or reporting stuck if markers remain."
+    }
+  ],
+  "summary": "Fabric tracks a merge it started itself with an on-disk per-pair merge-state record (mergeRecordExists/loadMergeState in mergestate.go); Fabric.MergeInProgress reports that record's bare presence and never consults git-level state to answer the question. Foreign merge state -- a plain git merge or squash-merge left mid-conflict by an operator working directly in a worktree -- is instead detected by foreignMergeStatePresent, which reads MERGE_HEAD (via gitrepo.Repo.MergeHeadPresent) and each side's conflicted-index list; the read-only probe cannot substitute for the fabric-record guard because the two answer different questions -- one asks whether fabric itself is mid-merge and can safely conclude it, the other only tells you plain git thinks something is unresolved. mergeInProgressReason turns the record probe into the guard reason Merge/MergeIn's precondition stage consults before starting a new merge, and the same distinction resurfaces as the typed error every sibling mutating verb (Commit, Pull, Checkout, Remove) returns while a fabric record exists -- *ErrMergeInProgress, refusing the mutation outright -- versus *ErrForeignMergeState or *ErrNoMergeInProgress when MergeContinue/MergeAbort find no record and fall through to mergeStateOrForeignErr. The command-line layer surfaces the fabric-recorded state through the `fabric status` handler in weft_verbs.go's addWeftVerbs, which calls Fabric.MergeInProgress -- never the foreign-state probe -- to report merge_in_progress. The automated conflict resolver, mergeresolve.Resolver.Resolve, sits above Fabric's own API rather than beside it: it aborts any leftover in-progress merge before a clean attempt, calls Fabric.MergeIn, and when conflicts remain drives up to two resolution sessions before staging and calling Fabric.MergeContinue to conclude (or aborting and reporting stuck when conflict markers are still present after both attempts) -- it never reads or writes the merge-state record directly, so it participates in the same bookkeeping every other caller does, entirely through Fabric's own verbs.",
+  "confidence": "high",
+  "open_questions": [
+    "Whether any caller besides fabric status's handler reads Fabric.MergeInProgress directly was not exhaustively enumerated beyond the sibling mutating verbs' own ErrMergeInProgress returns and mergeresolve.Resolver.Resolve's crash-recovery check."
+  ]
+}
