@@ -87,6 +87,7 @@ remember to leave empty.
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/provenance_test.go`
+  - `go.mod`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -110,6 +111,10 @@ remember to leave empty.
   Leave `TestMergeProvenance_NoAbsolutePathAnywhereInOutput` covering the new field too: give the
   merged record a pack block whose `card_file` is a repository-relative path, so the standing
   no-machine-paths assertion extends over the new key rather than stopping at the old ones.
+  Use `github.com/google/go-cmp/cmp` for the byte-for-byte pack-block comparison, per this repo's
+  golang-testing skill; it is already an indirect dependency via go.sum, so `go mod tidy` promotes it
+  to a direct `require` in `go.mod` -- that mechanical edit is this card's, since it is caused
+  entirely by this card's test code.
 - **Commit:** `test(ladder): cover the provenance mkdir fix and pack-block merge`
 
 ## Batch Tests
