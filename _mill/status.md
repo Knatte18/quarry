@@ -64,7 +64,9 @@ batches:
     commit_sha: f19c9ac530a69ec5c792ccb0dfee8d3b29e01c8f
     verify_baseline_failures: []
   - name: run-gate-and-subcommand
-    state: pending
+    state: running
+    implementer_session: 597ed0e4-496d-4ec5-81ed-f9a3c91a0a52
+    start_sha: 10a73a0a317b1d988da932bf66294aae58995cf2
     verify_baseline_failures: []
   - name: benchmark-content
     state: pending
