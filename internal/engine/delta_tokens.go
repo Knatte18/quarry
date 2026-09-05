@@ -102,6 +102,59 @@ const identifierKind = "identifier"
 // and never as a textual substitution over a signature string: replacing the text "Run" with
 // "Execute" inside a method head would also hit the "Runner" in its receiver, while a stream has
 // real identifier nodes to key on.
+// renamedIdentifierPlaceholder replaces an identifier token bearing a symbol's own name before the
+// two body streams are turned into multisets for bodyTokenSimilarity. It is chosen so it can never
+// collide with a real Go identifier's text: a NUL byte is not a legal identifier rune, and no source
+// text tokenStreamsForSymbols hands back can contain one.
+const renamedIdentifierPlaceholder = "\x00renamed\x00"
+
+// bodyTokenSimilarity returns the body token similarity signal for two body streams and the two
+// symbol names: the Jaccard coefficient of the two streams treated as multisets of (kind, text)
+// pairs, with the identifier bearing the symbol's own name normalised to
+// renamedIdentifierPlaceholder on both sides before the multisets are built. Two empty streams
+// give exactly 1.0. The result is always in the closed interval [0, 1].
+//
+// This value is a reported signal on a candidate quarry has explicitly declined to resolve — no
+// asserted outcome anywhere in the delta reads it. It is deliberately a cheap linear-time
+// coefficient rather than an order-sensitive metric, because precision here would buy nothing
+// quarry is allowed to spend it on.
+func bodyTokenSimilarity(before, after tokenStream, beforeName, afterName string) float64 {
+	beforeCounts := multisetCounts(before, beforeName)
+	afterCounts := multisetCounts(after, afterName)
+	if len(beforeCounts) == 0 && len(afterCounts) == 0 {
+		return 1.0
+	}
+
+	var intersection, union int
+	seen := make(map[token]bool, len(beforeCounts)+len(afterCounts))
+	for tok, count := range beforeCounts {
+		other := afterCounts[tok]
+		intersection += min(count, other)
+		union += max(count, other)
+		seen[tok] = true
+	}
+	for tok, count := range afterCounts {
+		if seen[tok] {
+			continue
+		}
+		union += count
+	}
+	return float64(intersection) / float64(union)
+}
+
+// multisetCounts counts stream's tokens by (kind, text), after normalising any identifier token
+// bearing name to renamedIdentifierPlaceholder.
+func multisetCounts(stream tokenStream, name string) map[token]int {
+	counts := make(map[token]int, len(stream))
+	for _, tok := range stream {
+		if tok.kind == identifierKind && tok.text == name {
+			tok = token{kind: identifierKind, text: renamedIdentifierPlaceholder}
+		}
+		counts[tok]++
+	}
+	return counts
+}
+
 func identicalModuloName(a, b tokenStream, deletedName, createdName string) bool {
 	if len(a) != len(b) {
 		return false
