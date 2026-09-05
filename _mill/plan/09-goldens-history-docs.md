@@ -65,9 +65,10 @@ golden exists to prevent.
   Each case builds its entries from string literals in the test file, calls the pure delta method,
   wraps the answer with two revision strings, and compares both rendered views byte for byte against
   their committed files.
-  Declare this package's own update flag, following the two existing precedents in this repository —
-  each package's tests build their own binary, so a flag of the same name in another package is not
-  a conflict — and under it rewrite the golden from the current run instead of comparing.
+  Declare this package's own update flag, following the three existing precedents in this repository
+  — each package's tests build their own binary, so a flag of the same name in another package is not
+  a conflict, which is why three packages already declare one — and under it rewrite the golden from
+  the current run instead of comparing.
   Add a comment stating that these files are produced only that way and never hand-written, and that
   the test function's name and any regeneration command are load-bearing on each other, since a
   differently named function would make a regeneration run a silent no-op producing no files at all.

@@ -67,6 +67,13 @@ theme in its filename.
   symbols on either side, and is not an error.
   Otherwise the sides that exist are extracted: a nil before slice with a non-nil after slice gives
   added, a non-nil before with a nil after gives removed, and two non-nil slices give changed.
+  **Reject bytes that are not valid UTF-8 before parsing them**, per side, as an extraction failure
+  for the entry: the parse seam performs no such validation and would hand undecodable bytes to the
+  grammar, which yields a partial tree and would report the entry as merely lossy rather than as the
+  error the tests and the committed golden both assert.
+  This is the same rule card 6 states for the clause helper and the same rule the existing walk
+  already applies before it reads a file's symbols, so the delta core is not inventing a condition —
+  it is applying the one the rest of the engine already has.
   Each side is parsed inside one call of the engine's parse seam, and inside that same callback the
   symbols and — for the later cards — their token streams are built into values owning their own
   memory, because the seam invalidates its node the moment the callback returns.
