@@ -57,7 +57,9 @@ batches:
     commit_sha: 988fe76729e4d6c9e8fbd0c50849fbf834244c2b
     verify_baseline_failures: []
   - name: cli-verb
-    state: pending
+    state: running
+    implementer_session: 5ec92f1a-50f1-4441-b622-b6fa797c2854
+    start_sha: f29980ec3477fb5abb5dbcd0f41933c4cb062fb0
     verify_baseline_failures: []
   - name: docs-inventory
     state: pending
