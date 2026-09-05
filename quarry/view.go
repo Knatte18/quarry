@@ -56,6 +56,57 @@ func GlyphView(target string, a DirAnswer) GlyphsAnswer {
 	return GlyphsAnswer{Target: target, Symbols: symbols, Incomplete: incomplete}
 }
 
+// glyphSymbol is the glyphs view's own JSON shadow of Symbol: five keys, in Symbol's own
+// declaration order, deliberately not the same tags Symbol itself carries. File here carries no
+// omitempty, unlike Symbol.File's own tag, because in this view the field is always filled — every
+// contributed symbol was assigned a File by GlyphView.
+//
+// A shadow struct exists, rather than clearing fields on GlyphsAnswer and marshalling it directly,
+// because Symbol.Signature is tagged json:"signature" with no omitempty in
+// internal/engine/answer.go: clearing the field in GlyphView would still emit "signature": "", so
+// the promised five-key set is unreachable by clearing fields alone. Adding omitempty there was
+// rejected because it would change a key set three other verbs share, and that file declares
+// closed. A custom MarshalJSON on GlyphsAnswer was rejected because quarry/render.go's own header
+// records that these types deliberately carry no methods; a second, hand-written encoding path
+// would be exactly the kind of drift that file's shared renderJSON exists to prevent.
+type glyphSymbol struct {
+	ID    string `json:"id"`
+	Kind  Kind   `json:"kind"`
+	File  string `json:"file"`
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+}
+
+// glyphsEnvelope is the glyphs view's JSON wire shape: target, then symbols with no omitempty (a
+// zero-symbol answer still emits "symbols": []), then incomplete, present only when non-empty.
+type glyphsEnvelope struct {
+	Target     string        `json:"target"`
+	Symbols    []glyphSymbol `json:"symbols"`
+	Incomplete []string      `json:"incomplete,omitempty"`
+}
+
+// RenderGlyphsJSON encodes a, a glyphs answer, as a successful JSON envelope. It builds one
+// glyphsEnvelope — copying Target and Incomplete across, allocating
+// make([]glyphSymbol, 0, len(a.Symbols)) so a zero-symbol answer emits "symbols": [] and never
+// "symbols": null, and mapping each Symbol into a glyphSymbol — and encodes it through the
+// existing unexported renderJSON helper in quarry/render.go, never through its own json.Encoder,
+// so the two-space indent, no-HTML-escaping, single-trailing-newline byte contract cannot drift
+// from the other success renderers'.
+func RenderGlyphsJSON(a GlyphsAnswer) ([]byte, error) {
+	symbols := make([]glyphSymbol, 0, len(a.Symbols))
+	for _, sym := range a.Symbols {
+		symbols = append(symbols, glyphSymbol{
+			ID:    sym.ID,
+			Kind:  sym.Kind,
+			File:  sym.File,
+			Start: sym.Start,
+			End:   sym.End,
+		})
+	}
+	env := glyphsEnvelope{Target: a.Target, Symbols: symbols, Incomplete: a.Incomplete}
+	return renderJSON(env)
+}
+
 // collectGlyphs appends a's own symbols and incomplete-file paths onto *symbols and *incomplete,
 // in depth-first order — a's own Files, then each entry of a.Dirs in slice order, recursively —
 // and is the shared depth-first walk GlyphView reduces the whole tree with.

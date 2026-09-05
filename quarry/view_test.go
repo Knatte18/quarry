@@ -7,6 +7,7 @@ package quarry
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -172,5 +173,117 @@ func TestGlyphView_NoMutation(t *testing.T) {
 
 	if !reflect.DeepEqual(symbols[0], original) {
 		t.Errorf("input symbol after GlyphView = %+v; want unchanged %+v", symbols[0], original)
+	}
+}
+
+// TestRenderGlyphsJSON_EnvelopeKeyOrder pins the emitted object's key order to target, symbols,
+// incomplete, and asserts incomplete is present when non-empty.
+func TestRenderGlyphsJSON_EnvelopeKeyOrder(t *testing.T) {
+	a := GlyphsAnswer{
+		Target:     "sub",
+		Symbols:    []Symbol{{ID: "sub#Foo", Kind: KindFunction, File: "sub/a.go", Start: 1, End: 2}},
+		Incomplete: []string{"sub/b.go"},
+	}
+	got, err := RenderGlyphsJSON(a)
+	if err != nil {
+		t.Fatalf("RenderGlyphsJSON() error = %v", err)
+	}
+	assertKeyOrder(t, string(got), []string{`"target"`, `"symbols"`, `"incomplete"`})
+}
+
+// TestRenderGlyphsJSON_IncompleteAbsentWhenEmpty covers that an empty Incomplete slice omits the
+// "incomplete" key entirely.
+func TestRenderGlyphsJSON_IncompleteAbsentWhenEmpty(t *testing.T) {
+	a := GlyphsAnswer{Target: "sub"}
+	got, err := RenderGlyphsJSON(a)
+	if err != nil {
+		t.Fatalf("RenderGlyphsJSON() error = %v", err)
+	}
+	if strings.Contains(string(got), `"incomplete"`) {
+		t.Errorf("RenderGlyphsJSON() = %s; want no \"incomplete\" key", got)
+	}
+}
+
+// TestRenderGlyphsJSON_ZeroSymbolsEmitsEmptyArray covers the case a nil Symbols would render
+// "symbols": null: RenderGlyphsJSON must instead emit "symbols": [], since nothing else in this
+// suite would catch a regression to a nil-slice marshal.
+func TestRenderGlyphsJSON_ZeroSymbolsEmitsEmptyArray(t *testing.T) {
+	a := GlyphsAnswer{Target: "sub"}
+	got, err := RenderGlyphsJSON(a)
+	if err != nil {
+		t.Fatalf("RenderGlyphsJSON() error = %v", err)
+	}
+	s := string(got)
+	if !strings.Contains(s, `"symbols": []`) {
+		t.Errorf("RenderGlyphsJSON() = %s; want \"symbols\": []", s)
+	}
+	if strings.Contains(s, `"symbols": null`) {
+		t.Errorf("RenderGlyphsJSON() = %s; want no \"symbols\": null", s)
+	}
+}
+
+// TestRenderGlyphsJSON_SymbolObjectKeyOrder covers that each symbol object carries exactly id,
+// kind, file, start, end, in that order.
+func TestRenderGlyphsJSON_SymbolObjectKeyOrder(t *testing.T) {
+	a := GlyphsAnswer{
+		Target:  "sub",
+		Symbols: []Symbol{{ID: "sub#Foo", Kind: KindFunction, File: "sub/a.go", Start: 1, End: 2}},
+	}
+	got, err := RenderGlyphsJSON(a)
+	if err != nil {
+		t.Fatalf("RenderGlyphsJSON() error = %v", err)
+	}
+	s := string(got)
+	symbolsIdx := strings.Index(s, `"symbols"`)
+	if symbolsIdx == -1 {
+		t.Fatalf("RenderGlyphsJSON() = %s; want a \"symbols\" key", s)
+	}
+	assertKeyOrder(t, s[symbolsIdx:], []string{`"symbols"`, `"id"`, `"kind"`, `"file"`, `"start"`, `"end"`})
+}
+
+// TestRenderGlyphsJSON_ClearedFieldsAbsent covers the reason glyphSymbol exists as a shadow struct
+// rather than a cleared-field marshal of Symbol itself: an input symbol carrying a non-empty
+// Signature before GlyphView cleared it must render with no "signature", "doc" or "sigend" key —
+// a symbol with an empty signature to begin with would prove nothing here.
+func TestRenderGlyphsJSON_ClearedFieldsAbsent(t *testing.T) {
+	symbols := []Symbol{{
+		ID: "sub#Foo", Kind: KindFunction, Start: 1, End: 5, SigEnd: 3,
+		Signature: "func Foo()", Doc: "Foo does things.",
+	}}
+	src := DirAnswer{Dir: "sub", Files: []FileEntry{{Name: "a.go", Symbols: &symbols}}}
+	view := GlyphView("sub", src)
+
+	got, err := RenderGlyphsJSON(view)
+	if err != nil {
+		t.Fatalf("RenderGlyphsJSON() error = %v", err)
+	}
+	s := string(got)
+	for _, absent := range []string{`"signature"`, `"doc"`, `"sigend"`} {
+		if strings.Contains(s, absent) {
+			t.Errorf("RenderGlyphsJSON() = %s; want no %s key", s, absent)
+		}
+	}
+}
+
+// TestRenderGlyphsJSON_ByteContract covers the shared byte contract: two-space indentation,
+// exactly one trailing newline, and a '<' in a symbol id or target left unescaped.
+func TestRenderGlyphsJSON_ByteContract(t *testing.T) {
+	a := GlyphsAnswer{
+		Target:  "sub<pkg>",
+		Symbols: []Symbol{{ID: "sub#Foo<T>", Kind: KindFunction, File: "sub/a.go", Start: 1, End: 2}},
+	}
+	got, err := RenderGlyphsJSON(a)
+	if err != nil {
+		t.Fatalf("RenderGlyphsJSON() error = %v", err)
+	}
+	s := string(got)
+	if !strings.Contains(s, "\n  \"target\"") {
+		t.Errorf("RenderGlyphsJSON() = %q; want two-space indentation before \"target\"", s)
+	}
+	if !strings.HasSuffix(s, "\n") || strings.HasSuffix(s, "\n\n") {
+		t.Errorf("RenderGlyphsJSON() = %q; want exactly one trailing newline", s)
+	}
+	if !strings.Contains(s, "sub<pkg>") || !strings.Contains(s, "sub#Foo<T>") {
+		t.Errorf("RenderGlyphsJSON() = %s; want '<' left unescaped", s)
 	}
 }
