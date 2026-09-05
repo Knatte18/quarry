@@ -48,6 +48,33 @@ func TestMCPConfigDocument_Control(t *testing.T) {
 	}
 }
 
+// TestMCPConfigDocument_ToolLessNonControl is the regression for the crash card 6 fixes: a tool-less
+// non-control cell -- an empty Allowed and an explicit control: false -- against a ladder whose
+// Server is nil. Before the switch to GrantsTools, this input reached the granted branch and
+// returned the "declares no server block" error, killing the run before rep 1.
+func TestMCPConfigDocument_ToolLessNonControl(t *testing.T) {
+	l := &Ladder{}
+	notControl := false
+	cfg := Config{ID: "e1-pack", Allowed: nil, Control: &notControl}
+
+	got, err := MCPConfigDocument(l, cfg, "/bin/server", "/worktree")
+	if err != nil {
+		t.Fatalf("MCPConfigDocument() = %v; want no error", err)
+	}
+
+	var doc map[string]any
+	if err := json.Unmarshal(got, &doc); err != nil {
+		t.Fatalf("Unmarshal() = %v", err)
+	}
+	servers, ok := doc["mcpServers"].(map[string]any)
+	if !ok {
+		t.Fatalf("MCPConfigDocument() has no mcpServers map: %s", got)
+	}
+	if len(servers) != 0 {
+		t.Errorf("MCPConfigDocument() for a tool-less non-control cell has %d servers; want 0", len(servers))
+	}
+}
+
 func TestMCPConfigDocument_Granted(t *testing.T) {
 	l := mcpTestLadder()
 	cfg := Config{ID: "a3-full", Allowed: []string{"toc"}}
