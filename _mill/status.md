@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-cli-verb
+phase: approved-docs-inventory
 slug: glyph-maker
 branch: glyph-maker
 plan: _mill/plan
@@ -33,6 +33,7 @@ approved-engine-maker  '2026-09-05T14:57:05Z'
 approved-facade-and-renderers  '2026-09-05T15:02:12Z'
 approved-naming-round-trip  '2026-09-05T15:07:23Z'
 approved-cli-verb  '2026-09-05T15:16:16Z'
+approved-docs-inventory  '2026-09-05T15:21:14Z'
 ```
 
 ## Batches
@@ -64,8 +65,9 @@ batches:
     commit_sha: a46a0c59f1c29b51dd5f2bc72b58b70904d49edc
     verify_baseline_failures: []
   - name: docs-inventory
-    state: running
+    state: approved
     implementer_session: 95c07f3f-e691-423f-b59c-cc6bd2233d65
     start_sha: 36f6677b7b89ff1a4a464de03b638b7bd28f9150
+    commit_sha: b6dcc985725a29a6e1017c1dcaf66bbf3457d132
     verify_baseline_failures: []
 ```
