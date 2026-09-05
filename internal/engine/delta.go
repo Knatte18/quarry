@@ -14,6 +14,7 @@ package engine
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -445,6 +446,83 @@ func classifyExactTier(singleDeleted, singleCreated []sideSymbol) (renamed []Ren
 	return renamed, assertedDeleted, assertedCreated
 }
 
+// renameCandidateFor builds one evidence-tier RenameCandidate for the created side of a (d, c)
+// structural match. Every signal is filled mechanically, over the token streams under the same
+// node-based rule the exact tier uses — never over the verbatim Signature or Doc text — and no
+// composite score is computed anywhere.
+func renameCandidateFor(d, c sideSymbol) RenameCandidate {
+	dName, cName := d.occ.sym.Glyph.Name, c.occ.sym.Glyph.Name
+	return RenameCandidate{
+		ID:   c.occ.sym.ID,
+		Kind: c.occ.sym.Kind,
+		File: c.occ.sym.File,
+		Signals: RenameSignals{
+			SignatureIdenticalModuloName: identicalModuloName(d.occ.streams.signature, c.occ.streams.signature, dName, cName),
+			BodyTokenSimilarity:          bodyTokenSimilarity(d.occ.streams.body, c.occ.streams.body, dName, cName),
+			BodyTokensBefore:             len(d.occ.streams.body),
+			BodyTokensAfter:              len(c.occ.streams.body),
+			DocIdentical:                 d.occ.sym.Doc == c.occ.sym.Doc,
+		},
+	}
+}
+
+// classifyEvidenceTier reports every (deleted, created) pair satisfying the first three exact-tier
+// conditions — same unit, same owner chain, same kind, different name — that is not part of an
+// asserted exact pair (assertedDeleted/assertedCreated, as classifyExactTier returns them).
+//
+// There is no similarity threshold anywhere: structural facts alone gate the candidate set. Neither
+// the deleted symbol nor any candidate created symbol is removed from its array — the candidate
+// block only cross-references them and attaches signals, since suppressing either for a candidate
+// quarry has not resolved would be a silent pick in disguise.
+//
+// Candidates within one entry are sorted by BodyTokenSimilarity descending, then by created ID
+// ascending — a deterministic ordering, not a ranking. The returned entries are otherwise unordered
+// among themselves; the outer ordering pass (card 21) sorts them.
+func classifyEvidenceTier(singleDeleted, singleCreated []sideSymbol, assertedDeleted, assertedCreated map[symbolKey]bool) []RenameCandidateEntry {
+	var order []symbolKey
+	byDeleted := make(map[symbolKey][]RenameCandidate)
+	deletedByKey := make(map[symbolKey]sideSymbol)
+
+	for _, d := range singleDeleted {
+		dKey := symbolKeyOf(d)
+		if assertedDeleted[dKey] {
+			continue
+		}
+		for _, c := range singleCreated {
+			cKey := symbolKeyOf(c)
+			if assertedCreated[cKey] {
+				continue
+			}
+			if !renameStructural13(d, c) {
+				continue
+			}
+			if _, seen := deletedByKey[dKey]; !seen {
+				order = append(order, dKey)
+				deletedByKey[dKey] = d
+			}
+			byDeleted[dKey] = append(byDeleted[dKey], renameCandidateFor(d, c))
+		}
+	}
+
+	entries := make([]RenameCandidateEntry, 0, len(order))
+	for _, dKey := range order {
+		cands := byDeleted[dKey]
+		sort.Slice(cands, func(i, j int) bool {
+			if cands[i].Signals.BodyTokenSimilarity != cands[j].Signals.BodyTokenSimilarity {
+				return cands[i].Signals.BodyTokenSimilarity > cands[j].Signals.BodyTokenSimilarity
+			}
+			return cands[i].ID < cands[j].ID
+		})
+		d := deletedByKey[dKey]
+		entries = append(entries, RenameCandidateEntry{
+			ID:         d.occ.sym.ID,
+			Kind:       d.occ.sym.Kind,
+			Candidates: cands,
+		})
+	}
+	return entries
+}
+
 // removeKeys returns syms with every symbol whose (ID, Kind) key is in remove excluded, preserving
 // the order of the symbols that remain.
 func removeKeys(syms []Symbol, remove map[symbolKey]bool) []Symbol {
@@ -485,15 +563,17 @@ func (r *Repo) Delta(entries []DeltaEntry) (DeltaAnswer, error) {
 	singleDeleted := singleOccurrenceOnly(beforeTable, afterTable)
 	singleCreated := singleOccurrenceOnly(afterTable, beforeTable)
 	renamed, assertedDeleted, assertedCreated := classifyExactTier(singleDeleted, singleCreated)
+	candidates := classifyEvidenceTier(singleDeleted, singleCreated, assertedDeleted, assertedCreated)
 
 	created = removeKeys(created, assertedCreated)
 	deleted = removeKeys(deleted, assertedDeleted)
 
 	return DeltaAnswer{
-		Files:    files,
-		Created:  created,
-		Deleted:  deleted,
-		Modified: modified,
-		Renamed:  renamed,
+		Files:            files,
+		Created:          created,
+		Deleted:          deleted,
+		Modified:         modified,
+		Renamed:          renamed,
+		RenameCandidates: candidates,
 	}, nil
 }
