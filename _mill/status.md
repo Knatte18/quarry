@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-approved
+phase: done
 slug: glyphs-verb
 branch: glyphs-verb
 plan: _mill/plan
@@ -37,6 +37,7 @@ implementing  '2026-09-05T18:58:20Z'
 approved-goldens-and-docs  '2026-09-05T19:02:31Z'
 holistic-reviewing  '2026-09-05T19:03:00Z'
 holistic-approved  '2026-09-05T19:07:05Z'
+done  '2026-09-05T19:07:40Z'
 ```
 
 ## Batches
