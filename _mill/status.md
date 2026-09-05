@@ -72,7 +72,9 @@ batches:
     commit_sha: 7169f366ca4e75c6d9a6cd98e8e3bad7f3f186f8
     verify_baseline_failures: []
   - name: delta-core
-    state: pending
+    state: running
+    implementer_session: db03f2b4-4b67-455e-99f4-1da460b8626a
+    start_sha: 194ef843c23faae97bb2a19dbac084b8f81d63aa
     verify_baseline_failures: []
   - name: facade-delta
     state: pending
