@@ -45,7 +45,9 @@ batches:
     commit_sha: 793738cc2d5f4bc537cae80383c16588baab7492
     verify_baseline_failures: []
   - name: engine-resolve-contract
-    state: pending
+    state: running
+    implementer_session: e05df424-7b87-4b01-bde9-09338ac28e42
+    start_sha: b4ef306aab1e8b9c50c6a565cbedfada998756ff
     verify_baseline_failures: []
   - name: expand-gate-and-sentinel
     state: pending
