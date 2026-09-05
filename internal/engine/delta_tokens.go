@@ -7,6 +7,8 @@
 package engine
 
 import (
+	"strings"
+
 	ts "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -81,9 +83,16 @@ func walkLeaves(n *ts.Node, visit func(*ts.Node)) {
 	}
 }
 
-// identifierKind is the tree-sitter-go node kind an identifier leaf carries. It is the only kind
-// identicalModuloName's substitution rule ever admits.
-const identifierKind = "identifier"
+// isIdentifierNode reports whether kind is one of the pinned tree-sitter-go grammar's identifier
+// leaf kinds: "identifier" for a package-level or local name, "field_identifier" for a struct
+// field, a method name or a selector's field, "type_identifier" for a type name, and
+// "package_identifier" for a package clause's name. A declared symbol's own name node's kind
+// depends on what kind of declaration it is — a method's name is a field_identifier, never a bare
+// identifier — so the substitution rule below must admit all four, not "identifier" alone, to
+// cover a method rename such as Run -> Execute.
+func isIdentifierNode(kind string) bool {
+	return strings.HasSuffix(kind, "identifier")
+}
 
 // identicalModuloName reports whether a and b are identical modulo the renamed identifier: they
 // have the same length and, at every position, either the two tokens are equal in both kind and
@@ -102,11 +111,33 @@ const identifierKind = "identifier"
 // and never as a textual substitution over a signature string: replacing the text "Run" with
 // "Execute" inside a method head would also hit the "Runner" in its receiver, while a stream has
 // real identifier nodes to key on.
+func identicalModuloName(a, b tokenStream, deletedName, createdName string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].kind == b[i].kind && a[i].text == b[i].text {
+			continue
+		}
+		if isIdentifierNode(a[i].kind) && isIdentifierNode(b[i].kind) &&
+			a[i].text == deletedName && b[i].text == createdName {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // renamedIdentifierPlaceholder replaces an identifier token bearing a symbol's own name before the
 // two body streams are turned into multisets for bodyTokenSimilarity. It is chosen so it can never
 // collide with a real Go identifier's text: a NUL byte is not a legal identifier rune, and no source
 // text tokenStreamsForSymbols hands back can contain one.
 const renamedIdentifierPlaceholder = "\x00renamed\x00"
+
+// placeholderKind marks the synthetic token multisetCounts substitutes in place of an identifier
+// bearing a symbol's own name. It deliberately does not match any real tree-sitter-go node kind, so
+// a placeholder token can never coincide with an unrelated real token in either multiset.
+const placeholderKind = "\x00identifier-placeholder\x00"
 
 // bodyTokenSimilarity returns the body token similarity signal for two body streams and the two
 // symbol names: the Jaccard coefficient of the two streams treated as multisets of (kind, text)
@@ -147,27 +178,10 @@ func bodyTokenSimilarity(before, after tokenStream, beforeName, afterName string
 func multisetCounts(stream tokenStream, name string) map[token]int {
 	counts := make(map[token]int, len(stream))
 	for _, tok := range stream {
-		if tok.kind == identifierKind && tok.text == name {
-			tok = token{kind: identifierKind, text: renamedIdentifierPlaceholder}
+		if isIdentifierNode(tok.kind) && tok.text == name {
+			tok = token{kind: placeholderKind, text: renamedIdentifierPlaceholder}
 		}
 		counts[tok]++
 	}
 	return counts
-}
-
-func identicalModuloName(a, b tokenStream, deletedName, createdName string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i].kind == b[i].kind && a[i].text == b[i].text {
-			continue
-		}
-		if a[i].kind == identifierKind && b[i].kind == identifierKind &&
-			a[i].text == deletedName && b[i].text == createdName {
-			continue
-		}
-		return false
-	}
-	return true
 }
