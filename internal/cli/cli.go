@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/internal/repopath"
@@ -357,21 +356,12 @@ func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
 // runResolve is the resolve verb's own pipeline, continuing from Run's shared four steps. See
 // Run's doc comment for the numbered steps this function executes in fixed order.
 func runResolve(req request, root, base string, stdout, stderr io.Writer) int {
-	target := req.target
-	if !strings.Contains(target, "#") {
-		rel, err := repopath.RepoRelPath(root, base, target)
-		if err != nil {
-			return fail(stdout, stderr, exitNegative, "target outside repository: "+req.target, false)
-		}
-		target = rel
-	}
-
 	repo, err := quarry.Open(root)
 	if err != nil {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 
-	results, err := repo.Resolve([]string{target})
+	results, err := repo.Resolve([]string{req.target})
 	if err != nil {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
