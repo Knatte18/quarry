@@ -163,6 +163,114 @@ func (r *Repo) UntrackedPaths(pathspec string) ([]string, error) {
 	return splitNullDelimited(out), nil
 }
 
+// ReadBlob returns the bytes of path, repository-relative, as it exists at rev.
+func (r *Repo) ReadBlob(rev, path string) ([]byte, error) {
+	return runGit(r.root, "show", rev+":"+path)
+}
+
+// DirFilesAtRevision returns the Go source files that are dir's immediate children at rev --
+// repository-relative and never a subdirectory's files. dir == "" or "." means the repository root.
+//
+// This is one half of a symmetry pair with DirFilesInWorkingTree: both return the directory's
+// immediate children only, because that is the set the clause vote runs over -- the walk reads one
+// directory at a time and recurses separately, and the unit is a per-directory fact, so a
+// subdirectory's clause must never enter this directory's vote. Without this trim, the two sides'
+// dominant clauses could disagree over a file neither side's caller ever meant to compare, and a
+// disagreement there changes the unit of every glyph in the directory.
+//
+// git's non-recursive ls-tree form already yields exactly the immediate entries for a subdirectory
+// once its pathspec carries a trailing "/" (a bare directory name, with no trailing slash, names the
+// directory's own tree entry instead of listing its contents), and the repository root's own
+// immediate children are already what a slash-free "." yields. Neither git command this package uses
+// applies the engine's own ignore set: a file that is both tracked and matched by a gitignore
+// pattern is listed here, on the revision side, exactly as it is on the working-tree side, so the
+// symmetry the two sides promise holds for it -- listed on both sides, never on one alone.
+func (r *Repo) DirFilesAtRevision(rev, dir string) ([]string, error) {
+	out, err := runGit(r.root, "ls-tree", "-z", "--name-only", rev, "--", revisionDirPathspec(dir))
+	if err != nil {
+		return nil, err
+	}
+	return filterGoFiles(splitNullDelimited(out)), nil
+}
+
+// revisionDirPathspec turns dir into the pathspec ls-tree needs to list dir's immediate children
+// rather than dir's own tree entry: the repository root already lists its immediate children under
+// a slash-free ".", but any other directory needs a trailing "/" to do the same.
+func revisionDirPathspec(dir string) string {
+	if dir == "" || dir == "." {
+		return "."
+	}
+	return strings.TrimSuffix(dir, "/") + "/"
+}
+
+// DirFilesInWorkingTree returns the Go source files that are dir's immediate children on the
+// working-tree side -- repository-relative and never a subdirectory's files. dir == "" or "." means
+// the repository root.
+//
+// This is the working-tree half of the symmetry pair DirFilesAtRevision documents. The two
+// underlying git commands are unequal: the revision-side listing is non-recursive already, but the
+// working-tree listing has no non-recursive mode, so its output is filtered here to paths carrying
+// no further separator after dir's own prefix.
+//
+// It lists index entries ("--cached") as well as untracked ones ("--others"), so it can name a file
+// that is not present on disk -- a file removed from the working tree but still in the index is
+// expected here, and reading such a path is the caller's problem, not this method's. It passes the
+// standard-exclusion flag ("--exclude-standard") on the untracked half exactly as UntrackedPaths
+// does: without it, an ignored untracked source file would vote in this directory's clause map on
+// the working-tree side alone, which can shift the directory's dominant clause and therefore every
+// glyph unit in it -- and it would sweep in build output and every other ignored artefact besides.
+// A tracked file matched by a gitignore pattern is unaffected by that flag and is listed here
+// exactly as it is by DirFilesAtRevision, which is the symmetry the comparison depends on: a file
+// that is both tracked and gitignored is listed on both sides or on neither, while an ignored
+// *untracked* file is listed on neither, since it can only ever exist on this, the working-tree,
+// side.
+func (r *Repo) DirFilesInWorkingTree(dir string) ([]string, error) {
+	pathspec := "."
+	if dir != "" && dir != "." {
+		pathspec = strings.TrimSuffix(dir, "/")
+	}
+	out, err := runGit(r.root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec)
+	if err != nil {
+		return nil, err
+	}
+	return filterGoFiles(immediateChildren(dir, splitNullDelimited(out))), nil
+}
+
+// immediateChildren keeps only the paths in paths that are dir's immediate children, dropping any
+// path a further path separator places in a subdirectory of dir.
+func immediateChildren(dir string, paths []string) []string {
+	prefix := ""
+	if dir != "" && dir != "." {
+		prefix = strings.TrimSuffix(dir, "/") + "/"
+	}
+	var children []string
+	for _, p := range paths {
+		rest := p
+		if prefix != "" {
+			if !strings.HasPrefix(p, prefix) {
+				continue
+			}
+			rest = p[len(prefix):]
+		}
+		if strings.Contains(rest, "/") {
+			continue
+		}
+		children = append(children, p)
+	}
+	return children
+}
+
+// filterGoFiles keeps only the paths in paths ending in ".go".
+func filterGoFiles(paths []string) []string {
+	var goFiles []string
+	for _, p := range paths {
+		if strings.HasSuffix(p, ".go") {
+			goFiles = append(goFiles, p)
+		}
+	}
+	return goFiles
+}
+
 // runGit runs one git invocation against root, passed explicitly via git's own "-C" flag rather
 // than through the process's own working directory, matching how the existing tests in this
 // repository already invoke git: a caller running the same query many times over never depends on
