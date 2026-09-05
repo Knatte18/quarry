@@ -172,9 +172,17 @@ this repository already invoke git.
   The working-tree enumeration lists index entries as well as untracked ones, so it can name a file
   that is not present on disk; that is expected, and reading such a file is the caller's problem
   rather than this method's.
-  Both enumerations are tracked-inclusive and neither applies any ignore filtering of its own, so a
-  file that is both tracked and matched by a gitignore pattern is listed on both sides or on
-  neither; state that in the doc comments, because the symmetry is what the comparison depends on.
+  It passes the standard-exclusion flag, exactly as the untracked listing in card 27 does: without
+  it an ignored untracked source file would vote in this directory's clause map on the working-tree
+  side alone, which can shift the directory's dominant clause and therefore every glyph unit in it —
+  and it would sweep in build output and every other ignored artefact besides.
+  The symmetry the two enumerations promise is therefore precisely this: both are
+  tracked-inclusive and neither applies the engine's own ignore set, so a file that is both tracked
+  and matched by a gitignore pattern is listed on both sides or on neither, while an ignored
+  *untracked* file is listed on neither because it can only ever exist on the working-tree side.
+  State it that way in the doc comments rather than as a blanket claim that no ignore filtering
+  applies, because the symmetry is what the comparison depends on and the two halves have different
+  reasons.
 - **Commit:** `feat(gitsrc): read blobs and enumerate a directory's immediate children per side`
 
 ### Card 29: the throwaway-repository fixture builder

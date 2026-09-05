@@ -153,9 +153,9 @@ JSON-hidden fields that exist for exactly one consumer.
 - **Requirements:** Add `TestSymbolOffsets_PerShape` and `TestSignatureSpanInvariant_PerShape` in
   package `engine`, both driven by table cases over in-memory Go source parsed through
   `treesitter.WithTree` — no fixture files.
-  `TestSymbolOffsets_PerShape` covers all six builder shapes: an ungrouped function, a method, an
-  ungrouped type with a struct body, a grouped type, an interface method element, an ungrouped
-  const, a grouped var, and a type alias.
+  `TestSymbolOffsets_PerShape` covers all six builders, across these eight shapes: an ungrouped
+  function, a method, an ungrouped type with a struct body, a grouped type, an interface method
+  element, an ungrouped const, a grouped var, and a type alias.
   For each it asserts that `DeclStart` and `DeclEnd` bracket the declaration text the shape's
   builder cut from, and that `BodyStart` equals `DeclEnd` exactly for the shapes with no
   body-bearing child — every const, every var, a type alias, and an interface method element — and

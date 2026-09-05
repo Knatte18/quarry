@@ -5,7 +5,7 @@ task: 'P2 — diff-to-symbols: changed file versions to symbol-table delta (road
 batch: 'engine-unit-exports'
 number: 2
 cards: 5
-verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC'
+verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC|TestResolve|TestExpand|TestSpansOf|TestRoundTrip'
 depends-on: []
 ```
 
@@ -77,6 +77,7 @@ outside this package.
 - **Context:**
   - `internal/engine/repo.go`
   - `internal/engine/glyph_test.go`
+  - `internal/engine/resolve.go`
 - **Edits:**
   - `internal/engine/units.go`
   - `internal/engine/walk.go`
@@ -95,12 +96,18 @@ outside this package.
   that in the doc comment rather than leaving it to the reader.
   Move the vote itself out of `dirPackage` and the derivation out of `unitFor` so each rule exists
   once: `dirPackage` computes its clauses map and then returns `UnitsForClauseMap`'s `dirPkg`, and
-  `unitFor` either becomes a thin wrapper over the same derivation or is removed in favour of it at
-  every call site.
-  Whichever of the two you choose, the discriminator stays the clause and never the filename —
-  a file belongs to the external-test unit only when its clause is exactly `dirPkg` plus the
-  `"_test"` suffix — and the repository root stays the documented exception returning the empty
-  string for both branches.
+  `unitFor` **stays where it is as a thin wrapper** delegating to the same derivation.
+  Keep the wrapper rather than removing the function and rewriting its call sites: `unitFor` is
+  called from `symbolsOfDir` in `internal/engine/resolve.go` as well as from this file, and that file
+  is deliberately outside this batch's edit set — a wrapper keeps one implementation of the rule
+  without widening the batch onto the resolve path.
+  The discriminator stays the clause and never the filename — a file belongs to the external-test
+  unit only when its clause is exactly `dirPkg` plus the `"_test"` suffix — and the repository root
+  stays the documented exception returning the empty string for both branches.
+  Update this file's own header comment in the same commit: it enumerates the per-directory work as
+  `dirPackage`, the other unexported methods, and the unexported free function `unitFor`, and it must
+  now say that the clause vote and the unit derivation live in the exported helpers this batch adds,
+  with the two names here delegating to them.
   Preserve `mostCommonClause`'s existing tie-break exactly; its determinism is what keeps a
   directory's answer independent of directory-read order.
 - **Commit:** `refactor(engine): extract UnitsForClauseMap from the clause vote and unit derivation`
@@ -175,13 +182,18 @@ outside this package.
   - `internal/engine/walk.go`
   - `internal/engine/walk_test.go`
   - `internal/engine/toc_test.go`
+  - `internal/engine/resolve.go`
 - **Edits:** none
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Verification-only card, producing no diff.
-  Run the existing `internal/engine` walk and toc suites and confirm every test passes unchanged,
-  paying particular attention to the four that pin the rules cards 6 and 7 moved: the package
+  Run the existing `internal/engine` walk, toc, resolve, expand, spans and round-trip suites and
+  confirm every test passes unchanged.
+  The resolve-side suites are named explicitly because they are the non-obvious half: `symbolsOfDir`
+  in `internal/engine/resolve.go` consumes both of the functions cards 6 and 7 rewrite, so a
+  behaviour change there surfaces on the resolve and expand paths rather than on the walk.
+  Pay particular attention to the four cases that pin the rules those cards moved: the package
   deviation key appearing only on an external test file, the package literally named `httptest` not
   being split, the tie-break picking the lexicographically smaller clause deterministically, and the
   ordering-and-symbol-source-order case.
@@ -194,13 +206,17 @@ outside this package.
 
 ## Batch Tests
 
-`verify:` runs `go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC'`.
+`verify:` runs
+`go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC|TestResolve|TestExpand|TestSpansOf|TestRoundTrip'`.
 The first three patterns select card 9's new tables.
-The last two are deliberately broader than this batch's own additions: they select every existing
-`TestWalk_*` function in `internal/engine/walk_test.go` and every existing `TestRepoTOC_*` function
-in `internal/engine/toc_test.go`, which is where the clause vote and the unit derivation this batch
-rewrites are already pinned — including the `httptest` case, the external-test deviation case, the
-lexicographic tie-break and the whole table-of-contents surface that reads a file's unit.
-Card 10 names exactly these two suites, and both are in this selection, so a behaviour change
-introduced by the refactor fails this batch's own verify rather than waiting for the repository-wide
-done gate.
+The rest are deliberately much broader than this batch's own additions, and each is load-bearing.
+The walk and toc patterns cover where the clause vote and the unit derivation are already pinned —
+the `httptest` case, the external-test deviation case, the lexicographic tie-break, and the whole
+table-of-contents surface that reads a file's unit.
+The resolve, expand, spans and round-trip patterns cover the non-obvious consumer: `symbolsOfDir` in
+`internal/engine/resolve.go` calls both of the functions cards 6 and 7 rewrite, so a behaviour change
+introduced by the refactor surfaces on those paths and would otherwise pass this batch's verify in
+silence.
+Card 10 names exactly these suites and every one of them is in this selection, so the refactor's
+behaviour-preservation claim is checked at this batch's own boundary rather than deferred to the
+repository-wide done gate.
