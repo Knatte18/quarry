@@ -27,7 +27,7 @@ batches:
     name: engine-unit-exports
     file: 02-engine-unit-exports.md
     depends-on: []
-    verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk'
+    verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC'
   - number: 3
     name: delta-types-and-tokens
     file: 03-delta-types-and-tokens.md

@@ -5,7 +5,7 @@ task: 'P2 — diff-to-symbols: changed file versions to symbol-table delta (road
 batch: 'engine-unit-exports'
 number: 2
 cards: 5
-verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk'
+verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC'
 depends-on: []
 ```
 
@@ -194,11 +194,13 @@ outside this package.
 
 ## Batch Tests
 
-`verify:` runs `go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk'`.
+`verify:` runs `go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC'`.
 The first three patterns select card 9's new tables.
-The fourth is deliberately broader than this batch's own additions: it selects every existing
-`TestWalk_*` function in `internal/engine/walk_test.go`, which is where the clause vote and the unit
-derivation this batch rewrites are already pinned — including the `httptest` case, the external-test
-deviation case and the lexicographic tie-break.
-Card 10's verification pass rests on that same selection, so a behaviour change introduced by the
-refactor fails this batch's own verify rather than waiting for the repository-wide done gate.
+The last two are deliberately broader than this batch's own additions: they select every existing
+`TestWalk_*` function in `internal/engine/walk_test.go` and every existing `TestRepoTOC_*` function
+in `internal/engine/toc_test.go`, which is where the clause vote and the unit derivation this batch
+rewrites are already pinned — including the `httptest` case, the external-test deviation case, the
+lexicographic tie-break and the whole table-of-contents surface that reads a file's unit.
+Card 10 names exactly these two suites, and both are in this selection, so a behaviour change
+introduced by the refactor fails this batch's own verify rather than waiting for the repository-wide
+done gate.
