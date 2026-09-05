@@ -165,3 +165,139 @@ func TestTokenStreams_ManyToManyLeafAssignment(t *testing.T) {
 		}
 	})
 }
+
+func TestIdenticalModuloName(t *testing.T) {
+	t.Run("IdenticalExceptRenamedIdentifier_RecursiveSelfCall", func(t *testing.T) {
+		before := "package p\n\nfunc Old() {\n\tx := 1\n\tOld()\n\t_ = x\n}\n"
+		after := "package p\n\nfunc New() {\n\tx := 1\n\tNew()\n\t_ = x\n}\n"
+		symbolsBefore, streamsBefore := symbolsAndStreams(t, before)
+		symbolsAfter, streamsAfter := symbolsAndStreams(t, after)
+		bodyBefore := findSymbolStreams(t, symbolsBefore, streamsBefore, "Old", KindFunction).body
+		bodyAfter := findSymbolStreams(t, symbolsAfter, streamsAfter, "New", KindFunction).body
+		if !identicalModuloName(bodyBefore, bodyAfter, "Old", "New") {
+			t.Error("identicalModuloName(...) = false; want true — the two bodies differ only by the " +
+				"renamed identifier, including its recursive self-call")
+		}
+	})
+
+	t.Run("ExtraStatement_NotIdentical", func(t *testing.T) {
+		before := "package p\n\nfunc Old() {\n\tx := 1\n\t_ = x\n}\n"
+		after := "package p\n\nfunc New() {\n\tx := 1\n\ty := 2\n\t_ = x\n\t_ = y\n}\n"
+		symbolsBefore, streamsBefore := symbolsAndStreams(t, before)
+		symbolsAfter, streamsAfter := symbolsAndStreams(t, after)
+		bodyBefore := findSymbolStreams(t, symbolsBefore, streamsBefore, "Old", KindFunction).body
+		bodyAfter := findSymbolStreams(t, symbolsAfter, streamsAfter, "New", KindFunction).body
+		if identicalModuloName(bodyBefore, bodyAfter, "Old", "New") {
+			t.Error("identicalModuloName(...) = true; want false — the after body carries one extra statement")
+		}
+	})
+
+	t.Run("AnonymousOperatorDiffers_NotIdentical", func(t *testing.T) {
+		before := "package p\n\nfunc Old() {\n\tx := 1 + 1\n\t_ = x\n}\n"
+		after := "package p\n\nfunc New() {\n\tx := 1 - 1\n\t_ = x\n}\n"
+		symbolsBefore, streamsBefore := symbolsAndStreams(t, before)
+		symbolsAfter, streamsAfter := symbolsAndStreams(t, after)
+		bodyBefore := findSymbolStreams(t, symbolsBefore, streamsBefore, "Old", KindFunction).body
+		bodyAfter := findSymbolStreams(t, symbolsAfter, streamsAfter, "New", KindFunction).body
+		if identicalModuloName(bodyBefore, bodyAfter, "Old", "New") {
+			t.Error("identicalModuloName(...) = true; want false — the bodies differ only in an " +
+				"anonymous operator token (+ vs -), which the rename substitution never admits")
+		}
+	})
+
+	t.Run("ReceiverSharesPrefixWithOldName_SignatureIdenticalModuloRename", func(t *testing.T) {
+		// A textual substitution of "Run" -> "Execute" over the verbatim signature string would also
+		// rewrite the "Run" prefix inside the receiver type "Runner", producing a false mismatch (or a
+		// false match, under a naive replace). The token-based rule keys on whole identifier texts, so
+		// "Runner" — never equal to "Run" — is left alone.
+		before := "package p\n\ntype Runner struct{}\n\nfunc (r *Runner) Run() error {\n\treturn nil\n}\n"
+		after := "package p\n\ntype Runner struct{}\n\nfunc (r *Runner) Execute() error {\n\treturn nil\n}\n"
+		symbolsBefore, streamsBefore := symbolsAndStreams(t, before)
+		symbolsAfter, streamsAfter := symbolsAndStreams(t, after)
+		sigBefore := findSymbolStreams(t, symbolsBefore, streamsBefore, "Run", KindMethod).signature
+		sigAfter := findSymbolStreams(t, symbolsAfter, streamsAfter, "Execute", KindMethod).signature
+		if !identicalModuloName(sigBefore, sigAfter, "Run", "Execute") {
+			t.Error("identicalModuloName(...) = false; want true — the receiver's \"Runner\" token must " +
+				"not be affected by the \"Run\"->\"Execute\" identifier substitution")
+		}
+	})
+}
+
+func TestBodyTokenSimilarity(t *testing.T) {
+	tests := []struct {
+		name       string
+		before     tokenStream
+		after      tokenStream
+		beforeName string
+		afterName  string
+		want       float64
+	}{
+		{
+			name:       "TwoEmptyStreams",
+			before:     nil,
+			after:      nil,
+			beforeName: "Old",
+			afterName:  "New",
+			want:       1.0,
+		},
+		{
+			name: "IdenticalStreams",
+			before: tokenStream{
+				{kind: "identifier", text: "x"},
+				{kind: "+", text: "+"},
+				{kind: "identifier", text: "y"},
+			},
+			after: tokenStream{
+				{kind: "identifier", text: "x"},
+				{kind: "+", text: "+"},
+				{kind: "identifier", text: "y"},
+			},
+			beforeName: "Old",
+			afterName:  "New",
+			want:       1.0,
+		},
+		{
+			name: "DisjointStreams",
+			before: tokenStream{
+				{kind: "op", text: "+"},
+				{kind: "op", text: "-"},
+			},
+			after: tokenStream{
+				{kind: "op", text: "*"},
+				{kind: "op", text: "/"},
+			},
+			beforeName: "Foo",
+			afterName:  "Bar",
+			want:       0.0,
+		},
+		{
+			// Hand-computed: intersection counts {op:+ -> 1, op:- -> 1}, union counts
+			// {op:+ -> 1, op:- -> 1, op:* -> 1, op:/ -> 1}; 2/4 = 0.5.
+			name: "PartialOverlap",
+			before: tokenStream{
+				{kind: "op", text: "+"},
+				{kind: "op", text: "-"},
+				{kind: "op", text: "*"},
+			},
+			after: tokenStream{
+				{kind: "op", text: "+"},
+				{kind: "op", text: "-"},
+				{kind: "op", text: "/"},
+			},
+			beforeName: "Foo",
+			afterName:  "Bar",
+			want:       0.5,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := bodyTokenSimilarity(tt.before, tt.after, tt.beforeName, tt.afterName)
+			if got != tt.want {
+				t.Errorf("bodyTokenSimilarity(...) = %v; want %v", got, tt.want)
+			}
+			if got < 0.0 || got > 1.0 {
+				t.Errorf("bodyTokenSimilarity(...) = %v; want a value in the closed interval [0, 1]", got)
+			}
+		})
+	}
+}
