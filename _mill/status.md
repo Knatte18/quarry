@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -20,4 +20,5 @@ discussion-gap-fix-r2  '2026-09-05T11:21:34Z'
 discussion-fix-r3  '2026-09-05T11:29:13Z'
 discussed  '2026-09-05T11:29:13Z'
 planning  '2026-09-05T11:44:11Z'
+plan-review-r1  '2026-09-05T11:50:27Z'
 ```
