@@ -125,17 +125,26 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
 
 ### D3 — the pack is generated once by a `ladder pack` subcommand and verified at dispatch
 
-- **Decision:** a third subcommand, `ladder pack`, with flags `--config`, `--results` and
-  `--card` (the e1 card path to write). It:
-  1. prepares/restores the pinned worktree for the ladder file's task, exactly as `run` does;
-  2. opens that worktree through the `quarry` facade and makes **one** batched
-     `(*quarry.Repo).Resolve(targets)` call over the full glyph list, read from the ladder file's new
+- **Decision:** a third subcommand, `ladder pack`, with flags `--config` and `--results` only. It:
+  1. resolves the quarry repository root, the target repository and the worktree root exactly as
+     `Run` does, then **acquires the same run lock** — `AcquireRunLock(worktreeRoot, resultsRoot)`
+     (`worktree.go:293`), release deferred — so a pack and a run can never touch one pinned worktree
+     concurrently. The lock is exclusive-create and is never reaped automatically, so a pack that
+     dies leaves the same operator-cleared stale lock a dead run does, which is the existing,
+     documented behaviour;
+  2. prepares/restores the pinned worktree for the ladder file's single task, exactly as `run` does;
+  3. finds the ladder file's one **pack cell** — the config with `pack: true` (D11) — and takes its
+     `card` as the file to write; there is no `--card` flag, so the card written can never disagree
+     with the card the matrix renders;
+  4. opens the pinned worktree through the `quarry` facade and makes **one** batched
+     `(*quarry.Repo).Resolve(targets)` call over the full glyph list, read from the ladder file's
      `pack_targets:` list;
-  3. halts, naming the offending target, if any result's status is not `found` — `not_found`,
+  5. halts, naming the offending target, if any result's status is not `found` — `not_found`,
      `ambiguous`, `multipart` and a pre-resolution `error` are all fatal;
-  4. renders the pack (D5) and writes it into the e1 card file between two fixed sentinel lines, and
-     writes the raw resolve JSON to `<results>/pack-resolve.json`;
-  5. writes/merges `provenance.json` with a `kickstart_pack` block (D4).
+  6. renders the pack (D5) and writes it into the pack cell's card between two fixed sentinel lines,
+     and writes the raw resolve JSON to `<results>/pack-resolve.json`;
+  7. writes `provenance.json` **as a full, ordinary invocation** (D4), with the `kickstart_pack`
+     block set on the merged record.
 - `run` then verifies, once per invocation before rep 1: the e1 card's sentinel-delimited pack block
   hashes to `kickstart_pack.pack_sha256`, and `provenance.quarry_commit` /`quarry_dirty` still match
   the block's own recorded pair. Any mismatch is a hard error naming both hashes and does not spend
@@ -149,6 +158,12 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
   `github.com/Knatte18/quarry`; there is no second `go.mod`), so `ladder pack` imports
   `github.com/Knatte18/quarry/quarry` directly. This is the batched facade's first real exercise, as
   the proposal intends. No cell calls it at run time.
+- **`cmd/ladder/main.go` is updated alongside the new subcommand:** its header comment currently ends
+  "this harness drives its own loop, so there is nothing left for a third subcommand to do", which
+  this decision supersedes. The header is rewritten to name three subcommands and to say why `pack`
+  is one — it produces an artefact consumed by the prompt, not a step of the run loop, which is the
+  distinction the original sentence was drawing. Both usage strings in `main()` (`usage: ladder
+  <run|report> [flags]` at `:21` and the unknown-subcommand message at `:35`) gain `pack`.
 - **Rejected:** hand-writing the pack into the card and recording only its hash (nothing ties the
   hash to a real resolve); regenerating per rep (contradicts "generated ONCE, before rep 0", and
   would let a mid-matrix edit change the treatment).
@@ -158,13 +173,36 @@ harness's fragile MCP path is not exercised and control blinding is trivial.
 - **Decision:** `Provenance` gains `KickstartPack *KickstartPack \`json:"kickstart_pack,omitempty"\``
   with fields: `generated_at`, `quarry_commit`, `quarry_dirty`, `loomyard_commit`, `targets []string`,
   `pack_sha256`, `resolve_sha256`, `card_file`. `MergeProvenance` carries an existing block forward
-  unchanged; a `next` invocation never sets it (only `ladder pack` does). A resumed root whose block
-  differs from the card on disk fails the D3 verification.
-- **Rationale:** `run` writes `provenance.json` through `MergeProvenance` at startup, so a block
-  written by `ladder pack` into a field the struct does not know would be silently dropped on the
+  unchanged; a `next` `Invocation` never sets it (only `ladder pack` does, on the merged record, after
+  the merge returns). A resumed root whose block disagrees with the card on disk fails the D3
+  verification.
+- **`ladder pack` writes an ordinary invocation, not a pack-only stub.** It calls `CollectInvocation`
+  with exactly the inputs `Run` would use for this ladder file — `QuarryRepoRoot`, `LadderFilePath`,
+  `TargetRepoPath`, `ServerName: l.ServerName()`, `ClaudeBinPath`, `RepsEffective: l.Reps`, and
+  `SelectedCells:` every config id in the file — then `MergeProvenance(existing, inv)` and
+  `WriteProvenance`. Its record is therefore a complete first invocation, and the `run` that follows
+  merges against it normally.
+- **Why, precisely.** `MergeProvenance` (`provenance.go:362`) rejects a merge whose `LadderFile`,
+  `LoomyardRepoSHA256`, `ServerName` or `RepsEffective` differs from the existing record, and `Run`
+  additionally refuses a root whose `RepsEffective` differs from the invocation's
+  (`run.go:100–105`). A pack-only record leaving those four fields at their zero values would fail
+  *both* checks on the very first `run` — `reps_effective 0 vs 10`, then `ladder_file "" vs
+  bench/…/ladder-kickstart.yaml` — before rep 1, every time. Writing a real invocation satisfies all
+  four by construction and needs no exemption path in `MergeProvenance`, which is the shared
+  machinery every existing results root depends on.
+- **Consequences, accepted deliberately:** `provenance.json` carries one invocation that ran no
+  repetitions. It is identifiable as the pack run by having no entry in `server_hashes` and by its
+  `written_at` matching `kickstart_pack.generated_at`; nothing in `summarize`, `report` or the
+  conclusion reads the invocation count. And because `RepsEffective` is pinned at `l.Reps` from the
+  pack onward, a later `run --reps` override against the same root is refused — which is the correct
+  behaviour under D9's locked n, not a limitation to work around.
+- **Rationale for the field itself:** `run` rewrites `provenance.json` through `MergeProvenance` at
+  startup, so a block written into a field the struct does not know would be silently dropped on the
   first `run`. It has to be a real field.
-- **Rejected:** a sibling `pack.json` referenced from nowhere (the proposal asks for provenance to
-  record it, and an unreferenced file is not a record).
+- **Rejected:** a pack-only record plus a `MergeProvenance` exemption for it (adds a second identity
+  regime to machinery three existing results roots already depend on, to save one invocation entry);
+  a sibling `pack.json` referenced from nowhere (the proposal asks for provenance to record the pack,
+  and an unreferenced file is not a record).
 
 ### D5 — pack line format: locations and signature, never the docstring
 
@@ -281,10 +319,37 @@ All three cards carry the same `Uses:` glyph-name list, in the same order. They 
   never compared across arms**: e1's pack names the seven files verbatim in the prompt, so its
   `relevant_files` recall is inflated by construction. This is stated in `conclusion.md` as a known,
   unavoidable property of the design, not discovered afterwards.
-- **Gate-failure accounting:** a rep that fails the gate stays in the metric sample and is flagged in
-  the per-rep table with a gate column. Dropping reps after looking at their scores is optional
-  stopping through a side door. If more than 2 of 10 reps in any arm fail the gate, the conclusion
-  says so prominently and treats that arm's cost numbers as suspect — but it still reports them.
+- **Gate-failure accounting.** The harness produces four dispositions per rep, not two, and the gate
+  column is three-valued. `summarize` excludes a rep from recall/precision whenever its `run.json`
+  carries `scored: false`, splitting those into `MaxTurnsCount` (the `max_turns` ceiling) and
+  `UnscoredCount` (any other reason) — `summarize.go:236–282` — so a `summary_matches` value simply
+  does not exist for them.
+
+  | disposition | gate column | in the cost sample? | counts toward the 2-of-10 gate threshold? |
+  | --- | --- | --- | --- |
+  | scored, `summary_matches: true` | `pass` | yes | no |
+  | scored, `summary_matches: false` | `fail` | yes | yes |
+  | `scored: false` via the max-turns ceiling | `max_turns` | yes, censored at 60 | no |
+  | `scored: false` for any other reason | `unscored` | yes | no |
+
+- **Predeclared readings, fixed now rather than after looking:**
+  - Every rep that produced a transcript stays in the cost sample. Dropping reps after seeing their
+    scores is optional stopping through a side door.
+  - A `max_turns` rep's `turns` is censored at the ceiling — 60, identical across all three arms —
+    and its `cost_usd` is not censored. The per-rep table flags it. If any arm has more than 2 of 10
+    censored reps, the conclusion reports the `turns` test as censored and says so in the verdict
+    line, and `cost_usd` carries the primary comparison; it does **not** re-run, re-sample, or drop
+    the arm.
+  - **> 2 of 10 `fail` in any arm:** the conclusion says so prominently and treats that arm's cost
+    numbers as suspect, while still reporting them.
+  - **> 2 of 10 `unscored` in any arm:** the conclusion reports that arm's correctness accounting as
+    incomplete. Cost metrics are unaffected — an unscored rep's turns and cost are real measurements.
+  - `max_turns_count` and `unscored_count` are reported per arm in `conclusion.md` regardless of
+    whether either threshold is crossed, so a clean matrix is visibly clean.
+  - A rep the harness discarded before it produced a transcript — a fatal blinding finding
+    (`writeVoidRepetition`) or an attempt loop exhausted to `incomplete` — is not a disposition of a
+    measured rep at all. It never enters any sample, and the conclusion reports its count separately
+    as a harness event.
 - **Rejected:** a numeric recall threshold as the gate (confounded by the pack, per above); a new
   `tracing` schema with its own rule (new scorer surface for no measurement gain).
 
@@ -326,13 +391,32 @@ Copied from the task proposal and not reinterpreted:
   `needsServer` is false for a matrix in which no cell grants tools. An empty `quarry_tools` also
   removes any chance of `CheckRenderedControlPrompt` firing on an ordinary English word that happens
   to be a tool name.
-- New top-level key `pack_targets: []string` — the glyph list `ladder pack` resolves. `validate`
-  requires it to be non-empty when any config declares a `card` containing the pack sentinel, and
-  requires every entry to be non-empty and unique.
+- New top-level key `pack_targets: []string` — the glyph list `ladder pack` resolves. New per-config
+  key `pack: bool` — marks the one cell whose card the pack is written into.
+- **`validate`'s new rules are struct-level only.** `(*Ladder).validate()` takes no repository root
+  and touches no filesystem — every existing `config_test.go` fixture depends on that — so nothing it
+  checks may require reading a `card` file. The rules are therefore:
+  - at most one config per ladder letter may set `pack: true`;
+  - a config with `pack: true` must declare a non-empty `card`;
+  - `pack_targets` is non-empty **iff** at least one config sets `pack: true`;
+  - every `pack_targets` entry is non-empty and unique.
+
+  The sentinel check — that the card actually contains the two delimiter lines, and that the block
+  between them hashes to `kickstart_pack.pack_sha256` — lives where the repository root is in hand:
+  in `ladder pack` when writing, and in `run`'s pre-rep-1 verification when reading. This is why the
+  pack cell is marked by a `pack:` flag rather than inferred from a card's contents.
 - The single task entry: `07-fabric-merge-state-tracing`, `pinned_sha: 72c23d9ee...` (the full
   40-character SHA; the short form in the proposal is `72c23d9`), `schema: exploration`.
-- Three configs, all `allowed: []`: `e0-names` (`control: true`), `e1-pack`, `e2-files`, each with
-  its own `card:`.
+- Three configs, all with `allowed: []` and their own `card:`:
+  - `e0-names` — `control: true`
+  - `e1-pack` — `control: false`, `pack: true`
+  - `e2-files` — `control: false`
+
+  The two `control: false` entries are **explicit and mandatory**. D2's default is
+  `len(c.Allowed) == 0`, so an omitted `control:` on a tool-less cell defaults back to *control*:
+  all three would be controls, `validate` would reject the file with "expected exactly one control,
+  found 3" (`config.go:232–241`), and `summarize` would flag all three and build zero comparison
+  rows.
 - Results root: `bench/loomyard-eval/ladder/results/<YYYY-MM-DD>-kickstart/`, the date being the day
   `ladder pack` runs. `raw/` stays untracked; `conclusion.md`, `provenance.json`, `summary.json`,
   `table.txt` and `pack-resolve.json` are tracked, matching the existing roots.
@@ -431,8 +515,12 @@ adding new files where a home already exists.
   `control`. `validate` accepts three tool-less configs under one letter with exactly one
   `control: true`, and rejects zero or two. Every existing `ladder-toc.yaml`-shaped fixture still
   loads unchanged (a regression fixture asserting D2's compatibility claim).
-- `config_test.go` — `pack_targets` validation: non-empty when a card carries the pack sentinel,
-  entries non-empty and unique; unknown-key rejection still fires for a typo'd key.
+- `config_test.go` — `pack:`/`pack_targets` validation, all filesystem-free: two `pack: true` configs
+  under one letter rejected; `pack: true` with no `card` rejected; `pack_targets` set with no pack
+  cell rejected and a pack cell with empty `pack_targets` rejected (the iff, both directions); an
+  empty or duplicated `pack_targets` entry rejected; unknown-key rejection still fires for a typo'd
+  key. A fixture asserting `validate` still opens no file (no `card` path need exist on disk for a
+  ladder file to load).
 - `prompt_test.go` — `RenderPrompt` section order with and without a card; a config with no card
   renders byte-identically to today's output (golden string); the card lands after the task text and
   before `PARALLEL_BLOCK`.
@@ -444,8 +532,11 @@ adding new files where a home already exists.
   idempotent: writing twice yields the same file; a card missing its sentinels is an error, not a
   silent append.
 - `provenance_test.go` — `MergeProvenance` carries an existing `kickstart_pack` forward when the new
-  invocation has none, and never invents one. `WriteProvenance` into a non-existent results root
-  creates it and succeeds (the D10 regression test, red before the fix).
+  invocation has none, and never invents one; a pack-written record followed by a `run` invocation
+  with the same ladder file, target sha, server name and `reps_effective` merges cleanly and yields
+  two entries in `invocations` (the D4 regression: this is the merge that would fail against a
+  pack-only stub). `WriteProvenance` into a non-existent results root creates it and succeeds (the
+  D10 regression test, red before the fix).
 - `run` verification (extend `e2e_test.go` or `prematrix_test.go`) — a card whose pack block has been
   edited after generation fails before any dispatch, with a message naming both hashes; a matching
   pack proceeds.
@@ -461,7 +552,13 @@ adding new files where a home already exists.
   **non-control** cell, and does so with `l.Server == nil` without erroring. This is the D2 sweep's
   `mcp.go:47` regression, red before the fix.
 - `summarize_test.go` — a letter with one control and two rungs produces two comparison rows, both
-  against the control.
+  against the control; a cell mixing `pass`, `fail`, `max_turns` and `unscored` reps reports
+  `MaxTurnsCount` and `UnscoredCount` separately and excludes both from recall/precision while
+  keeping all four in the cost statistics (the D8 accounting, asserted against the summary rather
+  than against prose).
+- Run lock (extend `worktree_test.go`) — `ladder pack` fails with the existing holder's pid and
+  results root when the lock file is already present, and releases the lock on its own success and
+  on its glyph-resolution failure path alike.
 
 **Not unit-testable, verified by procedure instead:**
 
