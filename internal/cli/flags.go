@@ -46,10 +46,10 @@ type request struct {
 // --no-symbols are valid for "toc" only; either new verb rejects each with a usage error naming
 // the flag and the verb, checked at the point the flag is recognised so that rejection takes
 // precedence over the flag's own value validation. --text and --root are valid for all three
-// verbs. Every verb requires exactly one target; for "expand" specifically, a target containing
-// no "#" is rejected here, once the arity check has passed, so the parser stays pure over the
-// argument slice — no root discovery, no engine call — which is the property its fixture-free
-// table test rests on.
+// verbs. Every verb requires exactly one target; parseArgs classifies none of them further —
+// whether "expand"'s target contains a "#" is the grammar's question, not this parser's, so
+// parseArgs stays pure over the argument slice — no root discovery, no engine call — with nothing
+// left in its own table test that depended on rejecting a bare path here.
 func parseArgs(args []string) (request, error) {
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
@@ -149,11 +149,6 @@ func parseArgs(args []string) (request, error) {
 		return request{}, usageError(fmt.Sprintf("%s takes exactly one target, got %d", verb, len(targets)))
 	}
 	req.target = targets[0]
-
-	if verb == "expand" && !strings.Contains(req.target, "#") {
-		return request{}, usageError(fmt.Sprintf(
-			"expand takes a glyph (a target containing \"#\"), got: %s", req.target))
-	}
 
 	return req, nil
 }
