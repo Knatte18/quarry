@@ -6,6 +6,7 @@
 package quarry
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -391,4 +392,72 @@ func TestRenderGlyphsText_SymbolsAndIncomplete(t *testing.T) {
 		t.Errorf("RenderGlyphsText() = %q; want %q", got, want)
 	}
 	assertGlyphsTextInvariant(t, got)
+}
+
+// TestRepoGlyphs_MatchesGlyphViewOfTOC is the facade-side drift assertion: over a fixture tree,
+// Glyphs(target) must be deep-equal to GlyphView(target, TOC(target, GlyphsOptions())) computed
+// independently in the test.
+func TestRepoGlyphs_MatchesGlyphViewOfTOC(t *testing.T) {
+	root := writeScratchTree(t, "glyphs-drift", map[string]string{
+		"sub/a.go": "package sub\n\nfunc Foo() {}\n\ntype Thing struct{}\n\nfunc (t Thing) Method() {}\n",
+		"sub/b.go": "package sub\n\nfunc Bar() {}\n",
+	})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	toc, err := r.TOC("sub", GlyphsOptions())
+	if err != nil {
+		t.Fatalf("TOC(%q, GlyphsOptions()) returned error: %v", "sub", err)
+	}
+	want := GlyphView("sub", toc)
+
+	got, err := r.Glyphs("sub")
+	if err != nil {
+		t.Fatalf("Glyphs(%q) returned error: %v", "sub", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Glyphs(%q) = %+v; want %+v", "sub", got, want)
+	}
+}
+
+// TestRepoGlyphs_EmptyAndDotTargetBothYieldDotTarget covers that Glyphs("") and Glyphs(".") both
+// return Target == "." — one query, one spelling, in its own answer.
+func TestRepoGlyphs_EmptyAndDotTargetBothYieldDotTarget(t *testing.T) {
+	root := writeScratchTree(t, "glyphs-empty-vs-dot", map[string]string{"a.go": "package p\n\nfunc Foo() {}\n"})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	for _, target := range []string{"", "."} {
+		got, err := r.Glyphs(target)
+		if err != nil {
+			t.Fatalf("Glyphs(%q) returned error: %v", target, err)
+		}
+		if got.Target != "." {
+			t.Errorf("Glyphs(%q).Target = %q; want %q", target, got.Target, ".")
+		}
+	}
+}
+
+// TestRepoGlyphs_MissingTargetIsNotFound covers the pass-through error branch: nothing else in
+// this plan reaches it, since the CLI's own glyphs path calls TOC and GlyphView directly and never
+// calls this method. Glyphs on a target that does not exist in the fixture must return the zero
+// GlyphsAnswer and an error satisfying errors.Is(err, ErrTargetNotFound).
+func TestRepoGlyphs_MissingTargetIsNotFound(t *testing.T) {
+	root := writeScratchTree(t, "glyphs-missing", map[string]string{"a.go": "package p\n"})
+	r, err := Open(root)
+	if err != nil {
+		t.Fatalf("Open(%q) returned error: %v", root, err)
+	}
+
+	got, err := r.Glyphs("does-not-exist")
+	if !errors.Is(err, ErrTargetNotFound) {
+		t.Errorf("Glyphs(%q) error = %v; want errors.Is(err, ErrTargetNotFound)", "does-not-exist", err)
+	}
+	if !reflect.DeepEqual(got, GlyphsAnswer{}) {
+		t.Errorf("Glyphs(%q) = %+v; want the zero GlyphsAnswer", "does-not-exist", got)
+	}
 }
