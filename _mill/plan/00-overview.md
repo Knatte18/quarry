@@ -78,9 +78,9 @@ Batch-local decisions live in each batch file._
   Where a card's Requirements restate a rule, the restatement is a convenience, not a
   substitute — an implementer who finds the two disagreeing follows the discussion and the
   disagreement is a plan defect worth reporting.
-  **The exception is a departure this plan states explicitly as its own decision**, of which there is
-  exactly one: the goldens-location decision below, which names the discussion's Testing section as
-  what it departs from and gives the reason.
+  **The exception is a departure this plan states explicitly as its own decision**, of which there
+  are exactly two: the goldens-location decision and the layering-test decision below, each naming
+  the passage of the discussion it departs from and giving the reason.
   A stated departure wins over the discussion; an unstated disagreement never does.
   Any future departure must be recorded the same way — as its own Shared Decision naming the passage
   it overrides — or it is a defect rather than a decision.
@@ -139,6 +139,25 @@ Batch-local decisions live in each batch file._
   inside a fixture whose subject is the core.
   Package `quarry` is the one place that holds the pure core's answer and both renderers at once.
 - **Applies to:** goldens-history-docs
+
+### Decision: one test file under `internal/mcpserver` is edited, against the discussion's Out list
+
+- **Decision:** card 37 edits `internal/mcpserver/layering_test.go` — the repository's only mechanical
+  layering gate — to forbid direct imports of the new git package and to cover `internal/cli` for
+  that one path.
+  This departs from the discussion's Scope "Out" bullet stating that nothing in `internal/mcpserver`
+  or `cmd/quarry-mcp` changes.
+  The departure is bounded to that one test file: no production file in either package changes, no
+  mcp tool is added, and no mcp behaviour, envelope or golden moves — which is what that bullet
+  exists to protect, and all of it still holds.
+- **Rationale:** the git-error-identity decision above is a rule this plan invented, and its whole
+  point is that `internal/cli` must not import `internal/gitsrc` directly.
+  A rule guarded only by prose is one refactor from being lost, and the repository has exactly one
+  mechanism for expressing an import rule; adding a second mechanism elsewhere to avoid touching this
+  file would be worse than the departure.
+  Recorded here rather than left implicit because the first Shared Decision requires exactly that of
+  any departure — a departure not written down as its own decision is a defect, not a decision.
+- **Applies to:** facade-delta, goldens-history-docs
 
 ### Decision: Go verify commands carry no `PYTHONPATH=` prefix
 
@@ -213,6 +232,7 @@ Batch-local decisions live in each batch file._
 - `internal/gitsrc/gitsrc.go`
 - `internal/gitsrc/gitsrc_test.go`
 - `internal/mcpserver/layering_test.go`
+- `internal/repopath/target.go`
 - `quarry/delta.go`
 - `quarry/delta_golden_test.go`
 - `quarry/delta_history_test.go`

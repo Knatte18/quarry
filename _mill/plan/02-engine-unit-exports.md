@@ -78,8 +78,13 @@ outside this package.
   assets never reads them at all.
   Reading every entry before consulting its extension would leave the clauses map identical while
   making the walk's first pass read the whole tree — a regression the walk's own priced cost note
-  records the budget for, and one the timing assertion in `internal/engine/loomyard_timing_test.go`
-  selected by this batch's `verify:` would catch.
+  records the budget for.
+  Do not treat that regression as mechanically guarded: the timing assertion in
+  `internal/engine/loomyard_timing_test.go` would catch it, but only on a machine holding the pinned
+  external checkout it gates on, and it skips both when that checkout is absent — the normal state —
+  and under the short-test flag.
+  The ordering is therefore a rule this card states and the implementer must honour by reading it,
+  not one a failing test will report.
   `dirPackage` keeps its own read-failure handling where it is; the UTF-8 rejection now lives in
   `PackageClause` and the two together reproduce today's skip conditions exactly.
   `dirPackage`'s observable behaviour must not change: the same files vote, the same clauses map is

@@ -111,13 +111,13 @@ answer.
 - **Context:**
   - `internal/cli/flags.go`
   - `internal/cli/usage.go`
-  - `internal/repopath/target.go`
   - `quarry/delta.go`
   - `quarry/quarry.go`
   - `quarry/render.go`
   - `quarry/text.go`
 - **Edits:**
   - `internal/cli/cli.go`
+  - `internal/repopath/target.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -145,6 +145,12 @@ answer.
   when run from a subdirectory, identically to the table-of-contents verb, and that helper's two
   existing rejections carry over unchanged — a target escaping the root is the negative code, and a
   target carrying the glyph separator is a usage error with the usage text.
+  Correct the two doc comments in `internal/repopath/target.go` that this routing falsifies, in the
+  same commit: the unexported converter's comment states that the table-of-contents verb is the only
+  one reaching its exported form, and the exported wrapper's comment enumerates its callers as that
+  verb plus the mcp server's own target conversion.
+  Name the fourth verb in both, so the helper's own record of who calls it stays true — the same
+  correction this batch and batch 6 make in every other file whose comment counts the verbs.
   It then opens the facade and calls the git delta method, and performs **no** stat on the target at
   any point.
   Map the facade's errors: an unresolvable revision, a root that is not a repository, and a root
