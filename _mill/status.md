@@ -50,7 +50,9 @@ batches:
     commit_sha: 0009f84978ffc6b8948f95590e3a933dd9c9db42
     verify_baseline_failures: []
   - name: control-sweep-and-card
-    state: pending
+    state: running
+    implementer_session: 4f3cc1a5-3ce9-4eb7-8e11-b06c8821c66f
+    start_sha: 5120af46a2191d5cd4d8a1a54a4f2d73599387e2
     verify_baseline_failures: []
   - name: pack-generation
     state: pending
