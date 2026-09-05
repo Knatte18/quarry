@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-facade-delta
+phase: approved-delta-renderers
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -43,6 +43,7 @@ approved-gitsrc  '2026-09-05T17:10:21Z'
 approved-delta-types-and-tokens  '2026-09-05T17:17:52Z'
 approved-delta-core  '2026-09-05T17:37:41Z'
 approved-facade-delta  '2026-09-05T17:50:57Z'
+approved-delta-renderers  '2026-09-05T17:58:10Z'
 ```
 
 ## Batches
@@ -86,9 +87,10 @@ batches:
     commit_sha: ac7fa8d61a6d1431d79370073f42c4eb7aecca16
     verify_baseline_failures: []
   - name: delta-renderers
-    state: running
+    state: approved
     implementer_session: 61da9855-2202-4d31-98a9-35b9d3aa9422
     start_sha: 6fb246ae6835175ec148a3f9546b8f4e1bf810c7
+    commit_sha: 228864294d68d12a5aaa96be89c690e50669783e
     verify_baseline_failures: []
   - name: cli-delta-verb
     state: pending
