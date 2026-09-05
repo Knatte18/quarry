@@ -56,7 +56,7 @@ batches:
   - name: goldens-and-docs
     state: running
     implementer_session: 40a970d6-b2ae-458e-89b3-b80abbde3380
-    start_sha: 58da06cd51303c4caa75e9cb7a14b70dc3158216
+    start_sha: 62393db7556632e23d19fc900a8a48b436c73472
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-05T18:04:03Z'
 ```
