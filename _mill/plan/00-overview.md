@@ -11,6 +11,16 @@ root: ""
 verify: go build ./...
 ```
 
+## Prior failure
+
+- Holistic review round 1: BLOCKING finding "Pinned commit SHA is 39 hex characters, not 40"
+  (class: consistency) is factually incorrect. Independent verification (`echo -n
+  72c23d9eecc1fa55add567622093a8bbbfba8c1d | wc -c` and a hex-charset check) confirms the pin is
+  exactly 40 valid hex characters, matching every occurrence across `ladder-kickstart.yaml`,
+  `07-fabric-merge-state-tracing.md`, and `07-fabric-merge-state-tracing.fasit.json`. The fixer's
+  pushback (`stuck_type: logic`, "no legitimate fix exists so no new commit can be produced") is
+  correct. No plan or card edit is warranted — this is a reviewer false positive, not a real defect.
+
 ## Batch Index
 
 _The fenced yaml block below is the authoritative DAG mill-go reads to schedule batches.
