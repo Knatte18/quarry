@@ -409,6 +409,17 @@ func TestE2E(t *testing.T) {
 		if len(summary.Invalid) != 0 {
 			t.Errorf("summary.Invalid = %v; want none", summary.Invalid)
 		}
+
+		// The inertness guarantee: a ladder file declaring no pack cell runs with no
+		// provenance pack block present and no error, exactly as it did before the pack gate
+		// existed.
+		prov, err := ReadProvenance(env.resultsRoot)
+		if err != nil {
+			t.Fatalf("ReadProvenance() = %v; want no error", err)
+		}
+		if prov.KickstartPack != nil {
+			t.Errorf("provenance.KickstartPack = %+v; want nil for a ladder file declaring no pack cell", prov.KickstartPack)
+		}
 	})
 
 	t.Run("Resume", func(t *testing.T) {
@@ -810,6 +821,167 @@ func TestE2E(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "/first/holder/results") {
 			t.Errorf("Run() error = %q; want it to carry the first holder's results root", err)
+		}
+	})
+
+	t.Run("MissingCardFailsBeforeDispatch", func(t *testing.T) {
+		env, sha := newE2EEnv(t, fakeBinPath)
+		l := baseLadder(env, sha, 1, "task-1")
+		l.Configs = []Config{{ID: "cell-missing-card", Ladder: "mc", Task: "task-1", Allowed: nil, Card: "does-not-exist.md"}}
+		ladderPath := filepath.Join(t.TempDir(), "ladder.yaml")
+		writeSyntheticLadderFile(t, ladderPath, l)
+		setFakeClaudeEnv(t, l, "normal")
+
+		_, err := Run(context.Background(), runOpts(env, ladderPath, nil))
+		if err == nil {
+			t.Fatal("Run() = nil error; want one naming the missing card")
+		}
+		if !strings.Contains(err.Error(), "cell-missing-card") || !strings.Contains(err.Error(), "does-not-exist.md") {
+			t.Errorf("Run() error = %q; want it to name the cell and the missing card path", err)
+		}
+
+		dir := RepDir(env.resultsRoot, "cell-missing-card", 1)
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("repetition directory %s exists; want the gate to fail before any dispatch", dir)
+		}
+	})
+
+	t.Run("EditedPackFailsBeforeDispatch", func(t *testing.T) {
+		env, pinnedSHA := newPackE2EEnv(t, fakeBinPath)
+		ladderPath, cardRelPath := packLadderFile(t, env, pinnedSHA)
+		resultsRoot := filepath.Join(t.TempDir(), "root")
+		env.resultsRoot = resultsRoot
+
+		if err := Pack(context.Background(), packOpts(env, ladderPath, resultsRoot)); err != nil {
+			t.Fatalf("Pack() = %v; want no error", err)
+		}
+		prov, err := ReadProvenance(resultsRoot)
+		if err != nil {
+			t.Fatalf("ReadProvenance() = %v; want no error", err)
+		}
+		recordedHash := prov.KickstartPack.PackSHA256
+
+		cardPath := filepath.Join(env.quarryRepoRoot, cardRelPath)
+		cardData, err := os.ReadFile(cardPath)
+		if err != nil {
+			t.Fatalf("read card %s: %v", cardPath, err)
+		}
+		edited := strings.Replace(string(cardData), "pkg#Alpha", "pkg#Alpha (edited after generation)", 1)
+		if edited == string(cardData) {
+			t.Fatal("edit did not change the card; the fixture assumption broke")
+		}
+		if err := os.WriteFile(cardPath, []byte(edited), 0o644); err != nil {
+			t.Fatalf("write edited card: %v", err)
+		}
+		editedBlock, err := ExtractPackBlock(edited)
+		if err != nil {
+			t.Fatalf("ExtractPackBlock(edited) = %v; want no error", err)
+		}
+		editedHash := PackBlockSHA256(editedBlock)
+
+		l, err := LoadLadder(ladderPath)
+		if err != nil {
+			t.Fatalf("LoadLadder() = %v; want no error", err)
+		}
+		setFakeClaudeEnv(t, l, "normal")
+
+		_, err = Run(context.Background(), runOpts(env, ladderPath, nil))
+		if err == nil {
+			t.Fatal("Run() = nil error; want one naming both hashes")
+		}
+		if !strings.Contains(err.Error(), recordedHash) {
+			t.Errorf("Run() error = %q; want it to name the recorded hash %s", err, recordedHash)
+		}
+		if !strings.Contains(err.Error(), editedHash) {
+			t.Errorf("Run() error = %q; want it to name the recomputed hash %s", err, editedHash)
+		}
+
+		dir := RepDir(resultsRoot, "pack-cell", 1)
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("repetition directory %s exists; want the gate to fail before any dispatch", dir)
+		}
+	})
+
+	t.Run("MatchingPackProceeds", func(t *testing.T) {
+		env, pinnedSHA := newPackE2EEnv(t, fakeBinPath)
+		ladderPath, _ := packLadderFile(t, env, pinnedSHA)
+		resultsRoot := filepath.Join(t.TempDir(), "root")
+		env.resultsRoot = resultsRoot
+
+		if err := Pack(context.Background(), packOpts(env, ladderPath, resultsRoot)); err != nil {
+			t.Fatalf("Pack() = %v; want no error", err)
+		}
+
+		l, err := LoadLadder(ladderPath)
+		if err != nil {
+			t.Fatalf("LoadLadder() = %v; want no error", err)
+		}
+		setFakeClaudeEnv(t, l, "normal")
+
+		exitNonZero, err := Run(context.Background(), runOpts(env, ladderPath, nil))
+		if err != nil {
+			t.Fatalf("Run() = %v; want no error when the card matches the recorded pack hash", err)
+		}
+		if exitNonZero {
+			t.Error("Run() reported a non-zero exit for a matching pack")
+		}
+		if !RepIsComplete(RepDir(resultsRoot, "pack-cell", 1)) {
+			t.Error("pack-cell rep 1 did not complete")
+		}
+	})
+
+	t.Run("ForeignQuarryCommitStillProceeds", func(t *testing.T) {
+		env, pinnedSHA := newPackE2EEnv(t, fakeBinPath)
+		// newPackE2EEnv's own worktree root is t.TempDir(), which encodes this subtest's own
+		// name -- and ResolveWorktreeRoot rejects a worktree root path carrying the
+		// case-insensitive substring "quarry", which this subtest's own name does. Override it
+		// with a directory named after the fixture, not the test.
+		safeWorktreeRoot, err := os.MkdirTemp("", "ladder-foreign-commit-")
+		if err != nil {
+			t.Fatalf("mkdir temp worktree root: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(safeWorktreeRoot) })
+		env.worktreeRoot = safeWorktreeRoot
+		t.Setenv("LADDER_WORKTREE_ROOT", safeWorktreeRoot)
+
+		ladderPath, _ := packLadderFile(t, env, pinnedSHA)
+		resultsRoot := filepath.Join(t.TempDir(), "root")
+		env.resultsRoot = resultsRoot
+
+		if err := Pack(context.Background(), packOpts(env, ladderPath, resultsRoot)); err != nil {
+			t.Fatalf("Pack() = %v; want no error", err)
+		}
+		prov, err := ReadProvenance(resultsRoot)
+		if err != nil {
+			t.Fatalf("ReadProvenance() = %v; want no error", err)
+		}
+		packTimeCommit := prov.KickstartPack.QuarryCommit
+
+		// Commit the generated card into the quarry repository, exactly as the intended
+		// operator workflow does -- this is the "commit between the pack and the run" the
+		// gate must never key on.
+		runGit(t, env.quarryRepoRoot, "add", "-A")
+		runGit(t, env.quarryRepoRoot, "commit", "-q", "-m", "commit generated card")
+		newCommit := runGit(t, env.quarryRepoRoot, "rev-parse", "HEAD")
+		if newCommit == packTimeCommit {
+			t.Fatal("committing the generated card did not change the quarry repository's HEAD; the fixture assumption broke")
+		}
+
+		l, err := LoadLadder(ladderPath)
+		if err != nil {
+			t.Fatalf("LoadLadder() = %v; want no error", err)
+		}
+		setFakeClaudeEnv(t, l, "normal")
+
+		exitNonZero, err := Run(context.Background(), runOpts(env, ladderPath, nil))
+		if err != nil {
+			t.Fatalf("Run() = %v; want no error -- the gate must not key on the quarry commit", err)
+		}
+		if exitNonZero {
+			t.Error("Run() reported a non-zero exit despite a foreign quarry commit")
+		}
+		if !RepIsComplete(RepDir(resultsRoot, "pack-cell", 1)) {
+			t.Error("pack-cell rep 1 did not complete")
 		}
 	})
 
