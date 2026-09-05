@@ -1,158 +1,118 @@
 > Next agent: call the Skill tool with `mill:conversation` before reading the rest of this document.
 
-# HANDOFF — the quarry rewrite, state as of 2026-09-04 (evening)
+# HANDOFF — quarry, state as of 2026-09-05
 
-A fresh session on any machine acts on this file, `docs/rewrite-plan.md` and `docs/glyph.md`.
-Nothing else is needed. The plan (§12) is the task table; the glyph document is the identifier
-contract. Neither is summarised here — read them.
+A fresh session on any machine acts on this file, `docs/rewrite-plan.md` (the design and its
+decisions, distilled), `docs/glyph.md` (the identifier contract) and `docs/roadmap.md` (what is
+ahead — the forward-looking record lives there now, not here). None of them is summarised here —
+read them.
 
 ## 1. Where things stand
 
-`expand`. Tree-sitter only, Go only. **Waves 0–5 are merged on `main`:** T0 (the V1 deletion),
-T1 (`glyph/`), T2 (the ladder harness), T3 (the engine), T4 (`resolve` + `expand` in the engine),
-T5a (facade + CLI, `toc`), T6 (`cmd/quarry-mcp`, one `toc` tool — merged `e8a4b2d`), T5b (facade +
-CLI, `resolve` + `expand` — merged last, `8326587`, and reconciled the collision with T6's
-`internal/repopath` extraction), T7 (the regression-gate rerun of the toc-dir finding against the
-merged rewrite; see §3). Each landed as one squash commit titled by its task; each task branch's
-full history, `_mill/` artifacts included, is under its `archive/<slug>` tag.
+**The build is done and the measurement programme is done.** On `main`: T0–T7 (the whole
+rewrite — glyph, engine, facade, CLI `toc`/`resolve`/`expand`, thin MCP, the ladder harness),
+M1 (the breadth matrix) and M3 (the decisive ladder-d rerun at n=15, squash `03566aa`, run as
+`mill-quick` — the flow's first real exercise, and it worked). Each task is one squash commit
+titled by its task; full branch history including `_mill/` artifacts is under `archive/<slug>`
+(22 tags on origin). The `pipeline.done_gate` (`go test ./... && golangci-lint run`) was green
+after the last merge.
 
-The engine is `internal/engine` (grammar seam `internal/engine/treesitter`, `internal/cgoguard`
-for `CGO_ENABLED=0`). The public surface is the `quarry/` facade, mirrored by `cmd/quarry`
-(verbs `toc`, `resolve`, `expand`) and by `cmd/quarry-mcp` (MCP stdio server, name `quarry`,
-one tool `toc`, byte-identical to the facade's JSON). Root/target resolution is shared in
-`internal/repopath`. `docs/research/output-formats/after/` holds the golden evidence for all
-three verbs; the golden tests pin the Loomyard checkout to `72c23d9` (hard-fail on wrong pin,
-skip when `LADDER_LOOMYARD_REPO` is unset — set it in `.scratch/ladder.env`, gitignored, per
-machine).
+The surface: `internal/engine` (+ `treesitter` seam, `cgoguard`), the `quarry/` facade
+(primary), `cmd/quarry` (CLI mirror), `cmd/quarry-mcp` (thin, one `toc` tool),
+`internal/repopath`. Goldens in `docs/research/output-formats/after/`, pinned to Loomyard
+`72c23d9` via `LADDER_LOOMYARD_REPO` in `.scratch/ladder.env` (gitignored, per machine).
 
-The full `pipeline.done_gate` (`go test ./... && golangci-lint run`) is green on `main`, verified
-after the last merge. Check `git status --porcelain` on `main` before switching machines — this
-line is retired rather than restated, since a fixed "uncommitted right now" claim in a handoff
-document goes stale the moment anything else lands.
+Worktrees: the hub, `wts/v1-final` (deliberate read-only reference checkout of the V1 branch —
+`mill-cleanup` reports it as an orphan; ignore that line, never remove it), and
+`wts/glyph-self-form` (C1, spawned and ready, **not yet started** — see §3).
 
-## 2. The decisions the plan rests on
+## 2. The measurement verdict, and the pivot it forced
 
-- **Go only.** Other languages are added one at a time, when wanted, with extractors written
-  against the glyph contract. Nothing in the tree describes a language it does not support.
-- **The listing verb is `toc`; the type verb is `expand`.** `map` rejected (Go keyword); "member"
-  stays the grammar's word for what follows `#`. `toc` never takes a glyph (plan §5).
-- **One target per CLI call, for every verb** (`toc`: T5a, plan §5 amended `55161a6`;
-  `resolve`/`expand`: T5b's D1, plan §5 amended `4df7621`): one invocation, one answer, one exit
-  code. The facade keeps the engine's multi-target `Resolve(targets []string)` — the batching
-  the validator (§8.1) relies on lives there. The CLI is the mirror, not the primary.
-- **Negative answers render the payload, not the error envelope** (T5b's D2): `not_found`,
-  `ambiguous` and pre-resolution errors keep `unit`, `candidates` and `reason` in the §4 payload
-  with exit 1; the error envelope is only for usage/internal errors with no payload at all.
-- **The engine package is `engine`, not `quarryengine`** (T3's D1, challenged and upheld).
-- **Pipelined tasking works** (T4 ran its discussion against T3's artifacts via `.portals/`).
-  Requirements: provenance marks, hold before implementation, `mill-merge-in` then plan against
-  real code.
-- **Capped review rounds + an orchestrator review of the finalize PR is the speed pattern**
-  (proven on T5a, T5b, T6). A gitignored `.millhouse/config.local.yaml` in the *worker's*
-  worktree caps `roles.discussion-review.holistic.rounds` and `roles.plan-review.holistic.rounds`
-  — standard cap 5, 3 for genuinely small tasks (T5a and T6 ran at 3, T5b at 5, T7 has 3 —
-  execution task, small diff). The
-  compensating independent gate is the orchestrator PR review before the operator closes the PR.
-  All three wave-4 PR reviews found zero blocking defects.
-- **`mill-quick` is for genuinely small tasks only.** (T6 was slated for it but ran the full
-  `--orch` pipeline in the end; the flow has still not been exercised.)
-- **The facade is the primary surface**; CLI mirrors it; **MCP is thin**: one `toc` tool, more
-  only when a ladder cell measures more. MCP spells whole-tree depth `-1` where the CLI says
-  `--depth all` (JSON schema, documented).
-- **Extraction is complete; views filter.** No default view drops anything. (The Codebase-Memory
-  paper, arXiv 2603.27277, was read and deliberately not adopted: its headline result trades
-  quality 0.92→0.83 for 10× fewer tokens — the exact trade quarry rejects.)
+The measurement programme is complete and its answer is negative, in three committed
+conclusions (each root stands alone; read them, they are the record):
 
-## 3. What was measured, and still holds
-
-The numbers the plan cites (its §1 points here). The runs are on branch `v1-final` under
-`bench/loomyard-eval/ladder/results/<root>/conclusion.md`; T7 reran the toc-dir finding against
-the merged rewrite (`main`'s `cmd/quarry-mcp`) and it did not reproduce cleanly — see the row
-below and `bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` for the full account.
-M1 then ran a breadth matrix across three further shapes against the same merged rewrite and
-found no shape separates either — see the row below and
-`bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md` for the full account. The
-committed conclusions are the record; the raw run data was never committed anywhere.
-
-| finding | run |
+| root | result |
 |---|---|
-| A directory table of contents halves exploration on unfamiliar code: turns 8→4, cache_read 127k→83k, recall unchanged. The one measured win and the regression gate for the rewrite (T7). | `2026-09-02-toc`, reps 5 |
-| T7's rerun of the same comparison, against the merged rewrite: no cost metric separated from the control at n=5 (turns and cache_read both `separated: false`), and most cost medians ran equal-or-higher for the toc-dir cell rather than lower. Recall/precision stayed consistent with the prior root. The regression gate did not reproduce the prior win on this host/harness/CLI-version pairing. | `2026-09-04-toc`, reps 5 |
-| M1's breadth matrix, three shapes against the same merged rewrite — ladder b (task 04, the negative control), ladder c (task 02, three-package exploration) and ladder d (task 06, whole-repo cold-start orientation with no scope hint), all at n=5. No shape has even one cost metric marked `separated: true` in the direction the toc hypothesis predicts: ladder b stayed flat as its negative-control role requires, ladder c's cost medians mostly moved the wrong way, and ladder d's cost medians pointed the predicted way on every metric without any of them separating. Recall and precision did not degrade on any shape. Toc does not separate anywhere in this root. | `2026-09-04-breadth`, reps 5 |
-| Every LSP-shaped tool (definition, references, symbol) sat flat with or below the grep control. | `2026-08-30`, 45 runs |
-| A lossy compact view cut bytes 4× and cost precision 0.96→0.82. Views must be complete by default. | `2026-09-02-compact2` |
-| Symbol spans are syntactic: doc p90=12 lines, total span p90=52, max=971. A fixed grep window truncates silently. | 1741 symbols, Loomyard |
-| Cold tree-sitter extraction: one package 19 ms, the whole repository 318 ms. No daemon needed. | Loomyard, 439 files |
+| `2026-09-04-toc` (T7) | the August ladder-a win (turns 8→4) did not reproduce at clean n=5 — flat-to-reversed |
+| `2026-09-04-breadth` (M1) | three shapes (negative control, three-package, whole-repo) — no separation anywhere at n=5; ladder d's medians alone pointed the hypothesis's way |
+| `2026-09-05-ladder-d` (M3) | ladder d at predeclared n=15 with a predeclared one-sided Mann–Whitney U: turns U=105 (p≈0.375), cost_usd U=92 (p≈0.198), critical U≤72 — **no win**, medians now flat-to-slightly-adverse |
 
-Two harness rules carry into every matrix: never edit the code under test mid-matrix (binary
-hash per rep in `provenance.json`), and cost numbers compare only within one results root.
+So: **directory-level `toc` does not pay as a mid-session agent tool, at any measured shape or
+n, in this model generation.** `docs/roadmap.md` records T8's unpark condition (a) as closed on
+this basis. The mechanism itself is real (ladder c: read_bytes 14 800 vs 44 629, recall up) —
+the agent reads less and hits better with a map; the map's retrieval cost just eats the win.
+The control arm also moved: the same exploration cost 8 turns in August and 11–12 now.
 
-## 4. Next
+**The pivot:** quarry's remaining value is the *function* track, which the ladders never
+measured and never claimed to. The glyph as Loomyard's plan alphabet; the facade's batched
+`Resolve(targets []string)` as the plan validator (typos/ambiguity rejected before an agent is
+spawned) and as the dispatch-time "kick-start" pack (glyph → file + span + signature, injected
+into the implementer's prompt: zero agent turns spent looking). Backup mode is designed in:
+plain file paths in `Uses`/`Creates` validate and pack the same way — never worse than
+Millhouse's current file-list plans. T8 unparks via condition (b) — the validator's Delete gate
+needs `assert-no-callers` — the day the Loomyard adoption wants it. That adoption is Loomyard-
+repository work (roadmap, External), unblocked since T5b.
 
-**The critical path is finished.** T0 → T1 → T3 → T5a → T6 → T7 has run end to end; T7 measured
-the regression gate against the merged rewrite and wrote its conclusion (see §3). What remains is
-wave 6's type checker (T8: gopls vs `go/packages`, `impact`, `assert-no-callers`, `verified` per
-entry, the DAG tightening of plan §8.2 — plan §12), plus the cleanup and grooming items below.
+M3's predeclared-rule pattern is worth keeping for any future measurement: decision rule, α,
+n and cell list locked in the task body before rep 1; n never grows after looking; the
+conclusion shows its arithmetic. It is what makes a negative answer trustworthy.
 
-**The §9a live probe is DONE** (2026-09-04, this machine, from the Loomyard checkout): connect +
-`toc` call returned the §4 envelope, and the allowlist denial landed in `permission_denials` —
-both run harness-faithfully. Tell the T7 worker this when it asks (its task body instructs it to
-stop and ask if the probe has not been reported done). Caveat discovered on the way: the
-operator's global `defaultMode: "auto"` auto-approves read-only MCP calls, so any manual probe
-MUST pass `--setting-sources ""` (as the harness itself does via `run.go`) or the denial half
-never fires.
+## 3. The one active task: C1 (`glyph-self-form`)
 
-**After T7:** T8 (the type checker, `impact`) depends on T7 and is the whole next wave.
-Whether `results/**/raw/` is committed is decided by T7 itself (plan §11).
+Spawned at `wts/glyph-self-form` (caps 3/3, `ladder.env` written), **worker not yet started**
+— the operator starts it with `/mill-start --orch` in that worktree, then this session (or a
+fresh one) arms the wait with `/mill:orch-review glyph-self-form`. The task body carries four
+contract decisions settled with the operator 2026-09-05, before Loomyard consumes the envelope
+(breaking changes are free now, zero external consumers):
 
-**Cleanup/grooming:** all worker worktrees are torn down — only the hub remains. Wiki grooming:
-seven `[done]` entries can go at the next groom.
+1. **Trailing `#` = the thing itself**: `internal/reedengine/render#` is the package,
+   `.../focus.go#` is the file; strip the `#` and you have the plain path.
+2. **`resolve` takes glyphs only** — a bare path is rejected with an actionable error
+   (`toc` takes paths; `resolve` takes names; `expand` takes type glyphs).
+3. **Separator-bearing path segments rejected loudly** — closes the silent-reclassification
+   gap `internal/cli/doc.go` documents (leading-`#` was considered and rejected: it is a
+   comment/heading in shell, YAML and Markdown).
+4. **Rename resolve's path-answer field `dir` → `listing`** (the outer block; the inner `dir`
+   path field keeps its name).
 
-**Small open items:**
-- The flag parser silently accepts `--flag=value` on valueless flags (PR #19, NIT, left as-is).
-- The doubled `engine: resolve target ...: engine: ...` error wording — engine follow-up on
-  main, recorded by T5b's discussion (D10b).
-- `internal/cli/doc.go` documents a known contract gap (a path target whose repo-relative form
-  gains `#` from a directory name is re-classified by the engine) — deferred to the next
-  engine-signature task.
-- Discussed, not yet a task: move the `after/` goldens to `internal/cli/testdata/` (they are
-  living test fixtures; `docs/research/output-formats/` stays a frozen research record — the
-  before/after naming ages badly). Operator liked the idea; a good `mill-quick` candidate.
-- In Millhouse itself (not this repo): review-prompt bulking repeats each file's absolute path
-  three times; fix is `base_dir` + relative paths in `_review_common.py` — the operator knows.
+Deliberately NOT in C1: `toc` gains no `id` on file/dir entries — self-glyph composition is
+trivial concatenation done by tooling, and per-file full-path ids would reinstate the repeated-
+prefix clutter V1 was purged of. The finalize PR gets the orchestrator review before the
+operator closes it.
 
-**Millhouse notes.** The wiki is daemon-backed: edit tasks only through `wiki._client` /
-`millpy-*` wrappers; a hook blocks the literal string `.wiki` in shell commands — resolve via
-`_paths.resolve_wiki_path(_paths.resolve_git_root())`. **A task upserted with `status: "open"`
-is not spawnable** — upsert without a status, or clear with `_client.set_phase(wiki, slug,
-None)`. The orch-review pattern: this session owns the `Monitor` wait for `discussion.md`; a
-fork writes `orch-review.md` only after the file exists. The PR-review pattern: a fork reviews
-the finalize PR's diff against plan §4 and reports before the operator closes it;
-`require_pr_to_base: true` means the operator **closes the PR without merging — the closed
-state is the approval** — and the worker runs mill-merge itself. When watching a merge, watch
-for *completion*, not the squash subject alone: squash on `origin/main` AND the `archive/<slug>`
-tag AND the wiki flipped `[done]` (teardown lags the squash), and anchor any subject match on
-the full task title. When two finalize PRs race on the same files, close one, let its worker
-merge fully, then close the other — its `mill-merge-in` does the reconciliation (T5b did this
-cleanly over T6's `repopath` move). Shell discipline: a `cd` inside any compound command
-poisons the session cwd for every later command — one such slip mid-session sent git commands
-at the wrong repository until caught.
+## 4. Small open items
 
-## 5. Open decisions (plan §11)
+- Ladder harness `mkdir -p` on the results root (in roadmap, small items — a fresh `-results`
+  path fails on rep 0 today).
+- Move the `after/` goldens to `internal/cli/testdata/` (roadmap, small items; mill-quick).
+- Wiki grooming: eleven `[done]` entries can go at the next groom.
+- The flag parser silently accepts `--flag=value` on valueless flags (PR #19 NIT, left as-is).
+- The doubled `engine: ... engine: ...` error wording (T5b's D10b).
+- In Millhouse itself: review-prompt bulking repeats absolute paths (fix in
+  `_review_common.py`); the operator knows. Also filed by the M1 worker: #994 (mill-plan
+  blocked-resume `--max-rounds` threading), #995 (TaskOutput liveness probe dumps full JSONL).
 
-- The phase-2 type checker: gopls or `go/packages` in-process. Decided when `impact` is built
-  (T8). If `impact` is ever pursued, the gate is a *task-shaped* ladder cell — an edit task where
-  the agent must find break sites — since reference-shaped tools measured flat in §3.
-- A C# parameter-list cap, only after a real C# repository is measured — and only when C# is wanted.
+## 5. Millhouse notes (patterns that keep working)
 
-The raw-tree decision is settled — see
-`bench/loomyard-eval/ladder/results/2026-09-04-toc/conclusion.md` and `docs/rewrite-plan.md`
-§11's updated bullet.
+Wiki only via `wiki._client`/`millpy-*` (a hook blocks the literal `.wiki` in shell). A task
+upserted **without** `status` is spawnable; with `status: "open"` it is not. Worker setup per
+task: spawn, write `.scratch/ladder.env`, append round caps to the worktree's
+`.millhouse/config.local.yaml` (standard 5, 3 for well-scoped tasks; the config warning about
+nested-hub pointer stubs is noise — the values load). The orch-review pattern: this session
+owns each `Monitor` wait; a fork writes `orch-review.md` only after `discussion.md` exists.
+The PR pattern: orchestrator fork (or a direct read for small diffs) reviews the finalize PR;
+the operator **closes without merging — the closed state is the approval**; the worker runs
+mill-merge itself. Watch merges to *completion*: squash on `origin/main` AND `archive/<slug>`
+tag AND wiki `[done]`. Commit the hub's HANDOFF before a worker's mill-merge runs, or the
+squash conflicts in the hub (it did once; the worker's rollback + `mill-merge-in` + retry
+recovered it cleanly). Shell discipline: never `cd` in a compound command — it poisons the
+session cwd (use `git -C`, subshells for one-off cd).
 
 ## Suggested skills
 
-- `mill:conversation` and `mill:workflow` — load at startup (response rules, skill table).
+- `mill:conversation` and `mill:workflow` — load at startup.
 - `mill:mill-status` — the per-task state table; run it first.
-- `mill:orch-review` — re-arm the `ladder-toc-rerun` discussion wait if this session is gone.
-- `mill:mill-quick` — for the `after/`-goldens move, if the operator turns it into a task.
+- `mill:orch-review` — arm the `glyph-self-form` discussion wait once the operator starts the
+  worker.
+- `mill:mill-quick` — proven by M3; right size for the goldens move and the mkdir fix.
 - `golang:golang-build` — build/test commands after any Go change.
