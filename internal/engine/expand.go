@@ -134,7 +134,8 @@ func (r *Repo) Expand(target string) (ExpandAnswer, error) {
 // The head is the matched type's own Symbol, copied by value, with two substitutions and nothing
 // else: Start becomes the symbol's HeadStart and End becomes its HeadEnd. Every other field — the
 // id, kind, file, sigend, signature and doc — is the symbol's own, because one symbol entry is what
-// all three verbs return for a symbol and expand emits no shape of its own. Assign its address to
+// the three verbs that return symbols — toc, resolve and expand — all return for a symbol, and
+// expand emits no shape of its own. Assign its address to
 // Head. If the matched KindType symbol has HeadStart == 0, expand returns the zero ExpandAnswer and a
 // plain fmt.Errorf naming the glyph's string form and stating that a type symbol carries no head
 // span: that is an invariant violation in the walk, and a silent fallback to Start and End would hide
@@ -142,12 +143,12 @@ func (r *Repo) Expand(target string) (ExpandAnswer, error) {
 //
 // Contract gap, closed by nobody: substituting Start and End with the head span means the type's
 // full declaration span is not recoverable from an ExpandAnswer for a language whose head is a
-// strict subset — while docs/rewrite-plan.md's three-queries section says the whole class is the
+// strict subset — while docs/rewrite-plan.md's section 5, The queries, says the whole class is the
 // type symbol's own start-end and "is available, never the default". For Go the two spans are
 // identical, so nothing is lost and the gap is unreachable; the first language whose head is a
 // strict subset has to decide whether expand carries both spans, and that decision belongs to that
 // language's task, against a repository that needs it. docs/rewrite-plan.md's "the class span minus
-// its member spans" — its phrase, in the three-queries section, not docs/glyph.md's — describes what
+// its member spans" — its phrase, in section 5, The queries, not docs/glyph.md's — describes what
 // a reader ends up reading, not arithmetic this verb performs: for a Go struct the subtraction is
 // empty, and for an interface the answer already carries every member's start and end, so a consumer
 // wanting only the non-member lines has what it needs and the engine emits one contiguous head entry
