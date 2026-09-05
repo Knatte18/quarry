@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: descoped-matrix-and-writeup
+phase: holistic-reviewing
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-pack-generation  '2026-09-05T12:38:12Z'
 approved-run-gate-and-subcommand  '2026-09-05T12:43:22Z'
 approved-benchmark-content  '2026-09-05T12:51:41Z'
 descoped-matrix-and-writeup  '2026-09-05T12:56:45Z'
+holistic-reviewing  '2026-09-05T12:58:12Z'
 ```
 
 ## Batches
