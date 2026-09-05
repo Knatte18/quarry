@@ -59,7 +59,9 @@ batches:
     commit_sha: 918e9c400ef514af3563f9e35c8ffc25bac677df
     verify_baseline_failures: []
   - name: cli-repopath-mcp
-    state: pending
+    state: running
+    implementer_session: 95f5bcb1-4467-4f69-bfdb-85d521fd388d
+    start_sha: b196226c11918ddf28506e47067fc1ddaee741ca
     verify_baseline_failures: []
   - name: docs-and-goldens
     state: pending
