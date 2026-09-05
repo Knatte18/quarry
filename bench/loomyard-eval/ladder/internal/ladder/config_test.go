@@ -847,3 +847,93 @@ func TestLoadLadder_RealTocFile(t *testing.T) {
 		t.Errorf("MCPPrefix() with no server block = %q; want %q", got, "mcp__quarry__")
 	}
 }
+
+// TestLoadLadder_RealKickstartFile loads the tracked ladder-kickstart.yaml and asserts the shape the
+// kick-start matrix depends on: all three cell ids, the empty tool list on every cell, exactly one
+// control, the two explicit non-controls, the single pack cell, the nine-entry pack_targets glyph
+// list in order, the task entry's schema and pin, and the three cards' repository-relative paths.
+func TestLoadLadder_RealKickstartFile(t *testing.T) {
+	l, err := LoadLadder("../../ladder-kickstart.yaml")
+	if err != nil {
+		t.Fatalf("LoadLadder(ladder-kickstart.yaml) = %v; want no error", err)
+	}
+
+	wantIDs := map[string]bool{"e0-names": true, "e1-pack": true, "e2-files": true}
+	if len(l.Configs) != len(wantIDs) {
+		t.Fatalf("len(Configs) = %d; want %d", len(l.Configs), len(wantIDs))
+	}
+
+	wantCards := map[string]string{
+		"e0-names": "bench/loomyard-eval/cards/07-e0-names.md",
+		"e1-pack":  "bench/loomyard-eval/cards/07-e1-pack.md",
+		"e2-files": "bench/loomyard-eval/cards/07-e2-files.md",
+	}
+	packCount := 0
+	for _, c := range l.Configs {
+		if !wantIDs[c.ID] {
+			t.Errorf("unexpected config id %q", c.ID)
+			continue
+		}
+		if len(c.Allowed) != 0 {
+			t.Errorf("config %q Allowed = %v; want empty", c.ID, c.Allowed)
+		}
+		if wantCard := wantCards[c.ID]; c.Card != wantCard {
+			t.Errorf("config %q Card = %q; want %q", c.ID, c.Card, wantCard)
+		}
+		if c.Pack {
+			packCount++
+		}
+	}
+	if packCount != 1 {
+		t.Errorf("configs with Pack=true = %d; want exactly 1", packCount)
+	}
+
+	if c, ok := l.ConfigByID("e1-pack"); !ok || !c.Pack {
+		t.Errorf(`ConfigByID("e1-pack") = %+v, %v; want the pack cell`, c, ok)
+	}
+	for _, id := range []string{"e1-pack", "e2-files"} {
+		c, ok := l.ConfigByID(id)
+		if !ok {
+			t.Fatalf("ConfigByID(%q) not found", id)
+		}
+		if c.IsControl() {
+			t.Errorf("config %q IsControl() = true; want false", id)
+		}
+	}
+
+	if c, ok := l.ControlFor("e"); !ok || c.ID != "e0-names" {
+		t.Errorf(`ControlFor("e") = %+v, %v; want e0-names, true`, c, ok)
+	}
+
+	wantTargets := []string{
+		"internal/fabriccli#addWeftVerbs",
+		"internal/fabricengine#Fabric.MergeInProgress",
+		"internal/fabricengine#Fabric.MergeContinue",
+		"internal/fabricengine#mergeInProgressReason",
+		"internal/fabricengine#Fabric.mergeRecordExists",
+		"internal/fabricengine#Fabric.foreignMergeStatePresent",
+		"internal/fabricengine#ErrMergeInProgress",
+		"internal/gitrepo#Repo.MergeHeadPresent",
+		"internal/mergeresolve#Resolver.Resolve",
+	}
+	if len(l.PackTargets) != len(wantTargets) {
+		t.Fatalf("PackTargets = %v; want %v", l.PackTargets, wantTargets)
+	}
+	for i, want := range wantTargets {
+		if l.PackTargets[i] != want {
+			t.Errorf("PackTargets[%d] = %q; want %q", i, l.PackTargets[i], want)
+		}
+	}
+
+	task, ok := l.Tasks["07-fabric-merge-state-tracing"]
+	if !ok {
+		t.Fatalf(`Tasks["07-fabric-merge-state-tracing"] not found`)
+	}
+	if task.Schema != "exploration" {
+		t.Errorf("task.Schema = %q; want %q", task.Schema, "exploration")
+	}
+	const wantPin = "72c23d9eecc1fa55add567622093a8bbbfba8c1d"
+	if task.PinnedSHA != wantPin {
+		t.Errorf("task.PinnedSHA = %q; want %q", task.PinnedSHA, wantPin)
+	}
+}
