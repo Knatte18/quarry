@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'auto: discussion review gaps unresolved after 6 rounds'
+phase: discussed
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: null
@@ -23,4 +22,5 @@ discussion-gap-fix-r4  '2026-09-05T15:06:57Z'
 discussion-gap-fix-r5  '2026-09-05T15:14:35Z'
 discussion-gap-fix-r6  '2026-09-05T15:23:05Z'
 blocked  '2026-09-05T15:23:18Z'
+discussed  '2026-09-05T15:39:35Z'
 ```
