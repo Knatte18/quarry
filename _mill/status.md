@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: glyphs-verb
 branch: glyphs-verb
-plan: null
+plan: _mill/plan
 parent: main
 task: 'P3 — the glyphs verb: the planner flat index as a frozen toc preset (roadmap 2a)'
 task_description: |
@@ -17,4 +17,5 @@ task_description: |
 discussing  '2026-09-05T16:19:18Z'
 discussion-fix-r3  '2026-09-05T16:48:23Z'
 discussed  '2026-09-05T16:48:23Z'
+planning  '2026-09-05T16:59:25Z'
 ```
