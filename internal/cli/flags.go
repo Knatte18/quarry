@@ -23,7 +23,8 @@ func (e usageError) Error() string { return string(e) }
 
 // request is the parsed shape of one invocation of parseArgs. root holds the --root value exactly
 // as given, empty when the flag was absent. symbols is nil when neither --symbols nor
-// --no-symbols was given, which is the engine's per-target default.
+// --no-symbols was given, which is the engine's per-target default. unit holds the --unit value
+// exactly as given, empty when the flag was absent.
 type request struct {
 	verb    string
 	target  string
@@ -31,6 +32,7 @@ type request struct {
 	symbols *bool
 	text    bool
 	root    string
+	unit    string
 	help    bool
 }
 
@@ -42,14 +44,17 @@ type request struct {
 // flag, missing verb, or unrecognised verb is rejected: when found, parseArgs returns a request
 // with help set and a nil error, so help wins over every other complaint.
 //
-// The verb gate accepts exactly "toc", "resolve" and "expand". --depth, --symbols and
-// --no-symbols are valid for "toc" only; either new verb rejects each with a usage error naming
+// The verb gate accepts exactly "toc", "resolve", "expand" and "name". --depth, --symbols and
+// --no-symbols are valid for "toc" only; every other verb rejects each with a usage error naming
 // the flag and the verb, checked at the point the flag is recognised so that rejection takes
-// precedence over the flag's own value validation. --text and --root are valid for all three
-// verbs. Every verb requires exactly one target; parseArgs classifies none of them further —
-// whether "expand"'s target contains a "#" is the grammar's question, not this parser's, so
-// parseArgs stays pure over the argument slice — no root discovery, no engine call — with nothing
-// left in its own table test that depended on rejecting a bare path here.
+// precedence over the flag's own value validation. --text is valid for every verb, while --root
+// is valid for the three repository verbs only, since "name" reads nothing from the filesystem.
+// --unit is valid for "name" only, and is required there: a "name" invocation with no --unit is
+// rejected with a usage error naming the missing flag rather than the verb. Every verb requires
+// exactly one target; parseArgs classifies none of them further — whether "expand"'s target
+// contains a "#" is the grammar's question, not this parser's, so parseArgs stays pure over the
+// argument slice — no root discovery, no engine call — with nothing left in its own table test
+// that depended on rejecting a bare path here.
 func parseArgs(args []string) (request, error) {
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
@@ -58,14 +63,14 @@ func parseArgs(args []string) (request, error) {
 	}
 
 	if len(args) == 0 {
-		return request{}, usageError("no verb given; expected: toc, resolve, or expand")
+		return request{}, usageError("no verb given; expected: toc, resolve, expand, or name")
 	}
 
 	verb := args[0]
 	if strings.HasPrefix(verb, "-") {
-		return request{}, usageError("no verb given; expected: toc, resolve, or expand")
+		return request{}, usageError("no verb given; expected: toc, resolve, expand, or name")
 	}
-	if verb != "toc" && verb != "resolve" && verb != "expand" {
+	if verb != "toc" && verb != "resolve" && verb != "expand" && verb != "name" {
 		return request{}, usageError(fmt.Sprintf("unknown verb: %s", verb))
 	}
 
@@ -135,11 +140,23 @@ func parseArgs(args []string) (request, error) {
 		case "--text":
 			req.text = true
 		case "--root":
+			if verb == "name" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
 			v, ok := nextValue()
 			if !ok {
 				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
 			}
 			req.root = v
+		case "--unit":
+			if verb != "name" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
+			v, ok := nextValue()
+			if !ok {
+				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
+			}
+			req.unit = v
 		default:
 			return request{}, usageError(fmt.Sprintf("unknown flag: %s", tok))
 		}
@@ -149,6 +166,10 @@ func parseArgs(args []string) (request, error) {
 		return request{}, usageError(fmt.Sprintf("%s takes exactly one target, got %d", verb, len(targets)))
 	}
 	req.target = targets[0]
+
+	if verb == "name" && req.unit == "" {
+		return request{}, usageError("--unit is required for name")
+	}
 
 	return req, nil
 }

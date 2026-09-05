@@ -1,8 +1,8 @@
 # quarry
 
-Quarry is being rewritten around one identifier — the glyph — and three
-queries: `toc`, `resolve`, `expand`. Extraction is tree-sitter only, and
-Go only.
+Quarry is being rewritten around one identifier — the glyph — and four
+queries: `toc`, `resolve`, `expand`, `name`. Extraction is tree-sitter only,
+and Go only.
 
 The rewrite is specified in two documents:
 

@@ -216,7 +216,7 @@ type ResolveResult struct {
 // member whose owner chain begins with it. Status is found, not_found or ambiguous, and never
 // multipart, because the kind gate sends every match set holding no type to NotATypeError — where a
 // several-declaration init glyph lands, however many declarations it has — and docs/rewrite-plan.md's
-// three-queries section's rule that a Go type never splits, only init does, closes the remaining
+// section 5, The queries, rule that a Go type never splits, only init does, closes the remaining
 // type-only cases. A language with partial types adds its row then, not now.
 type ExpandAnswer struct {
 	// ID is the parsed glyph's Glyph.String() form, the same wire form Symbol.ID carries.

@@ -360,6 +360,55 @@ func RenderExpandText(a ExpandAnswer) string {
 	return b.String()
 }
 
+// RenderNameText renders r, one glyph-maker prediction, as the lossless text view of a single CLI
+// call. Like the other text renderers it cannot fail and returns no error; the returned string has
+// no trailing whitespace on any line and ends with exactly one "\n". There is no text rendering of a
+// whole batch: this is a CLI view of one result.
+//
+// RenderNameText has two branches:
+//
+//  1. r.ID is non-empty — success. One line: r.ID, a space, and the kind. The target is dropped
+//     because the existing resolve renderer's success branches already drop it in favour of the id,
+//     and for a one-per-call CLI the input is on the command line beside the output.
+//  2. otherwise — failure. One line, built from normalizeProse(r.Target) followed by the literal
+//     " error" with no trailing space, then — only when r.Reason is non-empty — a space followed by
+//     r.Reason, then — only when normalizeProse(r.Error) is non-empty — ": " followed by that
+//     normalised message. Spelling the segments this way, rather than as a trailing-space " error ",
+//     is what keeps an empty-reason value from emitting trailing whitespace; it is the exact segment
+//     split RenderResolveText's own empty-status branch already uses. The same degenerate-value
+//     guards apply here: this renderer promises the no-trailing-whitespace invariant for every input,
+//     including an externally constructed zero-ish value the facade never produces.
+//
+// The echoed target goes through normalizeProse too, not only the message: a declaration head
+// legitimately spans lines — an ungrouped var's signature is the whole declaration text — so echoing
+// it raw would break the one-record-per-line invariant the whole text format rests on. This is not a
+// new rule: normalizeProse's own doc comment already states it is applied to every signature before
+// printing, and the echoed target is a signature. The JSON view, RenderNameJSON, deliberately keeps
+// the byte-verbatim echo with its newlines intact, because a JSON string has no line invariant to
+// protect.
+func RenderNameText(r NameResult) string {
+	var b strings.Builder
+	if r.ID != "" {
+		b.WriteString(r.ID)
+		b.WriteString(" ")
+		b.WriteString(string(r.Kind))
+		b.WriteString("\n")
+		return b.String()
+	}
+	b.WriteString(normalizeProse(r.Target))
+	b.WriteString(" error")
+	if r.Reason != "" {
+		b.WriteString(" ")
+		b.WriteString(r.Reason)
+	}
+	if msg := normalizeProse(r.Error); msg != "" {
+		b.WriteString(": ")
+		b.WriteString(msg)
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
 // writeFileForm writes the file-form block: joinRel(a.Dir, fe.Name), then " (package <Package>,
 // <Language>)" under the same presence rules writePackageParen applies — these are the enclosing
 // directory's own facts, taken from a, not from the entry — then the entry's tags, then ": " +

@@ -112,6 +112,29 @@ func codeForExpandAnswer(a quarry.ExpandAnswer) int {
 	}
 }
 
+// codeForNameResult is the pure mapping runName's pipeline uses to turn a maker result into an
+// exit code, mirroring codeForResolveResult's own rationale so a table test can be written
+// directly against it.
+//
+// It returns exitOK when r.ID is non-empty, exitInternal when r.Reason equals
+// quarry.NameReasonInternal — checked before the generic error check below, so the ordering is
+// not an accident a later edit can reorder — exitNegative for any other non-empty r.Error, and
+// exitInternal for the shape where neither ID nor Error is set. That last branch is unreachable:
+// the maker never returns a NameResult with neither field set, and it exists only so a value the
+// facade never produces cannot silently route to a zero exit code.
+func codeForNameResult(r quarry.NameResult) int {
+	if r.ID != "" {
+		return exitOK
+	}
+	if r.Reason == quarry.NameReasonInternal {
+		return exitInternal
+	}
+	if r.Error != "" {
+		return exitNegative
+	}
+	return exitInternal
+}
+
 // codeForExpandError maps the error the facade's Expand method returns into an exit code, so
 // runExpand's error-branch classification and its exit code stay one table-tested source rather
 // than two things that can drift apart.
@@ -148,8 +171,8 @@ func codeForExpandError(err error) int {
 //
 // It is a named function rather than an inline switch precisely so a table test can assert both
 // sentences directly, without a fixture that cannot exist — the no-root case is unreachable from
-// inside this repository without changing the process working directory, which these tests never
-// do.
+// inside this repository without changing the process working directory, which a test reaches
+// with t.Chdir.
 func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 	if errors.Is(err, repopath.ErrNoRepositoryRoot) {
 		return "no repository root found above " + cwd + "; pass --root", true
@@ -160,14 +183,24 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 	return "", false
 }
 
-// Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes the four
-// steps every verb shares, then dispatches to that verb's own pipeline — the step that decides an
-// exit code is the step that decides the message, so the two things are never allowed to drift
-// apart within any one pipeline:
+// Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes two
+// steps every verb shares, then either the name verb's own early return or two further steps
+// shared by the three repository verbs, then dispatches to that verb's own pipeline — the step
+// that decides an exit code is the step that decides the message, so the two things are never
+// allowed to drift apart within any one pipeline:
 //
 //  1. Parse flags and the verb. A usage error is exit 2; anything else is exit 3.
 //  2. When help was requested, write usageText to stdout and return exit 0 — help is a successful
 //     query about the CLI, not a usage error, so it never touches stderr or exit 2.
+//
+// When req.verb is "name", Run returns runName's own result here, immediately after the help
+// check and before os.Getwd(): the verb reads nothing from the filesystem, and resolving a root
+// first would make it fail with a no-repository-root message in a directory where the answer is
+// perfectly computable — a failure with no relationship to the question asked. See runName's own
+// doc comment for its numbered pipeline.
+//
+// For the three repository verbs, Run continues:
+//
 //  3. Read the working directory. This is the one place in the package that does.
 //  4. Resolve the repository root by calling internal/repopath.ResolveRoot, --root or discovery,
 //     then compute the base directory a relative target is interpreted against: the root when
@@ -175,10 +208,11 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     CLI's own usage sentence by rootUsageMessage, which keeps repopath's own namespaced sentinel
 //     text out of the CLI's contract.
 //
-// Run then switches on req.verb and calls one of runTOC, runResolve, or runExpand. The default
-// case returns exitInternal with an internal-error message rather than falling through to a zero
-// exit code; it is unreachable for every word other than the three verbs, because parseArgs
-// already rejects any other verb as a usage error before Run ever sees it.
+// Run then switches on req.verb and calls one of runTOC, runResolve, or runExpand — name never
+// reaches this switch, having already returned above. The default case returns exitInternal with
+// an internal-error message rather than falling through to a zero exit code; it is unreachable
+// for every word other than the three repository verbs, because parseArgs already rejects any
+// other verb as a usage error before Run ever sees it.
 //
 // runTOC's own pipeline, continuing from step 4 above:
 //
@@ -243,6 +277,27 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     is exit 3.
 //  5. Return codeForExpandAnswer of the answer.
 //
+// runName's own pipeline, taking no root and no base directory:
+//
+//  1. Call quarry.Name with a one-element slice holding quarry.Declaration{Unit: req.unit, Decl:
+//     req.target}. A returned slice whose length is not exactly one is exit 3, named with the
+//     count — the facade contracts a positional one-to-one mapping, so this is unreachable and is
+//     stated so a contract change cannot silently produce a zero exit code. Take the single
+//     result.
+//  2. Check result.Reason == quarry.NameReasonInternal before rendering anything: the maker's
+//     internal reason is the one per-entry failure the CLI does not render as a payload. When it
+//     is, fail's own compact error envelope goes to stdout and the same sentence to stderr, using
+//     result.Error — which already carries the "internal error: " prefix exit 3's own rule
+//     requires — as the message and codeForNameResult(result) as the code rather than the
+//     exitInternal constant, so the mapping stays the single table-tested source, matching
+//     runExpand's own codeForExpandError(err) call on every one of its error branches. No payload
+//     is written on this route, and runName returns here.
+//  3. Otherwise render the payload: quarry.RenderNameText under --text, quarry.RenderNameJSON
+//     otherwise. Write it to stdout, and only then compute and return codeForNameResult(result). A
+//     render error or a failed write is exit 3. The payload-before-code order matters for the same
+//     reason it does in runResolve: a negative answer must be rendered, never replaced by the
+//     failure envelope.
+//
 // The error value returned to a caller never carries the engine's wrapped chain for exit 1 or
 // exit 2: those name conditions quarry itself defines, so quarry spells them, and passing
 // something like `engine: resolve target "x": engine: target not found` through would leak an
@@ -266,6 +321,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if req.help {
 		_, _ = io.WriteString(stdout, usageText)
 		return exitOK
+	}
+
+	if req.verb == "name" {
+		return runName(req, stdout, stderr)
 	}
 
 	cwd, err := os.Getwd()
@@ -299,15 +358,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	case "expand":
 		return runExpand(req, root, stdout, stderr)
 	default:
-		// Unreachable for every word other than the three verbs parseArgs accepts: the parser
-		// already rejects any other verb as a usage error before Run ever sees it.
+		// Unreachable for every word other than the three repository verbs this switch holds
+		// cases for: parseArgs already rejects any other verb as a usage error before Run ever
+		// sees it, and "name" never reaches this switch, having already returned above.
 		return fail(stdout, stderr, exitInternal, "internal error: unknown verb: "+req.verb, false)
 	}
 }
 
-// runTOC is the table-of-contents verb's own pipeline, continuing from Run's shared four steps.
-// Its behaviour is unchanged from Run's own body before this pipeline was extracted from it; see
-// Run's doc comment for the numbered steps.
+// runTOC is the table-of-contents verb's own pipeline, continuing from Run's two shared steps and
+// the two repository steps that follow them. Its behaviour is unchanged from Run's own body
+// before this pipeline was extracted from it; see Run's doc comment for the numbered steps.
 func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
 	rel, err := repopath.RepoRelTarget(root, base, req.target)
 	if err != nil {
@@ -367,8 +427,9 @@ func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// runResolve is the resolve verb's own pipeline, continuing from Run's shared four steps. See
-// Run's doc comment for the numbered steps this function executes in fixed order.
+// runResolve is the resolve verb's own pipeline, continuing from Run's two shared steps and the
+// two repository steps that follow them. See Run's doc comment for the numbered steps this
+// function executes in fixed order.
 func runResolve(req request, root, base string, stdout, stderr io.Writer) int {
 	repo, err := quarry.Open(root)
 	if err != nil {
@@ -401,9 +462,10 @@ func runResolve(req request, root, base string, stdout, stderr io.Writer) int {
 	return codeForResolveResult(result)
 }
 
-// runExpand is the expand verb's own pipeline, continuing from Run's shared four steps. It takes
-// no base directory, because this verb accepts a glyph only and performs no path work at all. See
-// Run's doc comment for the numbered steps this function executes in fixed order.
+// runExpand is the expand verb's own pipeline, continuing from Run's two shared steps and the two
+// repository steps that follow them. It takes no base directory, because this verb accepts a
+// glyph only and performs no path work at all. See Run's doc comment for the numbered steps this
+// function executes in fixed order.
 func runExpand(req request, root string, stdout, stderr io.Writer) int {
 	repo, err := quarry.Open(root)
 	if err != nil {
@@ -445,4 +507,42 @@ func runExpand(req request, root string, stdout, stderr io.Writer) int {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 	return codeForExpandAnswer(answer)
+}
+
+// runName is the name verb's own pipeline. Unlike runTOC, runResolve and runExpand it continues
+// from nothing Run's shared steps compute: this verb reads no working directory and resolves no
+// repository root, so it takes no root and no base directory.
+//
+// Steps 2 and 3 below are ordered the way they are, and not the other way round, because the
+// maker's internal reason is the one per-entry failure the CLI does not render as a payload: read
+// in the reverse order, a negative or positive payload would be rendered first, and the internal
+// check would then have to retract it, emitting a success payload followed by an error envelope on
+// the same stdout.
+func runName(req request, stdout, stderr io.Writer) int {
+	results := quarry.Name([]quarry.Declaration{{Unit: req.unit, Decl: req.target}})
+	if len(results) != 1 {
+		return fail(stdout, stderr, exitInternal,
+			"internal error: name returned "+strconv.Itoa(len(results))+" results for one declaration", false)
+	}
+	result := results[0]
+
+	if result.Reason == quarry.NameReasonInternal {
+		return fail(stdout, stderr, codeForNameResult(result), result.Error, false)
+	}
+
+	if req.text {
+		if _, err := io.WriteString(stdout, quarry.RenderNameText(result)); err != nil {
+			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+		}
+		return codeForNameResult(result)
+	}
+
+	out, err := quarry.RenderNameJSON(result)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	if _, err := stdout.Write(out); err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	return codeForNameResult(result)
 }

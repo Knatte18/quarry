@@ -1,9 +1,9 @@
-// render.go declares the JSON renderers the facade exports: RenderJSON, RenderResolveJSON and
-// RenderExpandJSON, the three successful envelopes, sharing one unexported encoder configuration in
-// renderJSON, and RenderErrorJSON, the failure envelope. All are package-level functions rather than
-// methods, per the overview's alias-types-carry-no-methods decision — DirAnswer, ResolveResult and
-// ExpandAnswer are aliases for engine types, and Go forbids a method declared here from binding to
-// any of them.
+// render.go declares the JSON renderers the facade exports: RenderJSON, RenderResolveJSON,
+// RenderExpandJSON and RenderNameJSON, the four successful envelopes, sharing one unexported encoder
+// configuration in renderJSON, and RenderErrorJSON, the failure envelope. All are package-level
+// functions rather than methods, per the overview's alias-types-carry-no-methods decision —
+// DirAnswer, ResolveResult, ExpandAnswer and NameResult are aliases for engine types, and Go forbids
+// a method declared here from binding to any of them.
 
 package quarry
 
@@ -63,6 +63,19 @@ func RenderResolveJSON(r ResolveResult) ([]byte, error) {
 // marshaller is needed.
 func RenderExpandJSON(a ExpandAnswer) ([]byte, error) {
 	return renderJSON(a)
+}
+
+// RenderNameJSON encodes r, one glyph-maker prediction, as a successful JSON envelope. It emits the
+// same byte contract as RenderJSON — two-space indent, one trailing newline, no HTML escaping — and
+// its key order within the object is NameResult's own field declaration order, so no hand-written
+// marshaller is needed.
+//
+// The signature takes one result, not a batch, matching the single-result shape RenderResolveJSON
+// already has. There is no JSON view of a whole batch and none is added: the batch exists for one
+// consumer, which calls the facade in-process and reads Go values, and no CLI path can produce a
+// batch, so a slice renderer would have no caller on either side.
+func RenderNameJSON(r NameResult) ([]byte, error) {
+	return renderJSON(r)
 }
 
 // RenderErrorJSON encodes msg as the compact failure envelope {"ok":false,"error":"<msg>"} followed
