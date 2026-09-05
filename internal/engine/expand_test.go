@@ -308,6 +308,46 @@ func TestExpand_MalformedTarget(t *testing.T) {
 	}
 }
 
+// TestExpand_SelfGlyph asserts that expanding a self glyph naming an existing package directory
+// returns the zero ExpandAnswer and an error errors.As reaches as a *SelfGlyphError whose ID is the
+// argument with its trailing "#" intact, and that the gate ran before any unit work: parses is zero
+// and dirs is empty. Neither assertion alone is the claim — parses is incremented only in
+// symbolsOf, so on its own it proves no unit was parsed and says nothing about the directory
+// lookup, which happens in dirsOf and is uncounted; the empty dirs map is what proves no
+// unit-directory lookup was made either.
+func TestExpand_SelfGlyph(t *testing.T) {
+	r := openModuleRepo(t)
+	target := "internal/engine/testdata/glyphs#"
+
+	m, err := newUnitMemo(r)
+	if err != nil {
+		t.Fatalf("newUnitMemo returned error: %v", err)
+	}
+	got, err := r.expand(target, m)
+
+	var selfErr *SelfGlyphError
+	if !errors.As(err, &selfErr) {
+		t.Fatalf("expand(%q) error = %v; want errors.As to *SelfGlyphError", target, err)
+	}
+	if selfErr.ID != target {
+		t.Errorf("SelfGlyphError.ID = %q; want %q", selfErr.ID, target)
+	}
+	wantMsg := "engine: expand internal/engine/testdata/glyphs#: not a type, a self glyph names the unit or file itself"
+	if selfErr.Error() != wantMsg {
+		t.Errorf("SelfGlyphError.Error() = %q; want %q", selfErr.Error(), wantMsg)
+	}
+	if !isZeroExpandAnswer(got) {
+		t.Errorf("expand(%q) = %+v; want the zero ExpandAnswer", target, got)
+	}
+
+	if m.parses != 0 {
+		t.Errorf("m.parses = %d; want 0 — no unit was parsed", m.parses)
+	}
+	if len(m.dirs) != 0 {
+		t.Errorf("m.dirs = %v; want empty — no unit-directory lookup was made", m.dirs)
+	}
+}
+
 // TestExpand_NotFound asserts that a name that does not exist inside an existing unit answers
 // not_found with unit: found and a nil error, and that a glyph whose unit directory does not exist
 // answers not_found with unit: not_found and a nil error — a miss is a legitimate answer with a
