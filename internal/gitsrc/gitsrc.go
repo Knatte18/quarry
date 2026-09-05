@@ -79,6 +79,90 @@ func (r *Repo) VerifyRevision(rev string) error {
 	return nil
 }
 
+// Change is one changed path between two revisions, or between a revision and the working tree.
+// Status is the raw single-letter git status code -- "A", "M", "D", "U" and so on. gitsrc maps
+// nothing from it: the mapping from letter to disposition belongs to the layer that builds
+// entries, since this package returns paths, bytes and errors only.
+type Change struct {
+	// Path is repository-relative, exactly as git reports it.
+	Path string
+	// Status is git's own single-letter status code, unmapped.
+	Status string
+}
+
+// ChangedPaths returns the paths that differ between before and after, restricted to pathspec
+// (pass "." for the whole repository), together with each path's raw git status letter.
+//
+// after == "" means the working tree, selecting the one-revision form of the diff rather than the
+// two-revision form. Callers invoke this form only when the after side is the working tree: a card
+// that creates a file and has not yet staged it is the normal state at the moment the primary
+// consumer asks the question, and without this form that file's symbols would be silently absent
+// with the files echo unable to record the omission.
+//
+// Both forms pass "--no-renames", disabling git's own rename and copy detection. This is a
+// correctness requirement rather than an optimisation: git's detection is a similarity threshold,
+// and letting it run would mean the caller's answer silently inherited the heuristic the whole
+// two-tier design exists to replace. With it, a rename arrives as a delete plus an add and is
+// classified by the table comparison, which is the only classifier this query is allowed to have.
+//
+// ChangedPaths uses git's null-delimited output form and splits on the null byte, as every
+// path-emitting operation in this package does. Without it git applies its path-quoting
+// configuration and quotes any non-ASCII or control-character path while delimiting with newlines,
+// so such a path would be read at the wrong location -- silently, since a mangled path simply fails
+// to open -- and a newline inside a filename would split one path into two.
+func (r *Repo) ChangedPaths(before, after, pathspec string) ([]Change, error) {
+	args := []string{"diff", "--no-renames", "--name-status", "-z"}
+	if after == "" {
+		args = append(args, before)
+	} else {
+		args = append(args, before, after)
+	}
+	args = append(args, "--", pathspec)
+
+	out, err := runGit(r.root, args...)
+	if err != nil {
+		return nil, err
+	}
+	return parseNameStatus(out)
+}
+
+// parseNameStatus parses the null-delimited output of "git diff --name-status -z": alternating
+// status and path fields.
+func parseNameStatus(out []byte) ([]Change, error) {
+	fields := splitNullDelimited(out)
+	if len(fields)%2 != 0 {
+		return nil, fmt.Errorf("git diff --name-status: odd number of null-delimited fields")
+	}
+	changes := make([]Change, 0, len(fields)/2)
+	for i := 0; i < len(fields); i += 2 {
+		changes = append(changes, Change{Status: fields[i], Path: fields[i+1]})
+	}
+	return changes, nil
+}
+
+// splitNullDelimited splits git's "-z" output on the null byte, dropping the trailing empty field
+// its final delimiter leaves behind. An empty input yields a nil slice rather than a slice holding
+// one empty string.
+func splitNullDelimited(out []byte) []string {
+	s := strings.TrimSuffix(string(out), "\x00")
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\x00")
+}
+
+// UntrackedPaths returns the paths under pathspec that are present on disk but not tracked by git.
+// It passes git's standard-exclusion flag ("--exclude-standard"), so an untracked file matched by a
+// gitignore pattern is never picked up while build output and every other ignored artefact stay out
+// of the answer.
+func (r *Repo) UntrackedPaths(pathspec string) ([]string, error) {
+	out, err := runGit(r.root, "ls-files", "-z", "--others", "--exclude-standard", "--", pathspec)
+	if err != nil {
+		return nil, err
+	}
+	return splitNullDelimited(out), nil
+}
+
 // runGit runs one git invocation against root, passed explicitly via git's own "-C" flag rather
 // than through the process's own working directory, matching how the existing tests in this
 // repository already invoke git: a caller running the same query many times over never depends on
