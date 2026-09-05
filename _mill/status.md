@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -49,6 +49,7 @@ approved-goldens-history-docs  '2026-09-05T18:20:47Z'
 holistic-reviewing  '2026-09-05T18:21:16Z'
 holistic-approved  '2026-09-05T18:25:31Z'
 done  '2026-09-05T18:26:02Z'
+pr-pending  '2026-09-05T18:36:54Z'
 ```
 
 ## Batches
