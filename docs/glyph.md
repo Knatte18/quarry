@@ -105,6 +105,13 @@ changing:
 The member is the symbol's own name, preceded by the names of the types that enclose it, outermost
 first, joined with `.`.
 
+An empty member is the self form (§1), in every alphabet: that much is shared. For Go, and only for
+Go, removing the trailing `#` yields the plain repository-relative path in both directions with no
+other conversion — this holds only because Go's unit is itself spelled as a repository-relative
+path (§2). It does not hold unscoped: a Python dotted module and a C# namespace are not
+repository-relative paths, so stripping the trailing `#` from a Python or C# self glyph does not
+yield one.
+
 **Go.** `Name` for a package-level `func`, `type`, `const` or `var`; `Type.Name` for a method or an
 interface method. The receiver type is half the key — `dualHandler.Handle` and
 `durableHandler.Handle` are two glyphs — and whether it is a pointer receiver is not part of it.
@@ -202,9 +209,22 @@ Go units contain `/` and collide with nothing.
 A Python module path and a C# namespace can spell the same string, and when a declaration matches in both the answer is `ambiguous` with the candidates marked by language.
 There is no language prefix in the glyph to prevent this: the case is rare, and a prefix would be a second spelling.
 
-`resolve` also accepts what is not a glyph: a repository-relative path, file or directory, told apart by having no `#`.
-It answers with the file entry or directory answer and `found` or `not_found`.
-That is how a whole file — an HTML viewer, a Markdown page — is a plan target with the same checks as a symbol.
+`toc` takes paths; `resolve` takes glyphs. A bare repository-relative path handed to `resolve` is
+rejected pre-resolution, with a message naming the fix — append the trailing `#` to make it a self
+glyph. A self glyph answers with the same listing block `toc` would produce for that path and the
+same four statuses above: `found` with the listing, or `not_found`. That is how a whole file — an
+HTML viewer, a Markdown page — is a plan target with the same checks as a symbol.
+
+A `#` in any path segment is an explicit error at both verbs — `toc` and `resolve` alike reject it,
+never reclassifying the target as the other kind. This sits beside an asymmetry that is not a
+contradiction: the contract above governs what a caller may *name*, while the walk's own
+spellability rule (§2's unit corner cases; `internal/engine/walk.go`'s `unitSpellable`) governs
+what it may *mint* — so a directory whose own name happens to carry a `#` is still listed, without
+symbols, when it is encountered below a listed target, even though naming it directly as a resolve
+or expand target is rejected.
+
+The repository root cannot be addressed by `resolve` at all: a lone `#` fails as an empty unit, and
+a `.` segment is rejected as a dot segment. `toc` on the root remains the way to ask what is there.
 
 Measured cost (Loomyard, 4-core WSL2, in-process, source read fresh every time): 5–8 ms for a
 5-file unit, 24–65 ms for a 35-file unit, ~100 ms for twenty glyphs across five units.
@@ -217,12 +237,16 @@ Measured cost (Loomyard, 4-core WSL2, in-process, source read fresh every time):
 - On a command line: positional arguments.
 - In YAML: safe unquoted inside a token (`- cmd/lyx#run`); a YAML comment needs whitespace before
   its `#`. In Markdown: safe anywhere but the first column of a line. C# glyphs contain `(`, `,`
-  and `<`; quote them where a format cares.
+  and `<`; quote them where a format cares. A trailing `#` is safe in every format already listed
+  here, and it is never optional: the canonical form keeps it, so a self glyph is never printed or
+  accepted with it stripped.
 - In Go: package `github.com/Knatte18/quarry/glyph` — pure Go, no cgo, no dependencies, so that
   any program can import it without the engine. `type Language`, with `Go` alone until a second
   language is added (`Python` and `CSharp` are the names reserved for the alphabets below);
   `type Glyph struct { Lang Language; Unit string; Owner []string; Name string; Params []string }`;
-  `Parse(lang Language, s string) (Glyph, error)`; `Glyph.String()`. `Parse` is the syntactic
+  `Parse(lang Language, s string) (Glyph, error)`; `Glyph.String()`;
+  `Self(lang Language, path string) (Glyph, error)`, the compose constructor for the self form; and
+  `Glyph.IsSelf() bool`, reporting whether a Glyph is one. `Parse` is the syntactic
   check: it reads no source and accepts exactly the alphabet of `lang`. The string form is
   canonical; the struct is a view of it.
 
@@ -241,8 +265,9 @@ makes any later refinement of the alphabet — a C# parameter cap, say — a cha
 - **C# XML documentation IDs** (`M:Loomyard.Engine.Layout.Renderer.Draw(System.Int32)`) solve the
   same problem for the same reason and differ only in spelling: a kind prefix, fully qualified
   types, and no unit separator. A C# glyph is the readable form of the same key.
-- **File paths** are not glyphs. A repository-relative path has no `#`, and that is how `resolve`
-  tells the two apart (§5); a plan card whose deliverable is a whole file names the path.
+- **File paths** are not glyphs, but every path has one: `toc` takes the plain path, and `resolve`
+  takes that path's self glyph — the same path with a trailing `#` appended (§1, §3). A plan card
+  whose deliverable is a whole file names the path; the self glyph is how `resolve` checks it.
 - **LSP** addresses by file + position. From an LSP location to a glyph: `toc` on that file, take
   the enclosing declaration's glyph. From a glyph to a position: `resolve`. Both directions are
   mechanical, and the glyph never depended on the position.
