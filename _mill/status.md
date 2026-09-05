@@ -1,8 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
-blocked_reason: 'verify/logic: unresolved after retry (holistic review r1 BLOCKING finding is a false positive -- pinned SHA verified 40 valid hex chars independently twice)'
+phase: holistic-reviewing
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -43,6 +42,7 @@ self-resolved-verify-logic  '2026-09-05T13:04:14Z'
 holistic-fixing  '2026-09-05T13:04:20Z'
 blocked  '2026-09-05T13:05:23Z'
 blocked  '2026-09-05T13:05:23Z'
+holistic-reviewing  '2026-09-05T13:10:56Z'
 ```
 
 ## Batches
