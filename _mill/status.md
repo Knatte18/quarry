@@ -6,6 +6,7 @@ slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: Glyph self-form and the resolve contract (C1)
 task_description: |
   Glyph self-form and the resolve contract (C1)
@@ -37,13 +38,20 @@ implementing  '2026-09-05T12:12:37Z'
 ```yaml
 batches:
   - name: glyph-grammar
-    state: pending
+    state: running
+    implementer_session: 1d3d71aa-5ef7-45c3-b55e-c9bfd4fb7cc6
+    start_sha: 4d68e1361995dc1936de6274adffc207dda4c84a
+    verify_baseline_failures: []
   - name: engine-resolve-contract
     state: pending
+    verify_baseline_failures: []
   - name: expand-gate-and-sentinel
     state: pending
+    verify_baseline_failures: []
   - name: cli-repopath-mcp
     state: pending
+    verify_baseline_failures: []
   - name: docs-and-goldens
     state: pending
+    verify_baseline_failures: []
 ```
