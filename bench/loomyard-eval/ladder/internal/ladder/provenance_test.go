@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestReadProvenance_MissingIsNilNoError(t *testing.T) {
@@ -67,6 +69,27 @@ func canningRunner() *recordingRunner {
 		"git status --porcelain": "",
 		"claude --version":       "2.5.0 (Claude Code)\n",
 	}}
+}
+
+func TestWriteProvenance_CreatesMissingResultsRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "results", "fresh-root")
+	want := &Provenance{
+		LadderFile:         "ladders/ladder.yaml",
+		LoomyardRepoSHA256: "deadbeef",
+		ServerName:         "quarry",
+		RepsEffective:      3,
+		SelectedCells:      []string{"a0-none"},
+	}
+	if err := WriteProvenance(root, want); err != nil {
+		t.Fatalf("WriteProvenance() into missing results root = %v; want no error", err)
+	}
+	got, err := ReadProvenance(root)
+	if err != nil {
+		t.Fatalf("ReadProvenance() = %v; want no error", err)
+	}
+	if got.LadderFile != want.LadderFile || got.ServerName != want.ServerName {
+		t.Errorf("ReadProvenance() = %+v; want %+v", got, want)
+	}
 }
 
 func TestCollectInvocation_FillsFieldsFromRunner(t *testing.T) {
@@ -261,6 +284,106 @@ func TestMergeProvenance(t *testing.T) {
 			t.Fatal("MergeProvenance() with differing server_name = nil error; want an error naming both values")
 		}
 	})
+
+	t.Run("KickstartPack_SurvivesMergeUnchangedWhenNextCarriesNone", func(t *testing.T) {
+		pack := &KickstartPack{
+			GeneratedAt:    "t0",
+			QuarryCommit:   "packsha",
+			LoomyardCommit: "loom0",
+			Targets:        []string{"a", "b"},
+			PackSHA256:     "packhash",
+			ResolveSHA256:  "resolvehash",
+			CardFile:       "bench/loomyard-eval/cards/07-e1-pack.md",
+		}
+		existingWithPack := &Provenance{
+			LadderFile:         "ladder.yaml",
+			LoomyardRepoSHA256: "hash1",
+			ServerName:         "quarry",
+			RepsEffective:      3,
+			KickstartPack:      pack,
+		}
+		next := Invocation{
+			LadderFile:         "ladder.yaml",
+			LoomyardRepoSHA256: "hash1",
+			ServerName:         "quarry",
+			RepsEffective:      3,
+		}
+		merged, err := MergeProvenance(existingWithPack, next)
+		if err != nil {
+			t.Fatalf("MergeProvenance() = %v; want no error", err)
+		}
+		if diff := cmp.Diff(pack, merged.KickstartPack); diff != "" {
+			t.Errorf("merged.KickstartPack mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("FreshRootMerge_KickstartPackStaysNil", func(t *testing.T) {
+		merged, err := MergeProvenance(nil, Invocation{
+			LadderFile:         "ladder.yaml",
+			LoomyardRepoSHA256: "hash1",
+			ServerName:         "quarry",
+			RepsEffective:      3,
+		})
+		if err != nil {
+			t.Fatalf("MergeProvenance(nil, ...) = %v; want no error", err)
+		}
+		if merged.KickstartPack != nil {
+			t.Errorf("merged.KickstartPack = %+v; want nil (a fresh root invents no pack)", merged.KickstartPack)
+		}
+	})
+
+	t.Run("PackInvocationFollowedByOrdinaryRun_MergesCleanly", func(t *testing.T) {
+		packInvocation := Invocation{
+			WrittenAt:          "t1",
+			LadderFile:         "ladder.yaml",
+			SelectedCells:      []string{"e1-pack"},
+			RepsEffective:      10,
+			QuarryCommit:       "packsha",
+			LoomyardCommit:     "loom1",
+			LoomyardRepoSHA256: "hash1",
+			ClaudeVersion:      "1.0",
+			GoVersion:          "go1.26",
+			Hostname:           "host1",
+			ServerName:         "quarry",
+		}
+		afterPack, err := MergeProvenance(nil, packInvocation)
+		if err != nil {
+			t.Fatalf("MergeProvenance(nil, packInvocation) = %v; want no error", err)
+		}
+		afterPack.KickstartPack = &KickstartPack{
+			GeneratedAt:    "t1",
+			QuarryCommit:   "packsha",
+			LoomyardCommit: "loom1",
+			Targets:        []string{"a"},
+			PackSHA256:     "packhash",
+			ResolveSHA256:  "resolvehash",
+			CardFile:       "bench/loomyard-eval/cards/07-e1-pack.md",
+		}
+
+		runInvocation := Invocation{
+			WrittenAt:          "t2",
+			LadderFile:         "ladder.yaml",
+			SelectedCells:      []string{"e1-pack"},
+			RepsEffective:      10,
+			QuarryCommit:       "runsha",
+			LoomyardCommit:     "loom1",
+			LoomyardRepoSHA256: "hash1",
+			ClaudeVersion:      "1.0",
+			GoVersion:          "go1.26",
+			Hostname:           "host1",
+			ServerName:         "quarry",
+		}
+		merged, err := MergeProvenance(afterPack, runInvocation)
+		if err != nil {
+			t.Fatalf("MergeProvenance(afterPack, runInvocation) = %v; want no error", err)
+		}
+		if len(merged.Invocations) != 2 {
+			t.Fatalf("merged.Invocations has %d entries; want 2", len(merged.Invocations))
+		}
+		if merged.KickstartPack == nil || merged.KickstartPack.CardFile != afterPack.KickstartPack.CardFile {
+			t.Errorf("merged.KickstartPack = %+v; want the pack block carried forward", merged.KickstartPack)
+		}
+	})
 }
 
 func TestMergeProvenance_NoAbsolutePathAnywhereInOutput(t *testing.T) {
@@ -283,6 +406,15 @@ func TestMergeProvenance_NoAbsolutePathAnywhereInOutput(t *testing.T) {
 	p, err := MergeProvenance(nil, inv)
 	if err != nil {
 		t.Fatalf("MergeProvenance() = %v; want no error", err)
+	}
+	p.KickstartPack = &KickstartPack{
+		GeneratedAt:    "t1",
+		QuarryCommit:   "sha1",
+		LoomyardCommit: "loom1",
+		Targets:        []string{"a"},
+		PackSHA256:     "packhash",
+		ResolveSHA256:  "resolvehash",
+		CardFile:       "bench/loomyard-eval/cards/07-e1-pack.md",
 	}
 
 	data, err := json.Marshal(p)

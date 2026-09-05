@@ -56,8 +56,14 @@ type BlindingInput struct {
 // CheckGrantedToolUsed is gate 1: it applies per cell and is never fatal. When cfg grants a non-empty
 // tool subset and the maximum prefixed-tool-use count across its reps is zero, the config measured
 // only the tool's prompt cost and never the tool itself — that is worth flagging but never worth
-// aborting on, since every rep already ran to completion. It returns nil for a control cell (an empty
-// allowed list) and for a granted cell where at least one rep used a granted tool.
+// aborting on, since every rep already ran to completion. It returns nil for a cell that grants no
+// tools and for a granted cell where at least one rep used a granted tool.
+//
+// The len(cfg.Allowed) == 0 test below is spelled inline rather than routed through GrantsTools,
+// deliberately: summarizeCell reconstructs a Config from a results root's own run state, which
+// carries allowed but has no control field to carry, so the reconstructed value's Allowed is the
+// only field this check may depend on. Do not "tidy" this into !cfg.GrantsTools() -- that would
+// quietly make the reconstruction load-bearing on a field it cannot populate.
 func CheckGrantedToolUsed(cfg Config, perRepQuarryToolUses []int) *Finding {
 	if len(cfg.Allowed) == 0 {
 		return nil
@@ -84,12 +90,11 @@ func CheckGrantedToolUsed(cfg Config, perRepQuarryToolUses []int) *Finding {
 // CheckServerConnected reports a finding when a granted cell's session-init record does not show
 // expectedServer connected: init is nil (no session-init record reached this call at all), the
 // record's advertised server list omits expectedServer entirely, or it lists expectedServer with a
-// status other than "connected". It is the caller's responsibility to gate this check on a granted
-// cell -- a control cell's allowed list is empty and this check is never its concern, matching how
-// CheckBlinding's checks are gated by IsControl at the call site rather than inside the check. The
-// nil-init and server-absent findings are worded distinctly, so the two are told apart in the reason
-// file this check's caller writes. It returns nil only when init is non-nil and lists expectedServer
-// with status "connected".
+// status other than "connected". It is the caller's responsibility to gate this check on a cell that
+// grants tools, matching how CheckBlinding's checks are gated at the call site rather than inside the
+// check. The nil-init and server-absent findings are worded distinctly, so the two are told apart in
+// the reason file this check's caller writes. It returns nil only when init is non-nil and lists
+// expectedServer with status "connected".
 func CheckServerConnected(init *SessionInit, expectedServer string) *Finding {
 	if init == nil {
 		return &Finding{
@@ -127,8 +132,9 @@ func CheckServerConnected(init *SessionInit, expectedServer string) *Finding {
 	}
 }
 
-// CheckBlinding is gate 2: it applies per rep, only for a control cell (an empty allowed list), and
-// runs checks (a), (b) and (c) in order over the whole transcript re-marshalled to JSON via
+// CheckBlinding is gate 2: it applies per rep, only for a cell that grants no tools, with the gating
+// living at the call site rather than inside this check, and runs checks (a), (b) and (c) in order
+// over the whole transcript re-marshalled to JSON via
 // Transcript.MarshalAll -- every record and every field, the session-init record's working directory
 // included, never a selected subset -- short-circuiting on the first fatal finding. Check (a) tests
 // for the MCP prefix, check (b) for the quarry repository root path, both fatal; check (c),

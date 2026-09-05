@@ -1,7 +1,7 @@
 // mcp.go builds the per-cell MCP configuration document the claude binary reads at startup and
-// lazily builds the MCP server binary the document points at. A control cell's document declares no
-// server at all; a granted cell's document declares exactly one, with the pinned worktree path
-// substituted into its argument list.
+// lazily builds the MCP server binary the document points at. A cell that grants no tools has a
+// document that declares no server at all; a granted cell's document declares exactly one, with the
+// pinned worktree path substituted into its argument list.
 
 package ladder
 
@@ -31,20 +31,20 @@ type mcpServerDoc struct {
 }
 
 // mcpConfigDoc is the top-level shape MCPConfigDocument marshals: a map of server name to its
-// declaration. A control cell's document has an empty map.
+// declaration. A cell that grants no tools has a document with an empty map.
 type mcpConfigDoc struct {
 	MCPServers map[string]mcpServerDoc `json:"mcpServers"`
 }
 
-// MCPConfigDocument returns the JSON MCP configuration document for one cell. For a control -- a
-// config whose allowed list is empty -- the returned document declares exactly an empty servers map
+// MCPConfigDocument returns the JSON MCP configuration document for one cell. For a cell that grants
+// no tools -- an empty allowed list -- the returned document declares exactly an empty servers map
 // and nothing else. For a granted cell, the document declares exactly one server under the ladder
 // file's server name, with serverBinary as its command, the server block's argument list with every
 // occurrence of the literal placeholder token "{target_dir}" replaced by targetDir, and the server
 // block's environment map. "{target_dir}" is the only placeholder the argument list supports. A
 // granted cell whose ladder file declares no server block is an error naming the cell id.
 func MCPConfigDocument(l *Ladder, cfg Config, serverBinary, targetDir string) ([]byte, error) {
-	if cfg.IsControl() {
+	if !cfg.GrantsTools() {
 		return json.MarshalIndent(mcpConfigDoc{MCPServers: map[string]mcpServerDoc{}}, "", "  ")
 	}
 
