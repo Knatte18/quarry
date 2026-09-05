@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-config-surface
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r3  '2026-09-05T12:05:07Z'
 plan-fix-r3  '2026-09-05T12:06:15Z'
 planned  '2026-09-05T12:06:32Z'
 implementing  '2026-09-05T12:07:02Z'
+approved-config-surface  '2026-09-05T12:13:44Z'
 ```
 
 ## Batches
@@ -36,9 +37,10 @@ implementing  '2026-09-05T12:07:02Z'
 ```yaml
 batches:
   - name: config-surface
-    state: running
+    state: approved
     implementer_session: f5e95223-dc24-4b61-b0b3-9c12ee433888
     start_sha: f4cfeb22cfa7de34734918f8b9e497938bcf82f5
+    commit_sha: 8e6e948216db9d9cd16ffaf5aa8b76a5a09322cb
     verify_baseline_failures: []
   - name: provenance
     state: pending
