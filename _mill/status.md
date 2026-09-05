@@ -100,6 +100,8 @@ batches:
     commit_sha: 111f63c85c2dcaa6c1452dbba3e1ed102a0e303b
     verify_baseline_failures: []
   - name: goldens-history-docs
-    state: pending
+    state: running
+    implementer_session: b015ed04-ce07-4a30-9f5b-8a15ced37212
+    start_sha: 47a79ea7b0ca5838a3d2161ea37252c11ec4586d
     verify_baseline_failures: []
 ```
