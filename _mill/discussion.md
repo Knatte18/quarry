@@ -38,8 +38,10 @@ are free right now and breaking the day Loomyard is wired up. Items 1–4 were s
 - `glyph/`: accept an empty member as the **self form** (`unit#` names the unit or file itself);
   require exactly one `#` in a glyph string, with a dedicated rejection reason; retire the
   now-unreachable `member_empty` reason; make the no-separator rejection message actionable by
-  naming the fix; **add the `Self` compose constructor — task item 5** (D20) — and update
-  `glyph/doc.go`'s "exports no constructor" sentence.
+  naming the fix; **add the `Self` compose constructor — task item 5** (D20) — and update the
+  "exports no constructor and no Validate method" sentence, which lives in **`glyph/glyph.go:17–19`,
+  on `Glyph`'s own doc comment**, not in `doc.go`; plus `ParseError.Detail`'s doc comment
+  (`glyph/errors.go:99–100`), falsified by D4.
 - `internal/engine`: `Resolve` takes glyphs only — every target goes to `glyph.Parse`, and
   `isGlyphTarget` is deleted; a self glyph is answered with the listing block the old bare path
   produced; `Expand` rejects a self glyph with a typed error.
@@ -212,16 +214,25 @@ are free right now and breaking the day Loomyard is wired up. Items 1–4 were s
 - **Decision:** delete the "Known contract gap" paragraph in `internal/cli/doc.go` and replace it
   with a statement of the new rule: `resolve` takes glyphs, `toc` takes paths, classification happens
   exactly once and it is `glyph.Parse` doing it; a `#` in a path segment is an explicit error at both
-  verbs, never a reclassification. **Four paragraphs in this package become false, not two — all four
+  verbs, never a reclassification. **Six paragraphs in this package become false, not two — all six
   are in the inventory:**
   (i) the "Known contract gap" paragraph (deleted);
   (ii) the paragraph above it describing `strings.Contains` classification (rewritten, since that
   code is gone);
   (iii) `internal/cli/doc.go:11–13`, the three-verbs paragraph, whose sentence "`resolve` takes
   either a path, by that same rule, or a glyph" is exactly the contract this task reverses;
-  (iv) `internal/cli/cli.go`'s `Run` doc comment, which narrates `runResolve` step 1's
+  (iv) `internal/cli/cli.go`'s `Run` doc comment, step 1, which narrates `runResolve`'s
   `strings.Contains` classification and asserts "the parser has already guaranteed the target
-  contains a `#`" — the latter a direct statement of D19's deleted gate.
+  contains a `#`" — the latter a direct statement of D19's deleted gate;
+  (v) `internal/cli/flags.go:49–52`, `parseArgs`' own doc comment, which states "for \"expand\"
+  specifically, a target containing no \"#\" is rejected here … which is the property its
+  fixture-free table test rests on" — D19 deletes both the rejection and the property, so the
+  comment and the test rationale go together;
+  (vi) `internal/cli/cli.go:229–231`, `Run` doc comment step 3, which documents the expand
+  `*glyph.ParseError` message as "the value's reason word … the same word the resolve verb puts in
+  its payload's reason key" — exactly what D19 replaces with the error's full text.
+  This enumeration is asserted complete; if a plan writer finds a seventh, that is a finding against
+  this list, not a licence to leave it.
   **The sentence is only writable because all three classifiers go:** `runResolve`'s (D6),
   the engine's `isGlyphTarget` (D4), and `parseArgs`' `expand` gate (D19). If any one of them
   survives, this doc sentence is false the day it is written — that is the acceptance condition for
@@ -295,7 +306,7 @@ are free right now and breaking the day Loomyard is wired up. Items 1–4 were s
 
 - **Decision:** `resolveGlyphTarget`, on `g.IsSelf()`, calls the existing path-answer helper with
   `g.Unit` and returns `ResolveResult{Target: <argument verbatim>, ID: g.String(), Status: …,
-  Listing: …}`. `Unit` is never set on a self result, on any status. The helper is renamed
+  Listing: …}`. The helper is renamed
   `resolveSelfTarget` and its doc comment updated; its three-way disposition (nil error → found +
   listing; `ErrTargetNotFound` → not_found, no listing; `ErrTargetOutsideRepo` → the error field) and
   its `Symbols: &false` option are kept exactly. `<file>#` returns the enclosing directory's answer
@@ -313,6 +324,43 @@ are free right now and breaking the day Loomyard is wired up. Items 1–4 were s
 - **Note:** `resolveSelfTarget`'s `ErrTargetOutsideRepo` branch becomes unreachable, because
   `checkGoUnit` rejects `.` and `..` segments before a unit can escape. Keep the branch as a
   defensive arm and say so in its doc comment rather than deleting a sentinel translation.
+
+### D10a — The self form is a **path** lookup, and `Unit` is set on its `not_found`
+
+- **Decision:** two halves, and they are one decision because the second only matters because of the
+  first.
+  (a) **A self glyph resolves through the plain path lookup, never through `unitDirs`.** `<path>#`
+  asks "what is at this path"; it does not ask "which directories hold this unit". D10's routing to
+  the path helper with `g.Unit` is therefore right, and this states it as a decision rather than
+  leaving it as an implementation detail.
+  (b) **`Unit` IS set on a self-glyph `not_found`**, by the same `unitDirs`-based rule every other
+  glyph uses — `StatusFound` when the memoised directory list is non-empty, `StatusNotFound`
+  otherwise. This **reverses** the suppression D10 originally decided; that suppression is deleted,
+  not softened.
+- **Rationale:** the case that forces it is the external test unit. `docs/glyph.md` §2 gives
+  `package logger_test` the pseudo-path `internal/logger_test`, and `unitDirs`
+  (`internal/engine/resolve.go:55–63`) resolves it by stripping `_test` and finding
+  `internal/logger`. So `internal/logger_test#Foo` resolves, while `internal/logger_test#` is a path
+  that exists nowhere on disk and is `not_found` — and with `Unit` suppressed the answer could not
+  even say the unit is real. Setting `Unit` makes that answer complete: `status: not_found,
+  unit: found` reads as "no such path, but the unit exists", which is exactly the true statement and
+  exactly what the key already means everywhere else.
+  D10's original suppression rationale — "for a self glyph the unit *is* the thing being asked
+  about" — is true for `internal/logger#` and **false for `internal/logger_test#`**, where the unit
+  and the path are different things. A rule that holds for one and not the other is not a rule; the
+  uniform rule costs nothing and needs no special case, since `unitDirs` already answers correctly
+  for both.
+  **The asymmetry is real and must be documented, not hidden:** a `_test` pseudo-unit has no self
+  form that resolves, because it has no directory of its own. `docs/glyph.md` §2's new self-form
+  paragraph (D15) states this in one sentence — the external test unit is addressable as
+  `unit#member` but has no `unit#` of its own, because the self form names a path and the pseudo-path
+  is not one.
+- **Rejected:** resolving a self glyph through `unitDirs` so `internal/logger_test#` answers with
+  `internal/logger`'s listing — that would answer a question about one path with the contents of a
+  different one, and the listing block has no way to say "these are the `_test` files only".
+  Rejecting `_test` self glyphs pre-resolution as a grammar error — the string is well-formed, and
+  the grammar has no business knowing which units have directories. Suppressing `Unit` and accepting
+  the incomplete answer — that is the state this finding caught.
 
 ### D11 — `expand` of a self glyph is a typed failure, not a `not_found`
 
@@ -366,8 +414,16 @@ are free right now and breaking the day Loomyard is wired up. Items 1–4 were s
 ### D14 — `RenderResolveText` gains a listing branch ahead of the glyph branch
 
 - **Decision:** insert a branch before the existing `r.ID != ""` branch: when `r.Listing != nil`,
-  emit line 1 as `r.ID + " " + status` followed immediately by `strings.Join(dirBlocks(*r.Listing),
-  "\n")`. The existing `default` arm is kept but reduced to line 1 alone (`r.Target + " " + status`),
+  emit line 1 as `r.ID + " " + status`, then — **only when `r.Status == StatusFound`** — the block
+  `strings.Join(dirBlocks(*r.Listing), "\n")`.
+  **Both guards the default arm carries are kept, not dropped.** The arm this branch supersedes
+  guards a nil pointer *and* `Status != StatusFound`; the nil-pointer guard survives as the branch
+  condition itself, and the `StatusFound` guard must be written explicitly or a hand-built
+  `not_found` carrying a `Listing` would print a directory block under a negative status.
+  **When `r.ID` is empty** — a hand-built value with a `Listing` and no `ID`, which the engine never
+  produces — line 1 falls back to `r.Target`, so it can never begin with a space. That fallback is
+  the same external-caller courtesy branch 1's empty-error guard and branch 2's empty-unit guard
+  already extend, and it is why this branch is not simply `r.ID + " "`. The existing `default` arm is kept but reduced to line 1 alone (`r.Target + " " + status`),
   documented as the guard for an externally-constructed value, since the engine can no longer produce
   a path result without an `ID`. A self glyph that is `not_found` has a nil `Listing` and falls to the
   glyph branch, which prints `<path># not_found` with no unit suffix (D10 leaves `Unit` empty, and
@@ -408,8 +464,13 @@ are free right now and breaking the day Loomyard is wired up. Items 1–4 were s
   rejected with a message naming the fix, and a self glyph answers with the `listing` block and the
   same statuses. Add the rule that a `#` in a path segment is an explicit error at both verbs, and
   the D9 asymmetry (what a caller may name vs. what the walk may mint).
-  §6: add that a trailing `#` is safe in the formats already listed and is never optional — the
-  canonical form keeps it.
+  §6: two edits, not one. (a) add that a trailing `#` is safe in the formats already listed and is
+  never optional — the canonical form keeps it. (b) **extend the Go API list** (glyph.md:204–210),
+  which enumerates `type Language`, `type Glyph struct{…}`, `Parse` and `Glyph.String()` and nothing
+  else. `docs/glyph.md:9` says "Anything not stated here is not part of the contract", so `Self`
+  (D20) and `IsSelf()` (D1) are outside the contract until this list names them — which would be
+  absurd for a function task item 5 exists to make contractual. Add both with their signatures:
+  `Self(lang Language, path string) (Glyph, error)` and `Glyph.IsSelf() bool`.
   §7: rewrite the "File paths are not glyphs" bullet, which currently states the retired no-`#` rule.
   Every example and every reject named in these sections gets a row in a test table (see Testing).
 - **Rationale:** `docs/glyph.md` is the contract — "anything not stated here is not part of the
@@ -494,8 +555,10 @@ details this decision previously left open.
   bad runes, empty segments — comes along for free and can never drift from `Parse`'s.
   The one concatenation in the whole system lives **inside** this function, which is the point of
   decision 5: the format knowledge is in one place, and no consumer performs it.
-  `glyph/doc.go`'s sentence "this package exports no constructor and no Validate method" is updated
-  in the same edit, since it stops being true.
+  The sentence "this package exports no constructor and no Validate method" is updated in the same
+  edit, since it stops being true. **It lives on `Glyph`'s doc comment at `glyph/glyph.go:17–19`, not
+  in `glyph/doc.go`** — `doc.go` carries no such sentence, so an edit aimed there would silently
+  change nothing and leave the false claim standing.
   **The `lang` parameter is kept**, against the body's illustrative `Self(path)` spelling — the body
   says "name per the package's existing conventions … or equivalent", and the conventions are
   explicit: `Parse` takes `lang` first, a `Glyph` carries `Lang`, and `Language`'s doc comment says
@@ -683,10 +746,18 @@ details this decision previously left open.
 
 **Per module.**
 
-- `internal/engine/resolve_test.go` — a self glyph naming a file returns `found` with a `Listing`
+- `internal/engine/resolve_test.go` — **`TestIsGlyphTarget` (line 329) is deleted with the function
+  D4 removes**, in the same edit; it tables `isGlyphTarget` over `#`-containing and `#`-free targets,
+  and neither the function nor the split it asserts survives. Then: a self glyph naming a file returns `found` with a `Listing`
   holding exactly one `FileEntry` and no symbols on it; a self glyph naming a directory returns
   `found` with the directory's `Listing`; a self glyph naming neither returns `not_found` with a nil
-  `Listing` and an empty `Unit`; `ID` is set to the trailing-`#` form on all three; `Target` is the
+  `Listing` and `unit: not_found`;
+  **the D10a `_test` row: `<unit>_test#`, where the base directory exists but no `<unit>_test`
+  directory does, returns `not_found` with a nil `Listing` and `unit: found`** — the case the whole
+  decision turns on, and the one a suppressed `Unit` would have rendered unanswerable; the companion
+  row `<unit>_test#Foo` still resolving is asserted beside it, so the documented asymmetry is visible
+  in one test. The `internal/engine/testdata/foo_test/` fixture tree already exists for exactly this
+  shape; `ID` is set to the trailing-`#` form on all three; `Target` is the
   argument verbatim. A bare path returns an empty `Status` with `Reason == "no_separator"`. A
   two-`#` target returns an empty `Status` with `Reason == "multiple_separators"`. A multi-target
   `Resolve` call mixing a symbol glyph, a self glyph and a bare path returns three positionally
@@ -712,7 +783,7 @@ details this decision previously left open.
 - `internal/cli/cli_test.go` — exit codes and stream routing, the table the existing
   "Exit-code mapping" test already establishes: `resolve <bare-path>` → exit 1, payload on stdout,
   nothing on stderr; `resolve a#b#c` → exit 1, payload on stdout; `resolve <file>#` on an existing
-  file → exit 0; `resolve <file>#` on a missing one → exit 1; `expand <unit>#` → exit 1 with the
+  file → exit 0; `resolve <file>#` on a missing one → exit 1; `resolve <unit>_test#` → exit 1; `expand <unit>#` → exit 1 with the
   failure envelope on stdout and the message on stderr; `toc 'a#b'` → exit 2 whose stderr is the
   separator sentence **followed by the full `usageText` block** (D8 fixes `withUsage: true`; assert
   both parts, since the sentence alone would pass a substring check while pinning the wrong bytes).
@@ -751,7 +822,10 @@ details this decision previously left open.
 - `quarry/text_test.go` — `RenderResolveText` for a self-glyph `found` emits `<path># found` then the
   directory block; for a self-glyph `not_found` emits `<path># not_found` with no unit suffix and no
   trailing whitespace; for a rejection emits the branch-1 error line; the `default` arm still emits
-  line 1 alone for a hand-built value with no `ID` and no `Listing`. The renderer's invariants — no
+  line 1 alone for a hand-built value with no `ID` and no `Listing`. **Two D14 guard rows:** a
+  hand-built `not_found` carrying a non-nil `Listing` emits line 1 only, with no directory block
+  (the `StatusFound` guard); and a hand-built value with a `Listing` and an empty `ID` emits
+  `r.Target` on line 1, never a line beginning with a space. The renderer's invariants — no
   trailing whitespace on any line, exactly one closing `"\n"` — are asserted for every new case.
 - `internal/mcpserver/toc_errors_test.go` — a `#`-bearing target reaches the server's error surface
   with the separator message rather than a listing. **Assert the exact sentence, not merely that an
@@ -824,3 +898,6 @@ listing-to-glyph round trip with no concatenation, and the T3 round trip.
 - **Q:** Does `IsSelf()` need to test `Params`? **A:** [auto-pick] Yes — all three fields. **Why:** `String()` prints `"()"` for a non-nil empty `Params`, so a two-field predicate would report `IsSelf() == true` for a value printing `a#()`, breaking the removing-the-`#`-yields-the-path property for exactly the hand-built values D12 and D20 exist to guard.
 - **Q:** Task item 5 (compose as API) arrived mid-review and overlaps D20. Fold or restate? **A:** [auto-pick] Fold into D20, promoted from a D16(b) consequence to a first-class item with its own done-when clause. **Why:** it is the same function; what the body adds is the settled rationale (concatenation skips decision 3's validation and leaks the format), the two named rejects, and the compose∘parse round-trip requirement — all now in D20 and Testing group (a)/(b).
 - **Q:** `Self(path)` as the body illustrates, or `Self(lang, path)`? **A:** [auto-pick] `Self(lang, path)`, which the body's "per the package's existing conventions … or equivalent" permits. **Why:** `Parse` takes `lang` first, a `Glyph` carries `Lang`, and `Language`'s zero value is documented as deliberately invalid so a forgotten argument fails at the first call; `Self(path)` would hardcode `Go`, which is the silent default that design prevents, and would need a second signature when a second alphabet lands.
+- **Q:** `<unit>_test#` resolves as a path that never exists, while `<unit>_test#Foo` resolves fine. What is the self form's disposition for the external test unit? **A:** [auto-pick] The self form is a path lookup (never `unitDirs`), and `Unit` **is** set on a self-glyph `not_found` by the same `unitDirs` rule every other glyph uses — reversing D10's suppression. **Why:** D10's suppression rationale ("the unit *is* the thing being asked about") holds for `internal/logger#` and fails for `internal/logger_test#`, where unit and path are different things; with `Unit` suppressed the answer could not say the unit is real. `status: not_found, unit: found` is the true and complete statement, uses the key's existing meaning, and needs no special case. The asymmetry — a `_test` pseudo-unit has no self form, having no directory of its own — is documented in §2 and pinned as an engine row rather than left to be discovered.
+- **Q:** Are `Self` and `IsSelf` part of the contract? **A:** [auto-pick] Only once `docs/glyph.md` §6's Go API list names them, which is now a D15 edit. **Why:** §6 enumerates the package's exported API and glyph.md:9 says anything not stated there is not part of the contract — leaving them out would put a function task item 5 exists to make contractual outside the contract.
+- **Q:** Does D14's new listing branch keep the guards of the arm it replaces? **A:** [auto-pick] Yes — the `StatusFound` guard is written explicitly, and an empty `ID` falls back to `r.Target`. **Why:** the nil-pointer guard survives as the branch condition, but without the status guard a hand-built `not_found` carrying a `Listing` would print a directory block under a negative status, and without the `ID` fallback line 1 would begin with a space.
