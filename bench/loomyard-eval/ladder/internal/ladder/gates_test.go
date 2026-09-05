@@ -341,14 +341,25 @@ func TestCheckServerConnected(t *testing.T) {
 		}
 	})
 
-	// A control cell -- an empty allowed list -- is never this check's own concern: the predicate
-	// keeping a control cell out belongs to the caller, matching how the blinding checks are gated by
-	// IsControl at the call site rather than inside the check. This case documents that contract
-	// without asserting caller-side gating, which run.go's own tests cover.
+	// A cell that grants no tools is never this check's own concern: the predicate keeping such a
+	// cell out belongs to the caller, matching how the blinding checks are gated by GrantsTools at
+	// the call site rather than inside the check. This case documents that contract without
+	// asserting caller-side gating, which run.go's own tests cover.
+	//
+	// Under the split, a nil Allowed with an explicit control: false is not a control -- but it is
+	// still tool-less, and so still satisfies the !GrantsTools() condition the blinding call sites
+	// use. This is the case that would silently stop being checked if the blinding switch had been
+	// made on IsControl() instead: two of the three cells in the new matrix are non-control, and an
+	// unblinded rung would leak the target repository's origin into a measured transcript with
+	// nothing to catch it.
 	t.Run("ControlCell_CallerGatesNotTheCheckItself", func(t *testing.T) {
-		cfg := Config{ID: "a0-none", Allowed: nil}
-		if !cfg.IsControl() {
-			t.Fatalf("Config{Allowed: nil}.IsControl() = false, want true")
+		notControl := false
+		cfg := Config{ID: "e1-pack", Allowed: nil, Control: &notControl}
+		if cfg.IsControl() {
+			t.Fatalf("Config{Allowed: nil, Control: false}.IsControl() = true, want false")
+		}
+		if cfg.GrantsTools() {
+			t.Fatalf("Config{Allowed: nil, Control: false}.GrantsTools() = true, want false")
 		}
 	})
 }
