@@ -26,9 +26,9 @@ the inner `dir` path field one level down and reads as "directory" when it also 
 file's entry.
 
 **Why now:** the Loomyard adoption (`docs/roadmap.md`, External) is about to consume the envelope
-and the glyph alphabet. The envelope has zero external consumers today, so these four adjustments
-are free right now and breaking the day Loomyard is wired up. They were settled with the operator on
-2026-09-05 and they land together because they touch the same files: `glyph/`, `internal/engine`,
+and the glyph alphabet. The envelope has zero external consumers today, so these five adjustments
+are free right now and breaking the day Loomyard is wired up. Items 1–4 were settled with the operator on 2026-09-05 and item 5 — the compose direction as API
+— was settled the same day, after the first four and they land together because they touch the same files: `glyph/`, `internal/engine`,
 `internal/cli`, `quarry/`, `docs/glyph.md`, `docs/rewrite-plan.md`.
 
 ## Scope
@@ -38,16 +38,17 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
 - `glyph/`: accept an empty member as the **self form** (`unit#` names the unit or file itself);
   require exactly one `#` in a glyph string, with a dedicated rejection reason; retire the
   now-unreachable `member_empty` reason; make the no-separator rejection message actionable by
-  naming the fix; add the `Self` constructor (D20) and update `glyph/doc.go`'s
-  "exports no constructor" sentence.
+  naming the fix; **add the `Self` compose constructor — task item 5** (D20) — and update
+  `glyph/doc.go`'s "exports no constructor" sentence.
 - `internal/engine`: `Resolve` takes glyphs only — every target goes to `glyph.Parse`, and
   `isGlyphTarget` is deleted; a self glyph is answered with the listing block the old bare path
   produced; `Expand` rejects a self glyph with a typed error.
 - `internal/engine/answer.go`: rename `ResolveResult.Dir` → `ResolveResult.Listing`, JSON key
   `dir` → `listing`. The inner `DirAnswer.Dir` path field is untouched.
 - `internal/cli`: `runResolve` stops classifying and stops doing path arithmetic — the argument goes
-  to the facade verbatim; `parseArgs`' `expand` usage gate is deleted (D19); `runTOC` (via
-  `internal/repopath`) rejects a path target whose repository-relative form contains `#`.
+  to the facade verbatim; `parseArgs`' `expand` usage gate is deleted and `runExpand`'s
+  `*glyph.ParseError` message source changed (D19); `runTOC` (via `internal/repopath`) rejects a path
+  target whose repository-relative form contains `#`; `usage.go`'s `resolve` line is corrected (D21).
 - `internal/repopath`: the separator reject for path targets; delete the now-unused exported
   `RepoRelPath` **wrapper only** — the unexported `repoRelPath` stays, since `repoRelTarget` is built
   on it.
@@ -88,9 +89,14 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
 
 - **Decision:** a glyph whose member half is empty is the self form. In `glyph.Glyph` that is
   `Owner == nil && Name == "" && Params == nil` with `Unit` set. Add one predicate,
-  `func (g Glyph) IsSelf() bool { return len(g.Owner) == 0 && g.Name == "" }`. `String()` is not
-  changed: it already prints `Unit + "#"` for that value, which is the canonical form the contract
-  requires.
+  `func (g Glyph) IsSelf() bool { return len(g.Owner) == 0 && g.Name == "" && g.Params == nil }`.
+  **The `Params == nil` clause is required, not incidental:** `String()` prints `"()"` for a non-nil
+  empty `Params` (its own doc comment says the nil-versus-non-nil state, not the length, is what
+  decides the parentheses), so a hand-built `Glyph{Unit: "a", Params: []string{}}` would report
+  `IsSelf() == true` while printing `a#()` — breaking the removing-the-`#`-yields-the-path property
+  for exactly the hand-built values D12 and D20 exist to guard. The predicate must test all three
+  fields the representation names. `String()` is not changed: it already prints `Unit + "#"` for the
+  genuine self value, which is the canonical form the contract requires.
 - **Rationale:** the contract sentence — **for Go**, whose unit is spelled as a repository-relative
   path — is "removing the trailing `#` yields the plain path, that is the whole conversion, both
   directions". Representing self as the absence of a member makes that sentence true of the code by
@@ -206,8 +212,16 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
 - **Decision:** delete the "Known contract gap" paragraph in `internal/cli/doc.go` and replace it
   with a statement of the new rule: `resolve` takes glyphs, `toc` takes paths, classification happens
   exactly once and it is `glyph.Parse` doing it; a `#` in a path segment is an explicit error at both
-  verbs, never a reclassification. Also rewrite the paragraph above it — the one describing
-  `strings.Contains` classification — since that code is gone.
+  verbs, never a reclassification. **Four paragraphs in this package become false, not two — all four
+  are in the inventory:**
+  (i) the "Known contract gap" paragraph (deleted);
+  (ii) the paragraph above it describing `strings.Contains` classification (rewritten, since that
+  code is gone);
+  (iii) `internal/cli/doc.go:11–13`, the three-verbs paragraph, whose sentence "`resolve` takes
+  either a path, by that same rule, or a glyph" is exactly the contract this task reverses;
+  (iv) `internal/cli/cli.go`'s `Run` doc comment, which narrates `runResolve` step 1's
+  `strings.Contains` classification and asserts "the parser has already guaranteed the target
+  contains a `#`" — the latter a direct statement of D19's deleted gate.
   **The sentence is only writable because all three classifiers go:** `runResolve`'s (D6),
   the engine's `isGlyphTarget` (D4), and `parseArgs`' `expand` gate (D19). If any one of them
   survives, this doc sentence is false the day it is written — that is the acceptance condition for
@@ -234,7 +248,13 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
   Both surfaces need an **explicit branch**, because both map `RepoRelTarget` errors with a single
   `errors.Is(ErrTargetOutsideRepo)` test and an `else` that says "internal error":
   - `internal/cli/cli.go`'s `runTOC` gains a branch mapping it to **exit 2** (usage) with the message
-    `target contains the glyph separator "#": <target as given>`.
+    `target contains the glyph separator "#": <target as given>`, called as
+    **`fail(..., exitUsage, msg, true)` — `withUsage: true`, so `usageText` follows the sentence on
+    stderr.** This is a real fork and must not be left to the plan writer: both existing exit-2 sites
+    (`cli.go:251` and `cli.go:269`) pass `true`, while every `fail` inside `runTOC` today passes
+    `false`, so either flag has local precedent and two plan writers would pin different stderr
+    bytes. `true` wins because the flag tracks the exit code, not the enclosing function: exit 2
+    means "the caller asked wrong", and printing the usage block is what every other exit-2 does.
   - `internal/mcpserver/toc.go`'s `tocResult` (the `RepoRelTarget` error block at lines 107–112)
     gains the matching branch, returning `errorResult` with the **same sentence** the CLI emits, so
     the two surfaces cannot drift. Without it the sentinel falls into that block's
@@ -316,7 +336,9 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
 ### D12 — `SpansOf` of a self glyph returns an empty slice
 
 - **Decision:** no code change to `SpansOf`. A hand-built self `Glyph` round-trips through
-  `glyph.Parse` successfully (D2), reaches `matchesFor`, and matches nothing, so the existing
+  `glyph.Parse` successfully (D2), reaches **`SpansOf`'s own inline owner/name filter** — not
+  `matchesFor`; `SpansOf` keeps a deliberate duplicate of that filter, recorded in `matchesFor`'s
+  doc comment and left untouched by this task — and matches nothing, so the existing
   empty-slice-with-nil-error contract applies. Add a sentence to `SpansOf`'s doc comment saying so.
 - **Rationale:** `SpansOf` has no status vocabulary; "nothing matches" is exactly what an empty slice
   with a nil error means there, and a self glyph names no declaration. `SpansOf` is what the T3 round
@@ -427,16 +449,27 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
 - **Decision:** delete the `verb == "expand" && !strings.Contains(req.target, "#")` gate in
   `internal/cli/flags.go:153` and its usage message. A bare path given to `expand` then reaches
   `glyph.Parse` in the engine, fails with `no_separator`, and exits **1** through the existing
-  `codeForExpandError` path (which already returns `exitNegative` for a `*glyph.ParseError`) with
-  D4's actionable message. `internal/cli/usage.go` is checked for wording that promises the old
-  usage error and updated if it does.
+  `codeForExpandError` path (which already returns `exitNegative` for a `*glyph.ParseError`).
+  **`runExpand`'s `*glyph.ParseError` branch must change too, or the message is useless.** That
+  branch (`internal/cli/cli.go:418`) currently builds `"expand " + req.target + ": " +
+  string(parseErr.Reason)` — the bare word `no_separator`, never the error's own text — so deleting
+  the gate alone would yield `expand internal/logger: no_separator`, which is strictly *less*
+  actionable than the usage message it replaced. The branch becomes `"expand: " + parseErr.Error()`,
+  which carries D4's full sentence including the repository-relative clause, and names the target
+  once (the `*ParseError` already quotes its input) rather than twice.
+  **Consequence:** this also changes the message for `expand`'s *existing* grammar rejections — e.g.
+  `expand a#b#c` moves from `expand a#b#c: multiple_separators` to the full sentence. That is the
+  same improvement, applied consistently, and it is why the branch is named in the inventory rather
+  than treated as collateral.
+  `internal/cli/usage.go` edits are named in D21.
 - **Rationale:** this is the third `#`-containment classifier, and it is the one that makes the two
   verbs disagree with each other: today `expand <path>` is exit 2 with a usage message while
   `resolve <path>` is exit 1 with a payload, for the same malformed argument. D7's mandated doc.go
   sentence ("classification happens exactly once and it is `glyph.Parse` doing it") cannot be written
   truthfully while this gate stands, and D4's rationale ("`expand` already routes a bare path through
-  this same reason") is false at the CLI without this deletion. Deleting it also gives `expand` the
-  actionable repository-relative hint, which the hand-written usage string does not carry.
+  this same reason") is false at the CLI without this deletion. Deleting it, **together with the
+  message-source change above**, gives `expand` the actionable repository-relative hint that neither
+  the hand-written usage string nor the bare reason word carries.
   **Consequence, deliberate and breaking:** `expand <bare-path>` moves from exit 2 to exit 1, and
   from stderr-usage to the payload-plus-message shape. Free now, and named in the squash message
   (D18).
@@ -445,21 +478,58 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
   the gate to match `resolve`'s exit code instead of deleting it — that keeps a second classifier
   alive and leaves D7's sentence unwritable.
 
-### D20 — `glyph.Self`, the constructor that keeps the round trip inside the one implementation
+### D20 — The compose direction is API: `glyph.Self` (task decision 5)
+
+**This is task item 5**, settled with the operator on 2026-09-05 after the first four and added to
+the wiki body while this discussion was in review. It was already present here as a consequence of
+D16(b); it is now a first-class requirement with its own done-when clause, and the body settles two
+details this decision previously left open.
 
 - **Decision:** add `func Self(lang Language, path string) (Glyph, error)` to package `glyph`. It
-  validates `path` against `lang`'s unit rules exactly as `Parse` does — by delegating, so there is
-  no second copy of the unit alphabet — and returns the self `Glyph` on success, a `*ParseError` on
-  failure. `glyph/doc.go`'s sentence "this package exports no constructor and no Validate method" is
-  updated in the same edit, since it stops being true.
-- **Rationale:** D16(b) needs a consumer holding a `toc` file entry to obtain that file's self glyph
-  without printing `dir + "/" + name + "#"` itself. The Constraints say there is one implementation
-  of the glyph grammar and Loomyard's parser imports it rather than re-implementing printing; a
-  documented round trip that can only be completed by hand-concatenation outside the package would
-  contradict that on the first external consumer. One small constructor closes it.
+  validates `path` — decision 3's separator rule (a `path` containing `#` is rejected) and the
+  no-empty-path rule among them — and returns the canonical self form on success, a `*ParseError` on
+  failure. Validation is by **delegation to `Parse`**, not a second copy of the unit alphabet:
+  `Self` builds `path + "#"` and hands it to `Parse`, so a `#` in the path surfaces as
+  `multiple_separators` and an empty path as `unit_empty`, and every other unit rule — dot segments,
+  bad runes, empty segments — comes along for free and can never drift from `Parse`'s.
+  The one concatenation in the whole system lives **inside** this function, which is the point of
+  decision 5: the format knowledge is in one place, and no consumer performs it.
+  `glyph/doc.go`'s sentence "this package exports no constructor and no Validate method" is updated
+  in the same edit, since it stops being true.
+  **The `lang` parameter is kept**, against the body's illustrative `Self(path)` spelling — the body
+  says "name per the package's existing conventions … or equivalent", and the conventions are
+  explicit: `Parse` takes `lang` first, a `Glyph` carries `Lang`, and `Language`'s doc comment says
+  the zero value is "deliberately not a valid language, so a forgotten argument is an error at the
+  first call rather than a silent Go". A `Self(path)` would have to hardcode `Go`, which is that
+  silent default the package was designed to prevent, and it would need a second signature the day a
+  second alphabet lands.
+- **Rationale:** the body's own argument — manual concatenation skips decision 3's validation and
+  leaks the format knowledge, and Loomyard's planparser is the first consumer that would do it.
+  "Strip the `#`" (parse) and "append the `#`" (compose) are one contract, so they live together.
+  D16(b) is the concrete case: a consumer holding a `toc` file entry has a `dir` and a `name` and no
+  `id`, and without `Self` the only route back to `resolve` is printing `dir + "/" + name + "#"` by
+  hand — the exact thing the Constraints' one-implementation rule forbids outside this package.
 - **Rejected:** telling consumers to call `Parse(lang, path + "#")` — that *is* concatenation, just
   relocated into every consumer, and it produces a confusing error when `path` already contains a
   `#`. Adding `id` to `FileEntry` — a `toc` answer-shape change, out of scope (see D16).
+  A `Self(path)` signature with `Go` hardcoded — see the `lang` note above.
+
+### D21 — `internal/cli/usage.go` is part of the contract surface
+
+- **Decision:** `usageText`'s verb block is edited in the same task. Line 21's
+  `quarry resolve <glyph|path>` becomes `quarry resolve <glyph>` — the same heading change D16(c)
+  makes to `docs/rewrite-plan.md` §5, applied to the text `--help` actually prints. The `toc` and
+  `expand` lines are unchanged. The `exit codes` block is re-read against D19's change: the exit-1
+  line already ends "or not a well-formed glyph", which now also covers `expand <bare-path>`, so it
+  needs no edit — confirm rather than assume. The file's ASCII-only, byte-comparable-in-tests
+  constraint (its own doc comment) is preserved: no em dash, no typographic quotes.
+- **Rationale:** `usage.go` is the one place a user is *told* what the verbs accept, and it currently
+  promises a form `resolve` will reject. Fixing `docs/rewrite-plan.md` §5's identical heading while
+  leaving `--help` promising the old grammar would put the contradiction in front of the person most
+  likely to hit it. D19 previously mentioned this file only as somewhere to check for the deleted
+  `expand` gate's wording, which is the smaller of the two edits it needs.
+- **Rejected:** leaving `usage.go` to a follow-up — it is four words, and the golden tests that pin
+  `--help` output would otherwise pin a false promise.
 
 ### D17 — Goldens: split by whether the case needs a Loomyard checkout
 
@@ -525,7 +595,8 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
   exported wrapper, deleted by D6), `repoRelTarget`, `RepoRelTarget`. The separator check goes in
   `repoRelTarget`, after the escape check, so an escaping target still reports the escape.
 - `internal/cli/flags.go` — `parseArgs`, whose `expand` usage gate at line 153 is deleted by D19.
-  Check `internal/cli/usage.go` in the same edit for wording that promises that error.
+- `internal/cli/usage.go` — `usageText`; line 21's `resolve <glyph|path>` and the `exit codes` block
+  (D21). ASCII-only and byte-compared in tests, per its own doc comment.
 - `internal/cli/cli.go` — `runTOC` (line ~301), `runResolve` (line ~359), `runExpand` (line ~403),
   and the four exit-code mappers `codeForTOCError`, `codeForResolveResult`, `codeForExpandAnswer`,
   `codeForExpandError`. The `fail` helper is the one site that writes a failing message.
@@ -603,7 +674,10 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
    this table, so the test shows the clause doing its work on the exact input it exists for.
 3. `glyph/string_test.go` — `Glyph{Lang: Go, Unit: "a/b"}.String() == "a/b#"`, and the round trip
    `Parse(Go, s).String() == s` for every self-form row in test 1.
-4. `glyph/errors_test.go` (or wherever `Reasons` is currently exercised) — `Reasons` still enumerates
+4. `glyph/self_test.go` — the compose∘parse round trip and reject table of Testing group (a)/(b)
+   below. Pure, fast, and the executable form of task item 5's done-when clause, so it belongs with
+   the parse-side tables rather than after them.
+5. `glyph/errors_test.go` (or wherever `Reasons` is currently exercised) — `Reasons` still enumerates
    exactly the constants in the block, `member_empty` is absent, `multiple_separators` is present, and
    every `Reason` has a distinct `reasonText` entry.
 
@@ -639,21 +713,38 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
   "Exit-code mapping" test already establishes: `resolve <bare-path>` → exit 1, payload on stdout,
   nothing on stderr; `resolve a#b#c` → exit 1, payload on stdout; `resolve <file>#` on an existing
   file → exit 0; `resolve <file>#` on a missing one → exit 1; `expand <unit>#` → exit 1 with the
-  failure envelope on stdout and the message on stderr; `toc 'a#b'` → exit 2 with the usage message.
+  failure envelope on stdout and the message on stderr; `toc 'a#b'` → exit 2 whose stderr is the
+  separator sentence **followed by the full `usageText` block** (D8 fixes `withUsage: true`; assert
+  both parts, since the sentence alone would pass a substring check while pinning the wrong bytes).
   Both JSON and `--text` for each of the resolve rows — the done-when requires both views.
   **Plus D19's row, which is a changed exit code and therefore needs pinning both ways:**
   `expand <bare-path>` → exit **1** (not the old usage exit 2), carrying D4's actionable
-  repository-relative message, and the same argument to `resolve` → exit 1 as well, asserted in one
-  test so the two verbs' agreement is what the test is *about* rather than a coincidence of two
-  separate rows.
+  repository-relative message **via `runExpand`'s rewritten `*glyph.ParseError` branch** — assert the
+  full sentence, not the bare reason word, since emitting `no_separator` alone is precisely the
+  regression D19 guards against — and the same argument to `resolve` → exit 1 as well, asserted in
+  one test so the two verbs' agreement is what the test is *about* rather than a coincidence of two
+  separate rows. Also pin `expand a#b#c`'s message, which changes shape under the same branch edit.
 - `internal/cli/flags_test.go` — any existing case pinning the deleted `expand` usage gate is removed
   or retargeted; grep for the "expand takes a glyph" string before assuming there is none.
-- `glyph/` — `Self(Go, "internal/logger")` returns a `Glyph` equal to `Parse(Go, "internal/logger#")`
-  and `String()`s back to `internal/logger#`; `Self` rejects a path containing a `#` and a path with
-  a `..` segment with the same `*ParseError` reasons `Parse` gives; `Self` with a non-Go language
-  returns `unsupported_language`. The round trip D16(b) promises is asserted end to end: take a
-  `FileEntry` from a `toc` answer, build its self glyph with `Self`, and resolve it back to that same
-  file's listing — no string concatenation anywhere in the test.
+- `glyph/` — **the compose API, task item 5's own done-when clause.** Three test groups, and the
+  first is a TDD candidate alongside items 1–4:
+  (a) **compose∘parse round trip, both directions.** For every path in a table
+  (`internal/logger`, `internal/logger/logger.go`, `cmd/lyx`, an `_test` unit): `Self(Go, p)` returns
+  a `Glyph` that `IsSelf()`, whose `String()` is exactly `p + "#"`, and which is `reflect.DeepEqual`
+  to `Parse(Go, p+"#")`; and parsing that string back yields a `Glyph` whose path — `String()` with
+  the trailing `#` removed — is byte-identical to the input `p`. The done-when's wording is "parses
+  back to a self-glyph whose path is exactly the input", so assert the path identity, not merely
+  that parsing succeeds.
+  (b) **reject cases mirror decision 3.** `Self(Go, "a#b")` → `multiple_separators`;
+  `Self(Go, "")` → `unit_empty`; `Self(Go, ".")` and `Self(Go, "a/../b")` → `unit_dot_segment`;
+  `Self(Go, "a//b")` → `unit_empty_segment`; `Self("python", "x")` → `unsupported_language`. The
+  table is written so that adding a `Parse` unit rule without a matching `Self` row is visible —
+  ideally by driving both from one shared table, which is the strongest available proof that `Self`
+  delegates rather than duplicates.
+  (c) **the end-to-end no-concatenation round trip D16(b) promises:** take a `FileEntry` from a real
+  `toc` answer, build its self glyph with `Self` from the answer's `dir` and the entry's `name`, and
+  resolve it back to that same file's listing. No string concatenation anywhere in the test — the
+  test is the executable form of the claim that a consumer never needs any.
 - `internal/cli/after_test.go` + `docs/research/output-formats/after/` — the four positive goldens per
   D17, regenerated with `-run TestAfter -update` against the pinned Loomyard checkout, plus
   `after/INDEX.md`.
@@ -680,7 +771,9 @@ are free right now and breaking the day Loomyard is wired up. They were settled 
 separator-bearing-segment rejection at `resolve`, separator-bearing path target at `toc`, `expand` of
 a self glyph, the `listing` key rename in JSON, the positional multi-target guarantee with a mixed
 target list, `expand <bare-path>`'s move to exit 1 alongside `resolve`'s, the MCP separator sentence
-matching the CLI's byte for byte, `glyph.Self`'s listing-to-glyph round trip, and the T3 round trip.
+matching the CLI's byte for byte, `toc`'s separator reject printing `usageText`, the compose∘parse
+round trip in both directions with `Self`'s rejects mirroring decision 3, `glyph.Self`'s
+listing-to-glyph round trip with no concatenation, and the T3 round trip.
 
 ## Risks
 
@@ -724,3 +817,10 @@ matching the CLI's byte for byte, `glyph.Self`'s listing-to-glyph round trip, an
 - **Q:** Which sentinels live in `internal/engine/errors.go`? **A:** [auto-pick] Only `ErrLanguageUnsupported`; the two target sentinels are in `repo.go:46,50`, and `ErrTargetHasSeparator` joins them there. **Why:** `errors.go`'s header reads "the one error sentinel the engine's subpackages share" — adding a second would falsify it and force an unrelated header rewrite.
 - **Q:** `docs/rewrite-plan.md` §4 says "What `toc` lists is what `resolve` takes". Does that survive? **A:** [auto-pick] No — it is rewritten, and `glyph.Self` (D20) is added so a consumer can complete the round trip. **Why:** `toc`'s file and directory entries carry no `id`, so once `resolve` is glyph-only the sentence is only true if consumers hand-concatenate `dir + "/" + name + "#"` — the printing the one-implementation constraint forbids outside package `glyph`, and Loomyard is exactly the consumer that would hit it first.
 - **Q:** Delete the `RepoRelPath` tests along with the exported function? **A:** [auto-pick] Only the ones testing the exported wrapper; the two calling the retained unexported `repoRelPath` stay, with the agreement test amended. **Why:** deleting them would drop coverage of behaviour D6 preserves, and the agreement claim narrows once `repoRelTarget` gains the separator reject — the divergence deserves its own asserted row.
+- **Q:** Does deleting the `expand` gate actually give `expand` D4's actionable message? **A:** [auto-pick] Not on its own — `runExpand`'s `*glyph.ParseError` branch is changed to `"expand: " + parseErr.Error()` in the same edit. **Why:** that branch builds the bare reason word (`internal/cli/cli.go:418`), so the gate deletion alone would emit `expand internal/logger: no_separator`, strictly less actionable than the usage message it replaced; the change also improves `expand`'s existing grammar rejections, which is why it is named rather than left as collateral.
+- **Q:** Does `toc`'s separator reject print `usageText` after its sentence? **A:** [auto-pick] Yes — `fail(..., exitUsage, msg, true)`. **Why:** both existing exit-2 sites pass `true` while every `fail` in `runTOC` passes `false`, so either had local precedent and two plan writers would pin different stderr bytes; the flag tracks the exit code, not the enclosing function, and exit 2 means the caller asked wrong.
+- **Q:** Is `internal/cli/usage.go` in scope? **A:** [auto-pick] Yes, as its own decision (D21): line 21's `resolve <glyph|path>` becomes `resolve <glyph>`, and the exit-codes block is confirmed. **Why:** it is the one place a user is told what the verbs accept, and fixing the identical heading in `docs/rewrite-plan.md` §5 while `--help` keeps promising the old grammar would put the contradiction in front of the person most likely to hit it.
+- **Q:** How many `internal/cli` doc paragraphs does this falsify? **A:** [auto-pick] Four, all named in D7 — the contract-gap note, the classification paragraph above it, `doc.go:11–13`'s three-verbs paragraph, and `cli.go`'s `Run` doc comment. **Why:** the last two assert "`resolve` takes either a path … or a glyph" and "the parser has already guaranteed the target contains a `#`", which are direct statements of the contract this task reverses and of D19's deleted gate.
+- **Q:** Does `IsSelf()` need to test `Params`? **A:** [auto-pick] Yes — all three fields. **Why:** `String()` prints `"()"` for a non-nil empty `Params`, so a two-field predicate would report `IsSelf() == true` for a value printing `a#()`, breaking the removing-the-`#`-yields-the-path property for exactly the hand-built values D12 and D20 exist to guard.
+- **Q:** Task item 5 (compose as API) arrived mid-review and overlaps D20. Fold or restate? **A:** [auto-pick] Fold into D20, promoted from a D16(b) consequence to a first-class item with its own done-when clause. **Why:** it is the same function; what the body adds is the settled rationale (concatenation skips decision 3's validation and leaks the format), the two named rejects, and the compose∘parse round-trip requirement — all now in D20 and Testing group (a)/(b).
+- **Q:** `Self(path)` as the body illustrates, or `Self(lang, path)`? **A:** [auto-pick] `Self(lang, path)`, which the body's "per the package's existing conventions … or equivalent" permits. **Why:** `Parse` takes `lang` first, a `Glyph` carries `Lang`, and `Language`'s zero value is documented as deliberately invalid so a forgotten argument fails at the first call; `Self(path)` would hardcode `Go`, which is the silent default that design prevents, and would need a second signature when a second alphabet lands.
