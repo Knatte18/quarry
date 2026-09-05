@@ -121,6 +121,7 @@ including `TestWriteReadProvenance_RoundTrips` and
 notice a mis-tagged new field.
 
 The collector and scan tests are deliberately outside the pattern: this batch adds no field the
-collector fills and touches no path the memory scan walks. The module-wide `go build ./...` at the
-batch boundary catches any caller that constructs a `Provenance` positionally, which the new field
-would break.
+collector fills and touches no path the memory scan walks. Adding a field to a struct is only a
+compile break for a caller that constructs it positionally, and any such caller in a test file is
+caught by this batch's own `go test` rather than by the module-wide `go build ./...`, which does not
+compile test files.
