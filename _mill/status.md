@@ -42,7 +42,9 @@ batches:
     commit_sha: d62a4206639ca4b279c6f16947b393a41f1e59d0
     verify_baseline_failures: []
   - name: cli-view-flag-and-glyphs-verb
-    state: pending
+    state: running
+    implementer_session: 5a16a6c5-a2f7-4ac1-a52b-0248d24bf500
+    start_sha: b55171febb503020fba36a0a8c0bbef5b4c6223d
     verify_baseline_failures: []
   - name: goldens-and-docs
     state: pending
