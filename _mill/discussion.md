@@ -383,6 +383,14 @@ construction, and there is never a parallel naming rulebook that can drift from 
   trailing `"\n"`:
   - success: `<id> <kind>`
   - failure: `<normalizeProse(target)> error <reason>: <normalizeProse(message)>`
+- **`RenderNameJSON(r NameResult) ([]byte, error)` — one result, not a batch**, matching
+  `RenderResolveJSON`'s single-result shape and delegating to `renderJSON` for the byte contract.
+  **There is no JSON view of a whole batch, and none is added.** The batch exists for one consumer,
+  Loomyard's pipeline, which calls `quarry.Name` in-process and reads `[]NameResult` as Go values —
+  the entire reason the facade is a Go API rather than a subprocess. No CLI path can produce a
+  batch (the verb takes exactly one declaration), so a `[]NameResult` renderer would have no caller
+  on either side. Stated explicitly because the batch-versus-single split is load-bearing for the
+  facade and silence here would leave a plan writer to guess which axis the renderer sits on.
 - **The echoed target goes through `normalizeProse` too**, not only the message. A declaration head
   legitimately spans lines — an ungrouped var's signature is the whole declaration text, and a
   multi-line parameter list is part of a function's signature by `SignatureCut`'s own verbatim
@@ -840,9 +848,14 @@ Help text and messages:
   `verb != "toc" && verb != "resolve" && verb != "expand"` chain. `flags.go:48` — the doc comment's
   "--text and --root are valid for all three verbs", which becomes false in two ways at once.
 - `internal/cli/cli.go:180,302` — the two "unreachable for every word other than the three verbs"
-  comments on `Run`'s dispatch `default`. `cli.go`'s `Run` doc comment also states the shared
-  pipeline as "the four steps every verb shares", which the root-resolution decision above already
-  requires rewriting.
+  comments on `Run`'s dispatch `default`.
+- **The four-step framing has four sites, not one.** `Run`'s own doc comment states the shared
+  pipeline as "the four steps every verb shares", which the no-repository-root decision falsifies —
+  and each sibling pipeline's doc comment opens by referring back to it: `cli.go:308` (`runTOC`),
+  `cli.go:370` (`runResolve`) and `cli.go:404` (`runExpand`) all say "continuing from `Run`'s
+  shared four steps". Rewriting only `Run`'s comment would leave three siblings pointing at a
+  step count that no longer exists. The replacement framing is the one the decision already
+  states: two steps every verb shares, then two more for the three repository verbs.
 
 Tests that pin the counts (they fail loudly, which is the point — none is a silent staleness):
 
@@ -877,7 +890,7 @@ Not touched:
 - **Q:** Does `name` resolve a repository root? **A:** [auto-pick] no — dispatch before root resolution, and reject `--root` for the verb. **Why:** the verb reads nothing; requiring a root would fail a computable query with an unrelated error.
 - **Q:** Exit codes? **A:** [auto-pick] named `codeForNameResult`: 0 with an id, 1 for a per-entry error with the payload rendered, 2 usage, 3 internal. **Why:** the D2 rule — a negative answer renders its payload with exit 1; the error envelope is for usage and internal errors only.
 - **Q:** Text view? **A:** [auto-pick] `<id> <kind>` on success, `<target> error <reason>: <message>` on failure. **Why:** the failure line is `RenderResolveText`'s empty-status branch verbatim; its success branches already drop the target in favour of the id.
-- **Q:** MCP tool? **A:** [auto-pick] none. **Why:** fixed by the task and §9 — facade-first, the caller is Loomyard's pipeline.
+- **Q:** MCP tool? **A:** [auto-pick, citation corrected r5] none. **Why:** fixed by the task and `docs/rewrite-plan.md` **§7** ("only tools a ladder cell measures") — facade-first, the caller is Loomyard's pipeline. The original answer cited §9, which is Non-goals and says nothing about tools.
 - **Q:** Facade error return? **A:** [auto-pick] none; `Name(decls) []NameResult`. **Why:** with no I/O nothing can fail batch-wide, and every failure is a property of one entry.
 - **Q:** Empty batch? **A:** [auto-pick] empty, non-nil slice. **Why:** matches `symbolsOfUnit`'s and `SpansOf`'s existing rule.
 - **Q:** Round-trip harvest scope over the pinned checkout? **A:** [auto-pick] every symbol except the two declared non-goals, with the exclusions counted and each asserted to produce a per-entry error. **Why:** a silent skip would let the 100 % criterion pass vacuously; asserting the error keeps the exclusions honest.
@@ -886,7 +899,7 @@ Not touched:
 - **Q:** How does the round trip harvest `Signature` and `Kind`? **A:** [r2] extend `roundTripSymbol` and `collectWalkSymbols`; do not write a second collector. **Why:** the existing struct carries neither field, and a parallel harvest could drift from the one the round trip is comparing against.
 - **Q:** Is a complete interface declaration accepted? **A:** [r2] no — head-only or empty-bodied. **Why:** measured: `goTypeSymbols` appends the interface's method symbols, so a populated interface yields 1+N symbols and hits the exactly-one rule. A populated struct does agree with its head, because struct fields are not listable declarations.
 - **Q:** What is the multi-name-spec partition key? **A:** [r2] the 5-tuple (unit, File, Start, End, Signature). **Why:** without `File`, build-tag twins sharing a signature and span across two files would be excluded and then asserted to fail, which they will not.
-- **Q:** How is the vacuous-pass guard quantified? **A:** [r2] three counts pinned as constants against `72c23d9`, regenerated under `-update`, plus a structural floor that holds before they are known. **Why:** the checkout is pinned, so exact counts are stable and drift is loud; a ratio would have to be guessed without knowing the repository.
+- **Q:** How is the vacuous-pass guard quantified? **A:** [r2, SUPERSEDED by the r4 counts-golden answer below — a Go `const` cannot be rewritten by a flag] three counts pinned as constants against `72c23d9`, regenerated under `-update`, plus a structural floor that holds before they are known. **Why:** the checkout is pinned, so exact counts are stable and drift is loud; a ratio would have to be guessed without knowing the repository.
 - **Q:** How is "`name` dispatches before root resolution" tested, given the scratch-tree helper builds inside the repository? **A:** [r3] `t.Chdir("/")`, asserting `name` exits 0 and `toc` exits 2 from there. **Why:** `Run` resolves the root from `os.Getwd()`, so only a working-directory change reaches the no-root state; Go 1.26 has `t.Chdir`, and it makes `cli.go:150-152`'s "which these tests never do" stale, to be updated in the same edit.
 - **Q:** What exit code does the `internal` reason produce? **A:** [r3] exit 3 through `fail`'s error envelope, not exit 1 with a payload. **Why:** an unwired grammar says nothing about the caller's declaration, and `usage.go` already promises exit 3 for internal errors; the facade still carries it per-entry so a batch loses nothing.
 - **Q:** Does the naming round trip call `assertSymbolRoundTrip`? **A:** [r3] no — its own `TOC` walk plus the shared collector. **Why:** that helper's second half re-runs a per-unit span lookup this test does not need, and its doc comment names go test's default timeout as a live constraint at Loomyard scale.
@@ -895,5 +908,6 @@ Not touched:
 - **Q:** How are the three round-trip counts pinned, given a `const` cannot be rewritten by a flag? **A:** [r4] a counts golden at `internal/engine/testdata/loomyard/naming-counts.json` through the existing `compareGolden`. **Why:** it is the half of "constants regenerated under -update" that can actually hold, and `-update`'s description already names that directory.
 - **Q:** What are the `Error` sentences for the maker's four reasons? **A:** [r4] spelled as a table in the reason-vocabulary decision, none repeating the target. **Why:** the text renderer prints the target ahead of the message, and two goldens pin these bytes.
 - **Q:** How does the counts golden reach `compareGolden`, which takes a `DirAnswer`? **A:** [r5] widen its third parameter to `any`. **Why:** every call site still compiles, and the marshal/update/compare block stays one implementation; a sibling helper would duplicate exactly the block whose single implementation is the point.
+- **Q:** What is `RenderNameJSON`'s signature, and does a batch have a JSON view? **A:** [r6] `RenderNameJSON(r NameResult) ([]byte, error)` — one result; no batch JSON renderer exists or is added. **Why:** the batch's only consumer reads Go values in-process, and no CLI path can produce one, so a `[]NameResult` renderer would have no caller on either side.
 - **Q:** Is the inventory predicate now right? **A:** [r5] no — widened a third time, to "any statement a new verb or a new envelope shape falsifies, counted or not", with `internal/engine` added as a site. **Why:** `quarry/doc.go:20-23` says a negative answer "is a payload with a status word" — false for `NameResult`, and containing no number for a count-based search to find.
 - **Q:** How does the text view survive a multi-line declaration head? **A:** [r2] `normalizeProse` the echoed target, as every `Signature` already is; JSON keeps the byte-verbatim echo. **Why:** an ungrouped var's signature is the whole declaration text and can span lines, which would break the one-record-per-line invariant.
