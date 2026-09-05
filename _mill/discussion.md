@@ -161,8 +161,15 @@ extracting files that did not change; correctness lives entirely in the table co
 - Decision: the answer's ordering is total, and every rule is documented as **ordering, never
   ranking**:
   - `created`, `deleted` and the `after` array of a `modified` entry: **file ascending, then `Start`
-    ascending** — the same `sort.SliceStable` rule `symbolsOfUnit` already applies, so a delta's
-    symbol order matches the order the same symbols come back from `resolve`.
+    ascending, then `id` ascending, then `kind` ascending** — `symbolsOfUnit`'s existing
+    file-then-`Start` rule with a total tie-break appended. The tie-break is not decoration:
+    `goUngroupedConstOrVarSymbols` and `goGroupedConstOrVarSymbols` give **every name in one spec the
+    same `Start` and `End`**, so `const a, b = 1, 2` yields symbols that file-then-`Start` alone
+    cannot separate, and `sort.SliceStable` would then preserve whatever order the `(ID, Kind)` map
+    range happened to produce — randomised per run. `(file, Start, id, kind)` is unique because the
+    table key `(id, kind)` is.
+  - the `changed` array inside a `modified` entry: **the closed set's own declaration order** —
+    `body`, `signature`, `doc`, `file` — never the order the dimensions were discovered in.
   - `modified`: **`id` ascending, then `kind` ascending**, the table key itself, so the order does
     not depend on which occurrence happened to be seen first.
   - `renamed`: **`from.id` ascending, then `to.id` ascending.**
@@ -174,7 +181,7 @@ extracting files that did not change; correctness lives entirely in the table co
     sorted file-then-`start`, because a multi-occurrence key has no occurrence identity to align by.
 - Rationale: the symbol table is keyed by `(ID, Kind)` and Go's map iteration order is deliberately
   randomised, so an answer assembled by ranging over it is non-deterministic. Committed JSON and
-  text goldens — which the task's "Done when" requires for seven cases — cannot be byte-stable
+  text goldens — which this discussion requires for seven cases (see Testing) — cannot be byte-stable
   without this, and a pipeline diffing two delta outputs would see phantom changes. Reusing
   `symbolsOfUnit`'s existing file-then-line rule rather than inventing one keeps a symbol list
   ordered the same way wherever a caller meets it.
@@ -185,7 +192,12 @@ extracting files that did not change; correctness lives entirely in the table co
 ### The repository root must be git's top-level
 
 - Decision: `DeltaGit` verifies `git -C <root> rev-parse --show-toplevel` and requires it to equal
-  `<root>`. Two failures, both with quarry's own sentence and neither carrying git's raw message:
+  `<root>`. **Both sides of that comparison are put through `filepath.EvalSymlinks` first**, then
+  `filepath.Clean`. `repopath.ResolveRoot` only does `filepath.Join` plus `filepath.Clean` and never
+  resolves symlinks, while `git rev-parse --show-toplevel` prints the *physical* path — so a `--root`
+  reached through a symlink would fail a raw string comparison on a perfectly valid repository.
+  `t.TempDir()` is exactly such a path on any platform whose temp directory is symlinked, so
+  without this the check would reject the project's own test fixtures. Two failures, both with quarry's own sentence and neither carrying git's raw message:
   - not a git repository at all → **exit 2**, `not a git repository: <root>`;
   - a git repository whose top-level is elsewhere → **exit 2**,
     `--root is not the repository top-level: <root> (top-level is <toplevel>)`.
@@ -459,7 +471,23 @@ extracting files that did not change; correctness lives entirely in the table co
 
 - Decision: the core entry's `Before` and `After` byte slices are each `nil` when the file did not
   exist on that side (`nil` before = the file was added; `nil` after = the file was removed). An
-  empty-but-non-nil slice means an existing empty file. The answer carries a `files` array with one
+  empty-but-non-nil slice means an existing empty file.
+
+  **`DeltaEntry` carries a pre-extraction refusal.** The entry is
+  `(Path, Before, After, BeforeUnit, AfterUnit, Refusal string)`. A non-empty `Refusal` means the
+  layer that assembled the batch already decided this entry cannot be extracted: the core skips it
+  entirely — no parse on either side — and emits `disposition: error` with `Refusal` as the message,
+  in the entry's own position in `files`. Without this field the git layer has no way to express the
+  refusals the status-letter table requires of it. The git layer may pre-set a `Refusal` in exactly
+  three cases, and no others:
+  - an **unmerged** path (`U`): `unmerged path`;
+  - an **unrecognised status letter**: a message naming the letter verbatim;
+  - a **read failure on either side** — `git show` failing for a blob, or the working-tree file
+    being unreadable during batch assembly: a message naming the side and the underlying error.
+  The third case is why the field exists rather than the git layer simply dropping the entry: a
+  disk-read failure while assembling the batch is neither "a git command that failed" (so exit 3
+  does not cover it) nor grounds to fail the batch (which "a failing entry never fails the batch"
+  forbids). It is one entry's problem, and this is how one entry reports it. The answer carries a `files` array with one
   entry per input entry, in the input's own order, each holding `path` and a closed `disposition`
   word:
   - `added`, `removed`, `changed` — the file was extracted on the sides where it exists.
@@ -613,6 +641,12 @@ extracting files that did not change; correctness lives entirely in the table co
     `(*engine.Repo).ClauseMapForFiles`. Both listings are trimmed to the directory's **immediate**
     `.go` children before voting — `ls-tree` is non-recursive already, `ls-files` is not — so both
     sides vote over the same set.
+  Every path-emitting call uses **`-z`** (`git diff --name-status -z`, `git ls-files -z`,
+  `git ls-tree --name-only -z`) and the NUL-delimited output is split on NUL. Without it git applies
+  `core.quotePath` and C-quotes any non-ASCII or control-character path, and delimits with `\n`, so
+  such a path would be read at the wrong location — silently, since a mangled path simply fails to
+  open. `-z` also removes the newline-in-filename case entirely.
+
   Nothing else. No `checkout`, no `stash`, no index write, no config write, no `-M`/`-C`.
 
   **The status letter is mapped explicitly, and the mapping is total:**
@@ -751,7 +785,17 @@ extracting files that did not change; correctness lives entirely in the table co
 - Decision: `DeltaAnswer` — the core's answer — has no `from` or `to` field, and no field naming a
   revision, a commit, or the working tree. `DeltaGit` returns a `GitDeltaAnswer` that embeds the
   `DeltaAnswer` and adds `from` (the revision string as given) and `to` (the revision string as
-  given, or `null` for the working tree). The CLI renders the wrapped form.
+  given, or `null` for the working tree).
+
+  **`GitDeltaAnswer` is declared in package `quarry`, not in the engine** — it is the only new type
+  that is a facade type rather than an engine alias, because the engine is defined as knowing
+  nothing about git and a revision-bearing type there would contradict that. The facade's
+  "aliases only" habit yields here for one type with one reason. Both renderers take the **wrapped**
+  form — `RenderDeltaJSON(a GitDeltaAnswer) ([]byte, error)` and
+  `RenderDeltaText(a GitDeltaAnswer) string` — since the CLI is their only caller and it always has
+  revisions in hand; a Go caller holding a bare `DeltaAnswer` from the pure `Delta` path wraps it
+  with empty `from`/`to` to render, or reads the struct directly, which is what a facade consumer
+  does anyway.
 - Rationale: the core knows nothing about git, and a field it can never populate would be a lie in
   its own type. Wrapping puts the revision echo exactly where the revisions are known.
 - Rejected: an optional `from`/`to` on the core answer left empty by the pure path (an
@@ -763,8 +807,8 @@ extracting files that did not change; correctness lives entirely in the table co
   `quarry.RenderDeltaText`. It follows the conventions the three existing text renderers already
   establish in `quarry/text.go`.
 - Rationale: `--text` is valid for every verb; a verb that ignored it would be the only exception.
-  `docs/rewrite-plan.md` §4 fixes the text view as lossless, and the task's own "Done when" asks for
-  goldens in both JSON and text views.
+  `docs/rewrite-plan.md` §4 fixes the text view as lossless, and this discussion requires goldens in
+  both JSON and text views (see Testing).
 - Rejected: JSON only.
 
 ## Technical context
@@ -905,7 +949,7 @@ here and two of the known deletes fall outside the pinned directories:
   and signature (`target string` → `unit string`), which is exactly the demotion the evidence tier
   exists for.
 No exact-tier rename occurs naturally in this history; the exact tier is asserted by a synthetic
-unit test instead, which is what the task's "Done when" asks for.
+unit test instead — see Testing, where this discussion requires it.
 
 ## Constraints
 
@@ -935,6 +979,12 @@ unit test instead, which is what the task's "Done when" asks for.
 - `go test ./... && golangci-lint run` green.
 
 ## Testing
+
+_The acceptance requirements below — the seven golden cases, both output views, the synthetic
+exact-tier assertion, and the real-history check — originate in the wiki task body's "Done when"
+section for slug `diff-to-symbols`. They are **not** in `_mill/status.md` (whose `task_description`
+is one line) and **not** in `docs/roadmap.md` point 2c (which carries no such clause), so they are
+restated in full here: a plan writer needs no wiki access to know what "done" means._
 
 **TDD candidates, in order:** (1) the body-token-stream extraction and the
 identical-modulo-identifier predicate; (2) the table comparison producing
@@ -1043,6 +1093,18 @@ error, not a panic. Additionally:
   working-tree side alike, so `dirPkg` — and therefore every glyph unit in the directory — agrees.
   A divergence here turns a whole directory into a create-plus-delete storm, so this is asserted
   directly rather than left to follow from the enumeration code;
+- **ordering is total**: a fixture containing `const a, b = 1, 2` (every name sharing one `Start`
+  and `End`) asserted to produce a byte-identical answer across repeated runs — file-then-`Start`
+  alone cannot separate those symbols, so this is the case that proves the `(file, Start, id, kind)`
+  tie-break is doing work; and a `modified` entry's `changed` array asserted in the closed set's
+  declaration order regardless of discovery order;
+- **a pre-set `Refusal`**: an entry carrying one asserted to be skipped without any parse on either
+  side and to surface as `disposition: error` with that exact message, in its own input position;
+- **`-z` parsing**: a fixture path containing a non-ASCII character asserted to round-trip, which it
+  cannot under `core.quotePath`'s C-quoting without `-z`;
+- **top-level normalisation**: a repository reached through a symlinked path (`t.TempDir()` on a
+  platform with a symlinked temp directory is exactly this) asserted **accepted**, not rejected as
+  `ErrRootNotTopLevel` — the check must compare `EvalSymlinks`'d paths on both sides;
 - **the immediate-children trim**: a fixture directory with a `.go` file in a *subdirectory*
   declaring a different package asserts that file votes on **neither** side — `git ls-files` is
   recursive and `git ls-tree` is not, so without the trim the two sides disagree;
@@ -1066,7 +1128,7 @@ byte-unstable without it, so this is asserted directly rather than relied upon i
 `internal/cli/testdata/`, following the existing `compareGolden`/`compareAfterGolden` pattern
 (wherever those helpers' own fixtures live at merge time — see Constraints on the in-flight
 goldens move), for
-the seven cases the task's "Done when" enumerates: created, deleted, modified, exact-tier rename,
+the seven cases enumerated here: created, deleted, modified, exact-tier rename,
 evidence-tier rename, a mixed batch, and a per-entry extraction failure inside an otherwise good
 batch. Goldens are produced under the existing `-update` flag convention and are never
 hand-written.
@@ -1115,7 +1177,7 @@ verb. No other document changes on this branch.
 - **Q:** Where do the core, the git layer and the facade methods live? **A:** [auto-pick] `internal/engine/delta.go` (pure), a new `internal/gitsrc` (read-only plumbing), and two facade methods `Delta` and `DeltaGit`; the CLI calls `DeltaGit`. **Why:** Loomyard's pipeline is a Go caller that needs the git convenience too; putting it only in the CLI would force a second implementation of the one thing that layer exists to hold.
 - **Q:** What are `--from`/`--to` semantics, and does `delta` keep the one-target rule? **A:** [auto-pick] `--from` required, `--to` optional (absent = working tree); exactly one target as every verb. **Why:** keeps `parseArgs`' target-count rule intact. _(Superseded in part by review r2: the claim that `.` means the repository root was wrong — see the r2 entry below. The target goes through `RepoRelTarget`, so `.` means the current directory.)_
 - **Q:** Which git commands, and is git's own rename detection used? **A:** [auto-pick] `git diff --name-status --no-renames`, `git show`, `git ls-tree`; git's `-M` is never used. **Why:** `--no-renames` is a correctness requirement, not an optimisation — git's rename detection is a similarity threshold, exactly what the two-tier design replaces.
-- **Q:** Does `delta` support `--text`? **A:** [auto-pick] Yes, a lossless text view. **Why:** `--text` is valid for every verb, and the task's "Done when" asks for goldens in both views.
+- **Q:** Does `delta` support `--text`? **A:** [auto-pick] Yes, a lossless text view. **Why:** `--text` is valid for every verb, and this discussion requires goldens in both views.
 - **Q:** What are `delta`'s exit codes? **A:** [auto-pick] 0 on any computed delta (empty included, errored entries included), 2 usage, 3 internal; exit 1 documented as unreachable. **Why:** "nothing changed" is a true answer, not a negative one; the alternatives would make a complete answer look like a failure to a shell gate.
 - **Q:** How is a symbol that moved between files reported? **A:** [auto-pick] `modified` with `changed:["file"]` plus a `before` block carrying the prior file and span. **Why:** Loomyard's handle binding needs the new location, and the glyph is unchanged so it is not a create/delete pair.
 - **Q:** What keys the symbol table, and how is `func init` handled? **A:** [auto-pick] `(ID, Kind)`; a key with multiplicity > 1 is compared as a multiset of body-token hashes and is never a rename candidate. **Why:** including `Kind` makes a const→var swap a delete plus a create, which is truthful; minting per-occurrence ids would emit glyphs no consumer could feed back to `resolve`.
@@ -1155,3 +1217,9 @@ verb. No other document changes on this branch.
 - **Q:** [review r5, NIT] `Strategy.Symbols` leaves `Symbol.File` empty — who fills it? **A:** [auto-pick] The delta core, from each entry's own `path`, per side. **Why:** `changed:["file"]`, the `before` block and the `renamed` pair all read it, and all three would silently compare empty strings otherwise.
 - **Q:** [review r5, NIT] The real-history pin's created/deleted sets read as exact-set assertions but are partial (`SelfGlyphError` the type is missing; two deletes are out of scope). **A:** [auto-pick] Complete the in-scope lists, mark the two out-of-scope deletes as such, and state the assertions are presence-only. **Why:** an exact-set reading would make the test fail on symbols the pin never claimed to enumerate.
 - **Q:** [review r5, NIT] The "facade adds no behaviour of its own" claim sits in `quarry/repo.go` as well as `quarry/doc.go`. **A:** [auto-pick] Amend both. **Why:** amending only `doc.go` leaves the other doc comment false once `DeltaGit` lands.
+- **Q:** [review r6, BLOCKING] The stated ordering was not total: `created`/`deleted`/`after` sort file-then-`Start` with `sort.SliceStable`, but the pre-sort order is a map range, and `const a, b = 1, 2` gives every name the same `Start`. **A:** [auto-pick] Append `id` then `kind` as a tie-break (unique, since the table key is), and fix the `changed` array to the closed set's declaration order. **Why:** without it the goldens are still byte-unstable in exactly the case the discussion itself uses as an example elsewhere.
+- **Q:** [review r6, BLOCKING] The status-letter table requires the git layer to emit `unmerged path` and unknown-letter errors, but `DeltaEntry` had no field to carry a refusal. **A:** [auto-pick] Add a `Refusal string` field; a non-empty value makes the core skip the entry entirely and emit `disposition: error` with that message. The git layer may pre-set it for an unmerged path, an unrecognised letter, and a read failure on either side. **Why:** a disk-read failure during batch assembly is neither a failed git command (so exit 3 does not cover it) nor grounds to fail the batch — it is one entry's problem, and this is how one entry reports it.
+- **Q:** [review r6, BLOCKING] How are `git rev-parse --show-toplevel` and `<root>` compared, given `ResolveRoot` never calls `EvalSymlinks` while git prints the physical path? **A:** [auto-pick] `EvalSymlinks` both sides, then `Clean`. **Why:** a raw comparison would reject a valid repository reached through a symlink — including `t.TempDir()` on any platform with a symlinked temp directory, i.e. the project's own fixtures.
+- **Q:** [review r6, NIT] The git calls assume unquoted, newline-delimited paths. **A:** [auto-pick] `-z` on every path-emitting call, split on NUL. **Why:** `core.quotePath` C-quotes non-ASCII paths by default, and a mangled path fails to open silently.
+- **Q:** [review r6, NIT] `GitDeltaAnswer` had no stated package, and the renderers' parameter type was unstated. **A:** [auto-pick] Declared in package `quarry` (the one new facade type that is not an engine alias, since a revision-bearing type in the engine would contradict its no-git rule); both renderers take the wrapped form. **Why:** neither package was an unambiguous home under the rules as written.
+- **Q:** [review r6, NIT] Four passages justified requirements by "the task's 'Done when'", which is in neither `status.md` nor `docs/roadmap.md`. **A:** [auto-pick] Cite the wiki task body explicitly once, state where it is *not*, and restate the requirements as this discussion's own. **Why:** the discussion must stand alone — a plan writer should need no wiki access to know what "done" means.
