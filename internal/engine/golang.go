@@ -496,6 +496,7 @@ func goUngroupedConstOrVarSymbols(unit string, kind Kind, decl, spec *ts.Node, s
 	_, end := Line(decl)
 	signature := SignatureCut(decl, nil, src)
 	doc := StripComment(raw, "//")
+	declStart, bodyStart, declEnd := goDeclOffsets(decl, nil)
 
 	var symbols []Symbol
 	for _, name := range goSpecNames(spec, src) {
@@ -511,6 +512,9 @@ func goUngroupedConstOrVarSymbols(unit string, kind Kind, decl, spec *ts.Node, s
 			Doc:       doc,
 			Start:     start,
 			End:       end,
+			DeclStart: declStart,
+			BodyStart: bodyStart,
+			DeclEnd:   declEnd,
 		})
 	}
 	return symbols
@@ -535,6 +539,7 @@ func goGroupedConstOrVarSymbols(unit string, kind Kind, spec *ts.Node, src []byt
 	}
 	signature := keyword + SignatureCut(spec, nil, src)
 	doc := StripComment(raw, "//")
+	declStart, bodyStart, declEnd := goDeclOffsets(spec, nil)
 
 	var symbols []Symbol
 	for _, name := range goSpecNames(spec, src) {
@@ -550,6 +555,9 @@ func goGroupedConstOrVarSymbols(unit string, kind Kind, spec *ts.Node, src []byt
 			Doc:       doc,
 			Start:     start,
 			End:       end,
+			DeclStart: declStart,
+			BodyStart: bodyStart,
+			DeclEnd:   declEnd,
 		})
 	}
 	return symbols
