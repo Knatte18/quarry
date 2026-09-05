@@ -50,7 +50,9 @@ batches:
     commit_sha: 77d58add5d1f5dc02681121e5afff867951766fd
     verify_baseline_failures: []
   - name: naming-round-trip
-    state: pending
+    state: running
+    implementer_session: 74af55cc-db90-449d-9344-44aa1e03b206
+    start_sha: c0149a6ba9ace37745adde7d32f64a56ba65e2e8
     verify_baseline_failures: []
   - name: cli-verb
     state: pending
