@@ -23,7 +23,13 @@ func (e usageError) Error() string { return string(e) }
 
 // request is the parsed shape of one invocation of parseArgs. root holds the --root value exactly
 // as given, empty when the flag was absent. symbols is nil when neither --symbols nor
-// --no-symbols was given, which is the engine's per-target default.
+// --no-symbols was given, which is the engine's per-target default. from and to hold the delta
+// verb's --from and --to values exactly as given; from is empty only when the flag was absent
+// entirely, which parseArgs itself rejects as a usage error, and to is empty when the flag was
+// absent, which is how the working tree is spelled to the git delta method. Neither field records
+// whether its flag was given: the git delta method takes both revisions as plain strings with the
+// empty string already meaning the working tree, so a present-but-empty state would have no way to
+// reach it and no defined behaviour if it did.
 type request struct {
 	verb    string
 	target  string
@@ -32,6 +38,8 @@ type request struct {
 	text    bool
 	root    string
 	help    bool
+	from    string
+	to      string
 }
 
 // parseArgs parses args, which is os.Args[1:], into a request. It is pure over its argument
@@ -42,14 +50,15 @@ type request struct {
 // flag, missing verb, or unrecognised verb is rejected: when found, parseArgs returns a request
 // with help set and a nil error, so help wins over every other complaint.
 //
-// The verb gate accepts exactly "toc", "resolve" and "expand". --depth, --symbols and
-// --no-symbols are valid for "toc" only; either new verb rejects each with a usage error naming
-// the flag and the verb, checked at the point the flag is recognised so that rejection takes
-// precedence over the flag's own value validation. --text and --root are valid for all three
-// verbs. Every verb requires exactly one target; parseArgs classifies none of them further —
-// whether "expand"'s target contains a "#" is the grammar's question, not this parser's, so
-// parseArgs stays pure over the argument slice — no root discovery, no engine call — with nothing
-// left in its own table test that depended on rejecting a bare path here.
+// The verb gate accepts exactly "toc", "resolve", "expand" and "delta". --depth, --symbols and
+// --no-symbols are valid for "toc" only; --from and --to are valid for "delta" only; every other
+// verb rejects a flag outside its own scope with a usage error naming the flag and the verb,
+// checked at the point the flag is recognised so that rejection takes precedence over the flag's
+// own value validation. --text and --root are valid for all four verbs. Every verb requires
+// exactly one target; parseArgs classifies none of them further — whether "expand"'s target
+// contains a "#" is the grammar's question, not this parser's, so parseArgs stays pure over the
+// argument slice — no root discovery, no engine call — with nothing left in its own table test
+// that depended on rejecting a bare path here.
 func parseArgs(args []string) (request, error) {
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
@@ -58,14 +67,14 @@ func parseArgs(args []string) (request, error) {
 	}
 
 	if len(args) == 0 {
-		return request{}, usageError("no verb given; expected: toc, resolve, or expand")
+		return request{}, usageError("no verb given; expected: toc, resolve, expand, or delta")
 	}
 
 	verb := args[0]
 	if strings.HasPrefix(verb, "-") {
-		return request{}, usageError("no verb given; expected: toc, resolve, or expand")
+		return request{}, usageError("no verb given; expected: toc, resolve, expand, or delta")
 	}
-	if verb != "toc" && verb != "resolve" && verb != "expand" {
+	if verb != "toc" && verb != "resolve" && verb != "expand" && verb != "delta" {
 		return request{}, usageError(fmt.Sprintf("unknown verb: %s", verb))
 	}
 
@@ -140,6 +149,30 @@ func parseArgs(args []string) (request, error) {
 				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
 			}
 			req.root = v
+		case "--from":
+			if verb != "delta" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
+			v, ok := nextValue()
+			if !ok {
+				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
+			}
+			if v == "" {
+				return request{}, usageError(fmt.Sprintf("%s value must not be empty", name))
+			}
+			req.from = v
+		case "--to":
+			if verb != "delta" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
+			v, ok := nextValue()
+			if !ok {
+				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
+			}
+			if v == "" {
+				return request{}, usageError(fmt.Sprintf("%s value must not be empty", name))
+			}
+			req.to = v
 		default:
 			return request{}, usageError(fmt.Sprintf("unknown flag: %s", tok))
 		}
@@ -149,6 +182,10 @@ func parseArgs(args []string) (request, error) {
 		return request{}, usageError(fmt.Sprintf("%s takes exactly one target, got %d", verb, len(targets)))
 	}
 	req.target = targets[0]
+
+	if verb == "delta" && req.from == "" {
+		return request{}, usageError("delta requires --from")
+	}
 
 	return req, nil
 }
