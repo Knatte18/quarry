@@ -96,9 +96,6 @@ repository in that language reaches 100 %.
 
 ## Small and independent, any time
 
-- Move the `docs/research/output-formats/after/` goldens to `internal/cli/testdata/` — they
-  are living test fixtures; the research directory stays a frozen record. `mill-quick`
-  candidate.
 - Wiki grooming: the completed rewrite tasks' `[done]` entries.
 - A same-config rerun of ladder a (task 01) on the OSL-1033 host, if and when it becomes
   available again — operator-coordinated; the one remaining way to isolate the host variable
