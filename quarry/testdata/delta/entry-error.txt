@@ -1,0 +1,8 @@
+from rev1 to rev2
+
+files:
+pkg/bad.go error [error pkg/bad.go: after side is not valid UTF-8]
+pkg/good.go added
+
+created:
+function pkg/good.go:3-3 (sig 3-3) pkg#Good: func Good()

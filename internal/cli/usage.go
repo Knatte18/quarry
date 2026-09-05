@@ -8,7 +8,7 @@ package cli
 // byte-comparable in tests. There is no --json flag: JSON is the default, and naming it would
 // imply a third format exists.
 //
-// The flags list stays one combined list rather than four per-verb sections, with the
+// The flags list stays one combined list rather than one section per verb, with the
 // per-verb flags marked as such in their own descriptions, so a flag valid for more than one verb
 // is not repeated once per verb. The usage block above it carries the per-verb bracketed lists
 // instead, so a reader sees each verb's real shape there; between the two blocks, validity is
@@ -24,6 +24,7 @@ usage:
   quarry glyphs <target> [--text] [--root <path>]
   quarry resolve <glyph> [--text] [--root <path>]
   quarry expand <glyph> [--text] [--root <path>]
+  quarry delta <target> --from <rev> [--to <rev>] [--text] [--root <path>]
   quarry name <declaration> --unit <unit> [--text]
 
 flags:
@@ -32,6 +33,8 @@ flags:
   --depth <N|all>   toc only: how far to recurse into subdirectories (default 0)
   --symbols         toc only: populate every file entry's symbols
   --no-symbols      toc only: leave every file entry's symbols unpopulated
+  --from <rev>      delta only: the before-side revision (required)
+  --to <rev>        delta only: the after-side revision (default: the working tree)
   --text            emit the lossless text view instead of JSON
   --root <path>     use <path> as the repository root instead of discovering one, not valid for name
   --unit <unit>     name only: the glyph unit the declaration will belong to

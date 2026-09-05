@@ -94,6 +94,21 @@ type Symbol struct {
 	// why one span pair suffices here and no discontiguous span type is needed.
 	HeadStart int `json:"-"`
 	HeadEnd   int `json:"-"`
+	// DeclStart, BodyStart and DeclEnd are byte offsets into the file's own source, not line
+	// numbers. They are JSON-hidden for the same reason HeadStart and HeadEnd are: they exist for
+	// one consumer rather than for the wire. DeclStart and DeclEnd are the declaration node's start
+	// and end bytes. BodyStart is the body-bearing child's start byte when the declaration has one,
+	// and equals DeclEnd when it does not, so BodyStart == DeclEnd is the marker for a declaration
+	// with no body at all and the body byte range is empty rather than absent. The span
+	// [DeclStart, BodyStart) is the same span SignatureCut is given, so a text comparison over the
+	// signature and a token comparison over it are over the same bytes by construction.
+	//
+	// The emitted key set is unchanged by this addition, which is what keeps this file's own header
+	// rule — every JSON tag here is the closed emitted key set — satisfied without a Shared Decision
+	// change.
+	DeclStart int `json:"-"`
+	BodyStart int `json:"-"`
+	DeclEnd   int `json:"-"`
 }
 
 // DirAnswer is the recursive answer to a table-of-contents query, per the rewrite plan's §4: one

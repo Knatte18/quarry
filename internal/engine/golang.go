@@ -123,6 +123,22 @@ func goReceiverTypeName(receiver *ts.Node, src []byte) string {
 	return ""
 }
 
+// goDeclOffsets computes the DeclStart, BodyStart and DeclEnd triple for a declaration node decl and
+// its possibly-nil body-bearing child body: DeclStart and DeclEnd are decl's own start and end bytes,
+// and BodyStart is body's start byte when body is non-nil and DeclEnd otherwise. Every builder in
+// this file that fills these three Symbol fields calls this one helper, so the nil-body rule has
+// exactly one implementation rather than six.
+func goDeclOffsets(decl, body *ts.Node) (declStart, bodyStart, declEnd int) {
+	declStart = int(decl.StartByte())
+	declEnd = int(decl.EndByte())
+	if body != nil {
+		bodyStart = int(body.StartByte())
+	} else {
+		bodyStart = declEnd
+	}
+	return declStart, bodyStart, declEnd
+}
+
 // goDeclSymbol builds the Symbol shared by function_declaration and method_declaration extraction:
 // docstring and range come from CommentBlockAbove, and the signature and sigend come from the
 // shared node helpers. owner is nil for a package-level name and a one-element slice naming the
@@ -134,6 +150,7 @@ func goDeclSymbol(kind Kind, unit string, owner []string, name string, decl, bod
 		start, _ = Line(docComment)
 	}
 	_, end := Line(decl)
+	declStart, bodyStart, declEnd := goDeclOffsets(decl, body)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Owner: owner, Name: name}
 	return Symbol{
 		Glyph:     g,
@@ -144,6 +161,9 @@ func goDeclSymbol(kind Kind, unit string, owner []string, name string, decl, bod
 		Start:     start,
 		SigEnd:    SigEnd(decl, body),
 		End:       end,
+		DeclStart: declStart,
+		BodyStart: bodyStart,
+		DeclEnd:   declEnd,
 	}
 }
 
@@ -224,6 +244,7 @@ func goInterfaceMethodSymbols(unit, ownerName string, typeSpec *ts.Node, src []b
 			start, _ = Line(docComment)
 		}
 		_, end := Line(elem)
+		declStart, bodyStart, declEnd := goDeclOffsets(elem, nil)
 		g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Owner: []string{ownerName}, Name: name}
 		symbols = append(symbols, Symbol{
 			Glyph:     g,
@@ -233,6 +254,9 @@ func goInterfaceMethodSymbols(unit, ownerName string, typeSpec *ts.Node, src []b
 			Doc:       StripComment(raw, "//"),
 			Start:     start,
 			End:       end,
+			DeclStart: declStart,
+			BodyStart: bodyStart,
+			DeclEnd:   declEnd,
 		})
 	}
 	return symbols
@@ -288,6 +312,7 @@ func goUngroupedTypeSymbol(unit string, decl, spec *ts.Node, src []byte) (sym Sy
 		start, _ = Line(docComment)
 	}
 	_, end := Line(decl)
+	declStart, bodyStart, declEnd := goDeclOffsets(decl, body)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
 	return Symbol{
 		Glyph:     g,
@@ -300,6 +325,9 @@ func goUngroupedTypeSymbol(unit string, decl, spec *ts.Node, src []byte) (sym Sy
 		End:       end,
 		HeadStart: start,
 		HeadEnd:   end,
+		DeclStart: declStart,
+		BodyStart: bodyStart,
+		DeclEnd:   declEnd,
 	}, true
 }
 
@@ -326,6 +354,7 @@ func goGroupedTypeSymbol(unit string, spec *ts.Node, src []byte) (sym Symbol, ok
 		start, _ = Line(docComment)
 	}
 	_, end := Line(spec)
+	declStart, bodyStart, declEnd := goDeclOffsets(spec, body)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
 	return Symbol{
 		Glyph:     g,
@@ -338,6 +367,9 @@ func goGroupedTypeSymbol(unit string, spec *ts.Node, src []byte) (sym Symbol, ok
 		End:       end,
 		HeadStart: start,
 		HeadEnd:   end,
+		DeclStart: declStart,
+		BodyStart: bodyStart,
+		DeclEnd:   declEnd,
 	}, true
 }
 
@@ -464,6 +496,7 @@ func goUngroupedConstOrVarSymbols(unit string, kind Kind, decl, spec *ts.Node, s
 	_, end := Line(decl)
 	signature := SignatureCut(decl, nil, src)
 	doc := StripComment(raw, "//")
+	declStart, bodyStart, declEnd := goDeclOffsets(decl, nil)
 
 	var symbols []Symbol
 	for _, name := range goSpecNames(spec, src) {
@@ -479,6 +512,9 @@ func goUngroupedConstOrVarSymbols(unit string, kind Kind, decl, spec *ts.Node, s
 			Doc:       doc,
 			Start:     start,
 			End:       end,
+			DeclStart: declStart,
+			BodyStart: bodyStart,
+			DeclEnd:   declEnd,
 		})
 	}
 	return symbols
@@ -503,6 +539,7 @@ func goGroupedConstOrVarSymbols(unit string, kind Kind, spec *ts.Node, src []byt
 	}
 	signature := keyword + SignatureCut(spec, nil, src)
 	doc := StripComment(raw, "//")
+	declStart, bodyStart, declEnd := goDeclOffsets(spec, nil)
 
 	var symbols []Symbol
 	for _, name := range goSpecNames(spec, src) {
@@ -518,6 +555,9 @@ func goGroupedConstOrVarSymbols(unit string, kind Kind, spec *ts.Node, src []byt
 			Doc:       doc,
 			Start:     start,
 			End:       end,
+			DeclStart: declStart,
+			BodyStart: bodyStart,
+			DeclEnd:   declEnd,
 		})
 	}
 	return symbols
