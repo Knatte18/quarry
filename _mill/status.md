@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: done
 slug: ladder-d-n15
 branch: ladder-d-n15
 plan: null
@@ -16,4 +16,5 @@ task_description: |
 ```text
 discussing  '2026-09-05T09:54:38Z'
 implementing  '2026-09-05T09:56:09Z'
+done  '2026-09-05T10:32:24Z'
 ```
