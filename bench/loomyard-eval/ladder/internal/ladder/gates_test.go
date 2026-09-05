@@ -196,7 +196,7 @@ func TestCheckRenderedControlPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTaskFile() error = %v", err)
 	}
-	prompt := RenderPrompt(tc, "/tmp/target-dir", BuiltinTools)
+	prompt := RenderPrompt(tc, "/tmp/target-dir", BuiltinTools, "")
 
 	// The server name is deliberately not the word "quarry", so a case relying on it fails if the
 	// implementation re-derives the name from the prefix or leans on a hardcoded default instead

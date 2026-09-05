@@ -93,7 +93,7 @@ func TestLive_FreshWorktreeGrantsExactlyBuiltins(t *testing.T) {
 		t.Fatalf("LoadTaskFile() = %v", err)
 	}
 	toolNames := grantedToolNames(l, cfg)
-	prompt := RenderPrompt(content, dest, toolNames)
+	prompt := RenderPrompt(content, dest, toolNames, "")
 
 	mcpDoc, err := MCPConfigDocument(l, cfg, "", dest)
 	if err != nil {

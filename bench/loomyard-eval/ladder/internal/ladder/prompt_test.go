@@ -238,7 +238,7 @@ func TestRenderPrompt_SixPartsInOrder(t *testing.T) {
 	}
 	toolNames := append([]string{}, BuiltinTools...)
 
-	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames)
+	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames, "")
 
 	parts := []string{
 		PARALLEL_OPENING,
@@ -266,7 +266,7 @@ func TestRenderPrompt_ControlCellNamesNoQuarryOrTOC(t *testing.T) {
 	target := TaskContent{TaskText: "task text", SchemaBlock: "```json\n{}\n```"}
 	toolNames := append([]string{}, BuiltinTools...)
 
-	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames)
+	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames, "")
 
 	if MatchesBareToken(prompt, "quarry") {
 		t.Errorf("RenderPrompt() for a control cell contains the word quarry:\n%s", prompt)
@@ -280,7 +280,7 @@ func TestRenderPrompt_GrantedCellListsPrefixedToolName(t *testing.T) {
 	target := TaskContent{TaskText: "task text", SchemaBlock: "```json\n{}\n```"}
 	toolNames := append(append([]string{}, BuiltinTools...), "mcp__quarry__toc_dir")
 
-	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames)
+	prompt := RenderPrompt(target, "/tmp/target-dir", toolNames, "")
 
 	if !strings.Contains(prompt, "mcp__quarry__toc_dir") {
 		t.Errorf("RenderPrompt() for a granted cell does not list its granted tool name mcp__quarry__toc_dir:\n%s", prompt)

@@ -161,18 +161,33 @@ correctly.`, targetDir, strings.Join(toolNames, ", "))
 }
 
 // RenderPrompt assembles the full prompt string for one cell, in order: PARALLEL_OPENING, the
-// identical body naming targetDir and toolNames, target.TaskText, PARALLEL_BLOCK, closingSentence,
-// and target.SchemaBlock. toolNames is exactly what the caller grants this cell -- the four built-in
-// tools plus any granted MCP tool names -- and RenderPrompt lists what it is given rather than
-// deriving the set itself.
-func RenderPrompt(target TaskContent, targetDir string, toolNames []string) string {
+// identical body naming targetDir and toolNames, target.TaskText, the card (when non-empty),
+// PARALLEL_BLOCK, closingSentence, and target.SchemaBlock. toolNames is exactly what the caller
+// grants this cell -- the four built-in tools plus any granted MCP tool names -- and RenderPrompt
+// lists what it is given rather than deriving the set itself. card is one more section inserted
+// immediately after target.TaskText and before PARALLEL_BLOCK; when card is the empty string no
+// section is inserted, and the rendered prompt is byte for byte what it was before this parameter
+// existed.
+func RenderPrompt(target TaskContent, targetDir string, toolNames []string, card string) string {
 	sections := []string{
 		PARALLEL_OPENING,
 		renderBody(targetDir, toolNames),
 		target.TaskText,
-		PARALLEL_BLOCK,
-		closingSentence,
-		target.SchemaBlock,
 	}
+	if card != "" {
+		sections = append(sections, card)
+	}
+	sections = append(sections, PARALLEL_BLOCK, closingSentence, target.SchemaBlock)
 	return strings.Join(sections, "\n\n")
+}
+
+// LoadCardFile reads the card file at path whole and returns its text with trailing newlines
+// trimmed. Unlike LoadTaskFile it extracts nothing -- a card is prompt text in its entirety, and an
+// extractor would be a second place the card's shape is defined.
+func LoadCardFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("load card file %s: %w", path, err)
+	}
+	return strings.TrimRight(string(data), "\n"), nil
 }
