@@ -86,7 +86,9 @@ batches:
     commit_sha: ac7fa8d61a6d1431d79370073f42c4eb7aecca16
     verify_baseline_failures: []
   - name: delta-renderers
-    state: pending
+    state: running
+    implementer_session: 61da9855-2202-4d31-98a9-35b9d3aa9422
+    start_sha: 6fb246ae6835175ec148a3f9546b8f4e1bf810c7
     verify_baseline_failures: []
   - name: cli-delta-verb
     state: pending
