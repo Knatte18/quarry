@@ -58,8 +58,14 @@ rewrite, while `repo.go` already houses the two target sentinels and needs no he
   and the five values `toc` emits, a self glyph is not a symbol, and widening a symbol vocabulary to
   describe a non-symbol would falsify that comment. It also records why the answer is not
   `not_found`: a self glyph matches no symbol, so the answer would fall out as `not_found`, which
-  says the name is free when the truth is that the verb does not apply. Do not change
-  `NotATypeError`, the kind gate, or any other line of the worker.
+  says the name is free when the truth is that the verb does not apply. Two existing comments in this
+  file become false and both are rewritten in the same edit: the file header, which calls
+  `NotATypeError` the one typed failure the verb returns, now names two; and the unexported `expand`
+  worker's own doc comment, which narrates the parse, the identifier assignment and the directory
+  read as consecutive steps with nothing between them — it must place the self gate between the
+  parse and the directory read, where the code puts it, so the comment's step order still matches
+  the function's. Beyond `NotATypeError` itself and the kind gate, change no other line of the
+  worker's code.
 - **Commit:** `feat(engine): reject expand of a self glyph with a typed error`
 
 ### Card 20: the target-separator sentinel

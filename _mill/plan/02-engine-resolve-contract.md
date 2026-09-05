@@ -97,6 +97,7 @@ green-compile decision forbids.
 - **Edits:**
   - `internal/engine/resolve.go`
   - `internal/engine/resolve_test.go`
+  - `internal/engine/answer.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -110,7 +111,15 @@ green-compile decision forbids.
   import if this deletion leaves it unused. In `internal/engine/resolve_test.go`, delete
   `TestIsGlyphTarget` and its doc comment in the same edit: it tables the deleted function over
   `"#"`-containing and `"#"`-free targets, and neither the function nor the split it asserts
-  survives. Change nothing else in that file — card 16 owns the behavioural rows.
+  survives. Change nothing else in that file — card 16 owns the behavioural rows. Four statements on
+  `ResolveResult` in `internal/engine/answer.go` become false the moment the path branch dies, and
+  all four are rewritten here rather than left standing: the type's own doc comment, which says the
+  answer is to a glyph or a repository-relative path; `Unit`'s closing sentence, that it is never set
+  on a path result because a path belongs to no unit; `Error`'s clause about a path target rejected
+  as outside the repository; and `ID`'s claim that it is present only for a glyph target. Every
+  target is a glyph now, and `ID` is present on every non-rejection result. Leave the three recorded
+  contract gaps in that file's neighbouring prose alone — the external-test-unit collision on `Unit`,
+  the language marker on `Candidates`, and the symlinked-unit gap — none is this task's to close.
 - **Commit:** `refactor(engine)!: delete isGlyphTarget and route every target to the grammar`
 
 ### Card 13: `SpansOf` says what a self glyph does there
@@ -173,7 +182,9 @@ green-compile decision forbids.
   alone — `r.Target`, a space, the status word — since the engine can no longer produce a path result
   without an `ID`; document it as the guard for an externally constructed value. Rename the two
   `r.Dir` references to `r.Listing`. Rewrite the numbered branch list in `RenderResolveText`'s doc
-  comment so branch 3 describes the listing branch and branch 4 the reduced default, and record that
+  comment to match the new code order exactly, since that list numbers the switch arms as they are
+  written: branch 1 stays the pre-resolution rejection, branch 2 becomes the listing branch, branch 3
+  becomes the glyph branch, and branch 4 becomes the reduced default. Record that
   a self glyph whose status is `not_found` has a nil listing and falls to the glyph branch, which
   prints the identifier, ` not_found`, and the unit suffix — the unit field is always set on that
   answer, so the suffix is always present. Change no other renderer.
@@ -227,7 +238,16 @@ green-compile decision forbids.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** In `quarry/text_test.go`, extend `TestRenderResolveText` with a self-glyph
+- **Requirements:** In `quarry/text_test.go`, `TestRenderResolveText`'s table has two rows building
+  a `ResolveResult` with a `Dir` composite-literal key — the ones named `PathFound` and
+  `PathFoundOneFileEntry`. Both are bare path targets, which card 12 turns into rejections, so
+  retarget each to the self-glyph spelling of its own target: set `ID` to the argument, rename the
+  key to `Listing`, and update the expected string, whose first line now carries the trailing `"#"`
+  and whose directory block is unchanged. Rename both rows off the word "Path". The
+  `PathNotFound` row carries no listing and no identifier and reaches the reduced `default` arm
+  unchanged; keep it and rename it to say it is the external-caller guard rather than a path answer,
+  and keep the totality-guard row that sets a found status with no listing for the same reason.
+  Then extend the same table with a self-glyph
   `found` row emitting the identifier, a space, `found`, then the directory block; a self-glyph
   `not_found` row emitting the identifier, ` not_found (unit found)`; and a second `not_found` row
   emitting ` (unit not_found)` for a path whose unit does not exist either. Both `not_found` rows
@@ -246,8 +266,8 @@ green-compile decision forbids.
   `TestRenderResolveJSON_KeyOrder` — and change the pinned key list in that second test so its last
   entry is the `listing` key rather than the `dir` one. That key list is pinned to `ResolveResult`'s
   own field declaration order, which card 10 leaves unchanged, so only the key's spelling moves.
-  Both files break the `quarry` test binary's compile until this card lands, which is why they are
-  named here rather than left to a later batch.
+  All three files break the `quarry` test binary's compile until this card lands, which is why each
+  is named here rather than left to a later batch.
 - **Commit:** `test(quarry): pin the listing branch and its guards`
 
 ### Card 18: keep `internal/cli`'s test binary compiling
