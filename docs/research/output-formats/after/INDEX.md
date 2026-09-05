@@ -30,7 +30,10 @@ claim rather than an assertion.
 | *(none)* | `resolve-glyph-text.txt` | 0 | new: the lossless text view of the same query |
 | *(none)* | `expand-type-text.txt` | 0 | new: the lossless text view of the same query |
 | *(none)* | `resolve-not-found.txt` | 1 | new: the unit-found miss the plan names as the validator's whole reason for that key. The old side had no equivalent — its definition query on a missing name returned an empty list |
-| *(none)* | `resolve-path.txt` | 0 | new: a repository-relative path as a target, which makes a non-code deliverable a checkable plan target. The old side had no path-target form at all |
+| *(none)* | `resolve-self-file.txt` | 0 | new: a file addressed as its own glyph — the same repository-relative path with a trailing `#` — which makes a non-code deliverable a checkable plan target. The old side had no path-target form at all |
+| *(none)* | `resolve-self-dir.txt` | 0 | new: a directory addressed as its own glyph, answering with the same listing `toc` would produce for that directory |
+| *(none)* | `resolve-self-file-text.txt` | 0 | new: the lossless text view of `resolve-self-file.txt`'s query |
+| *(none)* | `resolve-self-dir-text.txt` | 0 | new: the lossless text view of `resolve-self-dir.txt`'s query |
 | *(none)* | `expand-not-a-type.txt` | 1 | new: the plan's rule that the glyph must name a type, and that on any other kind the answer names the kind |
 
 **The compact view is gone, not replaced.**
@@ -63,7 +66,7 @@ Reading the generated files, not asserting from memory:
 ### resolve and expand
 
 Reading `resolve-glyph.txt`, `resolve-method.txt`, `expand-type.txt`, `resolve-not-found.txt`,
-`resolve-path.txt` and `expand-not-a-type.txt` against their before-side counterparts:
+`resolve-self-file.txt` and `expand-not-a-type.txt` against their before-side counterparts:
 
 - **A glyph, not a bare name plus `--in-file`.** `definition.txt`'s
   `--in-file internal/logger/logger.go stderrHandlerSnapshot` becomes
@@ -98,7 +101,7 @@ Reading `resolve-glyph.txt`, `resolve-method.txt`, `expand-type.txt`, `resolve-n
 
 ## Regenerating and the regression gate
 
-These twelve files are also the golden fixtures `internal/cli/after_test.go` compares against,
+These fifteen files are also the golden fixtures `internal/cli/after_test.go` compares against,
 so the committed evidence and the regression gate cannot disagree.
 Regenerating them is:
 
