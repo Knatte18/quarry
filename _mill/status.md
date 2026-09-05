@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
@@ -38,6 +38,8 @@ approved-cli-repopath-mcp  '2026-09-05T12:44:28Z'
 approved-docs-and-goldens  '2026-09-05T12:51:51Z'
 holistic-reviewing  '2026-09-05T12:52:21Z'
 holistic-fixing  '2026-09-05T12:56:33Z'
+nits-fixed-holistic  '2026-09-05T12:58:18Z'
+holistic-approved  '2026-09-05T12:58:26Z'
 ```
 
 ## Batches
