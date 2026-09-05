@@ -166,12 +166,15 @@ batches:
 
 - **Decision:** every batch's `verify:` is a `go test` against
   `./bench/loomyard-eval/ladder/internal/ladder/` with a `-run` pattern naming the tests that batch
-  touches. The module-wide `verify:` in this file's frontmatter is `go build ./...`. Neither carries
-  a `PYTHONPATH=` prefix.
+  touches. One batch prefixes that with a scoped `go build ./bench/loomyard-eval/ladder/...` — the
+  one that touches the command-line layer, which has no test file of its own, so the build is its
+  only gate. The module-wide `verify:` in this file's frontmatter is `go build ./...`. None of them
+  carries a `PYTHONPATH=` prefix.
 - **Rationale:** this repository is not a Python project, so the `PYTHONPATH=` isolation reset has
   nothing to isolate; the native runner is `go test`. The `-run` scoping keeps a batch's gate to the
   tests it can actually break, and `go build ./...` at each batch boundary catches a cross-package
-  compile break at the batch that introduces it. `pipeline.done_gate` is already
+  compile break in non-test code at the batch that introduces it — it does not compile `_test.go`
+  files, so a broken test-file call site is caught by the batch's own `go test` instead. `pipeline.done_gate` is already
   `go test ./... && golangci-lint run` in `mill-config.yaml`, and both halves were confirmed exit-0
   against this worktree's tip before planning, so the repo-wide regression net is already in place.
 - **Applies to:** all batches

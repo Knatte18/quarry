@@ -26,9 +26,9 @@ gets no `--allowedTools` argv entry, receives the empty-servers MCP document, an
 to the pre-dispatch blinding check.
 
 Batch-local decision: the sweep is verified by re-running both greps before editing, not by trusting
-the enumeration written during the discussion. The eleven sites the discussion lists were confirmed
-against this worktree's tip during planning, but the plan says re-run rather than assume, because a
-site that appears between planning and implementation would otherwise be silently missed.
+the enumeration written during the discussion. That enumeration was confirmed against this worktree's
+tip during planning, but the plan says re-run rather than assume, because a site that appears between
+planning and implementation would otherwise be silently missed.
 
 ## Cards
 
@@ -43,17 +43,24 @@ site that appears between planning and implementation would otherwise be silentl
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  First re-run both enumeration greps over the harness package and confirm the site list is exactly
-  the eleven the plan classifies:
+  First re-run both enumeration greps over the harness package:
 
   ```
   grep -rn "IsControl()" bench/loomyard-eval/ladder --include=*.go | grep -v _test
   grep -rn "\.Allowed" bench/loomyard-eval/ladder --include=*.go | grep -v _test
   ```
 
-  Any site the greps turn up that is not classified below is classified by the same question — does
-  this branch depend on whether the cell has an MCP server attached, or on whether it is the
-  letter's comparison baseline? — and the answer is recorded in the commit message.
+  The first grep is the enumeration this batch is built on: confirm it still yields the predicate's
+  own declaration plus the ten call sites this card and cards 6 and 7 classify between them — the six
+  switched below, the two comparison-baseline sites left alone below, and the two inside the config
+  file itself, which batch 1 already rewrote.
+  The second grep is read for a different reason: it catches an inline spelling of the same question
+  that the first grep cannot see, of which the granted-tool-used check is the known one. Its other
+  hits are ordinary reads and writes of the field rather than branches on it, so they are not part of
+  the classified list and need no action.
+  Any site either grep turns up that is a branch and is not classified in this batch is classified by
+  the same question — does this branch depend on whether the cell has an MCP server attached, or on
+  whether it is the letter's comparison baseline? — and the answer is recorded in the commit message.
   Then switch exactly six branches in `run.go`, and no others:
   1. `needsServer`'s loop condition from `!c.IsControl()` to `c.GrantsTools()` — the server is built
      only for a cell that has one;
@@ -166,9 +173,9 @@ site that appears between planning and implementation would otherwise be silentl
   non-empty, resolving it with the existing repository-relative resolver exactly as `task.TaskFile`
   is resolved, and pass the result to `RenderPrompt`. An empty `cfg.Card` passes the empty string
   and loads nothing.
-  Update the four existing call sites so the package compiles: the one in `run.go` above, and the
-  ones in `prompt_test.go`, `gates_test.go` and `prematrix_test.go` and `live_test.go`. Each of the
-  test call sites passes `""` unless that test is specifically about a card.
+  Update every existing caller so the package compiles: the one in `run.go` above, the three in
+  `prompt_test.go`, and one each in `gates_test.go`, `prematrix_test.go` and `live_test.go`. Each of
+  the test call sites passes `""` unless that test is specifically about a card.
   This card changes an exported function's signature, so the compile break is the point: every
   caller is updated in this same commit rather than left for the next batch.
 - **Commit:** `feat(ladder): render an optional per-config card into the prompt`
@@ -248,6 +255,7 @@ site that appears between planning and implementation would otherwise be silentl
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
   - `bench/loomyard-eval/ladder/internal/ladder/testdata/fakeclaude/main.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/e2e_test.go`
 - **Creates:** none
@@ -255,8 +263,10 @@ site that appears between planning and implementation would otherwise be silentl
 - **Moves:** none
 - **Requirements:**
   Add a subtest to `TestE2E` — name it `ToolLessNonControlGetsNoAllowedTools` — driving a synthetic
-  ladder file with two configs under one ladder letter, both with an empty `allowed`, one with
-  `control: true` and one with `control: false`, at one repetition each.
+  ladder file with three configs under one ladder letter, all with an empty `allowed`, one with
+  `control: true` and two with `control: false`, at one repetition each. Three rather than two,
+  because the same results root is what the next subtest summarises and the pairing property it
+  asserts needs two rungs to be worth asserting.
   Drive it with the existing all-control environment helper, not the granted-cell one: that helper
   sets the fake binary's control-mode variable, under which the fake asserts `--allowedTools` is
   absent from the measured invocation. The fake's variable is named for the control concept but its
@@ -267,10 +277,15 @@ site that appears between planning and implementation would otherwise be silentl
   tool-less non-control cell builds no server, receives the empty-servers document and passes its
   pre-dispatch blinding check — the three other halves of the sweep, none of which have a cheaper
   observation point than a real end-to-end run.
-  Add one further subtest, `TwoRungsPairAgainstOneControl`, that summarises the same results root
-  and asserts two comparison rows are built, both naming the control cell. This is the
-  `summarize` half of the split: the rung-versus-control pairing must keep working when a letter
-  carries one control and two rungs.
+  Add one further subtest, `TwoRungsPairAgainstOneControl`, that summarises that same three-cell
+  results root and asserts on the comparison set's membership rather than on its size: the set of
+  distinct cell ids appearing as a comparison's own cell is exactly the two rung ids, and every one
+  of those comparisons names the control cell as its control. Do not assert a row count — the
+  comparison builder emits one row per rung and metric over every cost metric plus recall and
+  precision, so the count is a function of the metric list rather than of the pairing this subtest is
+  about, and would change under any future metric addition.
+  This is the `summarize` half of the split: the rung-versus-control pairing must keep working when a
+  letter carries one control and two rungs.
 - **Commit:** `test(ladder): cover tool-less non-control dispatch and two-rung pairing`
 
 ## Batch Tests
@@ -286,6 +301,8 @@ server-build, MCP-document and blinding halves of the sweep are observable toget
 four-parameter `RenderPrompt`, which is the backwards-compatibility check for the signature change.
 `TestLoadTaskFile` and `TestRenderPrompt` cover the prompt half.
 
-The module-wide `go build ./...` at the batch boundary is load-bearing here: `RenderPrompt` is
-exported and has five call sites across three test files and one production file, so a missed one is
-a compile error rather than a silent behaviour change.
+The compile-break net for the render function's signature change is this batch's own `go test`, not
+the module-wide `go build ./...` at the batch boundary: `go build` does not compile `_test.go` files,
+and six of the seven call sites are in test files. The `-run` pattern's value here is therefore
+secondary — `go test` compiles the whole package's test files whatever the pattern selects — and the
+module-wide build catches only the production call site.

@@ -221,6 +221,10 @@ carries a test that checks it mechanically as well, so the eye check has a backs
   - `bench/loomyard-eval/cards/07-e2-files.md`
   - `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md`
   - `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.fasit.json`
+  - `bench/loomyard-eval/ladder/internal/ladder/pack.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/prompt.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/config.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/prematrix_test.go`
   - `bench/loomyard-eval/ladder/internal/ladder/config_test.go`
@@ -243,6 +247,14 @@ carries a test that checks it mechanically as well, so the eye check has a backs
   Add `TestPreMatrix_KickstartCardsShareOneUsesList`, which reads the three card files and asserts
   their `Uses:` sections are byte-identical. The three lists being identical is the property that
   makes the arms differ only in the dimension under test, and no other code enforces it.
+  Add `TestPreMatrix_KickstartUsesListMatchesPackTargets`, which parses each card's `Uses:` entries
+  and asserts they equal the loaded ladder file's own glyph list element for element, in order. This
+  is a different invariant from the one above and needs its own assertion: three cards can agree with
+  each other while all three disagree with the ladder file. That is exactly the state the glyph
+  substitution procedure risks producing, since it edits the ladder file's list and the three cards'
+  lists as separate steps, and its consequence is a treatment card whose generated block names glyphs
+  its own list does not — an arm difference in the dimension under test, introduced by the correction
+  meant to prevent one.
   Add `TestPreMatrix_KickstartPackCellCardHasSentinels`, asserting the treatment card's block
   extracts cleanly through the pack block extractor — the authoring-time half of the run gate, which
   otherwise first fails at matrix start.
@@ -261,6 +273,7 @@ The pre-matrix suite is the whole gate for this batch, because everything this b
 data rather than code: the ladder file is checked by loading it through the real loader and its
 validation rules, the three cards are checked by rendering the three real prompts and running the
 real blinding check over them, the treatment card's sentinels are checked through the real extractor,
+the three cards' glyph lists are checked against each other and against the ladder file's own list,
 and the fasit is checked for the shape the scoring rule computes recall and precision against. The
 new real-file load test is named separately in the pattern because it lives in the config test file
 rather than the pre-matrix one.

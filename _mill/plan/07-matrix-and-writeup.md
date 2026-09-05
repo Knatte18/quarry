@@ -67,9 +67,11 @@ substitution rule allows happens before rep 0 or not at all.
   substitute may live in a file no other glyph does or may vacate one; re-run the pack command;
   record the substitution and its reason in the task file's notes section; and re-run the fasit's
   cross-check. All of that happens before rep 0 or not at all.
-  Check by eye that the three cards' `Uses:` lists are still identical after any such edit. The
-  offline suite checks this too, so run it as the mechanical backstop rather than as a substitute for
-  looking.
+  Check by eye that the three cards' `Uses:` lists are still identical after any such edit, and that
+  all three still match the ladder file's own glyph list. The offline suite asserts both of those
+  mechanically, so run it as the backstop rather than as a substitute for looking — it is the check
+  that catches the half-applied substitution, where the ladder file's list has moved on and one card
+  has not.
   Then commit the generated card together with the pack's two output files. Committing between the
   pack and the run is the expected workflow and is not a freshness violation: the run gate compares
   only the pack hash, never repository state, precisely so that doing the right thing here does not

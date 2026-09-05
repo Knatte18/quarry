@@ -77,7 +77,8 @@ command, is what keeps a pack and a run off one pinned worktree at the same time
 
 ### Card 17: Read and write the sentinel-delimited card block
 
-- **Context:** none
+- **Context:**
+  - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/pack.go`
 - **Creates:** none
@@ -99,8 +100,9 @@ command, is what keeps a pack and a run off one pinned worktree at the same time
   sentinels is an error, never a silent append — appending would produce a card whose prompt text
   disagrees with the hash provenance records, which is the one failure this whole mechanism exists to
   make impossible.
-  Add `PackBlockSHA256(block string) string`, returning the hex sha256 of the block's bytes, reusing
-  the package's existing hex-sha256 helper rather than a second spelling of the same computation.
+  Add `PackBlockSHA256(block string) string`, returning the hex sha256 of the block's bytes, computed
+  by calling the package's existing `sha256Hex` helper rather than by spelling the same computation a
+  second time.
   Both the writer and the run-time gate go through this one function, so the two cannot drift.
 - **Commit:** `feat(ladder): read and write the sentinel-delimited pack block`
 
