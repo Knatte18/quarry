@@ -66,6 +66,8 @@ batches:
     commit_sha: 2ef7916fa087baf6f8de9ea690d0fb9183d40463
     verify_baseline_failures: []
   - name: docs-and-goldens
-    state: pending
+    state: running
+    implementer_session: b6424cfa-cd46-4f96-9a59-13a91f9aa76f
+    start_sha: 3377b44e97742186cf248b19b7c4621537fcccaa
     verify_baseline_failures: []
 ```
