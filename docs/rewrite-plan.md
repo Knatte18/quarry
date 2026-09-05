@@ -89,7 +89,7 @@ Every command, every surface, the same shape:
 - **JSON is the contract** for CLI and facade; the MCP `content[].text` block is a lossless text
   view of the same data. MCP spells whole-tree depth `-1` where the CLI says `--depth all`.
 
-The byte-level record of every output shape is `docs/research/output-formats/after/`, pinned by
+The byte-level record of every output shape is `internal/cli/testdata/`, pinned by
 `internal/cli`'s golden tests against Loomyard `72c23d9`.
 
 ## 5. The queries

@@ -1,7 +1,8 @@
 # quarry output formats — after, rewritten CLI
 
-Every file in this directory is one real invocation of the rewritten `quarry` CLI, run in-process
-(`internal/cli/after_test.go`'s `TestAfterGoldens`) against a Loomyard checkout at HEAD `72c23d9`
+Every `.txt` file in this directory is one real invocation of the rewritten `quarry` CLI, run
+in-process (`internal/cli/after_test.go`'s `TestAfterGoldens`) against a Loomyard checkout at HEAD
+`72c23d9`
 — the same checkout and commit the "before" side and `docs/rewrite-plan.md` §4 were taken from.
 The table now spans three verbs — `toc`, `resolve`, and `expand` — not `toc` alone.
 No absolute path is recorded here: the checkout is identified by name and pin only.
@@ -15,18 +16,18 @@ claim rather than an assertion.
 
 | before | after | exit | notes |
 |---|---|---|---|
-| `../toc-dir.txt` | `toc-dir.txt` | 0 | `toc dir internal/logger` becomes `toc internal/logger` |
-| `../toc-file.txt` | `toc-file.txt` | 0 | `toc file internal/logger/logger.go` becomes `toc internal/logger/logger.go` |
-| `../toc-dir-compact.txt` | *no successor, by design* | — | the compact view is not carried forward — see below |
-| `../toc-file-compact.txt` | *no successor, by design* | — | the compact view is not carried forward — see below |
+| `docs/research/output-formats/toc-dir.txt` | `toc-dir.txt` | 0 | `toc dir internal/logger` becomes `toc internal/logger` |
+| `docs/research/output-formats/toc-file.txt` | `toc-file.txt` | 0 | `toc file internal/logger/logger.go` becomes `toc internal/logger/logger.go` |
+| `docs/research/output-formats/toc-dir-compact.txt` | *no successor, by design* | — | the compact view is not carried forward — see below |
+| `docs/research/output-formats/toc-file-compact.txt` | *no successor, by design* | — | the compact view is not carried forward — see below |
 | *(none)* | `toc-dir-text.txt` | 0 | new: the lossless text view, `--text internal/logger` |
 | *(none)* | `toc-file-text.txt` | 0 | new: the lossless text view, `--text internal/logger/logger.go` |
-| `../definition.txt` | `resolve-glyph.txt` | 0 | the in-file flag and the absolute path are gone; a glyph replaces a bare name |
-| `../definition-ambiguous.txt` | `resolve-method.txt` | 0 | the old ambiguity does not survive the glyph grammar. The old query was a fuzzy name match across two receivers' methods; the glyph names exactly one and answers found. The old side's success-with-a-usage-exit-code was the addressing defect, not a fact about the repository |
-| `../symbol.txt` | `expand-type.txt` | 0 | the old query was a fuzzy workspace passthrough returning an unrelated package's test function and undecoded kind integers; the new one answers the same question exactly — the head plus every member, named kinds, glyph identifiers, no cross-package noise |
-| `../impact.txt` and `../impact-file-scope.txt` | *no successor, phase 2* | — | that query needs a type checker; it is a later wave's task |
-| `../assert-no-callers.txt` | *no successor, phase 2* | — | same, and cited to the same plan section |
-| `../refs.txt` | *no successor, by design* | — | the plan states there is no reference query in phase 1: dropped after measurement, not deferred |
+| `docs/research/output-formats/definition.txt` | `resolve-glyph.txt` | 0 | the in-file flag and the absolute path are gone; a glyph replaces a bare name |
+| `docs/research/output-formats/definition-ambiguous.txt` | `resolve-method.txt` | 0 | the old ambiguity does not survive the glyph grammar. The old query was a fuzzy name match across two receivers' methods; the glyph names exactly one and answers found. The old side's success-with-a-usage-exit-code was the addressing defect, not a fact about the repository |
+| `docs/research/output-formats/symbol.txt` | `expand-type.txt` | 0 | the old query was a fuzzy workspace passthrough returning an unrelated package's test function and undecoded kind integers; the new one answers the same question exactly — the head plus every member, named kinds, glyph identifiers, no cross-package noise |
+| `docs/research/output-formats/impact.txt` and `docs/research/output-formats/impact-file-scope.txt` | *no successor, phase 2* | — | that query needs a type checker; it is a later wave's task |
+| `docs/research/output-formats/assert-no-callers.txt` | *no successor, phase 2* | — | same, and cited to the same plan section |
+| `docs/research/output-formats/refs.txt` | *no successor, by design* | — | the plan states there is no reference query in phase 1: dropped after measurement, not deferred |
 | *(none)* | `resolve-glyph-text.txt` | 0 | new: the lossless text view of the same query |
 | *(none)* | `expand-type-text.txt` | 0 | new: the lossless text view of the same query |
 | *(none)* | `resolve-not-found.txt` | 1 | new: the unit-found miss the plan names as the validator's whole reason for that key. The old side had no equivalent — its definition query on a missing name returned an empty list |
@@ -102,7 +103,9 @@ Reading `resolve-glyph.txt`, `resolve-method.txt`, `expand-type.txt`, `resolve-n
 ## Regenerating and the regression gate
 
 These fifteen files are also the golden fixtures `internal/cli/after_test.go` compares against,
-so the committed evidence and the regression gate cannot disagree.
+so the committed evidence and the regression gate cannot disagree. That is why they live here,
+beside the test that owns them, rather than under `docs/research/output-formats/`, which is a
+frozen record — the before-side files this table's left column names are still there.
 Regenerating them is:
 
 ```
@@ -113,5 +116,5 @@ Each `.txt` file is exactly the invocation line (`$ quarry <verb> ...`), a blank
 and the command's stdout verbatim, with no exit-code trailer.
 The expected exit code for each invocation lives in the table above and in the golden table
 inside `internal/cli/after_test.go` itself — not in the file — unlike the before side's own
-`INDEX.md`, whose claim that "the exit code is at the bottom of each file" is untrue of the four
-before-side `toc` files it describes.
+`docs/research/output-formats/INDEX.md`, whose claim that "the exit code is at the bottom of each
+file" is untrue of the four before-side `toc` files it describes.
