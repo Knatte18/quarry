@@ -37,6 +37,8 @@ planning and implementation would otherwise be silently missed.
 - **Context:**
   - `bench/loomyard-eval/ladder/internal/ladder/config.go`
   - `bench/loomyard-eval/ladder/internal/ladder/summarize.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/gates.go`
+  - `bench/loomyard-eval/ladder/internal/ladder/runstate.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/run.go`
 - **Creates:** none
@@ -51,9 +53,9 @@ planning and implementation would otherwise be silently missed.
   ```
 
   The first grep is the enumeration this batch is built on: confirm it still yields the predicate's
-  own declaration plus the ten call sites this card and cards 6 and 7 classify between them — the six
-  switched below, the two comparison-baseline sites left alone below, and the two inside the config
-  file itself, which batch 1 already rewrote.
+  own declaration plus eleven call sites — the six this card switches below, the two
+  comparison-baseline sites this card leaves alone below, the one in `mcp.go` that card 6 switches,
+  and the two inside the config file itself, which batch 1 already rewrote.
   The second grep is read for a different reason: it catches an inline spelling of the same question
   that the first grep cannot see, of which the granted-tool-used check is the known one. Its other
   hits are ordinary reads and writes of the field rather than branches on it, so they are not part of
@@ -235,10 +237,11 @@ planning and implementation would otherwise be silently missed.
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:**
-  The existing test at the foot of the granted-tool-used test asserts that a `Config` with a nil
-  `Allowed` reports `IsControl` true, documenting that the gating lives at the call site. That
-  assertion is now the wrong shape: under the split, an explicit `control: false` makes the same
-  config not a control while leaving it tool-less.
+  The subtest named `ControlCell_CallerGatesNotTheCheckItself`, the last block inside
+  `TestCheckServerConnected`, asserts that a `Config` with a nil `Allowed` reports `IsControl` true,
+  documenting that the gating lives at the call site. That assertion is now the wrong shape: under
+  the split, an explicit `control: false` makes the same config not a control while leaving it
+  tool-less.
   Replace it with an assertion over both predicates: a `Config` with a nil `Allowed` and an explicit
   `control: false` reports `IsControl` false and `GrantsTools` false, and therefore still satisfies
   the `!GrantsTools()` condition the blinding call sites now use. Keep the surrounding comment's
