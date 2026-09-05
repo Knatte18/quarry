@@ -96,6 +96,16 @@ drift.
   would otherwise render as two indistinguishable lines.
   Do not widen the shared writer to emit the kind: it is byte-pinned by the existing goldens and
   tests of the other three verbs, and this task changes no existing output.
+  **A modified entry's before array cannot use the shared writer at all** and needs its own line
+  grammar, stated here: its elements are location blocks carrying a file, a start, a signature end
+  and an end, with no identifier, signature or docstring for the shared writer to emit.
+  Give the location line a grammar close enough to the symbol line that the two read as one family —
+  the same file prefix and the same span and signature-end conventions, including omitting the
+  signature-end clause when it is zero, which is the engine's own marker for a declaration with no
+  body — and identify the entry it belongs to from the modified entry's own identifier and kind,
+  which are printed once for the entry rather than repeated per location.
+  This is the one shape in the delta whose text form has no existing precedent, so spell it fully in
+  the doc comment rather than leaving it to the implementer.
   Choose a block-per-section grammar covering the files echo with each entry's disposition, lossy
   flags and error; the created, deleted and modified arrays; the renamed pairs; and the candidate
   entries with every signal spelled by name.

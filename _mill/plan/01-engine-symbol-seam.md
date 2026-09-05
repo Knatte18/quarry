@@ -5,7 +5,7 @@ task: 'P2 — diff-to-symbols: changed file versions to symbol-table delta (road
 batch: 'engine-symbol-seam'
 number: 1
 cards: 5
-verify: go test ./internal/engine/ -run 'TestSymbolOffsets|TestSignatureSpan'
+verify: go test ./internal/engine/ -run 'TestSymbolOffsets|TestSignatureSpan|TestGoStrategy'
 depends-on: []
 ```
 
@@ -68,12 +68,27 @@ JSON-hidden fields that exist for exactly one consumer.
   - `internal/engine/strategy.go`
 - **Edits:**
   - `internal/engine/golang.go`
+  - `internal/engine/golang_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
 - **Requirements:** Fill the three new offsets in `goDeclSymbol`, which builds the Symbol shared by
   function and method extraction, and in `goInterfaceMethodSymbols`, which builds one Symbol per
   interface `method_elem`.
+  **Keep the existing strategy suite green in this same commit**, which requires one edit to its
+  shared comparison helper: `assertSymbolsEqual` in `internal/engine/golang_test.go` compares the
+  whole Symbol value with a deep equality check, zeroing only the glyph field, and every expectation
+  in that file is a Symbol literal whose three new offsets are therefore zero — so filling them here
+  fails every row of `TestGoStrategy_Symbols` and its siblings.
+  Zero the three offsets on the helper's own copy exactly as it already zeroes the glyph, rather than
+  spelling byte offsets into roughly seventeen hand-written literals.
+  That is the right side to change: those expectations pin the emitted symbol shape — lines,
+  signature, docstring, kind — while the three offsets are JSON-hidden internals with one consumer,
+  and card 5 pins them directly and per shape.
+  Say so in a comment beside the two zeroing lines, so a later reader does not restore the offsets
+  into the comparison and then delete the literals as noise.
+  Make this edit in this card rather than a later one: cards 3 and 4 fill more builders, so a helper
+  fixed afterwards would leave the suite red across three commits instead of none.
   In `goDeclSymbol` the declaration node is its `decl` parameter and the body node is its `body`
   parameter — the same two nodes it already passes to `SignatureCut` — so `DeclStart` is
   `decl.StartByte()`, `DeclEnd` is `decl.EndByte()`, and `BodyStart` is `body.StartByte()` when
@@ -87,6 +102,9 @@ JSON-hidden fields that exist for exactly one consumer.
   Change no existing field of any Symbol built here, and change no line number, signature or
   docstring derivation.
 - **Commit:** `feat(engine): fill declaration byte offsets for func, method and interface-method symbols`
+
+  _(The commit covers both the builder change and the comparison-helper change it requires; they are
+  one change and cannot be split without leaving the suite red between two commits.)_
 
 ### Card 3: fill the offsets for the two type builders
 
@@ -173,10 +191,14 @@ JSON-hidden fields that exist for exactly one consumer.
 
 ## Batch Tests
 
-`verify:` runs `go test ./internal/engine/ -run 'TestSymbolOffsets|TestSignatureSpan'`, which
-selects exactly the two test functions card 5 creates in `internal/engine/offsets_test.go`.
-The scope is deliberately narrow: this batch adds three fields and six assignments and changes no
-existing behaviour, so the broader `internal/engine` suite has nothing new to say about it.
+`verify:` runs `go test ./internal/engine/ -run 'TestSymbolOffsets|TestSignatureSpan|TestGoStrategy'`.
+The first two patterns select the two test functions card 5 creates in
+`internal/engine/offsets_test.go`.
+The third is not optional and is the regression half of this batch's gate: every existing
+`TestGoStrategy_*` function compares whole Symbol values against hand-written literals through one
+shared helper, so the three offsets cards 2 to 4 fill would fail every row of that suite until card
+2's helper edit lands. Selecting it here is what proves the helper edit was made and that the
+emitted symbol shape is otherwise untouched.
 The module-wide `verify: go vet ./...` at this batch's boundary type-checks every package including
 its test files, so a signature change that broke a caller fails there; it does not execute tests.
 The whole `internal/engine` suite runs as a regression gate under the repository-wide
