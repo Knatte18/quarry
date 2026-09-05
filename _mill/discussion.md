@@ -36,8 +36,8 @@ construction, and there is never a parallel naming rulebook that can drift from 
 - JSON and text renderers for the new result shape, in `quarry/render.go` and `quarry/text.go`.
 - The prediction≡extraction round trip over the pinned Loomyard checkout.
 - Goldens (JSON and text) for the six cases the task names.
-- Docs: `docs/rewrite-plan.md` §5 paragraph, `internal/cli/usage.go` help text, `README.md`'s
-  verb list.
+- Docs and every in-tree statement of the verb set or its count — enumerated by search, not by
+  naming files; see the "Verb-set statements" inventory under Testing.
 
 **Out:**
 
@@ -244,15 +244,30 @@ construction, and there is never a parallel naming rulebook that can drift from 
 ### Accepted declaration forms
 
 - Decision: every top-level declaration shape the Go extractor emits is accepted — function,
-  method, type (struct, interface, alias, named), const, var — in either their head-only or
-  their complete form. Two shapes are explicit non-goals:
-  1. **Interface methods.** An interface method's extracted signature is a bare method element
-     (`Read(p []byte) (int, error)`), which is not a top-level declaration in any wrapping, and
-     its owner is the enclosing interface's name, which is not present in the fragment at all. A
-     Create card that adds an interface method creates it as part of the interface's own type
-     declaration.
+  method, type (struct, interface, alias, named), const, var — in either their head-only or their
+  complete form, **with one exception: an interface fragment must be head-only or carry an empty
+  body.** `goTypeSymbols` (`golang.go:170,183`) appends `goInterfaceMethodSymbols` to the
+  interface's own type symbol, so `type R interface { Read() error }` yields two symbols —
+  measured — and is correctly rejected by the exactly-one rule as `several_declarations`. Both
+  `type R interface` (through the completion retry) and `type R interface {}` yield exactly one,
+  the type itself. Three shapes are therefore out of contract:
+  1. **Interface methods, and any interface fragment carrying one.** An interface method's
+     extracted signature is a bare method element (`Read(p []byte) (int, error)`), which is not a
+     top-level declaration in any wrapping, and its owner is the enclosing interface's name, which
+     is not present in the fragment at all. The same non-goal covers the *populated* interface
+     declaration, for a different reason: it declares the type and every method at once, so it has
+     several glyphs rather than one, and the maker names one declaration per entry.
+     A Create card that adds an interface with methods asks the maker for the interface *type's*
+     glyph with a head-only or empty-bodied fragment; the method glyphs are separate entries the
+     maker cannot answer, since their owner is not derivable from the head alone.
   2. **Multi-name const/var specs.** `const X, Y = 1, 2` is one declaration yielding two symbols,
-     so it is rejected by the exactly-one rule above, correctly and by design.
+     so it is rejected by the exactly-one rule above, correctly and by design. `var A, B = 1, 2`
+     behaves identically — measured.
+- Note the asymmetry with a struct, and why it is not a defect: `type S struct { F int }` yields
+  exactly one symbol, because Go struct fields are not listable declarations, while interface
+  methods are. So the "complete form" is accepted for a struct and refused for an interface, and
+  the rule is not "heads only" but the exactly-one rule applied uniformly. Nothing special-cases
+  interfaces in the maker; the count does the work.
 - Rationale: the input contract is "declaration head + unit". Anything whose glyph is not fully
   determined by those two things is out of contract, and inventing an owner parameter to admit
   interface methods would be designing for a requirement nobody has stated.
@@ -311,11 +326,24 @@ construction, and there is never a parallel naming rulebook that can drift from 
 - Decision: `RenderNameText(r NameResult) string`, one line, no trailing whitespace, exactly one
   trailing `"\n"`:
   - success: `<id> <kind>`
-  - failure: `<target> error <reason>: <message>`
-- Rationale: the failure line is `RenderResolveText`'s own empty-status branch verbatim, including
-  its `normalizeProse` call on the message. The success line drops the target because
-  `RenderResolveText`'s success branches already drop it in favour of the id — for a one-per-call
-  CLI the input is on the command line beside the output.
+  - failure: `<normalizeProse(target)> error <reason>: <normalizeProse(message)>`
+- **The echoed target goes through `normalizeProse` too**, not only the message. A declaration head
+  legitimately spans lines — an ungrouped var's signature is the whole declaration text, and a
+  multi-line parameter list is part of a function's signature by `SignatureCut`'s own verbatim
+  rule — so echoing it raw would break the one-record-per-line invariant the whole text format
+  rests on. This is not a new rule: `normalizeProse`'s own doc comment states it is already applied
+  to every `Signature` before printing, and the echoed target *is* a signature. Collapsing runs of
+  whitespace to single spaces drops nothing: "prose intact" means nothing is truncated, not that
+  source line breaks survive.
+- The JSON view is unaffected — `target` there is the byte-verbatim echo, newlines included, since
+  a JSON string has no line invariant to protect. A test asserts the two views differ in exactly
+  this way for a multi-line head, so the divergence is deliberate and pinned rather than a
+  discrepancy someone later "fixes".
+- Rationale: the failure line is `RenderResolveText`'s own empty-status branch, extended by the one
+  `normalizeProse` call its `Target` echo does not currently need (a resolve target is a glyph,
+  which cannot contain whitespace; a declaration head can). The success line drops the target
+  because `RenderResolveText`'s success branches already drop it in favour of the id — for a
+  one-per-call CLI the input is on the command line beside the output.
 - The text view is a CLI view of one result. There is no text rendering of a whole batch; the
   facade's consumer reads the struct.
 
@@ -420,13 +448,21 @@ registered Go strategy's `Symbols("u/v", root, src)` — the exact shape the mak
 | `func F() error` (bodyless) | false | 1 | `u/v#F` function |
 | `func (f *Focus) Reset() error` | false | 1 | `u/v#Focus.Reset` method |
 | `const X, Y = 1, 2` | false | 2 | `u/v#X`, `u/v#Y` const |
+| `var A, B = 1, 2` | false | 2 | `u/v#A`, `u/v#B` var |
+| `type R interface { Read() error }` | false | **2** | `u/v#R` type, `u/v#R.Read` method |
+| `type R interface` | **true** | 0 | — |
+| `type R interface {}` | false | 1 | `u/v#R` type |
+| `var Long = map[string]int{\n\t"a": 1,\n}` | false | 1 | `u/v#Long` var, multi-line signature |
 
-Three things this pins down for the plan. First, the completion retry's trigger is real:
+Five things this pins down for the plan. First, the completion retry's trigger is real:
 `type T struct` reports a partial parse *and* yields zero symbols, and appending `" {}"` produces
 exactly the id the complete form does. Second, a bodyless func and a bodyless method both parse
 clean, so the retry never fires for them. Third, the unit in every id above is the parameter
 `u/v`, never the synthetic clause `q` — the unit-independence property, observed rather than
-argued.
+argued. Fourth, a *populated* interface yields two symbols, which is why the accepted-forms
+decision carves it out; a populated struct does not, because struct fields are not listable
+declarations. Fifth, an ungrouped var's signature is the whole declaration text and can span
+lines, which is what the text view's target echo has to survive.
 
 ## Constraints
 
@@ -472,7 +508,17 @@ Table tests over the maker function directly, no fixtures on disk, no repository
 - **Nonexistent receiver type:** a method on a type declared nowhere answers normally. Explicitly
   named as the "tree-sitter does not type-check" case.
 - **Completion retry:** `type T struct` and `type T interface` both answer, with the same id their
-  complete forms produce. Assert the complete form and the head-only form agree.
+  `{}`-bodied forms produce. Assert the head-only form and the *empty-bodied* form agree. The
+  agreement assertion is against `type T struct {}` / `type T interface {}`, never against a
+  populated interface: `type R interface { Read() error }` yields two symbols and is a
+  `several_declarations` rejection, which gets its own case below rather than being folded in
+  here. A *populated struct* (`type S struct { F int }`) does agree with its head, since struct
+  fields are not listable declarations, and is asserted as its own row so the asymmetry is pinned
+  rather than assumed.
+- **Populated interface rejected:** `type R interface { Read() error }` gives
+  `several_declarations` — the one place an otherwise-complete, perfectly valid Go declaration is
+  refused. Its own named case, because a plan writer reading only the accepted-forms list would
+  expect it to work.
 - **Malformed:** a fragment that still fails after the retry gives reason `parse`.
 - **Zero symbols:** `func _()`, and a fragment that is a comment only, give `no_declaration`.
 - **Several symbols:** `const X, Y = 1, 2`, and two declarations in one fragment, give
@@ -492,18 +538,45 @@ Table tests over the maker function directly, no fixtures on disk, no repository
 `-short`:
 
 1. Walk the whole pinned checkout and collect every symbol with its unit, `Signature`, `ID` and
-   `Kind` — the same harvest `assertSymbolRoundTrip` already performs.
-2. Partition the harvest into *in-contract* and *excluded*, by the two declared non-goals:
-   interface methods (a `KindMethod` symbol whose owner names an interface — detectable because
-   its signature is not a `func` declaration), and symbols sharing a signature with another symbol
-   in the same unit and span (multi-name specs).
+   `Kind`. **The existing collector does not carry the data this needs:** `roundTripSymbol`
+   (`internal/engine/roundtrip_test.go:33-37`) holds only `id`, `unit` and a `spanTuple` of
+   `File`/`Start`/`SigEnd`/`End` — no `Signature`, no `Kind`. Disposition: **extend
+   `roundTripSymbol` with `signature` and `kind` fields and fill them in `collectWalkSymbols`**,
+   rather than writing a second walk collector. `TestRoundTrip_QuarryItself` and
+   `TestRoundTrip_Loomyard` also consume that struct and simply ignore the two new fields; one
+   collector keeps the two round trips reading the same harvest, which is the property that makes
+   "prediction ≡ extraction" checkable at all. A parallel collector would be a second harvest that
+   can drift from the first — the same argument the maker itself rests on.
+2. Partition the harvest into *in-contract* and *excluded*, by the declared non-goals. The
+   partition key for the multi-name-spec exclusion is the 5-tuple **(unit, File, Start, End,
+   Signature)**: a spec's several names produce symbols agreeing on all five, so "two or more
+   harvested symbols share this tuple" is exactly "these came from one spec". `File` is in the key
+   deliberately — build-tag twins in one unit can share a signature *and* a line span across two
+   different files, and excluding those would then assert (step 4) an error the maker will never
+   produce, since each twin's fragment names exactly one symbol and answers normally.
+   Interface methods are excluded by a separate rule: a `KindMethod` symbol whose `Signature` does
+   not begin with the `func` keyword is an interface method element rather than a method
+   declaration. Populated interface *types* are not excluded here — a harvested interface type's
+   signature is head-only (`type R interface`, cut at the body), so it goes through the completion
+   retry and answers in-contract.
 3. For every in-contract symbol, call the maker with `(unit, signature)` and assert the returned
    `id` equals the symbol's real id and the returned `kind` equals its real kind. **Zero misses,
    zero extras.**
 4. For every excluded symbol, assert the maker returns a per-entry *error* — never a wrong id.
    This is what keeps the exclusions honest rather than a silent skip.
-5. Report both counts in the failure message, and fail if the in-contract count is implausibly
-   small (a partition bug that excludes everything would otherwise pass vacuously).
+5. Guard against a vacuous pass with **three pinned counts, not a fuzzy threshold**: the harvest
+   total, the in-contract count, and the excluded count are constants in the test, produced by the
+   first run against `72c23d9` and regenerated only under the existing `-update` flag, exactly as
+   this package's other Loomyard goldens are. The checkout is pinned, so these numbers are stable,
+   and any drift — an extractor change, a partition bug — fails loudly and attributably instead of
+   passing under a threshold wide enough to hide it. A ratio or an "implausibly small" judgement
+   would have to be chosen without knowing the repository, and two plan writers would choose two
+   different gates.
+   Alongside the constants, one cheap structural floor that holds before they are filled in on the
+   first run: **the in-contract count must be greater than zero and the excluded count must be
+   strictly less than the harvest total** — a partition bug that sweeps everything into one side
+   fails immediately, without waiting for a number nobody can know yet.
+   Report all three counts in every failure message.
 
 **`internal/cli` — verb wiring.**
 
@@ -516,6 +589,11 @@ Table tests over the maker function directly, no fixtures on disk, no repository
   helper for a directory outside any repository if one is reachable; otherwise assert the
   ordering structurally.
 - `usageText` assertions extended for the `name` rows.
+- **Multi-line head, both views:** a declaration head spanning lines (an ungrouped var with a
+  composite literal, or a function with a multi-line parameter list) rendered under `--text` has
+  exactly one `"\n"`, at the end; the same input rendered as JSON echoes `target` with its
+  newlines intact. One test, asserting both halves, so the deliberate divergence is pinned in one
+  place.
 
 **Goldens — `internal/cli/testdata/name/`, JSON and text for each of the six required cases:**
 method, free function, type, method on a receiver type that does not exist, malformed declaration
@@ -524,14 +602,54 @@ files. They are machine-independent — the maker reads no repository — so unl
 Loomyard goldens they run everywhere with no environment gate. `docs/research/output-formats/after/`
 is a frozen research record and must not be added to.
 
-**Docs.**
+**Docs and the verb-set inventory.**
 
-- `docs/rewrite-plan.md` §5: one paragraph for `name`, in the style of the `resolve` and `expand`
-  paragraphs — the contract, the batch-versus-CLI split, the same-extractor property, and the
-  two non-goals.
-- `internal/cli/usage.go`: the usage block gains a `name` line; the flags list gains `--unit` marked
-  `name` only; nothing else moves.
-- `README.md` line 4: the verb list becomes `toc`, `resolve`, `expand`, `name`.
+Adding a fourth verb makes every statement of "three verbs" or of the verb list stale. The
+inventory below was produced by *searching* for the verb set and the word "three" across the tree,
+not by naming the files that came to mind — a three-file list was the first draft's error. Every
+site found has a stated disposition; a plan writer should re-run the search rather than trust this
+list to still be exhaustive.
+
+Prose and contract:
+
+- `docs/rewrite-plan.md` §5 — **add** one paragraph for `name`, in the style of the `resolve` and
+  `expand` paragraphs: the contract, the batch-versus-CLI split, the same-extractor property, and
+  the non-goals.
+- `docs/rewrite-plan.md:12` — "three queries over one tree-sitter parse" → four. Note this sentence
+  is the plan's opening framing, so the edit is a phrasing decision, not a number swap: `name` is
+  a query over a *supplied fragment*, not over the tree. Recommended phrasing keeps "three queries
+  over one tree-sitter parse" and adds `name` as a fourth query over the same extractor, so the
+  original claim is not quietly falsified.
+- `README.md:3` — "three" and the verb list → four, `toc`, `resolve`, `expand`, `name`.
+- `internal/cli/doc.go:11,13` — "The command has three verbs" plus the per-verb sentences → add
+  `name`'s.
+
+Help text and messages:
+
+- `internal/cli/usage.go` — the usage block gains a `name` line; the flags list gains `--unit`
+  marked `name` only. Also **the file's own doc comment at lines 11-13**, which explains the
+  one-combined-flags-list layout in terms of "three per-verb sections" and "the three shared
+  flags" — both counts change, and `--root` is no longer shared by every verb. The exit-code-1
+  prose enumerating negative-answer causes gains the maker's own (a declaration that names no
+  single symbol).
+- `internal/cli/flags.go:61,66` — the two `"no verb given; expected: toc, resolve, or expand"`
+  messages, byte-identical, both → include `name`. `flags.go:68` — the verb gate's
+  `verb != "toc" && verb != "resolve" && verb != "expand"` chain. `flags.go:48` — the doc comment's
+  "--text and --root are valid for all three verbs", which becomes false in two ways at once.
+- `internal/cli/cli.go:180,302` — the two "unreachable for every word other than the three verbs"
+  comments on `Run`'s dispatch `default`. `cli.go`'s `Run` doc comment also states the shared
+  pipeline as "the four steps every verb shares", which the root-resolution decision above already
+  requires rewriting.
+
+Tests that pin the counts (they fail loudly, which is the point — none is a silent staleness):
+
+- `internal/cli/flags_test.go:156,158` — the two expected message strings.
+  `flags_test.go:218` — `TestParseArgs_ThreeVerbGate`, whose name and table both encode three.
+- `internal/cli/after_test.go:4` — "The table spans three verbs".
+
+Not touched: `internal/cli/scratchtree_test.go:26,36` and `docs/rewrite-plan.md:147,172`, where
+"three" counts directory levels, validation layers and harness rules — unrelated to verbs.
+`docs/research/output-formats/after/` is a frozen record and is not updated.
 
 ## Q&A log
 
@@ -554,4 +672,9 @@ is a frozen research record and must not be added to.
 - **Q:** Empty batch? **A:** [auto-pick] empty, non-nil slice. **Why:** matches `symbolsOfUnit`'s and `SpansOf`'s existing rule.
 - **Q:** Round-trip harvest scope over the pinned checkout? **A:** [auto-pick] every symbol except the two declared non-goals, with the exclusions counted and each asserted to produce a per-entry error. **Why:** a silent skip would let the 100 % criterion pass vacuously; asserting the error keeps the exclusions honest.
 - **Q:** Goldens location? **A:** [auto-pick] `internal/cli/testdata/name/`. **Why:** `docs/research/output-formats/after/` is a frozen research record, and the roadmap already carries moving those out as a separate task.
-- **Q:** Which docs change? **A:** [auto-pick] `docs/rewrite-plan.md` §5, `internal/cli/usage.go`, and `README.md`'s verb list. **Why:** the README names the query set in its opening paragraph, so leaving it at three verbs would go stale immediately.
+- **Q:** Which docs change? **A:** [auto-pick, revised r2] every in-tree statement of the verb set or its count, enumerated by search — see the "Verb-set statements" inventory under Testing. **Why:** the first answer named three files from memory and missed nine sites, including two byte-identical usage messages, `usage.go`'s own layout doc comment, and a test whose *name* encodes the count.
+- **Q:** How does the round trip harvest `Signature` and `Kind`? **A:** [r2] extend `roundTripSymbol` and `collectWalkSymbols`; do not write a second collector. **Why:** the existing struct carries neither field, and a parallel harvest could drift from the one the round trip is comparing against.
+- **Q:** Is a complete interface declaration accepted? **A:** [r2] no — head-only or empty-bodied. **Why:** measured: `goTypeSymbols` appends the interface's method symbols, so a populated interface yields 1+N symbols and hits the exactly-one rule. A populated struct does agree with its head, because struct fields are not listable declarations.
+- **Q:** What is the multi-name-spec partition key? **A:** [r2] the 5-tuple (unit, File, Start, End, Signature). **Why:** without `File`, build-tag twins sharing a signature and span across two files would be excluded and then asserted to fail, which they will not.
+- **Q:** How is the vacuous-pass guard quantified? **A:** [r2] three counts pinned as constants against `72c23d9`, regenerated under `-update`, plus a structural floor that holds before they are known. **Why:** the checkout is pinned, so exact counts are stable and drift is loud; a ratio would have to be guessed without knowing the repository.
+- **Q:** How does the text view survive a multi-line declaration head? **A:** [r2] `normalizeProse` the echoed target, as every `Signature` already is; JSON keeps the byte-verbatim echo. **Why:** an ungrouped var's signature is the whole declaration text and can span lines, which would break the one-record-per-line invariant.
