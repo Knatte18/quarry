@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -27,4 +27,25 @@ plan-fix-r2  '2026-09-05T11:59:38Z'
 plan-review-r3  '2026-09-05T12:05:07Z'
 plan-fix-r3  '2026-09-05T12:06:15Z'
 planned  '2026-09-05T12:06:32Z'
+implementing  '2026-09-05T12:07:02Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: config-surface
+    state: pending
+  - name: provenance
+    state: pending
+  - name: control-sweep-and-card
+    state: pending
+  - name: pack-generation
+    state: pending
+  - name: run-gate-and-subcommand
+    state: pending
+  - name: benchmark-content
+    state: pending
+  - name: matrix-and-writeup
+    state: pending
 ```
