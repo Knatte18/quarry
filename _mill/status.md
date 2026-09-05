@@ -71,7 +71,9 @@ batches:
     commit_sha: 4bf27782d12364036974f9aab73f7c1070844650
     verify_baseline_failures: []
   - name: benchmark-content
-    state: pending
+    state: running
+    implementer_session: 16080d50-a0b5-48ba-b338-c21bc4fc2515
+    start_sha: 33657e53d0cbe6067fcba792d9c75994e54db774
     verify_baseline_failures: []
   - name: matrix-and-writeup
     state: pending
