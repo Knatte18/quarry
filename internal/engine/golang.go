@@ -312,6 +312,7 @@ func goUngroupedTypeSymbol(unit string, decl, spec *ts.Node, src []byte) (sym Sy
 		start, _ = Line(docComment)
 	}
 	_, end := Line(decl)
+	declStart, bodyStart, declEnd := goDeclOffsets(decl, body)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
 	return Symbol{
 		Glyph:     g,
@@ -324,6 +325,9 @@ func goUngroupedTypeSymbol(unit string, decl, spec *ts.Node, src []byte) (sym Sy
 		End:       end,
 		HeadStart: start,
 		HeadEnd:   end,
+		DeclStart: declStart,
+		BodyStart: bodyStart,
+		DeclEnd:   declEnd,
 	}, true
 }
 
@@ -350,6 +354,7 @@ func goGroupedTypeSymbol(unit string, spec *ts.Node, src []byte) (sym Symbol, ok
 		start, _ = Line(docComment)
 	}
 	_, end := Line(spec)
+	declStart, bodyStart, declEnd := goDeclOffsets(spec, body)
 	g := glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}
 	return Symbol{
 		Glyph:     g,
@@ -362,6 +367,9 @@ func goGroupedTypeSymbol(unit string, spec *ts.Node, src []byte) (sym Symbol, ok
 		End:       end,
 		HeadStart: start,
 		HeadEnd:   end,
+		DeclStart: declStart,
+		BodyStart: bodyStart,
+		DeclEnd:   declEnd,
 	}, true
 }
 
