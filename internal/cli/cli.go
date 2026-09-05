@@ -25,8 +25,9 @@ const (
 	// names a path outside the repository. This is not a usage error — the invocation was well
 	// formed and the CLI ran it to a definite, negative conclusion.
 	exitNegative = 1
-	// exitUsage means the caller asked wrong: an unparseable flag, a missing or extra target, or a
-	// --root that does not resolve to a directory. TOC is never called on this path.
+	// exitUsage means the caller asked wrong: an unparseable flag, a missing or extra target, a
+	// --root that does not resolve to a directory, or a toc target carrying the glyph grammar's
+	// "#" separator in some path segment. TOC is never called on this path.
 	exitUsage = 2
 	// exitInternal means an I/O or render failure that has nothing to do with the query's answer:
 	// an unexpected stat error, a working-directory read failure, or a write to stdout that itself
@@ -183,7 +184,10 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //
 //  1. Convert the target to a clean, repository-relative path with internal/repopath.RepoRelTarget.
 //     Escaping the root is exit 1, named with the target exactly as given, since a target that
-//     escaped the root has no meaningful repository-relative form.
+//     escaped the root has no meaningful repository-relative form. A target carrying the glyph
+//     grammar's "#" separator in some path segment is exit 2, named "target contains the glyph
+//     separator" followed by the target as given, with usageText following on stderr: that target
+//     is malformed, not missing or out of scope.
 //  2. Lstat the resolved target: not found is exit 1, named with the repository-relative path; any
 //     other stat error is exit 3. Lstat, never Stat, so a symlink named as the target is treated as
 //     a file and not followed, the same rule engine.resolveTarget already follows.
@@ -200,16 +204,13 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 // existing is the engine's own answer with a payload, and pre-empting it with the failure path
 // would destroy exactly that answer.
 //
-//  1. Classify the target with strings.Contains(req.target, "#"). A glyph target is passed to the
-//     facade verbatim — no path conversion, no rebasing, no stat — because a glyph's unit is
-//     repository-relative by the grammar's own definition. A path target is converted with
-//     internal/repopath.RepoRelPath, the arithmetic-only helper, and the converted form is passed
-//     through unconditionally, including one that begins with "..". Only RepoRelPath erroring is a
-//     failure here, and it is exit 1, named "target outside repository: " followed by the target as
-//     given — the same message and code runTOC already emits for the same condition.
+//  1. Pass req.target to the facade verbatim: no classification, no path conversion, no rebasing,
+//     no stat. The grammar is the only classifier, so a bare path with no "#" reaches
+//     repo.Resolve exactly as any other malformed input does, and is answered by
+//     resolveGlyphTarget's own pre-resolution rejection rather than by anything in this pipeline.
 //  2. Open the repository. A failure is exit 3.
-//  3. Call the facade's Resolve method with a one-element slice holding the target from step 1. A
-//     non-nil error is exit 3: an engine read failure is not an answer about a glyph.
+//  3. Call the facade's Resolve method with a one-element slice holding req.target. A non-nil
+//     error is exit 3: an engine read failure is not an answer about a glyph.
 //  4. A returned slice whose length is not exactly one is exit 3, named with the count — the facade
 //     contracts a positional one-to-one mapping, so this is unreachable and is stated so a contract
 //     change cannot silently produce a zero exit code.
@@ -220,8 +221,8 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //  6. Return codeForResolveResult of that result.
 //
 // runExpand's own pipeline, continuing from step 4 above, takes no base directory and performs
-// neither path conversion nor a stat: this verb accepts a glyph only, and the parser has already
-// guaranteed the target contains a "#".
+// neither path conversion nor a stat: this verb accepts a glyph only, and the grammar itself,
+// through glyph.Parse inside the facade, is what rejects a target that is not one.
 //
 //  1. Open the repository. A failure is exit 3.
 //  2. Call the facade's Expand method with the target verbatim.
@@ -230,11 +231,13 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     value's identifier field, ": not a type, kind " and the value's kind field — quarry's own
 //     sentence, spelled from the value's fields rather than the error's own text, so the engine's
 //     package-name prefix never leaks through; a *glyph.ParseError is exit 1 with usage suppressed,
-//     named "expand " followed by the target as given, ": " and the value's reason word — the same
-//     word the resolve verb puts in its payload's reason key; anything else is exit 3 with the
-//     internal-error prefix, which is where the missing-head-span invariant failure lands. All
-//     three route through codeForExpandError for the code, so the mapping stays the single
-//     table-tested source.
+//     named "expand: " followed by the error's own Error() text, which already quotes the target
+//     and names its rejection reason in full, rather than the reason word alone; a
+//     *quarry.SelfGlyphError is exit 1 with usage suppressed, named "expand " followed by the
+//     value's ID field and ": not a type, self" — spelled from the value's own field for the same
+//     reason the NotATypeError branch is; anything else is exit 3 with the internal-error prefix,
+//     which is where the missing-head-span invariant failure lands. All four route through
+//     codeForExpandError for the code, so the mapping stays the single table-tested source.
 //  4. On a nil error, render the answer: quarry.RenderExpandText under --text,
 //     quarry.RenderExpandJSON otherwise. A render error, or a failed write of its bytes to stdout,
 //     is exit 3.
@@ -245,7 +248,11 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 // something like `engine: resolve target "x": engine: target not found` through would leak an
 // internal package name into a public contract. Exit 3 is the opposite case and carries
 // err.Error() whole, behind the one "internal error: " prefix. Every message fail is called with
-// is single-line; none embeds a newline.
+// is single-line; none embeds a newline. runExpand's *glyph.ParseError branch, above, is not a
+// violation of this rule despite carrying the error's own Error() text whole: that text is
+// composed by github.com/Knatte18/quarry/glyph, a public package the contract already names, not
+// by internal/engine or another internal package, so quarry is still spelling the condition
+// itself rather than leaking one of the internal names this rule guards against.
 func Run(args []string, stdout, stderr io.Writer) int {
 	req, err := parseArgs(args)
 	if err != nil {

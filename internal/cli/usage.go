@@ -18,7 +18,7 @@ const usageText = `quarry - a table of contents for a source repository
 
 usage:
   quarry toc <target> [--depth N|all] [--symbols|--no-symbols] [--text] [--root <path>]
-  quarry resolve <glyph|path> [--text] [--root <path>]
+  quarry resolve <glyph> [--text] [--root <path>]
   quarry expand <glyph> [--text] [--root <path>]
 
 flags:
