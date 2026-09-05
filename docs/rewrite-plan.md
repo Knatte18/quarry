@@ -12,8 +12,9 @@ this file's git history.
 
 One identifier — the glyph, `unit#member` — and three queries over one tree-sitter parse:
 `toc` (what is here), `resolve` (where is this, right now), `expand` (what does this type
-consist of). Go only. No daemon, no index, no cache: every answer reads the source as it is at
-that moment. Quarry reads; it never edits.
+consist of) — plus a fourth query over that same extractor, `name` (what will this declaration
+become). Go only. No daemon, no index, no cache: every answer reads the source as it is at that
+moment. Quarry reads; it never edits.
 
 Surfaces, in order of importance: the `glyph` package (importable without the engine, Loomyard's
 plan parser first); the `quarry/` Go facade (the primary consumer is Go code, never the LLM);
@@ -112,6 +113,18 @@ toc.
 **`toc <dir|file> [--depth N|all] [--symbols]`** — a table of contents over the recursive
 answer of §4. One target per call. A `#` in any path segment is rejected as an explicit error,
 never reclassified as a glyph.
+
+**`name <unit> <declaration>`** — predicts the id and kind a declaration head will get once it
+is actually written, by parsing it through the same extractor `toc`, `resolve` and `expand`
+already share: a unit and a declaration head in, a glyph id and a kind out. The facade keeps the
+engine's multi-target batch entry point so a validator predicting a whole plan's Create cards
+parses each unit once; the CLI answers one declaration per call, matching the other three verbs'
+one-invocation-one-answer shape. Prediction and eventual extraction are one function by
+construction — the maker calls the same Go `Strategy`'s `Symbols` method the walk itself calls,
+so a naming decision cannot drift between predicting an id and later extracting it. Two shapes
+are out of scope: an interface method, which cannot be declared as a standalone fragment outside
+its interface body, and a multi-name const or var spec — `const a, b = 1, 2` — which the maker
+cannot resolve to the one name a Create card asks about.
 
 **No reference query in phase 1.** A textual search on a shared name never returns zero and
 its hits mean nothing; on a unique name grep is as good. Anything about callers waits for the

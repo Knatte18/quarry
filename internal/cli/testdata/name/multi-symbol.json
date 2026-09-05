@@ -1,0 +1,6 @@
+{
+  "unit": "pkg",
+  "target": "func A() {}\nfunc B() {}",
+  "error": "declaration declares 2 symbols; exactly one is required",
+  "reason": "several_declarations"
+}

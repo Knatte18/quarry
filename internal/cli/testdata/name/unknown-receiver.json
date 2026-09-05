@@ -1,0 +1,6 @@
+{
+  "unit": "pkg",
+  "target": "func (g Ghost) Boo() {}",
+  "id": "pkg#Ghost.Boo",
+  "kind": "method"
+}

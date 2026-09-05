@@ -1,0 +1,6 @@
+{
+  "unit": "pkg",
+  "target": "func (w Widget) Value() int { return 42 }",
+  "id": "pkg#Widget.Value",
+  "kind": "method"
+}
