@@ -62,9 +62,9 @@ func parseGo(input, unit, member string) (Glyph, error) {
 }
 
 // checkGoUnit validates unit against the Go alphabet's unit rules, returning a *ParseError with
-// Lang: Go and Input: input on the first rule unit fails. There is no "#" check here, because the
-// split that produced unit already consumed the first "#", and no "/" check inside a segment,
-// because "/" is the segment separator itself.
+// Lang: Go and Input: input on the first rule unit fails. There is no "#" check here, because
+// Parse's own count rule has already rejected any input carrying more than one "#" before unit was
+// split out, and no "/" check inside a segment, because "/" is the segment separator itself.
 func checkGoUnit(input, unit string) error {
 	if unit == "" {
 		return &ParseError{Lang: Go, Input: input, Reason: ReasonUnitEmpty}
