@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-gitsrc
+phase: approved-delta-types-and-tokens
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -40,6 +40,7 @@ implementing  '2026-09-05T16:42:49Z'
 approved-engine-symbol-seam  '2026-09-05T16:48:55Z'
 approved-engine-unit-exports  '2026-09-05T16:56:53Z'
 approved-gitsrc  '2026-09-05T17:10:21Z'
+approved-delta-types-and-tokens  '2026-09-05T17:17:52Z'
 ```
 
 ## Batches
@@ -65,9 +66,10 @@ batches:
     commit_sha: 2fc79dc80c2575229547d6de36ff0948c2ae9cd9
     verify_baseline_failures: ["FAIL\t./internal/gitsrc [setup failed]"]
   - name: delta-types-and-tokens
-    state: running
+    state: approved
     implementer_session: 1e753e00-e33d-4bdb-835e-3c39d67f5f90
     start_sha: c6e473aa6c59929058d12dd88eca953839572c65
+    commit_sha: 7169f366ca4e75c6d9a6cd98e8e3bad7f3f186f8
     verify_baseline_failures: []
   - name: delta-core
     state: pending
