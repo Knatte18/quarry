@@ -44,9 +44,10 @@ batches:
     verify_baseline_failures: []
   - name: cli-view-flag-and-glyphs-verb
     state: running
-    implementer_session: 5a16a6c5-a2f7-4ac1-a52b-0248d24bf500
-    start_sha: b55171febb503020fba36a0a8c0bbef5b4c6223d
+    implementer_session: 66e19db3-4947-420a-ab61-b3ee971485e1
+    start_sha: 123899b190215567fb46a8e9f14b10c5a1a25500
     verify_baseline_failures: []
+    self_resolve_remint_at: '2026-09-05T17:47:42Z'
   - name: goldens-and-docs
     state: pending
     verify_baseline_failures: []
