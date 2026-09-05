@@ -79,7 +79,7 @@ batches:
   all three controls: `validate` would reject the file and `summarize` would find no rung to pair.
   Blinding must still cover all three, and the server must be built for none. The two meanings have
   coincided only by accident in `ladder-toc.yaml`.
-- **Applies to:** control-sweep-and-card
+- **Applies to:** config-surface, control-sweep-and-card, benchmark-content
 
 ### Decision: backwards-compatibility-is-a-tested-property
 

@@ -86,6 +86,15 @@ carries a test that checks it mechanically as well, so the eye check has a backs
   the worktree path from the task key and the rendered prompt names that path, so three task entries
   would make the arms differ by an unintended string — which is the confound the card mechanism
   exists to remove.
+  This header is also where every note about the design lives, because a card file cannot hold one:
+  the card loader reads a card whole and a markdown comment survives into the prompt as literal text,
+  so a note written into a card would become an arm-only block of prompt text. Two notes in
+  particular belong here. First, that the treatment minus the descriptive arm is not a clean spans
+  contrast, since the treatment also carries the signature and the parallel-read instruction — which
+  is exactly why the descriptive arm is declared descriptive and no test is run on it. Second, that
+  the correctness gate is the summary-match flag alone, and that recall and precision are recorded
+  but never compared across arms, because the treatment's card names the seven files verbatim and its
+  file recall is inflated by construction.
 - **Commit:** `feat(bench): add the kick-start ladder file`
 
 ### Card 25: Author the task file
@@ -206,10 +215,13 @@ carries a test that checks it mechanically as well, so the eye check has a backs
   No card may contain the word this matrix blinds against, nor the server name, both of which are the
   same token here. All three cards are rendered into prompts that the pre-dispatch blinding check
   now covers, and a finding there voids the repetition before any call is spent.
-  State openly at the top of the descriptive card, as a comment for a human reader rather than as
-  prompt text, that the treatment minus this arm is not a clean spans contrast: the treatment also
-  adds the signature and the parallel-read instruction. That is exactly why this arm is declared
-  descriptive and no test is run on it.
+  A card file has no comment mechanism: the card loader reads the file whole with no extraction, and a
+  markdown comment line survives into the prompt as literal text. So a card contains prompt text and
+  nothing else — no note to a human reader, no explanation of the experiment, no marker of which arm
+  it is. A block of that kind in one card only would be an arm-only difference describing the
+  measurement inside the measurement, which is the exact class of confound the one-task-one-prompt
+  design exists to remove. Every such note belongs in the ladder file's header comment, which card 24
+  writes and which no prompt ever reads.
 - **Commit:** `feat(bench): add the three kick-start cell cards`
 
 ### Card 28: Extend the pre-matrix gate to the new file
