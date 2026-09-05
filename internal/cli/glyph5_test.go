@@ -1,7 +1,7 @@
 // glyph5_test.go is the machine-independent proof that all four resolution statuses — found,
 // not_found, ambiguous, and multipart — answer correctly through the command line, on a fixture
 // tree this file builds itself rather than a pinned external checkout. It exists because the
-// evidence goldens in docs/research/output-formats/after/ cannot carry two of those cases: the
+// evidence goldens in internal/cli/testdata/ cannot carry two of those cases: the
 // golden test skips wherever LADDER_LOOMYARD_REPO is unset, and the pinned Loomyard checkout is
 // not known to contain either a build-tag-duplicated declaration or a several-declaration
 // initialiser, so this file is what runs everywhere, including on a build machine with no
