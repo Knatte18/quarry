@@ -326,33 +326,6 @@ func TestStatusForMatches(t *testing.T) {
 	}
 }
 
-// TestIsGlyphTarget tables isGlyphTarget over every target containing "#" and every target that
-// does not. "#x" is a glyph target the grammar then rejects (an empty unit), not a path — the
-// split does not pre-empt the alphabet's own rules, and this test asserts only the split itself.
-func TestIsGlyphTarget(t *testing.T) {
-	tests := []struct {
-		target string
-		want   bool
-	}{
-		{"a/b#C", true},
-		{"a/b", false},
-		{"#x", true},
-		{"a#b#c", true},
-		{"Makefile", false},
-		{"notes.rst", false},
-		{"", false},
-		{".", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.target, func(t *testing.T) {
-			got := isGlyphTarget(tt.target)
-			if got != tt.want {
-				t.Errorf("isGlyphTarget(%q) = %v; want %v", tt.target, got, tt.want)
-			}
-		})
-	}
-}
-
 // symbolFromTOC returns the symbol named id from fileRel's own TOC file-target answer — the walk's
 // independent computation of a symbol's fields, read through a different code path than Resolve's
 // own, so a test comparing the two is a genuine parity check rather than a tautology.
@@ -787,17 +760,21 @@ func TestResolve_ArgumentOrderAndArity(t *testing.T) {
 	}
 }
 
-// TestResolve_PathTargets asserts every disposition a path target can take: an existing file
-// answers found with Dir carrying the enclosing directory's own facts and exactly one Files entry
-// with Symbols nil; an existing directory answers found with its own Files populated and every
-// entry's Symbols nil; a missing path answers not_found with Dir absent and Unit empty, since a
-// path belongs to no unit; an absolute path and a ".."-escaping path each answer with Status empty,
-// Error non-empty and Reason empty; and an explicitly named gitignored file is still answered,
-// because the ignore filter exists so a listing is not noise, not to make a file unaddressable.
-func TestResolve_PathTargets(t *testing.T) {
+// TestResolve_SelfForm asserts every disposition a self glyph can take: a self glyph naming a file
+// answers found with Listing carrying the enclosing directory's own facts and exactly one Files
+// entry with Symbols nil; a self glyph naming a directory answers found with its own Files
+// populated and every entry's Symbols nil; a self glyph naming neither answers not_found with
+// Listing absent and Unit not_found; and the external test unit's self glyph is not_found with
+// Listing absent and Unit found, because unitDirs strips the "_test" suffix and finds a real
+// directory even though no "_test"-suffixed directory exists on disk — the same asymmetry a member
+// glyph resolving beside it, in the same call, is asserted to still resolve. It also asserts the two
+// rejections the closed grammar produces where a bare path or a doubled separator was given, and a
+// mixed call whose targets are a member glyph, a self glyph and a bare path, to show the rejection
+// taints only itself.
+func TestResolve_SelfForm(t *testing.T) {
 	r := openModuleRepo(t)
 
-	fileTarget := "internal/engine/testdata/tree/pkg/alpha.go"
+	fileTarget := "internal/engine/testdata/tree/pkg/doc.go#"
 	fileResults, err := r.Resolve([]string{fileTarget})
 	if err != nil {
 		t.Fatalf("Resolve(%q) returned error: %v", fileTarget, err)
@@ -806,23 +783,26 @@ func TestResolve_PathTargets(t *testing.T) {
 	if fileRes.Status != StatusFound {
 		t.Fatalf("Status = %q; want %q", fileRes.Status, StatusFound)
 	}
-	if fileRes.Dir == nil {
-		t.Fatalf("Dir is nil; want the enclosing directory's answer")
+	if fileRes.Target != fileTarget {
+		t.Errorf("Target = %q; want %q", fileRes.Target, fileTarget)
 	}
-	if fileRes.Dir.Dir != "internal/engine/testdata/tree/pkg" {
-		t.Errorf("Dir.Dir = %q; want %q", fileRes.Dir.Dir, "internal/engine/testdata/tree/pkg")
+	if fileRes.ID != fileTarget {
+		t.Errorf("ID = %q; want %q — the trailing \"#\" stays intact", fileRes.ID, fileTarget)
 	}
-	if fileRes.Dir.Package == "" || fileRes.Dir.Language == "" {
-		t.Errorf("Dir.Package/Language = %q/%q; want both non-empty", fileRes.Dir.Package, fileRes.Dir.Language)
+	if fileRes.Listing == nil {
+		t.Fatalf("Listing is nil; want the enclosing directory's answer")
 	}
-	if len(fileRes.Dir.Files) != 1 {
-		t.Fatalf("Dir.Files = %d entries; want 1", len(fileRes.Dir.Files))
+	if fileRes.Listing.Dir != "internal/engine/testdata/tree/pkg" {
+		t.Errorf("Listing.Dir = %q; want %q", fileRes.Listing.Dir, "internal/engine/testdata/tree/pkg")
 	}
-	if fileRes.Dir.Files[0].Symbols != nil {
-		t.Errorf("Dir.Files[0].Symbols = %v; want nil — symbols are switched off", fileRes.Dir.Files[0].Symbols)
+	if len(fileRes.Listing.Files) != 1 {
+		t.Fatalf("Listing.Files = %d entries; want 1", len(fileRes.Listing.Files))
+	}
+	if fileRes.Listing.Files[0].Symbols != nil {
+		t.Errorf("Listing.Files[0].Symbols = %v; want nil — symbols are switched off", fileRes.Listing.Files[0].Symbols)
 	}
 
-	dirTarget := "internal/engine/testdata/tree/pkg"
+	dirTarget := "internal/engine/testdata/tree/pkg#"
 	dirResults, err := r.Resolve([]string{dirTarget})
 	if err != nil {
 		t.Fatalf("Resolve(%q) returned error: %v", dirTarget, err)
@@ -831,16 +811,19 @@ func TestResolve_PathTargets(t *testing.T) {
 	if dirRes.Status != StatusFound {
 		t.Fatalf("Status = %q; want %q", dirRes.Status, StatusFound)
 	}
-	if dirRes.Dir == nil || len(dirRes.Dir.Files) == 0 {
-		t.Fatalf("Dir = %+v; want a populated Files list", dirRes.Dir)
+	if dirRes.Target != dirTarget || dirRes.ID != dirTarget {
+		t.Errorf("Target/ID = %q/%q; want both %q", dirRes.Target, dirRes.ID, dirTarget)
 	}
-	for _, fe := range dirRes.Dir.Files {
+	if dirRes.Listing == nil || len(dirRes.Listing.Files) == 0 {
+		t.Fatalf("Listing = %+v; want a populated Files list", dirRes.Listing)
+	}
+	for _, fe := range dirRes.Listing.Files {
 		if fe.Symbols != nil {
 			t.Errorf("Files[%q].Symbols = %v; want nil", fe.Name, fe.Symbols)
 		}
 	}
 
-	missingTarget := "internal/engine/testdata/does-not-exist-path"
+	missingTarget := "internal/engine/testdata/does-not-exist-path#"
 	missingResults, err := r.Resolve([]string{missingTarget})
 	if err != nil {
 		t.Fatalf("Resolve(%q) returned error: %v", missingTarget, err)
@@ -849,35 +832,61 @@ func TestResolve_PathTargets(t *testing.T) {
 	if missingRes.Status != StatusNotFound {
 		t.Errorf("Status = %q; want %q", missingRes.Status, StatusNotFound)
 	}
-	if missingRes.Dir != nil {
-		t.Errorf("Dir = %+v; want absent", missingRes.Dir)
+	if missingRes.Listing != nil {
+		t.Errorf("Listing = %+v; want absent", missingRes.Listing)
 	}
-	if missingRes.Unit != "" {
-		t.Errorf("Unit = %q; want empty — a path belongs to no unit", missingRes.Unit)
+	if missingRes.Unit != StatusNotFound {
+		t.Errorf("Unit = %q; want %q", missingRes.Unit, StatusNotFound)
 	}
 
-	rejected := []string{"/etc/passwd", "../outside"}
-	rejectedResults, err := r.Resolve(rejected)
+	externalUnitSelf := "internal/engine/testdata/tree/pkg_test#"
+	externalUnitMember := "internal/engine/testdata/tree/pkg_test#TestExported"
+	mixedResults, err := r.Resolve([]string{externalUnitSelf, externalUnitMember})
 	if err != nil {
-		t.Fatalf("Resolve(%v) returned error: %v", rejected, err)
+		t.Fatalf("Resolve(%v) returned error: %v", []string{externalUnitSelf, externalUnitMember}, err)
 	}
-	for i, res := range rejectedResults {
-		if res.Status != "" {
-			t.Errorf("Resolve(%q) Status = %q; want empty", rejected[i], res.Status)
-		}
-		if res.Error == "" {
-			t.Errorf("Resolve(%q) Error is empty; want non-empty", rejected[i])
-		}
-		if res.Reason != "" {
-			t.Errorf("Resolve(%q) Reason = %q; want empty", rejected[i], res.Reason)
-		}
+	selfRes, memberRes := mixedResults[0], mixedResults[1]
+	if selfRes.Status != StatusNotFound || selfRes.Unit != StatusFound {
+		t.Errorf("Resolve(%q) = %+v; want not_found with unit: found — no %q directory exists on disk, but unitDirs strips \"_test\" and finds the real one", externalUnitSelf, selfRes, "pkg_test")
+	}
+	if selfRes.Listing != nil {
+		t.Errorf("Resolve(%q) Listing = %+v; want absent", externalUnitSelf, selfRes.Listing)
+	}
+	if memberRes.Status != StatusFound {
+		t.Errorf("Resolve(%q) Status = %q; want %q — the companion member glyph still resolves", externalUnitMember, memberRes.Status, StatusFound)
 	}
 
-	scratch := openScratchRepo(t, "resolve-path-ignore-filter", map[string]string{
+	bareTarget := "internal/engine/testdata/tree/pkg/alpha.go"
+	bareResults, err := r.Resolve([]string{bareTarget})
+	if err != nil {
+		t.Fatalf("Resolve(%q) returned error: %v", bareTarget, err)
+	}
+	bareRes := bareResults[0]
+	if bareRes.Status != "" {
+		t.Errorf("Resolve(%q) Status = %q; want empty", bareTarget, bareRes.Status)
+	}
+	if bareRes.Reason != string(glyph.ReasonNoSeparator) {
+		t.Errorf("Resolve(%q) Reason = %q; want %q", bareTarget, bareRes.Reason, glyph.ReasonNoSeparator)
+	}
+
+	doubledTarget := "a#b#c"
+	doubledResults, err := r.Resolve([]string{doubledTarget})
+	if err != nil {
+		t.Fatalf("Resolve(%q) returned error: %v", doubledTarget, err)
+	}
+	doubledRes := doubledResults[0]
+	if doubledRes.Status != "" {
+		t.Errorf("Resolve(%q) Status = %q; want empty", doubledTarget, doubledRes.Status)
+	}
+	if doubledRes.Reason != string(glyph.ReasonMultipleSeparators) {
+		t.Errorf("Resolve(%q) Reason = %q; want %q", doubledTarget, doubledRes.Reason, glyph.ReasonMultipleSeparators)
+	}
+
+	scratch := openScratchRepo(t, "resolve-self-ignore-filter", map[string]string{
 		".gitignore":   "excluded.txt\n",
 		"excluded.txt": "hidden\n",
 	})
-	excludedTarget := "excluded.txt"
+	excludedTarget := "excluded.txt#"
 	excludedResults, err := scratch.Resolve([]string{excludedTarget})
 	if err != nil {
 		t.Fatalf("Resolve(%q) returned error: %v", excludedTarget, err)
@@ -886,24 +895,41 @@ func TestResolve_PathTargets(t *testing.T) {
 		t.Errorf("Resolve(%q) Status = %q; want %q — an explicitly named gitignored file is still answered", excludedTarget, excludedResults[0].Status, StatusFound)
 	}
 
-	// Marshal the existing-file result: dir present under exactly that spelling, carrying the
-	// directory answer's own keys, with id and unit absent — the path branch is the reason both
-	// carry omitempty, and this is the only marshal that observes dir present.
+	mixed := []string{"internal/engine/testdata/tree/pkg#Alpha", dirTarget, bareTarget}
+	mixed3Results, err := r.Resolve(mixed)
+	if err != nil {
+		t.Fatalf("Resolve(%v) returned error: %v", mixed, err)
+	}
+	if len(mixed3Results) != 3 {
+		t.Fatalf("Resolve(%v) = %d results; want 3", mixed, len(mixed3Results))
+	}
+	if mixed3Results[0].Status != StatusFound {
+		t.Errorf("mixed[0] (member glyph) Status = %q; want %q", mixed3Results[0].Status, StatusFound)
+	}
+	if mixed3Results[1].Status != StatusFound || mixed3Results[1].Listing == nil {
+		t.Errorf("mixed[1] (self glyph) = %+v; want found with a listing", mixed3Results[1])
+	}
+	if mixed3Results[2].Status != "" || mixed3Results[2].Reason != string(glyph.ReasonNoSeparator) {
+		t.Errorf("mixed[2] (bare path) = %+v; want empty status with reason %q", mixed3Results[2], glyph.ReasonNoSeparator)
+	}
+
+	// Marshal the found file result: listing present under exactly that spelling, carrying the
+	// directory answer's own keys, id present, and unit absent — a found self glyph never sets Unit.
 	m := marshalToMap(t, fileRes)
-	dirVal, ok := m["dir"].(map[string]any)
+	listingVal, ok := m["listing"].(map[string]any)
 	if !ok {
-		t.Fatalf("marshalled path result: dir missing or wrong shape in %v", m)
+		t.Fatalf("marshalled self result: listing missing or wrong shape in %v", m)
 	}
 	for _, key := range []string{"dir", "package", "language", "files"} {
-		if _, ok := dirVal[key]; !ok {
-			t.Errorf("marshalled dir: missing key %q in %v", key, dirVal)
+		if _, ok := listingVal[key]; !ok {
+			t.Errorf("marshalled listing: missing key %q in %v", key, listingVal)
 		}
 	}
-	if _, ok := m["id"]; ok {
-		t.Errorf("marshalled path result: id present; want absent")
+	if _, ok := m["id"]; !ok {
+		t.Errorf("marshalled self result: id absent; want present")
 	}
 	if _, ok := m["unit"]; ok {
-		t.Errorf("marshalled path result: unit present; want absent")
+		t.Errorf("marshalled self result: unit present; want absent")
 	}
 }
 
