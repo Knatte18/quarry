@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-delta-types-and-tokens
+phase: approved-delta-core
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -41,6 +41,7 @@ approved-engine-symbol-seam  '2026-09-05T16:48:55Z'
 approved-engine-unit-exports  '2026-09-05T16:56:53Z'
 approved-gitsrc  '2026-09-05T17:10:21Z'
 approved-delta-types-and-tokens  '2026-09-05T17:17:52Z'
+approved-delta-core  '2026-09-05T17:37:41Z'
 ```
 
 ## Batches
@@ -72,9 +73,10 @@ batches:
     commit_sha: 7169f366ca4e75c6d9a6cd98e8e3bad7f3f186f8
     verify_baseline_failures: []
   - name: delta-core
-    state: running
+    state: approved
     implementer_session: db03f2b4-4b67-455e-99f4-1da460b8626a
     start_sha: 194ef843c23faae97bb2a19dbac084b8f81d63aa
+    commit_sha: 9f55892df063eb2baad13ddcf7413b7a65d6640d
     verify_baseline_failures: []
   - name: facade-delta
     state: pending
