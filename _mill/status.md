@@ -43,7 +43,9 @@ batches:
     commit_sha: 8e6e948216db9d9cd16ffaf5aa8b76a5a09322cb
     verify_baseline_failures: []
   - name: provenance
-    state: pending
+    state: running
+    implementer_session: 64c56c81-a564-46a5-8927-9d793199276d
+    start_sha: 7f637d238cb03cdee965aab432bbe5df226a9cdb
     verify_baseline_failures: []
   - name: control-sweep-and-card
     state: pending
