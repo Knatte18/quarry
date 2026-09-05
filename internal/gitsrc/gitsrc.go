@@ -110,6 +110,15 @@ type Change struct {
 // configuration and quotes any non-ASCII or control-character path while delimiting with newlines,
 // so such a path would be read at the wrong location -- silently, since a mangled path simply fails
 // to open -- and a newline inside a filename would split one path into two.
+//
+// On the working-tree-as-after-side form, a path mid-merge conflict is reported with the unmerged
+// status letter rather than whatever the plain content diff above would otherwise say. A conflicted
+// path carries multiple unresolved stages in the index rather than a single blob, and the diff
+// above compares before directly to the on-disk file without ever consulting the index, so on its
+// own it can only ever see ordinary file content and would report the path merely modified. Finding
+// the conflict requires an index-aware query instead, run only on this form since "unmerged" is a
+// working-tree-side concept exactly as "untracked" is, and its result overrides the content-only
+// diff's own verdict for the same path.
 func (r *Repo) ChangedPaths(before, after, pathspec string) ([]Change, error) {
 	args := []string{"diff", "--no-renames", "--name-status", "-z"}
 	if after == "" {
@@ -123,7 +132,50 @@ func (r *Repo) ChangedPaths(before, after, pathspec string) ([]Change, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseNameStatus(out)
+	changes, err := parseNameStatus(out)
+	if err != nil {
+		return nil, err
+	}
+	if after != "" {
+		return changes, nil
+	}
+
+	unmergedOut, err := runGit(r.root, "diff", "--no-renames", "--cached", "--name-only", "--diff-filter=U", "-z", before, "--", pathspec)
+	if err != nil {
+		return nil, err
+	}
+	return overrideUnmergedStatus(changes, splitNullDelimited(unmergedOut)), nil
+}
+
+// overrideUnmergedStatus forces every path named in unmergedPaths to carry the unmerged status
+// letter "U" in changes, adding it when the content diff omitted the path entirely (which happens
+// when the working-tree file's bytes happen to equal before's own blob) and overriding whatever
+// status the content diff assigned it otherwise.
+func overrideUnmergedStatus(changes []Change, unmergedPaths []string) []Change {
+	if len(unmergedPaths) == 0 {
+		return changes
+	}
+	unmerged := make(map[string]bool, len(unmergedPaths))
+	for _, p := range unmergedPaths {
+		unmerged[p] = true
+	}
+
+	overridden := make([]Change, 0, len(changes))
+	seen := make(map[string]bool, len(unmergedPaths))
+	for _, c := range changes {
+		if unmerged[c.Path] {
+			overridden = append(overridden, Change{Path: c.Path, Status: "U"})
+			seen[c.Path] = true
+			continue
+		}
+		overridden = append(overridden, c)
+	}
+	for _, p := range unmergedPaths {
+		if !seen[p] {
+			overridden = append(overridden, Change{Path: p, Status: "U"})
+		}
+	}
+	return overridden
 }
 
 // parseNameStatus parses the null-delimited output of "git diff --name-status -z": alternating
