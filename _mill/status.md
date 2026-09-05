@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-facade-glyphs-view
+phase: self-resolved-verify-logic
 slug: glyphs-verb
 branch: glyphs-verb
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-fix-r4  '2026-09-05T17:36:58Z'
 planned  '2026-09-05T17:37:06Z'
 implementing  '2026-09-05T17:37:37Z'
 approved-facade-glyphs-view  '2026-09-05T17:44:29Z'
+self-resolved-verify-logic  '2026-09-05T17:47:42Z'
 ```
 
 ## Batches

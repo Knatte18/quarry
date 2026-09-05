@@ -9,6 +9,13 @@ verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli
 depends-on: [1]
 ```
 
+## Prior failure
+
+- Round 1: "Card 6 gate check fails: internal/engine's TestRoundTrip_LoomyardNaming has no
+  committed golden (testdata/loomyard/naming-counts.json missing on main and everywhere), so the
+  pinned-checkout confirmation step required before continuing to card 7 does not pass; brief
+  forbids -update and requires an operator decision before proceeding"
+
 ## Batch Scope
 
 This batch delivers the whole CLI surface of the glyphs view: the `--view` flag on `toc`, the
