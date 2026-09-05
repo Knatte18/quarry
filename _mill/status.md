@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-control-sweep-and-card
+phase: approved-pack-generation
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -32,6 +32,7 @@ implementing  '2026-09-05T12:07:02Z'
 approved-config-surface  '2026-09-05T12:13:44Z'
 approved-provenance  '2026-09-05T12:17:51Z'
 approved-control-sweep-and-card  '2026-09-05T12:27:24Z'
+approved-pack-generation  '2026-09-05T12:38:12Z'
 ```
 
 ## Batches
@@ -57,9 +58,10 @@ batches:
     commit_sha: 727d40110ab3b07277d6c5f27ce81e493d2e54dc
     verify_baseline_failures: []
   - name: pack-generation
-    state: running
+    state: approved
     implementer_session: 05dbab34-3330-4ffd-8870-d35e56e51e33
     start_sha: c8bbb5cac6504d61cf9683cc9d3bcbb9584fe834
+    commit_sha: f19c9ac530a69ec5c792ccb0dfee8d3b29e01c8f
     verify_baseline_failures: []
   - name: run-gate-and-subcommand
     state: pending
