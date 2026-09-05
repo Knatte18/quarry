@@ -28,6 +28,7 @@ its own doc comment names as a live constraint against go test's default timeout
 
 - **Context:**
   - `internal/engine/answer.go`
+  - `internal/engine/walk.go`
   - `internal/engine/loomyard_test.go`
 - **Edits:**
   - `internal/engine/roundtrip_test.go`
@@ -37,8 +38,12 @@ its own doc comment names as a live constraint against go test's default timeout
 - **Requirements:**
   Edit `internal/engine/roundtrip_test.go`:
 
-  Extend `roundTripSymbol` with two fields, `signature string` and `kind Kind`, and fill both in
-  `collectWalkSymbols` from the walked symbol's own `Signature` and `Kind`. Extending the existing
+  Extend `roundTripSymbol` with three fields — `signature string`, `kind Kind`, and `lossy bool` —
+  filling the first two in `collectWalkSymbols` from the walked symbol's own `Signature` and `Kind`,
+  and the third from the enclosing `FileEntry`'s own `Lossy` flag. The third field exists because
+  `fileEntry` sets `Lossy` on a partial parse and still populates that entry's symbols, so a symbol
+  whose signature was cut from a broken file is in the harvest by construction; card 16 asserts that
+  no such symbol is present rather than letting one silently fail its zero-misses check. Extending the existing
   struct is deliberate rather than writing a second walk collector: `TestRoundTrip_QuarryItself` and
   `TestRoundTrip_Loomyard` consume the same struct and simply ignore the two new fields, and one
   collector is what keeps both round trips reading a single harvest. A parallel collector would be a
@@ -52,7 +57,7 @@ its own doc comment names as a live constraint against go test's default timeout
   exactly one collector and exactly one place the walk is configured.
 
   Update the file header comment and `assertSymbolRoundTrip`'s doc comment to name the new helper and
-  the two new fields, and to say the fields exist for the naming round trip that card 16 adds.
+  the three new fields, and to say the fields exist for the naming round trip that card 16 adds.
 - **Commit:** `test(engine): carry signature and kind through the shared walk harvest`
 
 ### Card 15: let compareGolden take any value
@@ -119,6 +124,15 @@ its own doc comment names as a live constraint against go test's default timeout
      interface type's signature is head-only, cut at the body, so it goes through the maker's
      completion retry and answers normally.
 
+     A symbol harvested from a file the walk marked lossy is neither in-contract nor excluded, and
+     gets no partition rule: instead, assert before partitioning that the harvest carries no such
+     symbol, failing with the offending files named. The two exclusion rules above do not cover this
+     case, and a signature cut from a file whose parse reported an error would otherwise land
+     in-contract and fail the zero-misses check in step 3 for a reason that has nothing to do with
+     the maker. The assertion is a premise check, not an exclusion: the checkout is pinned at a commit
+     whose sources compile, so a lossy file there is itself the finding, and recording it as one is
+     better than quietly partitioning it away.
+
   3. For every in-contract symbol, call `Name` with a `Declaration` holding that symbol's unit and
      its signature, and assert the returned id equals the symbol's real id and the returned kind
      equals its real kind. Zero misses, zero extras. Batch the calls rather than calling once per
@@ -143,7 +157,12 @@ its own doc comment names as a live constraint against go test's default timeout
      every Loomyard-gated test here skips and the file cannot be produced; the first run on a machine
      with a checkout at the pin regenerates it. When the golden is missing, this test must fail with
      a message naming the exact regeneration command rather than with a bare read error, so the state
-     is attributable rather than mysterious. The golden's path and the command are:
+     is attributable rather than mysterious. `compareGolden` cannot supply that message — it fatals
+     on the failed read itself, and card 15 changes only its parameter type — so this test owns the
+     mechanism: before calling it, and only when the update flag is not set, stat the golden's path
+     and fatal with the regeneration command when it is absent. Gating on the flag is what keeps the
+     regeneration run itself from tripping the very check that exists to explain it. The golden's
+     path and the command are:
 
      ```
      internal/engine/testdata/loomyard/naming-counts.json

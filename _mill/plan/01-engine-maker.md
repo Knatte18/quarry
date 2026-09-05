@@ -153,8 +153,13 @@ exported entry point is the batch function. That mirrors `resolveGlyphTarget` si
   than a row folded into the grouped-const case. Measured to parse cleanly and yield one symbol. It
   gets its own case because an iota enum is the most common grouped shape in the pinned Loomyard
   checkout: if this regresses, the naming round trip fails on every enum at once, and the failure
-  must be attributable to one named unit test rather than to a whole-repository walk. Its `var`
-  counterpart, a fragment of exactly `var B`, gets a row too.
+  must be attributable to one named unit test rather than to a whole-repository walk.
+
+  There is deliberately no `var B` counterpart row. A Go var spec always carries a type or an
+  expression list, so a bare `var B` is not a shape `goGroupedConstOrVarSymbols` can ever emit — the
+  iota continuation that makes `const B` real has no var equivalent — and the discussion's own
+  measured table covers the const form only. The grouped-var member case listed above already covers
+  the var side of the grouped shape with a fragment the extractor genuinely produces.
 
   Unit independence: a unit unrelated to the synthetic package clause — `internal/reedengine`, say —
   produces a glyph carrying that unit and not `q`. This is the test that proves the clause is inert.
