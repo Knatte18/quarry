@@ -103,8 +103,12 @@ batches:
   need is a local clone at `.scratch/loomyard-pin` inside this worktree, created by batch 2's first
   card, and every `verify:` command that needs it spells
   `LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin"` — `$PWD` because `verify:` runs from the
-  repository root, so the expansion is absolute (which `loomyardRepo`'s own `os.Stat` requires)
-  without any machine-specific path appearing in a committed file.
+  repository root, so the expansion is absolute without any machine-specific path appearing in a
+  committed file. Absolute is required not by `loomyardRepo`'s `os.Stat`, which accepts a relative
+  path perfectly well, but by `go test`: it runs each package's test binary with its working
+  directory set to that package's own source directory, so a relative value would resolve against
+  `internal/cli/` or `internal/engine/` and silently fail the stat, turning every checkout-gated
+  case back into a skip. Do not "simplify" the value to a relative one.
 - **Rationale:** this machine has no `LADDER_LOOMYARD_REPO` set, so without this step every golden
   case and every byte-identity pair skips, and the batch would report green having asserted
   nothing — which is precisely the wrong-negative failure mode this whole task exists to prevent
@@ -187,7 +191,9 @@ batches:
 - `internal/cli/testdata/glyphs-file.txt`
 - `internal/cli/testdata/toc-view-glyphs-depth.txt`
 - `internal/cli/usage.go`
+- `internal/cli/usage_test.go`
 - `quarry/doc.go`
+- `quarry/render.go`
 - `quarry/repo.go`
 - `quarry/view.go`
 - `quarry/view_test.go`
