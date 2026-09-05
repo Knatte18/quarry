@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-expand-gate-and-sentinel
+phase: approved-cli-repopath-mcp
 slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
@@ -34,6 +34,7 @@ implementing  '2026-09-05T12:12:37Z'
 approved-glyph-grammar  '2026-09-05T12:19:35Z'
 approved-engine-resolve-contract  '2026-09-05T12:29:18Z'
 approved-expand-gate-and-sentinel  '2026-09-05T12:32:23Z'
+approved-cli-repopath-mcp  '2026-09-05T12:44:28Z'
 ```
 
 ## Batches
@@ -59,9 +60,10 @@ batches:
     commit_sha: 918e9c400ef514af3563f9e35c8ffc25bac677df
     verify_baseline_failures: []
   - name: cli-repopath-mcp
-    state: running
+    state: approved
     implementer_session: 95f5bcb1-4467-4f69-bfdb-85d521fd388d
     start_sha: b196226c11918ddf28506e47067fc1ddaee741ca
+    commit_sha: 2ef7916fa087baf6f8de9ea690d0fb9183d40463
     verify_baseline_failures: []
   - name: docs-and-goldens
     state: pending
