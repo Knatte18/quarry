@@ -813,6 +813,91 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
+	// ToolLessNonControlGetsNoAllowedTools and TwoRungsPairAgainstOneControl share one three-cell,
+	// one-letter results root: a synthetic ladder with three tool-less configs under one ladder
+	// letter, one control and two rungs, at one repetition each. Three rather than two, because
+	// TwoRungsPairAgainstOneControl summarises this same root and the pairing property it asserts
+	// needs two rungs to be worth asserting. The env, ladder and ladder file are built directly in
+	// TestE2E's own scope, outside either subtest, so their t.TempDir()/t.Setenv() cleanup is tied to
+	// TestE2E itself and the root survives from the first subtest into the second.
+	threeCellEnv, threeCellSHA := newE2EEnv(t, fakeBinPath)
+	threeCellLadder := baseLadder(threeCellEnv, threeCellSHA, 1, "task-1")
+	isControl := true
+	notControl := false
+	threeCellControl := Config{ID: "e0-names", Ladder: "e", Task: "task-1", Allowed: nil, Control: &isControl}
+	threeCellRungOne := Config{ID: "e1-pack", Ladder: "e", Task: "task-1", Allowed: nil, Control: &notControl}
+	threeCellRungTwo := Config{ID: "e2-files", Ladder: "e", Task: "task-1", Allowed: nil, Control: &notControl}
+	threeCellLadder.Configs = []Config{threeCellControl, threeCellRungOne, threeCellRungTwo}
+	threeCellLadderPath := filepath.Join(t.TempDir(), "ladder.yaml")
+	writeSyntheticLadderFile(t, threeCellLadderPath, threeCellLadder)
+
+	// Drive it with the existing all-control environment helper, not the granted-cell one: that
+	// helper sets the fake binary's control-mode variable, under which the fake asserts
+	// "--allowedTools" is absent from the measured invocation. The fake's variable is named for the
+	// control concept but its assertion is about the flag's absence, which is exactly the property
+	// under test here for two cells that are not control but are equally tool-less.
+	setFakeClaudeEnv(t, threeCellLadder, "normal")
+
+	t.Run("ToolLessNonControlGetsNoAllowedTools", func(t *testing.T) {
+		// The subtest must reach a completed repetition for both rungs, so the run also proves the
+		// tool-less non-control cell builds no server, receives the empty-servers document and passes
+		// its pre-dispatch blinding check -- the three other halves of the sweep, none of which have a
+		// cheaper observation point than a real end-to-end run.
+		exitNonZero, err := Run(context.Background(), runOpts(threeCellEnv, threeCellLadderPath, nil))
+		if err != nil {
+			t.Fatalf("Run() = %v; want no error", err)
+		}
+		if exitNonZero {
+			t.Error("Run() reported a non-zero exit for three tool-less cells that should each complete cleanly")
+		}
+
+		for _, id := range []string{threeCellControl.ID, threeCellRungOne.ID, threeCellRungTwo.ID} {
+			dir := RepDir(threeCellEnv.resultsRoot, id, 1)
+			if !RepIsComplete(dir) {
+				t.Errorf("cell %s rep 1 did not complete", id)
+			}
+
+			mcpConfigPath := filepath.Join(threeCellEnv.quarryRepoRoot, ".scratch", "ladder", fmt.Sprintf("%s-1.json", id))
+			data, err := os.ReadFile(mcpConfigPath)
+			if err != nil {
+				t.Fatalf("read mcp config %s: %v", mcpConfigPath, err)
+			}
+			if !strings.Contains(string(data), `"mcpServers": {}`) {
+				t.Errorf("mcp config %s = %s; want the empty-servers document for a tool-less cell, control or not", mcpConfigPath, data)
+			}
+		}
+	})
+
+	// TwoRungsPairAgainstOneControl is the summarize half of the split: the rung-versus-control
+	// pairing must keep working when a letter carries one control and two rungs. It asserts on the
+	// comparison set's membership rather than on its size: the comparison builder emits one row per
+	// rung and metric over every cost metric plus recall and precision, so a row count is a function
+	// of the metric list rather than of the pairing this subtest is about, and would change under any
+	// future metric addition.
+	t.Run("TwoRungsPairAgainstOneControl", func(t *testing.T) {
+		summary, err := Summarize(threeCellEnv.resultsRoot)
+		if err != nil {
+			t.Fatalf("Summarize() = %v; want no error", err)
+		}
+
+		rungIDs := map[string]bool{}
+		for _, c := range summary.Comparisons {
+			rungIDs[c.Cell] = true
+			if c.Control != threeCellControl.ID {
+				t.Errorf("comparison %+v names control %q; want %q", c, c.Control, threeCellControl.ID)
+			}
+		}
+		wantRungIDs := map[string]bool{threeCellRungOne.ID: true, threeCellRungTwo.ID: true}
+		if len(rungIDs) != len(wantRungIDs) {
+			t.Fatalf("comparison set's distinct cell ids = %v; want %v", rungIDs, wantRungIDs)
+		}
+		for id := range wantRungIDs {
+			if !rungIDs[id] {
+				t.Errorf("comparison set's distinct cell ids = %v; want it to include %q", rungIDs, id)
+			}
+		}
+	})
+
 	t.Run("Report", func(t *testing.T) {
 		// Copy the committed fixture root into a fresh temporary directory under the same base-name
 		// directory "root": the golden summary and table each carry that base name and no wall-clock
