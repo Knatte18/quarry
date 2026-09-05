@@ -354,8 +354,16 @@ func runCellRepetition(
 		return repOutcome{}, err
 	}
 
+	var card string
+	if cfg.Card != "" {
+		card, err = LoadCardFile(resolveRepoRelative(quarryRepoRoot, cfg.Card))
+		if err != nil {
+			return repOutcome{}, err
+		}
+	}
+
 	toolNames := grantedToolNames(l, cfg)
-	prompt := RenderPrompt(content, dest, toolNames)
+	prompt := RenderPrompt(content, dest, toolNames, card)
 
 	blindingIn := BlindingInput{
 		MCPPrefix:      l.MCPPrefix(),

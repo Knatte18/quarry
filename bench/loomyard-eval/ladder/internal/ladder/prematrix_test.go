@@ -66,7 +66,7 @@ func TestPreMatrix_ControlPromptsAreBlind(t *testing.T) {
 		}
 
 		toolNames := grantedToolNames(l, cfg)
-		prompt := RenderPrompt(content, prematrixPlaceholderDest, toolNames)
+		prompt := RenderPrompt(content, prematrixPlaceholderDest, toolNames, "")
 
 		in := BlindingInput{
 			MCPPrefix:      l.MCPPrefix(),
