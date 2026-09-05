@@ -1,0 +1,25 @@
+{
+  "from": "rev1",
+  "to": "rev2",
+  "files": [
+    {
+      "path": "pkg/old.go",
+      "disposition": "removed"
+    }
+  ],
+  "created": [],
+  "deleted": [
+    {
+      "id": "pkg#Old",
+      "kind": "function",
+      "file": "pkg/old.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 3,
+      "signature": "func Old()"
+    }
+  ],
+  "modified": null,
+  "renamed": null,
+  "rename_candidates": []
+}

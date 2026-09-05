@@ -163,6 +163,29 @@ func codeForExpandError(err error) int {
 	return exitInternal
 }
 
+// codeForDeltaError is the pure mapping runDelta's pipeline uses to turn the error the facade's
+// DeltaGit method returns into an exit code. It is declared as a named function, rather than
+// inlined, following the convention the other three mapping functions in this file set, so a
+// table test can be written against it, even though this one is nearly constant: a computed delta
+// is always the success code, so codeForDeltaError only ever sees a non-nil error, and there is no
+// exitNegative branch at all — this query has no negative answer, because nothing changed is a
+// true answer to what changed rather than a negative one.
+//
+// It returns exitUsage when errors.Is(err, quarry.ErrUnknownRevision), errors.Is(err,
+// quarry.ErrNotARepository), or errors.Is(err, quarry.ErrRootNotTopLevel). Anything else returns
+// exitInternal, which is where a git command failing for any other reason lands.
+func codeForDeltaError(err error) int {
+	if err == nil {
+		return exitOK
+	}
+	if errors.Is(err, quarry.ErrUnknownRevision) ||
+		errors.Is(err, quarry.ErrNotARepository) ||
+		errors.Is(err, quarry.ErrRootNotTopLevel) {
+		return exitUsage
+	}
+	return exitInternal
+}
+
 // rootUsageMessage formats the CLI's own user-facing sentence for a repopath.ResolveRoot error,
 // rather than propagating err.Error(), since repopath's sentinel text is namespaced to that
 // package and would leak an internal package name into the CLI's contract. It returns the message
@@ -185,7 +208,7 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 
 // Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes two
 // steps every verb shares, then either the name verb's own early return or two further steps
-// shared by the three repository verbs, then dispatches to that verb's own pipeline — the step
+// shared by the four repository verbs, then dispatches to that verb's own pipeline — the step
 // that decides an exit code is the step that decides the message, so the two things are never
 // allowed to drift apart within any one pipeline:
 //
@@ -199,7 +222,7 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 // perfectly computable — a failure with no relationship to the question asked. See runName's own
 // doc comment for its numbered pipeline.
 //
-// For the three repository verbs, Run continues:
+// For the four repository verbs, Run continues:
 //
 //  3. Read the working directory. This is the one place in the package that does.
 //  4. Resolve the repository root by calling internal/repopath.ResolveRoot, --root or discovery,
@@ -208,11 +231,11 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     CLI's own usage sentence by rootUsageMessage, which keeps repopath's own namespaced sentinel
 //     text out of the CLI's contract.
 //
-// Run then switches on req.verb and calls one of runTOC, runResolve, or runExpand — name never
-// reaches this switch, having already returned above. The default case returns exitInternal with
-// an internal-error message rather than falling through to a zero exit code; it is unreachable
-// for every word other than the three repository verbs, because parseArgs already rejects any
-// other verb as a usage error before Run ever sees it.
+// Run then switches on req.verb and calls one of runTOC, runResolve, runExpand, or runDelta —
+// name never reaches this switch, having already returned above. The default case returns
+// exitInternal with an internal-error message rather than falling through to a zero exit code;
+// it is unreachable for every word other than the four repository verbs, because parseArgs
+// already rejects any other verb as a usage error before Run ever sees it.
 //
 // runTOC's own pipeline, continuing from step 4 above:
 //
@@ -276,6 +299,36 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     quarry.RenderExpandJSON otherwise. A render error, or a failed write of its bytes to stdout,
 //     is exit 3.
 //  5. Return codeForExpandAnswer of the answer.
+//
+// runDelta's own pipeline, continuing from step 4 above, converts the target through the shared
+// repository-relative target helper first, exactly as runTOC's own pipeline does, so one argument
+// cannot mean two things: quarry resolves a relative target against the caller's working
+// directory while git would resolve a raw pathspec against the root. The consequence is that a
+// lone dot means the current directory rather than the repository root when run from a
+// subdirectory, identically to the table-of-contents verb, and that helper's two existing
+// rejections carry over unchanged — a target escaping the root is the negative code, and a target
+// carrying the glyph separator is a usage error with the usage text. This verb performs no stat on
+// the target at any point, unlike the table-of-contents verb: a path that does not exist now may
+// well have existed at the from revision, and a deleted directory is exactly the change this
+// query exists to report; a pathspec matching nothing is a true, empty answer.
+//
+//  1. Convert the target the same way runTOC's own step 1 does.
+//  2. Open the repository. A failure is exit 3.
+//  3. Call the facade's DeltaGit method with req.from, req.to and the converted target. Map its
+//     error through codeForDeltaError rather than an inline errors.Is chain at this call site, so
+//     the mapping stays table-testable, mirroring codeForTOCError's own rationale. An
+//     unresolvable revision, a root that is not a repository, and a root that is not that
+//     repository's top level are each a usage error carrying quarry's own sentence, spelled from
+//     the aliased typed error's own fields through type extraction rather than by parsing any
+//     message, exactly as runExpand's own two sentences already are: the revision sentence names
+//     the revision exactly as given, and the top-level sentence names both the root and the
+//     top-level git reported. Any other failure is the internal code carrying the wrapped message
+//     whole behind the existing internal-error prefix.
+//  4. A computed delta is always the success code — including an empty delta and including a
+//     batch in which some entries carry an error disposition, since either of those returning a
+//     failure code would make a complete answer look like a failure to a shell gate.
+//  5. Render: quarry.RenderDeltaText under --text, quarry.RenderDeltaJSON otherwise. A render
+//     error, or a failed write of its bytes to stdout, is exit 3.
 //
 // runName's own pipeline, taking no root and no base directory:
 //
@@ -357,8 +410,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runResolve(req, root, base, stdout, stderr)
 	case "expand":
 		return runExpand(req, root, stdout, stderr)
+	case "delta":
+		return runDelta(req, root, base, stdout, stderr)
 	default:
-		// Unreachable for every word other than the three repository verbs this switch holds
+		// Unreachable for every word other than the four repository verbs this switch holds
 		// cases for: parseArgs already rejects any other verb as a usage error before Run ever
 		// sees it, and "name" never reaches this switch, having already returned above.
 		return fail(stdout, stderr, exitInternal, "internal error: unknown verb: "+req.verb, false)
@@ -507,6 +562,61 @@ func runExpand(req request, root string, stdout, stderr io.Writer) int {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 	return codeForExpandAnswer(answer)
+}
+
+// runDelta is the delta verb's own pipeline, continuing from Run's shared four steps. See Run's
+// doc comment for the numbered steps this function executes in fixed order.
+func runDelta(req request, root, base string, stdout, stderr io.Writer) int {
+	rel, err := repopath.RepoRelTarget(root, base, req.target)
+	if err != nil {
+		if errors.Is(err, quarry.ErrTargetOutsideRepo) {
+			return fail(stdout, stderr, exitNegative, "target outside repository: "+req.target, false)
+		}
+		if errors.Is(err, quarry.ErrTargetHasSeparator) {
+			return fail(stdout, stderr, exitUsage, "target contains the glyph separator \"#\": "+req.target, true)
+		}
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+
+	repo, err := quarry.Open(root)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+
+	answer, err := repo.DeltaGit(req.from, req.to, rel)
+	if err != nil {
+		var revErr *quarry.UnknownRevisionError
+		if errors.As(err, &revErr) {
+			msg := "delta: unknown revision " + revErr.Rev
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+		}
+		var topErr *quarry.RootNotTopLevelError
+		if errors.As(err, &topErr) {
+			msg := "delta: root " + topErr.Root + " is not the repository top level (top level is " + topErr.TopLevel + ")"
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+		}
+		if errors.Is(err, quarry.ErrNotARepository) {
+			msg := "delta: root is not a git repository: " + root
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+		}
+		return fail(stdout, stderr, codeForDeltaError(err), "internal error: "+err.Error(), false)
+	}
+
+	if req.text {
+		if _, err := io.WriteString(stdout, quarry.RenderDeltaText(answer)); err != nil {
+			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+		}
+		return exitOK
+	}
+
+	out, err := quarry.RenderDeltaJSON(answer)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	if _, err := stdout.Write(out); err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	return exitOK
 }
 
 // runName is the name verb's own pipeline. Unlike runTOC, runResolve and runExpand it continues

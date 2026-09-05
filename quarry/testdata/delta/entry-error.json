@@ -1,0 +1,30 @@
+{
+  "from": "rev1",
+  "to": "rev2",
+  "files": [
+    {
+      "path": "pkg/bad.go",
+      "disposition": "error",
+      "error": "pkg/bad.go: after side is not valid UTF-8"
+    },
+    {
+      "path": "pkg/good.go",
+      "disposition": "added"
+    }
+  ],
+  "created": [
+    {
+      "id": "pkg#Good",
+      "kind": "function",
+      "file": "pkg/good.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 3,
+      "signature": "func Good()"
+    }
+  ],
+  "deleted": [],
+  "modified": null,
+  "renamed": null,
+  "rename_candidates": []
+}

@@ -1,0 +1,54 @@
+{
+  "from": "rev1",
+  "to": "rev2",
+  "files": [
+    {
+      "path": "pkg/a.go",
+      "disposition": "changed"
+    }
+  ],
+  "created": [
+    {
+      "id": "pkg#New",
+      "kind": "function",
+      "file": "pkg/a.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 7,
+      "signature": "func New()"
+    }
+  ],
+  "deleted": [
+    {
+      "id": "pkg#Old",
+      "kind": "function",
+      "file": "pkg/a.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 5,
+      "signature": "func Old()"
+    }
+  ],
+  "modified": null,
+  "renamed": null,
+  "rename_candidates": [
+    {
+      "id": "pkg#Old",
+      "kind": "function",
+      "candidates": [
+        {
+          "id": "pkg#New",
+          "kind": "function",
+          "file": "pkg/a.go",
+          "signals": {
+            "signature_identical_modulo_name": true,
+            "body_token_similarity": 0.45454545454545453,
+            "body_tokens_before": 5,
+            "body_tokens_after": 11,
+            "doc_identical": true
+          }
+        }
+      ]
+    }
+  ]
+}

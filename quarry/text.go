@@ -196,6 +196,279 @@ func writeSymbolLine(b *strings.Builder, sym Symbol) {
 	}
 }
 
+// RenderDeltaText renders a, the git-wrapped delta answer, as the lossless text view of a delta
+// batch. Like RenderText, it cannot fail and returns no error, and the returned string has no
+// trailing whitespace on any line and ends with exactly one "\n". This is the one shape in the delta
+// path whose text form has no existing precedent among RenderText, RenderResolveText and
+// RenderExpandText, so its grammar is fixed here to the character rather than left to a future
+// reader to infer from the code.
+//
+// The whole output is a fixed sequence of blocks, in this order — a revisions line, then one block
+// per non-empty section of files, created, deleted, modified, renamed and rename_candidates, in that
+// order, each block joined the same way dirBlocks joins directory blocks: one blank line between
+// consecutive blocks, none before the first or after the last. A section whose underlying slice is
+// empty contributes no block at all, rather than a header with nothing under it.
+//
+//  1. Revisions line, always present: "from <From> to <To>", where <To> is the literal words
+//     "working tree" when a.To is nil, and *a.To otherwise. This is the one line with no header word
+//     of its own.
+//  2. "files:" then one line per a.Files, in order: "<Path> <Disposition>", followed by
+//     " [lossy_before]" when LossyBefore is true, " [lossy_after]" when LossyAfter is true, and
+//     " [error <normalizeProse(Error)>]" when Error is non-empty — the same bracketed-tag
+//     convention writeFileLine's own fileTags helper uses for the toc view, so a reader who already
+//     knows that convention reads this line the same way.
+//  3. "created:" then one line per a.Created, in order: the symbol's own Kind, a space, then its
+//     ordinary symbol line exactly as writeSymbolLine renders it (and its doc line, when the symbol
+//     has one) — the Kind prefix is this renderer's own addition, since writeSymbolLine never emits
+//     it, and a delta is the one view where two symbols can share an identifier and differ only in
+//     kind (a const replaced by a var of the same name renders as one created and one deleted entry
+//     with an identical identifier, so the kind is what keeps the two lines distinguishable).
+//  4. "deleted:" then one line per a.Deleted, in the same "<Kind> " + symbol-line form point 3
+//     describes.
+//  5. "modified:" then, per entry of a.Modified in order: one header line "<ID> <Kind>
+//     changed:<dims>", where <dims> is m.Changed's elements joined by "," in their own declared
+//     order (empty when Changed is empty, leaving a trailing "changed:" with nothing after it); then
+//     one "before <location>" line per element of m.Before, in order, where <location> is the same
+//     file/span/sig-end grammar a symbol line uses — "<File>:<Start>-<End>", then " (sig
+//     <Start>-<SigEnd>)" only when SigEnd != 0 — but with no identifier, signature or doc clause,
+//     since a SymbolLocation carries none of those; then one "after <Kind> <symbol line>" line per
+//     element of m.After, in order, in the same "<Kind> " + symbol-line form points 3 and 4 use. The
+//     entry's own ID and Kind are printed once, on the header line, and never repeated on a before or
+//     after line, which is what keeps a many-occurrence before/after array (several func init() in
+//     one package, for instance) from repeating the key on every line.
+//  6. "renamed:" then, per pair of a.Renamed in order, two lines: "from <Kind> <symbol line>" for
+//     From, then "to <Kind> <symbol line>" for To, in the same "<Kind> " + symbol-line form points 3
+//     and 4 use — so a pair always contributes exactly two consecutive lines, keeping the pairing
+//     recoverable without a nesting marker.
+//  7. "rename_candidates:" then, per entry of a.RenameCandidates in order: one header line "<ID>
+//     <Kind>" for the deleted symbol, then one "candidate <Kind> <ID> <File> signals
+//     sig_identical=<bool> body_similarity=<float> body_tokens_before=<int>
+//     body_tokens_after=<int> doc_identical=<bool>" line per element of Candidates, in order, naming
+//     every field of RenameSignals by name so no signal is left for a reader to guess at.
+//     <float> is strconv.FormatFloat(v, 'f', -1, 64) — decimal, never scientific notation, the
+//     shortest representation that round-trips — since BodyTokenSimilarity is a Jaccard coefficient
+//     in [0, 1] and scientific notation would only cost readability for no gain in this range.
+//
+// Every array above is walked in the answer's own order; this renderer sorts nothing, which is what
+// keeps it from defeating the total ordering the core establishes.
+func RenderDeltaText(a GitDeltaAnswer) string {
+	blocks := []string{deltaRevisionsBlock(a)}
+	if b := deltaFilesBlock(a.Files); b != "" {
+		blocks = append(blocks, b)
+	}
+	if b := deltaSymbolsBlock("created:", a.Created); b != "" {
+		blocks = append(blocks, b)
+	}
+	if b := deltaSymbolsBlock("deleted:", a.Deleted); b != "" {
+		blocks = append(blocks, b)
+	}
+	if b := deltaModifiedBlock(a.Modified); b != "" {
+		blocks = append(blocks, b)
+	}
+	if b := deltaRenamedBlock(a.Renamed); b != "" {
+		blocks = append(blocks, b)
+	}
+	if b := deltaCandidatesBlock(a.RenameCandidates); b != "" {
+		blocks = append(blocks, b)
+	}
+	return strings.Join(blocks, "\n")
+}
+
+// deltaRevisionsBlock writes the delta text view's one line with no header word: "from <From> to
+// <To>", where <To> is "working tree" for a nil a.To.
+func deltaRevisionsBlock(a GitDeltaAnswer) string {
+	to := "working tree"
+	if a.To != nil {
+		to = *a.To
+	}
+	return "from " + a.From + " to " + to + "\n"
+}
+
+// deltaFilesBlock writes the "files:" section: one line per files, in order, following
+// RenderDeltaText's own point 2. It returns "" when files is empty, so an empty section contributes
+// no block.
+func deltaFilesBlock(files []DeltaFile) string {
+	if len(files) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("files:\n")
+	for _, df := range files {
+		writeDeltaFileLine(&b, df)
+	}
+	return b.String()
+}
+
+// writeDeltaFileLine writes one DeltaFile's line: "<Path> <Disposition>", then the bracketed
+// lossy_before, lossy_after and error tags, in that order, each present only when its field is set.
+func writeDeltaFileLine(b *strings.Builder, df DeltaFile) {
+	b.WriteString(df.Path)
+	b.WriteString(" ")
+	b.WriteString(string(df.Disposition))
+	var tags []string
+	if df.LossyBefore {
+		tags = append(tags, "[lossy_before]")
+	}
+	if df.LossyAfter {
+		tags = append(tags, "[lossy_after]")
+	}
+	if df.Error != "" {
+		tags = append(tags, "[error "+normalizeProse(df.Error)+"]")
+	}
+	if len(tags) > 0 {
+		b.WriteString(" ")
+		b.WriteString(strings.Join(tags, " "))
+	}
+	b.WriteString("\n")
+}
+
+// deltaSymbolsBlock writes a header-plus-kinded-symbol-lines section shared by "created:" and
+// "deleted:", following RenderDeltaText's own points 3 and 4. It returns "" when syms is empty.
+func deltaSymbolsBlock(header string, syms []Symbol) string {
+	if len(syms) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("\n")
+	for _, sym := range syms {
+		writeKindedSymbolLine(&b, sym)
+	}
+	return b.String()
+}
+
+// writeKindedSymbolLine writes sym's own Kind, a space, then its ordinary symbol line exactly as
+// writeSymbolLine renders it. This is the one place this file adds a kind to a symbol line that
+// writeSymbolLine itself never emits — see RenderDeltaText's own doc comment for why the delta path
+// needs it and the shared writer does not.
+func writeKindedSymbolLine(b *strings.Builder, sym Symbol) {
+	b.WriteString(string(sym.Kind))
+	b.WriteString(" ")
+	writeSymbolLine(b, sym)
+}
+
+// deltaModifiedBlock writes the "modified:" section, following RenderDeltaText's own point 5. It
+// returns "" when entries is empty.
+func deltaModifiedBlock(entries []ModifiedSymbol) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("modified:\n")
+	for _, m := range entries {
+		writeModifiedEntry(&b, m)
+	}
+	return b.String()
+}
+
+// writeModifiedEntry writes one ModifiedSymbol's block: its header line, then one "before <location>"
+// line per Before element, then one "after <Kind> <symbol line>" line per After element.
+func writeModifiedEntry(b *strings.Builder, m ModifiedSymbol) {
+	b.WriteString(m.ID)
+	b.WriteString(" ")
+	b.WriteString(string(m.Kind))
+	b.WriteString(" changed:")
+	dims := make([]string, len(m.Changed))
+	for i, d := range m.Changed {
+		dims[i] = string(d)
+	}
+	b.WriteString(strings.Join(dims, ","))
+	b.WriteString("\n")
+	for _, loc := range m.Before {
+		b.WriteString("before ")
+		writeLocationLine(b, loc)
+	}
+	for _, sym := range m.After {
+		b.WriteString("after ")
+		writeKindedSymbolLine(b, sym)
+	}
+}
+
+// writeLocationLine writes one SymbolLocation's line: "<File>:<Start>-<End>", then " (sig
+// <Start>-<SigEnd>)" only when SigEnd != 0 — the same file/span/sig-end conventions writeSymbolLine
+// applies to a symbol's own line, but with no identifier, signature or doc clause, since a
+// SymbolLocation carries none of those. The File field is guarded exactly as writeSymbolLine guards
+// Symbol.File, even though a modified entry's before-side location always carries one (the core fills
+// it on both sides): the guard keeps this helper correct for a hand-built, externally constructed
+// value too.
+func writeLocationLine(b *strings.Builder, loc SymbolLocation) {
+	if loc.File != "" {
+		b.WriteString(loc.File)
+		b.WriteString(":")
+	}
+	b.WriteString(strconv.Itoa(loc.Start))
+	b.WriteString("-")
+	b.WriteString(strconv.Itoa(loc.End))
+	if loc.SigEnd != 0 {
+		b.WriteString(" (sig ")
+		b.WriteString(strconv.Itoa(loc.Start))
+		b.WriteString("-")
+		b.WriteString(strconv.Itoa(loc.SigEnd))
+		b.WriteString(")")
+	}
+	b.WriteString("\n")
+}
+
+// deltaRenamedBlock writes the "renamed:" section, following RenderDeltaText's own point 6. It
+// returns "" when pairs is empty.
+func deltaRenamedBlock(pairs []RenamedPair) string {
+	if len(pairs) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("renamed:\n")
+	for _, p := range pairs {
+		b.WriteString("from ")
+		writeKindedSymbolLine(&b, p.From)
+		b.WriteString("to ")
+		writeKindedSymbolLine(&b, p.To)
+	}
+	return b.String()
+}
+
+// deltaCandidatesBlock writes the "rename_candidates:" section, following RenderDeltaText's own
+// point 7. It returns "" when entries is empty.
+func deltaCandidatesBlock(entries []RenameCandidateEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("rename_candidates:\n")
+	for _, e := range entries {
+		writeCandidateEntry(&b, e)
+	}
+	return b.String()
+}
+
+// writeCandidateEntry writes one RenameCandidateEntry's block: its header line "<ID> <Kind>" for the
+// deleted symbol, then one "candidate ..." line per element of Candidates, naming every RenameSignals
+// field by name.
+func writeCandidateEntry(b *strings.Builder, e RenameCandidateEntry) {
+	b.WriteString(e.ID)
+	b.WriteString(" ")
+	b.WriteString(string(e.Kind))
+	b.WriteString("\n")
+	for _, c := range e.Candidates {
+		b.WriteString("candidate ")
+		b.WriteString(string(c.Kind))
+		b.WriteString(" ")
+		b.WriteString(c.ID)
+		b.WriteString(" ")
+		b.WriteString(c.File)
+		b.WriteString(" signals sig_identical=")
+		b.WriteString(strconv.FormatBool(c.Signals.SignatureIdenticalModuloName))
+		b.WriteString(" body_similarity=")
+		b.WriteString(strconv.FormatFloat(c.Signals.BodyTokenSimilarity, 'f', -1, 64))
+		b.WriteString(" body_tokens_before=")
+		b.WriteString(strconv.Itoa(c.Signals.BodyTokensBefore))
+		b.WriteString(" body_tokens_after=")
+		b.WriteString(strconv.Itoa(c.Signals.BodyTokensAfter))
+		b.WriteString(" doc_identical=")
+		b.WriteString(strconv.FormatBool(c.Signals.DocIdentical))
+		b.WriteString("\n")
+	}
+}
+
 // RenderResolveText renders r as the lossless text view of one resolve result. Like RenderText, it
 // cannot fail and returns no error, and the returned string has no trailing whitespace on any line
 // and ends with exactly one "\n".
