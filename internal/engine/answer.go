@@ -2,7 +2,9 @@
 // recursive DirAnswer, FileEntry, TOCOptions, the closed Status vocabulary, ResolveResult, and
 // ExpandAnswer. Every JSON tag here is the exact emitted key set the plan's "the emitted key set is
 // plan §4's and is closed" Shared Decision fixes — no field is added or renamed without a
-// corresponding Shared Decision change.
+// corresponding Shared Decision change. The C1 task ("Glyph self-form and the resolve contract") is
+// exactly such a change: it renames ResolveResult.Dir to ResolveResult.Listing and its "dir" JSON
+// key to "listing", because the field now carries a self glyph's answer as well as a path's.
 
 package engine
 
@@ -156,25 +158,27 @@ type FileEntry struct {
 	Symbols *[]Symbol `json:"symbols,omitempty"`
 }
 
-// ResolveResult is the answer to one target passed to Resolve: a glyph or a repository-relative
-// path. It expresses either a resolution outcome (Status set) or a pre-resolution rejection of the
-// target string itself (Error set), and never an engine failure — an engine failure fails the whole
+// ResolveResult is the answer to one target passed to Resolve: a glyph, member or self alike —
+// every target is a glyph now that glyph.Parse is the resolve contract's only classifier. It
+// expresses either a resolution outcome (Status set) or a pre-resolution rejection of the target
+// string itself (Error set), and never an engine failure — an engine failure fails the whole
 // Resolve call instead. Status and Error are never both set.
 type ResolveResult struct {
 	// Target is the caller's argument, verbatim. Always present.
 	Target string `json:"target"`
-	// ID is the parsed glyph's Glyph.String() form, the same wire form Symbol.ID carries. Present
-	// only for a glyph target. For Go it is byte-identical to Target on every non-error result,
-	// because the Go alphabet normalises nothing — the key earns its place as parity with Symbol.ID,
-	// not as canonicalisation.
+	// ID is the parsed glyph's Glyph.String() form, the same wire form Symbol.ID carries. Present on
+	// every non-rejection result, since every target is a glyph now. For Go it is byte-identical to
+	// Target on every non-error result, because the Go alphabet normalises nothing — the key earns
+	// its place as parity with Symbol.ID, not as canonicalisation.
 	ID string `json:"id,omitempty"`
 	// Status is the resolution outcome: found, not_found, ambiguous, or multipart. It is absent only
 	// when the target never reached resolution — a pre-resolution rejection, carried by Error and
 	// Reason instead.
 	Status Status `json:"status,omitempty"`
-	// Unit is set only on a glyph not_found, and carries only StatusFound or StatusNotFound: found
-	// when the directory, module or namespace is there and only the member is missing, not_found
-	// otherwise. It is never set on a path result, because a path belongs to no unit.
+	// Unit is set only on a not_found, and carries only StatusFound or StatusNotFound: found when the
+	// directory, module or namespace is there and only the member is missing, not_found otherwise.
+	// This applies to a self glyph exactly as it does to a member glyph — a self glyph belongs to a
+	// unit too — so Unit is never suppressed for one.
 	//
 	// Contract gap: docs/glyph.md §2's external test unit and a real directory spelling the same
 	// string can both exist; unitDirs reports the collision as a bare bool with no notion of "unit
@@ -191,12 +195,16 @@ type ResolveResult struct {
 	// unreachable, so no key is added here — a second language's task adds the marker against a real
 	// case.
 	Candidates []Symbol `json:"candidates,omitempty"`
-	// Dir is the directory answer for a path target that names a directory. It is a pointer so an
-	// absent answer is dropped by omitempty; a non-pointer struct would always marshal.
-	Dir *DirAnswer `json:"dir,omitempty"`
-	// Error carries a pre-resolution rejection of the target string itself — a glyph.Parse rejection,
-	// or a path target rejected as outside the repository — and never an engine read failure. Status
-	// is empty whenever Error is set.
+	// Listing is the directory-or-file listing a found self glyph resolved to: a directory's own
+	// DirAnswer when the self glyph names a directory, and the enclosing directory's DirAnswer
+	// holding exactly that one file's entry when it names a file. The old name, "Dir", claimed
+	// "directory" while also carrying single-file answers, and it repeated the inner DirAnswer.Dir
+	// key's own word one level up; "listing" names what the block actually is without either
+	// problem. It is a pointer so an absent answer is dropped by omitempty; a non-pointer struct
+	// would always marshal.
+	Listing *DirAnswer `json:"listing,omitempty"`
+	// Error carries a pre-resolution rejection of the target string itself — a glyph.Parse rejection
+	// — and never an engine read failure. Status is empty whenever Error is set.
 	Error string `json:"error,omitempty"`
 	// Reason is the plain-word form of the rejection Error names, for a grammar rejection. It is
 	// deliberately a plain string, not glyph.Reason: the emitted JSON is a plain word and answer.go
