@@ -1,6 +1,8 @@
 // loomyard_test.go is this package's own copy of internal/engine/loomyard_test.go's environment
 // gate: loomyardRepo resolves a Loomyard checkout, skips when this machine has none, and fails
-// when this machine has the wrong one. It also declares the "-update" flag the after/ goldens use.
+// when this machine has the wrong one. It also declares the "-update" flag both this package's
+// golden sets share: the after/ goldens, which need the checkout loomyardRepo resolves, and the
+// name/ goldens, which need no checkout of any kind.
 //
 // This is a deliberate copy, not a shared helper: Go test helpers are not importable across
 // packages, and the overview's no-file-under-internal-engine-is-modified decision forbids
@@ -22,11 +24,13 @@ import (
 	"testing"
 )
 
-// updateGoldens is "-update", checked by after_test.go's cases to decide whether to compare against
-// the committed golden or to rewrite it from the current LADDER_LOOMYARD_REPO checkout. It is this
-// package's own flag.Bool, distinct from internal/engine's flag of the same name: flag.Bool panics
-// on a duplicate name only within one binary, and each package's tests build their own binary.
-var updateGoldens = flag.Bool("update", false, "regenerate the after/ goldens under docs/research/output-formats/after from the current LADDER_LOOMYARD_REPO checkout")
+// updateGoldens is "-update", checked by after_test.go's and name_golden_test.go's cases to
+// decide whether to compare against the committed golden or to rewrite it: after_test.go's cases
+// rewrite from the current LADDER_LOOMYARD_REPO checkout, while name_golden_test.go's cases need
+// no checkout at all, since the maker reads no repository. It is this package's own flag.Bool,
+// distinct from internal/engine's flag of the same name: flag.Bool panics on a duplicate name
+// only within one binary, and each package's tests build their own binary.
+var updateGoldens = flag.Bool("update", false, "regenerate the after/ and name/ goldens under docs/research/output-formats/after and internal/cli/testdata/name; only after/ needs a LADDER_LOOMYARD_REPO checkout")
 
 // loomyardPin is the commit the rewrite plan's after/ outputs were taken at, identical to
 // internal/engine's own loomyardPin.

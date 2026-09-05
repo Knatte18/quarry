@@ -1,0 +1,1 @@
+func Bad( error parse: declaration does not parse

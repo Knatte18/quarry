@@ -1,0 +1,6 @@
+{
+  "unit": "pkg",
+  "target": "func Bad(",
+  "error": "declaration does not parse",
+  "reason": "parse"
+}

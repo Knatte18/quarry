@@ -1,0 +1,1 @@
+func A() {} func B() {} error several_declarations: declaration declares 2 symbols; exactly one is required
