@@ -64,6 +64,8 @@ batches:
     commit_sha: a46a0c59f1c29b51dd5f2bc72b58b70904d49edc
     verify_baseline_failures: []
   - name: docs-inventory
-    state: pending
+    state: running
+    implementer_session: 95c07f3f-e691-423f-b59c-cc6bd2233d65
+    start_sha: 36f6677b7b89ff1a4a464de03b638b7bd28f9150
     verify_baseline_failures: []
 ```
