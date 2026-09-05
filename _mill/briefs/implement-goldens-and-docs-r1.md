@@ -62,7 +62,7 @@ it needs no log entry to be considered done.
 4. If you are forced to stop before all cards are committed (e.g. approaching context limit or an unresolvable error), emit the following JSON as your very last output line and then stop — do not report `success`:
 
    ```json
-   {"status":"incomplete","cards_completed_count":N,"cards_remaining":M,"session_id":"73ea5979-52e1-4d8f-9dfe-3a9c70fe1021"}
+   {"status":"incomplete","cards_completed_count":N,"cards_remaining":M,"session_id":"40a970d6-b2ae-458e-89b3-b80abbde3380"}
    ```
 
    Replace N with the count of card commits made and M with the remaining count.
@@ -124,13 +124,13 @@ manually invites a transcription error the JSON line never has.
 Your last line of output (after all work and commits) MUST be a single JSON object:
 
 ```json
-{"status":"success","commit_sha":"<last-HEAD-sha>","session_id":"73ea5979-52e1-4d8f-9dfe-3a9c70fe1021","cards_done":[<card numbers this commit set addresses>]}
+{"status":"success","commit_sha":"<last-HEAD-sha>","session_id":"40a970d6-b2ae-458e-89b3-b80abbde3380","cards_done":[<card numbers this commit set addresses>]}
 ```
 **Do not wrap the JSON in a code block.
 Output it as a bare line — no backticks, no fence.
 Anything other than a bare JSON line is treated as `stuck_type: logic`.**
 
-**`session_id` MUST be exactly `73ea5979-52e1-4d8f-9dfe-3a9c70fe1021` (the UUID shown in the example above — it was injected into this brief when it was rendered).
+**`session_id` MUST be exactly `40a970d6-b2ae-458e-89b3-b80abbde3380` (the UUID shown in the example above — it was injected into this brief when it was rendered).
 Copy it verbatim.**
 
 **`commit_sha` MUST be a real content commit distinct from the batch start commit.**
@@ -147,19 +147,19 @@ This self-report lets finalize recognize a legitimately-complete batch even when
 **On a `--resume-incomplete` re-dispatch specifically:** if you independently re-verify that every card's requirements are already satisfied by the existing commit(s) since `` and you make no new commit this turn, report `status: success` with `"already_complete": true` in the envelope, **in addition to** (not instead of) a `cards_done` array covering every card declared in this batch:
 
 ```json
-{"status":"success","commit_sha":"<HEAD-sha, unchanged from before this turn>","session_id":"73ea5979-52e1-4d8f-9dfe-3a9c70fe1021","cards_done":[<every card number declared in this batch>],"already_complete":true}
+{"status":"success","commit_sha":"<HEAD-sha, unchanged from before this turn>","session_id":"40a970d6-b2ae-458e-89b3-b80abbde3380","cards_done":[<every card number declared in this batch>],"already_complete":true}
 ```
 
 or, when stuck:
 
 ```json
-{"status":"stuck","stuck_type":"transient|verify|logic","reason":"<one-line>","commit_sha":"<last-HEAD-sha>","session_id":"73ea5979-52e1-4d8f-9dfe-3a9c70fe1021"}
+{"status":"stuck","stuck_type":"transient|verify|logic","reason":"<one-line>","commit_sha":"<last-HEAD-sha>","session_id":"40a970d6-b2ae-458e-89b3-b80abbde3380"}
 ```
 **Do not wrap the JSON in a code block.
 Output it as a bare line — no backticks, no fence.
 Anything other than a bare JSON line is treated as `stuck_type: logic`.**
 
-**`session_id` MUST be exactly `73ea5979-52e1-4d8f-9dfe-3a9c70fe1021` (the UUID shown in the example above — it was injected into this brief when it was rendered).
+**`session_id` MUST be exactly `40a970d6-b2ae-458e-89b3-b80abbde3380` (the UUID shown in the example above — it was injected into this brief when it was rendered).
 Copy it verbatim.**
 
 `stuck_type` values:
