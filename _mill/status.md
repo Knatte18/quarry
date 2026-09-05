@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-unit-exports
+phase: approved-gitsrc
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -39,6 +39,7 @@ planned  '2026-09-05T16:42:16Z'
 implementing  '2026-09-05T16:42:49Z'
 approved-engine-symbol-seam  '2026-09-05T16:48:55Z'
 approved-engine-unit-exports  '2026-09-05T16:56:53Z'
+approved-gitsrc  '2026-09-05T17:10:21Z'
 ```
 
 ## Batches
@@ -58,9 +59,10 @@ batches:
     commit_sha: 965b37e48c8b56c66dd749808274987148c52880
     verify_baseline_failures: []
   - name: gitsrc
-    state: running
+    state: approved
     implementer_session: 7f30f82e-4037-479c-bc41-1b60f6b36177
     start_sha: 67c79f6041dbdfbea9fcd87256ef08c5234061dc
+    commit_sha: 2fc79dc80c2575229547d6de36ff0948c2ae9cd9
     verify_baseline_failures: ["FAIL\t./internal/gitsrc [setup failed]"]
   - name: delta-types-and-tokens
     state: pending
