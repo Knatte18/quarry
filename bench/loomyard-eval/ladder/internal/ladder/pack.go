@@ -10,7 +10,11 @@
 package ladder
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/quarry/quarry"
@@ -163,4 +167,190 @@ func trimBlankLines(lines []string) string {
 		end--
 	}
 	return strings.Join(lines[start:end], "\n")
+}
+
+// PackResolveFile is the file name a results root's pack-time resolve output is written under, under
+// the results root -- the sibling of ProvenanceFile card 28's summary file and card 29's table file
+// each declare their own constant for, in the file that writes them.
+const PackResolveFile = "pack-resolve.json"
+
+// PackOptions carries everything Pack needs to drive one pack-generation invocation: the operator's
+// own ladder file path and results root, the claude binary path, a starting point Pack resolves up to
+// the quarry repository root from, and the Runner every external process goes through. It mirrors
+// RunOptions's own field set minus SelectedCells and RepsOverride, which have no meaning here: Pack
+// always resolves the file's whole glyph list against its one pack cell, never a caller-chosen subset
+// or repetition count.
+type PackOptions struct {
+	// LadderFilePath is the operator's own ladder file path.
+	LadderFilePath string
+	// ResultsRoot is the results root Pack writes pack-resolve.json and the provenance record to.
+	ResultsRoot string
+	// ClaudeBinPath is the claude binary path CollectInvocation probes for its version. Pack takes
+	// this as an option, rather than a constant, because it must be able to name the same binary the
+	// run this pack precedes will use.
+	ClaudeBinPath string
+	// QuarryRepoStart is a path inside the quarry repository Pack resolves up from to the
+	// repository's own root via ResolveQuarryRepoRoot.
+	QuarryRepoStart string
+	// Runner is the seam every external process -- claude, git -- runs through.
+	Runner Runner
+}
+
+// Pack generates one ladder file's kick-start pack: it loads the file, finds its single pack cell,
+// prepares that cell's pinned worktree, makes exactly one batched (*quarry.Repo).Resolve call over
+// the file's whole glyph list through the facade, renders the pack, writes it into the pack cell's
+// card between its sentinels, records the resolve output and a provenance invocation carrying the
+// pack's own kickstart_pack block, and returns.
+//
+// Pack acquires the same advisory run lock Run does, against the same worktree root and results root,
+// with the release deferred, so a pack and a run can never touch one pinned worktree concurrently. The
+// lock is exclusive-create and is never reaped automatically, so a pack that dies leaves the same
+// operator-cleared stale lock a dead run does -- the existing, documented behaviour, and not something
+// this command works around.
+//
+// Pack writes a real, complete invocation -- naming every config id in the file as its selected
+// cells and the file's own reps as its effective repetition count -- rather than a pack-only stub that
+// leaves those at zero, because MergeProvenance refuses a record whose selected cells or effective
+// repetition count differs from the existing one, and Run additionally refuses a root whose effective
+// repetition count differs from its own. A stub would fail both checks on the very first run, before
+// rep 1, every time.
+//
+// This carries two consequences, accepted deliberately: the record carries one invocation that ran no
+// repetitions, and the effective repetition count is pinned from the pack onward, so a later per-run
+// repetition override against the same root is refused -- which is the correct behaviour under a
+// locked n, not a limitation to work around.
+//
+// Pack does not restore the pinned worktree when it finishes. It only reads through the facade, so it
+// dirties nothing, and restoring would discard state that some other holder of the worktree put there
+// rather than state Pack caused. The run lock, held for the whole command, is what keeps a pack and a
+// run off one pinned worktree at the same time.
+func Pack(ctx context.Context, opts PackOptions) error {
+	l, err := LoadLadder(opts.LadderFilePath)
+	if err != nil {
+		return err
+	}
+
+	quarryRepoRoot, err := ResolveQuarryRepoRoot(opts.QuarryRepoStart)
+	if err != nil {
+		return err
+	}
+	targetRepoPath, err := ResolveLoomyardRepo(quarryRepoRoot)
+	if err != nil {
+		return err
+	}
+	worktreeRoot, err := ResolveWorktreeRoot(quarryRepoRoot)
+	if err != nil {
+		return err
+	}
+
+	release, err := AcquireRunLock(worktreeRoot, opts.ResultsRoot)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
+
+	packCfg, err := findPackConfig(l, opts.LadderFilePath)
+	if err != nil {
+		return err
+	}
+
+	task, ok := l.Tasks[packCfg.Task]
+	if !ok {
+		return fmt.Errorf("pack: cell %s references unknown task %q", packCfg.ID, packCfg.Task)
+	}
+	dest := TaskWorktreePath(worktreeRoot, packCfg.Task)
+	if err := PrepareWorktree(ctx, opts.Runner, targetRepoPath, packCfg.Task, task.PinnedSHA, dest); err != nil {
+		return err
+	}
+
+	selectedIDs := make([]string, len(l.Configs))
+	for i, c := range l.Configs {
+		selectedIDs[i] = c.ID
+	}
+	inv, err := CollectInvocation(ctx, opts.Runner, CollectInput{
+		QuarryRepoRoot: quarryRepoRoot,
+		LadderFilePath: opts.LadderFilePath,
+		TargetRepoPath: targetRepoPath,
+		ServerName:     l.ServerName(),
+		SelectedCells:  selectedIDs,
+		RepsEffective:  l.Reps,
+		ClaudeBinPath:  opts.ClaudeBinPath,
+	})
+	if err != nil {
+		return err
+	}
+
+	repo, err := quarry.Open(dest)
+	if err != nil {
+		return fmt.Errorf("pack: open pinned worktree %s: %w", dest, err)
+	}
+	results, err := repo.Resolve(l.PackTargets)
+	if err != nil {
+		return fmt.Errorf("pack: resolve pack targets: %w", err)
+	}
+
+	pack, err := RenderKickstartPack(results)
+	if err != nil {
+		return err
+	}
+
+	cardPath := resolveRepoRelative(quarryRepoRoot, packCfg.Card)
+	cardData, err := os.ReadFile(cardPath)
+	if err != nil {
+		return fmt.Errorf("pack: read card %s: %w", cardPath, err)
+	}
+	newCard, err := WritePackIntoCard(string(cardData), pack)
+	if err != nil {
+		return fmt.Errorf("pack: write pack into card %s: %w", cardPath, err)
+	}
+	if err := os.WriteFile(cardPath, []byte(newCard), 0o644); err != nil {
+		return fmt.Errorf("pack: write card %s: %w", cardPath, err)
+	}
+
+	resolveData, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		return fmt.Errorf("pack: marshal resolve results: %w", err)
+	}
+	if err := os.MkdirAll(opts.ResultsRoot, 0o755); err != nil {
+		return fmt.Errorf("pack: create results root %s: %w", opts.ResultsRoot, err)
+	}
+	resolvePath := filepath.Join(opts.ResultsRoot, PackResolveFile)
+	if err := os.WriteFile(resolvePath, resolveData, 0o644); err != nil {
+		return fmt.Errorf("pack: write %s: %w", resolvePath, err)
+	}
+
+	existing, err := ReadProvenance(opts.ResultsRoot)
+	if err != nil {
+		return err
+	}
+	prov, err := MergeProvenance(existing, inv)
+	if err != nil {
+		return err
+	}
+	prov.KickstartPack = &KickstartPack{
+		GeneratedAt:    inv.WrittenAt,
+		QuarryCommit:   inv.QuarryCommit,
+		QuarryDirty:    inv.QuarryDirty,
+		LoomyardCommit: inv.LoomyardCommit,
+		Targets:        append([]string(nil), l.PackTargets...),
+		PackSHA256:     PackBlockSHA256(pack),
+		ResolveSHA256:  sha256Hex(string(resolveData)),
+		CardFile:       packCfg.Card,
+	}
+	if err := WriteProvenance(opts.ResultsRoot, prov); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// findPackConfig returns the single config in l whose Pack flag is set, erroring naming
+// ladderFilePath when there is none. validate guarantees at most one such config exists.
+func findPackConfig(l *Ladder, ladderFilePath string) (Config, error) {
+	for _, c := range l.Configs {
+		if c.Pack {
+			return c, nil
+		}
+	}
+	return Config{}, fmt.Errorf("pack: ladder file %s declares no config with pack: true", ladderFilePath)
 }
