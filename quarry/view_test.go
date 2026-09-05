@@ -287,3 +287,108 @@ func TestRenderGlyphsJSON_ByteContract(t *testing.T) {
 		t.Errorf("RenderGlyphsJSON() = %s; want '<' left unescaped", s)
 	}
 }
+
+// assertGlyphsTextInvariant is the whole-output invariant every RenderGlyphsText case must
+// satisfy: no line has trailing whitespace, and a non-empty result ends with exactly one "\n".
+func assertGlyphsTextInvariant(t *testing.T, got string) {
+	t.Helper()
+	if got == "" {
+		return
+	}
+	if !strings.HasSuffix(got, "\n") {
+		t.Fatalf("RenderGlyphsText() = %q; want it to end with a newline", got)
+	}
+	if strings.HasSuffix(got, "\n\n") {
+		t.Fatalf("RenderGlyphsText() = %q; want exactly one trailing newline, not two", got)
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(got, "\n"), "\n") {
+		if line != strings.TrimRight(line, " \t") {
+			t.Errorf("RenderGlyphsText() = %q; line %q has trailing whitespace", got, line)
+		}
+	}
+}
+
+// TestRenderGlyphsText_LineGrammar covers the "<File>:<Start>-<End> <Kind> <ID>" line for each of
+// the five kinds.
+func TestRenderGlyphsText_LineGrammar(t *testing.T) {
+	tests := []struct {
+		name string
+		kind Kind
+		id   string
+		want string
+	}{
+		{"Function", KindFunction, "sub#Foo", "sub/a.go:1-2 function sub#Foo\n"},
+		{"Method", KindMethod, "sub#Thing.Method", "sub/a.go:1-2 method sub#Thing.Method\n"},
+		{"Type", KindType, "sub#Thing", "sub/a.go:1-2 type sub#Thing\n"},
+		{"Const", KindConst, "sub#X", "sub/a.go:1-2 const sub#X\n"},
+		{"Var", KindVar, "sub#Y", "sub/a.go:1-2 var sub#Y\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := GlyphsAnswer{
+				Symbols: []Symbol{{ID: tt.id, Kind: tt.kind, File: "sub/a.go", Start: 1, End: 2}},
+			}
+			got := RenderGlyphsText(a)
+			if got != tt.want {
+				t.Errorf("RenderGlyphsText() = %q; want %q", got, tt.want)
+			}
+			assertGlyphsTextInvariant(t, got)
+		})
+	}
+}
+
+// TestRenderGlyphsText_EmptyAnswerIsEmptyString covers that an answer with no symbols and no
+// incomplete files renders as exactly "", never "\n".
+func TestRenderGlyphsText_EmptyAnswerIsEmptyString(t *testing.T) {
+	got := RenderGlyphsText(GlyphsAnswer{Target: "sub"})
+	if got != "" {
+		t.Errorf("RenderGlyphsText() = %q; want the empty string", got)
+	}
+}
+
+// TestRenderGlyphsText_SymbolsNoIncomplete covers an answer with symbols and no incomplete files.
+func TestRenderGlyphsText_SymbolsNoIncomplete(t *testing.T) {
+	a := GlyphsAnswer{
+		Symbols: []Symbol{
+			{ID: "sub#Foo", Kind: KindFunction, File: "sub/a.go", Start: 1, End: 2},
+			{ID: "sub#Bar", Kind: KindFunction, File: "sub/b.go", Start: 3, End: 4},
+		},
+	}
+	want := "sub/a.go:1-2 function sub#Foo\nsub/b.go:3-4 function sub#Bar\n"
+	got := RenderGlyphsText(a)
+	if got != want {
+		t.Errorf("RenderGlyphsText() = %q; want %q", got, want)
+	}
+	assertGlyphsTextInvariant(t, got)
+}
+
+// TestRenderGlyphsText_IncompleteNoSymbols covers an answer with no symbols but one or more
+// incomplete files: the block is present, and the leading blank line does not produce a leading
+// empty line before any symbol line exists.
+func TestRenderGlyphsText_IncompleteNoSymbols(t *testing.T) {
+	a := GlyphsAnswer{Incomplete: []string{"sub/a.go", "sub/b.go"}}
+	want := "[incomplete] sub/a.go\n[incomplete] sub/b.go\n"
+	got := RenderGlyphsText(a)
+	if got != want {
+		t.Errorf("RenderGlyphsText() = %q; want %q", got, want)
+	}
+	if strings.HasPrefix(got, "\n") {
+		t.Errorf("RenderGlyphsText() = %q; want no leading blank line", got)
+	}
+	assertGlyphsTextInvariant(t, got)
+}
+
+// TestRenderGlyphsText_SymbolsAndIncomplete covers an answer with both symbol lines and incomplete
+// files, asserting the single blank-line separator between the two blocks.
+func TestRenderGlyphsText_SymbolsAndIncomplete(t *testing.T) {
+	a := GlyphsAnswer{
+		Symbols:    []Symbol{{ID: "sub#Foo", Kind: KindFunction, File: "sub/a.go", Start: 1, End: 2}},
+		Incomplete: []string{"sub/b.go"},
+	}
+	want := "sub/a.go:1-2 function sub#Foo\n\n[incomplete] sub/b.go\n"
+	got := RenderGlyphsText(a)
+	if got != want {
+		t.Errorf("RenderGlyphsText() = %q; want %q", got, want)
+	}
+	assertGlyphsTextInvariant(t, got)
+}
