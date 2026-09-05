@@ -133,7 +133,11 @@ extracting files that did not change; correctness lives entirely in the table co
   - `renamed` holds **exact-tier** pairs only. Quarry asserts these. Each exact pair's deleted
     symbol is **removed** from `deleted` and its created symbol is **removed** from `created` — the
     rename is the assertion, so the constituent create and delete are no longer true statements
-    about the batch.
+    about the batch. Because of that removal, the pair is the **only** place either symbol survives,
+    so it carries both in full: `from` is the before-side `Symbol` and `to` is the after-side
+    `Symbol`, each with its own `id`, `kind`, `file` and spans. An id-only pair would discard the
+    created symbol's location, which is exactly what Loomyard's handle rebinding needs.
+    (`created` and `deleted` are themselves `[]Symbol`.)
   - `rename_candidates` holds **evidence-tier** reports. Quarry asserts nothing. The deleted symbol
     **stays** in `deleted` and every candidate created symbol **stays** in `created`; the candidate
     block only cross-references them by id and attaches signals. Each entry is one deleted id plus
@@ -208,8 +212,12 @@ extracting files that did not change; correctness lives entirely in the table co
     `[BodyStart, DeclEnd)`.
 
   The delta core already parses each side's bytes inside one `treesitter.WithTree` callback; in that
-  same callback it walks the root's leaves **once**, in source order, and buckets each leaf into the
-  stream its start byte falls in. No per-symbol node lookup, no second parse, no second walk.
+  same callback it walks the root's leaves **once**, in source order, and assigns each leaf to
+  **every** symbol range that contains it — not to one. Symbol spans nest and overlap, and both are
+  intended: an interface's `method_elem` leaves belong to the interface type's *body* stream and to
+  that method symbol's own *signature* stream simultaneously, and the several symbols of
+  `const a, b = 1, 2` share one span verbatim, so each of them gets the same stream. One walk, many
+  assignments — no per-symbol node lookup, no second parse, no second walk.
 
   **What the invariant against `Symbol.Signature` actually is.** The signature stream spans exactly
   the bytes `SignatureCut` cuts, but `Symbol.Signature` is not always those bytes verbatim: it is
@@ -288,9 +296,30 @@ extracting files that did not change; correctness lives entirely in the table co
      match); the head's own token stream has real `identifier` nodes to key on, so the substitution
      applies to whole identifiers and to nothing else.
   6. **Exactly one** such `C` exists for that `D`, and exactly one such `D` for that `C`.
+  7. **Both symbols have a non-empty body stream** (`BodyStart < DeclEnd` on each side), and neither
+     side's file had a partial parse (see the `lossy` flag under entry dispositions).
   The two symbols may live in different files. If condition 6 fails — two deleted symbols both pair
   exactly with one created symbol, or vice versa — none of the involved symbols is asserted as
-  renamed; they all fall through to the evidence tier instead.
+  renamed; they all fall through to the evidence tier instead. If condition 7 fails, the pair falls
+  through to the evidence tier as well.
+
+  **Why condition 7 exists — bodyless kinds can never be asserted.** `goUngroupedConstOrVarSymbols`,
+  `goGroupedConstOrVarSymbols` and `goInterfaceMethodSymbols` all pass `body == nil`, and a type
+  alias has no body either, so for every const, var, alias and interface method `BodyStart` equals
+  `DeclEnd` and the body stream is empty on both sides. Condition 4 is then vacuously satisfied by
+  *any* two of them, and `const A = 1` deleted alongside `const B = 1` created would be **asserted**
+  as a rename — with both vanishing from `created` and `deleted`, since an exact pair removes its
+  constituents. That is precisely the false-assertion failure this design calls a defect for two
+  unrelated interfaces; a signature-only match is not evidence enough to assert on. Such pairs are
+  confined to the evidence tier, where they are reported with `signature_identical_modulo_name: true`
+  and a `body_token_similarity` of `1.0` over two empty streams, and quarry decides nothing.
+
+  **Classification is relative to the scoped batch, not to the unit as it exists on disk.** The
+  batch is whatever the pathspec selected, so a rename whose other half lies outside the target is
+  reported as a plain `deleted` (or `created`) with no candidate at all — quarry cannot pair against
+  a symbol it was never given. A caller that cares about renames must scope at least to the unit;
+  Loomyard's scope guard, which passes a card's declared targets, gets narrower batches than that by
+  design and must read the delta as "within this scope", never as "in this package".
 - Rationale: the unit is the identity scope of a glyph, so it is the correct boundary: a
   declaration moving between files inside one Go package is routine and must still be a rename,
   while a declaration moving *between* packages changes its glyph's unit half and is a move, which
@@ -391,6 +420,21 @@ extracting files that did not change; correctness lives entirely in the table co
     to any delta list.
   A failing entry never fails the batch: the whole `Delta` call still returns a nil error, and the
   answer is still rendered as a success envelope.
+
+  **Partial parses are reported, and they block assertion.** `treesitter.WithTree` hands back
+  `root.HasError()`, and `FileEntry.Lossy` already exists for exactly this state. The `files` entry
+  therefore carries `lossy_before` and `lossy_after` flags, set independently per side. A lossy side
+  still contributes its surviving symbols, exactly as `walkDir` and `symbolsOfUnit` already do — but
+  **no symbol from a lossy side may be asserted at the exact tier** (condition 7 above), because a
+  truncated symbol table manufactures spurious `deleted` entries, and a spurious delete is exactly
+  the input that turns an exact-tier assertion into a confident lie. The delta is still reported in
+  full; the flags are what let a consumer discount it.
+- Rationale for the lossy flags: the working-tree side is Loomyard's card-done path, where a
+  mid-edit file with a syntax error is normal rather than exceptional. Silently reporting a
+  truncated table as ordinary `deleted` entries would tell the pipeline that symbols were removed
+  when the file merely does not parse yet. Reporting is enough — refusing the entry outright would
+  discard real information, and the `asserted`/`reported` split the whole design turns on says the
+  right response to reduced confidence is to stop asserting, not to stop answering.
 - Rationale: echoing every entry is what makes the batch auditable — a caller can tell "this file
   had no symbol changes" apart from "this file was never read", which is a distinction a
   mechanical gate must make before it trusts an empty delta. It mirrors `docs/rewrite-plan.md` §4's
@@ -519,7 +563,16 @@ extracting files that did not change; correctness lives entirely in the table co
   are per changed *directory*, not per changed file, and they read package clauses only.
 - Rejected: `git diff -M` and trusting git's rename pairs (a threshold heuristic in the one place
   the contract forbids one); `git diff --name-only` alone (loses the add/delete status, which the
-  entry disposition needs).
+  entry disposition needs); statting the target (see the CLI decision).
+- **Cost, stated honestly.** The clause vote is *not* "one call per changed directory". It needs, for
+  every changed directory and **on both sides**, one `git ls-tree` plus one `git show` process spawn
+  and one tree-sitter parse **per `.go` file in that directory** — not per changed file. A one-file
+  change in `internal/engine/` (about 20 non-test `.go` files, more with tests) therefore costs on
+  the order of 40 `git show` spawns and 40 parses before any delta work begins. That is the price of
+  the correct-unit decision, and the plan should price it as such, because the primary consumer
+  calls this per card. Two mitigations are available and neither is a cache: the vote is skipped
+  entirely for a directory in which no `.go` file changed, and the working-tree side reads from disk
+  rather than spawning `git show` per file.
 
 ### Untracked working-tree files are included; tracked-but-gitignored files are not excluded
 
@@ -586,9 +639,18 @@ extracting files that did not change; correctness lives entirely in the table co
     batch in which some entries have `disposition: error`. **2** for a usage error, which now
     includes an unresolvable revision. **3** for an internal failure (a git command that failed for
     any *other* reason, a render failure, a stdout write failure). **1** is reachable only through
-    `RepoRelTarget`'s target-escapes-the-root rejection, exactly as it is for `toc`; the query
-    itself has no negative answer, because "nothing changed" is a true answer to "what changed", not
-    a negative one, and `Run`'s doc comment says so.
+    `RepoRelTarget`'s target-escapes-the-root rejection; the query itself has no negative answer,
+    because "nothing changed" is a true answer to "what changed", not a negative one, and `Run`'s
+    doc comment says so.
+  - **`delta` never stats its target**, unlike `runTOC`, which does its own `os.Lstat` and returns
+    exit 1 with `target not found: <rel>`. A pathspec matching nothing produces **exit 0 with an
+    empty delta**, not exit 1.
+- Rationale for not statting: a target that does not exist *now* may well have existed at `--from`,
+  and a deleted directory is exactly the change this query exists to report — `runTOC`'s stat is
+  right for a verb that asks "what is here", and wrong for one that asks "what changed". Statting
+  would make `delta internal/oldpkg --from HEAD~5` refuse to answer precisely when the answer is
+  most interesting. An unmatched pathspec is likewise a true, empty answer rather than a negative
+  one: the caller asked what changed under a path, and nothing did.
 - Rationale: keeping the one-target rule intact avoids touching `parseArgs`' target-count check for
   one verb's sake. Routing the target through `RepoRelTarget` is what keeps one argument from
   meaning two different things — quarry resolves it against the working directory, git would resolve
@@ -836,6 +898,22 @@ every case is two string literals in the test file. Scenarios that must be cover
   rename candidate.
 - a `const` replaced by a `var` of the same name → one create and one delete, never a modification.
 - an entry whose extension has no strategy → `disposition: unsupported`, no symbols, no error.
+- **bodyless kinds are never asserted:** `const A = 1` deleted plus `const B = 1` created asserted
+  **not** in `renamed`, but present in `rename_candidates` with
+  `signature_identical_modulo_name: true` and `body_token_similarity: 1.0` over two empty streams;
+  likewise a renamed `var`, a renamed `type Alias = T`, and a renamed interface method. Without
+  condition 7 every one of these is a false assertion.
+- **a partial parse:** a syntactically broken after side asserted to set `lossy_after` on the file
+  echo, to still contribute its surviving symbols, and to block any exact-tier assertion involving
+  that file — a rename that would otherwise be exact is demoted to evidence.
+- **an exact-tier pair carries both symbols in full:** the `renamed` entry's `from` and `to` each
+  asserted to hold `id`, `kind`, `file` and spans, and both constituents asserted absent from
+  `created`/`deleted` — the pair is the only surviving record of either location.
+- **leaf assignment is many-to-many:** an interface `method_elem`'s leaves asserted present in both
+  the interface type's body stream and that method symbol's own signature stream; the several
+  symbols of `const a, b = 1, 2` asserted to share one identical stream.
+- **scoped-batch classification:** a rename whose other half lies outside the pathspec asserted to
+  appear as a plain `deleted` with no candidate, proving classification is relative to the batch.
 - a per-entry extraction failure (invalid UTF-8) inside an otherwise good batch → that entry
   `disposition: error` with a message, every other entry's symbols present, `Delta` returns a nil
   error.
@@ -893,7 +971,10 @@ hand-written.
 unresolvable revision (`--from bogus`) → exit 2 with `unknown revision: bogus` and the usage text,
 never git's raw message**; a git invocation failing for another reason → exit 3 with the
 `internal error: ` prefix; a target escaping the root → exit 1; a target carrying `#` → exit 2;
-`--text` producing the text view. A `codeForDelta` table test mirroring `TestCodeForTOCError`.
+`--text` producing the text view; **a pathspec matching nothing → exit 0 with an empty delta**, and
+a target naming a path that no longer exists but did at `--from` → exit 0 with that path's symbols
+in `deleted`, proving `delta` performs no stat where `runTOC` does. A `codeForDelta` table test
+mirroring `TestCodeForTOCError`.
 One test must pin the **target-resolution** rule: `delta .` run from a subdirectory scopes to that
 subdirectory, and produces the same scope `toc .` does from the same directory — the two verbs
 resolve one argument the same way or the CLI has two meanings for it.
@@ -951,3 +1032,10 @@ verb. No other document changes on this branch.
 - **Q:** [review r3, NIT] The clause vote used `git ls-tree` on a revision side and an ignore-filtered on-disk read on the working-tree side, so a tracked-and-ignored file voted on one side only. **A:** [auto-pick] One enumeration rule for both sides, chosen by the facade and passed to `ClauseMapForFiles` as an explicit file list. **Why:** a `dirPkg` differing between the sides changes the unit and turns the whole directory into a create-plus-delete storm. (Also corrected: `dirPackage` does not filter — `walkDir` hands it pre-filtered entries.)
 - **Q:** [review r3, NIT] Scope still said `.` means the whole repository, contradicting the r2 correction. **A:** [auto-pick] Corrected in Scope and the superseded Q&A entry annotated. **Why:** a plan writer reading Scope alone would implement the withdrawn rule.
 - **Q:** [review r3, NIT] The unit helper was named `UnitsForDir` in one decision and `UnitsForClauseMap` elsewhere. **A:** [auto-pick] `UnitsForClauseMap` throughout. **Why:** one name; the map-taking form is what both callers share.
+- **Q:** [review r4, BLOCKING] A partial parse (`root.HasError()`) had no representation, so a syntactically broken side reports a truncated table as ordinary `deleted` entries. **A:** [auto-pick] Add `lossy_before`/`lossy_after` to the file echo; the side still contributes its surviving symbols, but no symbol from a lossy side may be asserted at the exact tier. **Why:** the working-tree side is the card-done path, where mid-edit files are normal; a spurious delete is exactly the input that turns an assertion into a confident lie, and the right response to reduced confidence is to stop asserting, not to stop answering.
+- **Q:** [review r4, BLOCKING] The `renamed` entry's payload was never specified, yet an exact pair removes both constituents from `created`/`deleted`. **A:** [auto-pick] The pair carries `from` and `to` as full `Symbol`s. **Why:** removal makes the pair the only surviving record of the created symbol's file and span — which is what Loomyard's handle rebinding needs.
+- **Q:** [review r4, BLOCKING] "Exit 1 is reachable only through `RepoRelTarget`, exactly as for `toc`" — true? And does `delta` stat its target? **A:** [auto-pick] The `toc` claim was wrong (`runTOC` also returns exit 1 from its own `os.Lstat`); `delta` performs **no** stat, and an unmatched pathspec is exit 0 with an empty delta. **Why:** a path that does not exist now may have existed at `--from`, and a deleted directory is exactly the change this query exists to report.
+- **Q:** [review r4, BLOCKING] `const`, `var`, type aliases and interface methods all have `body == nil`, so `BodyStart == DeclEnd` and the exact tier's body condition is vacuous — `const A = 1` / `const B = 1` would be asserted as a rename. **A:** [auto-pick] Add condition 7: a non-empty body stream on both sides (and no lossy side) is required for the exact tier; bodyless kinds are confined to the evidence tier. **Why:** a signature-only match is not evidence enough to assert on, and this is the same false-assertion failure already called a defect for two unrelated interfaces.
+- **Q:** [review r4, NIT] "Buckets each leaf into the stream its start byte falls in" is singular, but symbol spans nest and overlap. **A:** [auto-pick] A leaf is assigned to **every** containing symbol range; the overlap is intended. **Why:** an interface `method_elem`'s leaves belong to the interface's body stream and to that method's own signature stream at once, and `const a, b = 1, 2`'s symbols share one span verbatim.
+- **Q:** [review r4, NIT] "Per changed directory, not per changed file" understated the clause-vote cost. **A:** [auto-pick] Restated: one `git show` spawn plus one parse per `.go` file of every changed directory, on both sides — roughly 40 spawns for a one-file change in `internal/engine/`. **Why:** the primary consumer calls this per card, so the plan must price it; the two available mitigations (skip directories with no changed `.go` file, read the working-tree side from disk) are noted and neither is a cache.
+- **Q:** [review r4, NIT] Rename pairing is "unit-wide across the batch", but the batch is pathspec-scoped. **A:** [auto-pick] State that classification is relative to the scoped batch: a rename whose other half falls outside the target is a plain `deleted` with no candidate. **Why:** quarry cannot pair against a symbol it was never given, and Loomyard's scope guard passes narrow batches by design.
