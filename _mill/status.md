@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-glyph-grammar
+phase: approved-engine-resolve-contract
 slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
@@ -32,6 +32,7 @@ plan-fix-r3  '2026-09-05T12:11:31Z'
 planned  '2026-09-05T12:12:08Z'
 implementing  '2026-09-05T12:12:37Z'
 approved-glyph-grammar  '2026-09-05T12:19:35Z'
+approved-engine-resolve-contract  '2026-09-05T12:29:18Z'
 ```
 
 ## Batches
@@ -45,9 +46,10 @@ batches:
     commit_sha: 793738cc2d5f4bc537cae80383c16588baab7492
     verify_baseline_failures: []
   - name: engine-resolve-contract
-    state: running
+    state: approved
     implementer_session: e05df424-7b87-4b01-bde9-09338ac28e42
     start_sha: b4ef306aab1e8b9c50c6a565cbedfada998756ff
+    commit_sha: 59444c87b0845fdc5415d6b96260eec0662daba3
     verify_baseline_failures: []
   - name: expand-gate-and-sentinel
     state: pending
