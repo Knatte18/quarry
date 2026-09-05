@@ -1,6 +1,10 @@
 // walk.go holds the per-directory work Repo.TOC drives, as unexported methods on *Repo:
 // dirPackage, dirDoc, fileEntry, unitSpellable, and the recursion itself, walkDir; and the
-// unexported free function unitFor.
+// unexported free function unitFor. The per-file clause read, the directory's clause vote, and the
+// unit derivation those two names once stated themselves now live in the exported PackageClause and
+// UnitsForClauseMap, declared in units.go for the caller outside this package that needs them:
+// dirPackage delegates to both for its own clause and vote, and UnitsForClauseMap's own unitOf
+// delegates to unitFor for the per-file derivation, so each rule still exists exactly once.
 //
 // How many times a file is parsed, and why. A directory is walked in exactly two parse passes
 // over its files, never three. Pass one is dirPackage, which reads package clauses only. Pass two
@@ -24,7 +28,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"unicode/utf8"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -114,61 +117,38 @@ func (r *Repo) unitSpellable(unit string) bool {
 // already been ignore-filtered by walkDir — a gitignored .go file never votes in the tie-break and
 // never contributes a clause, and the same holds for dirDoc's candidates.
 //
-// The strategy for each file is resolved through StrategyFor(lang), never by naming goStrategy
-// directly: the alphabet is chosen per file, and Go is merely the only registration today.
-//
-// The directory's package is the most common clause among files whose clause does not end in
-// "_test"; when every file's clause ends in "_test", it is the most common clause overall. On a
-// tie the lexicographically smallest clause wins — without a tie-break the answer would depend on
-// os.ReadDir's order, which is exactly what this ordering rule exists to eliminate.
+// Each file's own clause is read through the exported PackageClause, in units.go: the language and
+// strategy lookups, the UTF-8 check, and the parse all live there now, so this loop does nothing
+// but the extension guard ahead of its own os.ReadFile and the read itself. The directory's
+// dominant clause is then the exported UnitsForClauseMap's own vote over the clauses map this loop
+// built — see that function's doc comment for the vote and its tie-break — so dirPackage keeps
+// exactly one call site for a rule it no longer states itself.
 func (r *Repo) dirPackage(dirRel string, entries []os.DirEntry) (pkg string, clauses map[string]string) {
 	clauses = make(map[string]string)
-	counts := make(map[string]int)
 	dirPath := r.absDir(dirRel)
 
 	for _, entry := range entries {
 		base := entry.Name()
-		lang, ok := LanguageForExtension(filepath.Ext(base))
-		if !ok {
-			continue
-		}
-		strategy, ok := StrategyFor(lang)
-		if !ok {
+		if _, ok := LanguageForExtension(filepath.Ext(base)); !ok {
 			continue
 		}
 		src, err := os.ReadFile(filepath.Join(dirPath, base))
-		if err != nil || !utf8.Valid(src) {
-			// A file this pass cannot read or decode contributes no vote; fileEntry reports its
-			// Error on pass two.
+		if err != nil {
+			// A file this pass cannot read contributes no vote; fileEntry reports its Error on pass
+			// two.
 			continue
 		}
-		var clause string
-		if err := treesitter.WithTree(lang, src, func(root *ts.Node, _ bool) error {
-			clause = strategy.Package(root, src)
-			return nil
-		}); err != nil {
-			continue
-		}
-		if clause == "" {
+		clause, ok := PackageClause(base, src)
+		if !ok {
+			// PackageClause's own doc comment enumerates every condition that reaches here: no
+			// registered strategy, invalid UTF-8, a parse error, or an empty clause.
 			continue
 		}
 		clauses[base] = clause
-		counts[clause]++
 	}
 
-	nonTest := make(map[string]int, len(counts))
-	for clause, n := range counts {
-		if !strings.HasSuffix(clause, "_test") {
-			nonTest[clause] = n
-		}
-	}
-	if len(nonTest) > 0 {
-		return mostCommonClause(nonTest), clauses
-	}
-	if len(counts) > 0 {
-		return mostCommonClause(counts), clauses
-	}
-	return "", clauses
+	pkg, _ = UnitsForClauseMap(dirRel, clauses)
+	return pkg, clauses
 }
 
 // mostCommonClause returns the clause with the highest count in counts, the lexicographically

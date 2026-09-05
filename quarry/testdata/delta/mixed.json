@@ -1,0 +1,164 @@
+{
+  "from": "rev1",
+  "to": "rev2",
+  "files": [
+    {
+      "path": "pkg/added.go",
+      "disposition": "added"
+    },
+    {
+      "path": "pkg/removed.go",
+      "disposition": "removed"
+    },
+    {
+      "path": "pkg/modified.go",
+      "disposition": "changed"
+    },
+    {
+      "path": "pkg/lineshift.go",
+      "disposition": "changed"
+    },
+    {
+      "path": "renameexact/a.go",
+      "disposition": "removed"
+    },
+    {
+      "path": "renameexact/b.go",
+      "disposition": "added"
+    },
+    {
+      "path": "renameevidence/evidence.go",
+      "disposition": "changed",
+      "lossy_after": true
+    }
+  ],
+  "created": [
+    {
+      "id": "pkg#Added",
+      "kind": "function",
+      "file": "pkg/added.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 3,
+      "signature": "func Added()"
+    },
+    {
+      "id": "renameevidence#NewEvidence",
+      "kind": "function",
+      "file": "renameevidence/evidence.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 5,
+      "signature": "func NewEvidence()"
+    },
+    {
+      "id": "renameevidence#Broken",
+      "kind": "function",
+      "file": "renameevidence/evidence.go",
+      "start": 7,
+      "end": 7,
+      "signature": "func Broken("
+    }
+  ],
+  "deleted": [
+    {
+      "id": "pkg#Removed",
+      "kind": "var",
+      "file": "pkg/removed.go",
+      "start": 3,
+      "end": 3,
+      "signature": "var Removed = 1"
+    },
+    {
+      "id": "renameevidence#OldEvidence",
+      "kind": "function",
+      "file": "renameevidence/evidence.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 5,
+      "signature": "func OldEvidence()"
+    }
+  ],
+  "modified": [
+    {
+      "id": "pkg#Mod",
+      "kind": "function",
+      "changed": [
+        "body"
+      ],
+      "before": [
+        {
+          "file": "pkg/modified.go",
+          "start": 3,
+          "sigend": 3,
+          "end": 6
+        }
+      ],
+      "after": [
+        {
+          "id": "pkg#Mod",
+          "kind": "function",
+          "file": "pkg/modified.go",
+          "start": 3,
+          "sigend": 3,
+          "end": 6,
+          "signature": "func Mod()"
+        }
+      ]
+    }
+  ],
+  "renamed": [
+    {
+      "from": {
+        "id": "renameexact#OldExact",
+        "kind": "function",
+        "file": "renameexact/a.go",
+        "start": 3,
+        "sigend": 3,
+        "end": 5,
+        "signature": "func OldExact()"
+      },
+      "to": {
+        "id": "renameexact#NewExact",
+        "kind": "function",
+        "file": "renameexact/b.go",
+        "start": 3,
+        "sigend": 3,
+        "end": 5,
+        "signature": "func NewExact()"
+      }
+    }
+  ],
+  "rename_candidates": [
+    {
+      "id": "renameevidence#OldEvidence",
+      "kind": "function",
+      "candidates": [
+        {
+          "id": "renameevidence#NewEvidence",
+          "kind": "function",
+          "file": "renameevidence/evidence.go",
+          "signals": {
+            "signature_identical_modulo_name": true,
+            "body_token_similarity": 1,
+            "body_tokens_before": 5,
+            "body_tokens_after": 5,
+            "doc_identical": true
+          }
+        },
+        {
+          "id": "renameevidence#Broken",
+          "kind": "function",
+          "file": "renameevidence/evidence.go",
+          "signals": {
+            "signature_identical_modulo_name": false,
+            "body_token_similarity": 0,
+            "body_tokens_before": 5,
+            "body_tokens_after": 0,
+            "doc_identical": true
+          }
+        }
+      ]
+    }
+  ]
+}

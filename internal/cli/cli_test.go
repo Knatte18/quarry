@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1171,6 +1172,452 @@ func TestCodeForExpandAnswer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := codeForExpandAnswer(tt.a); got != tt.want {
 				t.Errorf("codeForExpandAnswer(%+v) = %d; want %d", tt.a, got, tt.want)
+			}
+		})
+	}
+}
+
+// deltaCLIFixture is a throwaway git repository, built fresh under t.TempDir(), that TestRun_Delta
+// and its neighbours drive Run's own entry point against. This is a deliberate per-package copy of
+// quarry/delta_test.go's own deltaFixture, because Go test helpers are not importable across
+// packages.
+type deltaCLIFixture struct {
+	t    *testing.T
+	root string
+}
+
+// newDeltaCLIFixture initialises a repository under a fresh temporary directory, with a fixed
+// identity and a fixed default branch name so no machine's global git configuration can change the
+// fixture's behaviour. It skips the whole test, with the reason, when no git binary is available.
+func newDeltaCLIFixture(t *testing.T) *deltaCLIFixture {
+	t.Helper()
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not found on this machine")
+	}
+
+	f := &deltaCLIFixture{t: t, root: t.TempDir()}
+	f.git("init", "--quiet", "--initial-branch=main")
+	f.git("config", "user.name", "quarry-cli-delta-fixture")
+	f.git("config", "user.email", "quarry-cli-delta-fixture@example.com")
+	return f
+}
+
+// git runs one git invocation against the fixture's root, failing the test immediately on error: a
+// fixture-construction step that fails is a broken test, never a normal state worth skipping.
+func (f *deltaCLIFixture) git(args ...string) string {
+	f.t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", f.root}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		f.t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// write writes content to path, repository-relative, creating parent directories as needed. It
+// does not stage the write.
+func (f *deltaCLIFixture) write(path, content string) {
+	f.t.Helper()
+	full := filepath.Join(f.root, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		f.t.Fatalf("mkdir %q: %v", filepath.Dir(full), err)
+	}
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		f.t.Fatalf("write %q: %v", full, err)
+	}
+}
+
+// commit stages every pending change and commits it with message, returning the resulting
+// commit's identifier.
+func (f *deltaCLIFixture) commit(message string) string {
+	f.git("add", "-A")
+	f.git("commit", "--quiet", "-m", message)
+	return f.git("rev-parse", "HEAD")
+}
+
+// writeAndCommit writes content to path and commits it in one step, returning the resulting
+// commit's identifier.
+func (f *deltaCLIFixture) writeAndCommit(path, content, message string) string {
+	f.write(path, content)
+	return f.commit(message)
+}
+
+// removeUnstaged deletes path from the working tree without staging the deletion, leaving it
+// present in the index but absent from disk.
+func (f *deltaCLIFixture) removeUnstaged(path string) {
+	f.t.Helper()
+	full := filepath.Join(f.root, filepath.FromSlash(path))
+	if err := os.Remove(full); err != nil {
+		f.t.Fatalf("remove %q: %v", full, err)
+	}
+}
+
+// unmergedPath produces a conflicted path reachable on the working-tree side during a merge,
+// returning the base commit it built the conflict from: it commits a base version of path,
+// changes it on a side branch, changes it again on main, then attempts to merge the side branch
+// into main and expects, rather than resolves, the resulting conflict.
+func (f *deltaCLIFixture) unmergedPath(path string) string {
+	f.t.Helper()
+	base := f.writeAndCommit(path, "package pkg\n\nfunc Base() {}\n", "base commit for "+path)
+	f.git("checkout", "--quiet", "-b", "delta-fixture-conflict")
+	f.writeAndCommit(path, "package pkg\n\nfunc Side() {}\n", "conflict branch change")
+	f.git("checkout", "--quiet", "main")
+	f.writeAndCommit(path, "package pkg\n\nfunc Main() {}\n", "main branch change")
+
+	cmd := exec.Command("git", "-C", f.root, "merge", "--quiet", "--no-edit", "delta-fixture-conflict")
+	// The merge is expected to fail with a conflict on path; a merge that succeeds cleanly, leaving
+	// no unmerged path at all, is the fixture-construction failure worth stopping the test over.
+	if err := cmd.Run(); err == nil {
+		f.t.Fatalf("merge of delta-fixture-conflict into main succeeded cleanly; wanted a conflict on %q", path)
+	}
+	return base
+}
+
+// deltaFileByPath returns the DeltaFile in files whose Path equals path, and whether it was found.
+func deltaFileByPath(files []quarry.DeltaFile, path string) (quarry.DeltaFile, bool) {
+	for _, df := range files {
+		if df.Path == path {
+			return df, true
+		}
+	}
+	return quarry.DeltaFile{}, false
+}
+
+// hasSymbolIDCLI reports whether syms contains a Symbol whose ID equals id. This is a deliberate
+// per-package copy of quarry/delta_test.go's own hasSymbolID, for the same reason deltaCLIFixture
+// is.
+func hasSymbolIDCLI(syms []quarry.Symbol, id string) bool {
+	for _, s := range syms {
+		if s.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// decodeGitDeltaAnswer decodes stdout as a quarry.GitDeltaAnswer, failing the test on a decode
+// error.
+func decodeGitDeltaAnswer(t *testing.T, stdout string) quarry.GitDeltaAnswer {
+	t.Helper()
+	var answer quarry.GitDeltaAnswer
+	if err := json.Unmarshal([]byte(stdout), &answer); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+	}
+	return answer
+}
+
+// TestRun_Delta pins the delta verb's own pipeline: the exit-code contract that has no negative
+// answer, the two path-taking-verb rejections it shares with toc, the three usage dispositions the
+// facade's git-error identity maps to quarry's own sentences, the text view, and the no-stat rule
+// that lets it report a path that no longer exists but did at the from revision.
+func TestRun_Delta(t *testing.T) {
+	t.Run("EmptyDeltaIsSuccess", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		from := f.writeAndCommit("pkg/a.go", "package pkg\n\nfunc Foo() {}\n", "add Foo")
+
+		code, stdout, stderr := runCLI([]string{"delta", ".", "--from", from, "--root", f.root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+		}
+		answer := decodeGitDeltaAnswer(t, stdout)
+		if len(answer.Files) != 0 {
+			t.Errorf("Files = %+v; want empty", answer.Files)
+		}
+	})
+
+	t.Run("ErrorDispositionEntryIsStillSuccess", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		base := f.unmergedPath("unmerged.go")
+
+		code, stdout, stderr := runCLI([]string{"delta", ".", "--from", base, "--root", f.root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+		}
+		answer := decodeGitDeltaAnswer(t, stdout)
+		df, ok := deltaFileByPath(answer.Files, "unmerged.go")
+		if !ok {
+			t.Fatalf("Files = %+v; want an entry for %q", answer.Files, "unmerged.go")
+		}
+		if df.Disposition != quarry.DispositionError {
+			t.Errorf("Disposition = %q; want %q", df.Disposition, quarry.DispositionError)
+		}
+		if df.Error == "" {
+			t.Error("Error is empty; want it set for the unmerged path")
+		}
+	})
+
+	t.Run("UnresolvableFromRevisionIsUsageError", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		f.writeAndCommit("a.go", "package pkg\n\nfunc A() {}\n", "base")
+
+		code, stdout, stderr := runCLI([]string{"delta", ".", "--from", "does-not-exist-rev", "--root", f.root})
+		if code != exitUsage {
+			t.Fatalf("code = %d; want %d", code, exitUsage)
+		}
+		envErr := failureEnvelope(t, stdout)
+		want := "delta: unknown revision does-not-exist-rev"
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if !strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; want it to carry the usage text", stderr)
+		}
+		if strings.Contains(envErr, "gitsrc:") {
+			t.Errorf("error = %q; must not carry git's own message", envErr)
+		}
+	})
+
+	t.Run("RootIsSubdirectoryOfRepositoryIsUsageError", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		f.writeAndCommit("sub/a.go", "package sub\n\nfunc A() {}\n", "base")
+		subRoot := filepath.Join(f.root, "sub")
+
+		code, stdout, stderr := runCLI([]string{"delta", ".", "--from", "HEAD", "--root", subRoot})
+		if code != exitUsage {
+			t.Fatalf("code = %d; want %d", code, exitUsage)
+		}
+		envErr := failureEnvelope(t, stdout)
+		if !strings.HasPrefix(envErr, "delta: root ") || !strings.Contains(envErr, "is not the repository top level") {
+			t.Errorf("error = %q; want quarry's own root-not-top-level sentence", envErr)
+		}
+		if strings.HasPrefix(envErr, "internal error: ") {
+			t.Errorf("error = %q; must not be the internal code with git's own message", envErr)
+		}
+		if !strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; want it to carry the usage text", stderr)
+		}
+	})
+
+	t.Run("RootOutsideAnyRepositoryIsUsageError", func(t *testing.T) {
+		// A directory outside any git repository, by definition ruling out newDeltaCLIFixture's own
+		// tree: t.TempDir() is the same precedent quarry/delta_test.go's own ErrorIdentity case sets
+		// for exactly this need.
+		root := t.TempDir()
+
+		code, stdout, stderr := runCLI([]string{"delta", ".", "--from", "HEAD", "--root", root})
+		if code != exitUsage {
+			t.Fatalf("code = %d; want %d", code, exitUsage)
+		}
+		envErr := failureEnvelope(t, stdout)
+		want := "delta: root is not a git repository: " + root
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if !strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; want it to carry the usage text", stderr)
+		}
+	})
+
+	t.Run("TargetEscapingRootIsNegative", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		f.writeAndCommit("a.go", "package pkg\n\nfunc A() {}\n", "base")
+
+		code, stdout, _ := runCLI([]string{"delta", "..", "--from", "HEAD", "--root", f.root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		envErr := failureEnvelope(t, stdout)
+		if want := "target outside repository: .."; envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+	})
+
+	t.Run("TargetWithSeparatorIsUsageError", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		f.writeAndCommit("pkg/a.go", "package pkg\n\nfunc A() {}\n", "base")
+
+		code, stdout, stderr := runCLI([]string{"delta", "pkg/other#Make", "--from", "HEAD", "--root", f.root})
+		if code != exitUsage {
+			t.Fatalf("code = %d; want %d", code, exitUsage)
+		}
+		envErr := failureEnvelope(t, stdout)
+		want := `target contains the glyph separator "#": pkg/other#Make`
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if !strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; want it to carry the usage text", stderr)
+		}
+	})
+
+	t.Run("TextFlagProducesTextView", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		from := f.writeAndCommit("pkg/a.go", "package pkg\n\nfunc Foo() {}\n", "add Foo")
+
+		jsonCode, jsonOut, _ := runCLI([]string{"delta", ".", "--from", from, "--root", f.root})
+		answer := decodeGitDeltaAnswer(t, jsonOut)
+		want := quarry.RenderDeltaText(answer)
+
+		code, stdout, stderr := runCLI([]string{"delta", ".", "--from", from, "--text", "--root", f.root})
+		if code != jsonCode {
+			t.Fatalf("code = %d, stderr = %q; want %d (the same code the JSON run returned)", code, stderr, jsonCode)
+		}
+		if stdout != want {
+			t.Errorf("stdout = %q; want %q", stdout, want)
+		}
+	})
+
+	t.Run("PathspecMatchingNothingIsSuccessWithEmptyDelta", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		from := f.writeAndCommit("pkg/a.go", "package pkg\n\nfunc Foo() {}\n", "add Foo")
+
+		code, stdout, stderr := runCLI([]string{"delta", "no-such-dir", "--from", from, "--root", f.root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+		}
+		answer := decodeGitDeltaAnswer(t, stdout)
+		if len(answer.Files) != 0 {
+			t.Errorf("Files = %+v; want empty for a pathspec matching nothing", answer.Files)
+		}
+	})
+
+	// NoStatOnDeletedTarget proves this verb performs no stat: sub/gone.go exists at the from
+	// revision and is removed, unstaged, from the working tree before Run is ever called, so a stat
+	// on the target itself would report it missing. The success code and the path's own symbol in
+	// the deleted array are what show DeltaGit answered from git history rather than from a stat.
+	t.Run("NoStatOnDeletedTarget", func(t *testing.T) {
+		f := newDeltaCLIFixture(t)
+		from := f.writeAndCommit("sub/gone.go", "package sub\n\nfunc Gone() {}\n", "add Gone")
+		f.removeUnstaged("sub/gone.go")
+
+		code, stdout, stderr := runCLI([]string{"delta", "sub/gone.go", "--from", from, "--root", f.root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+		}
+		answer := decodeGitDeltaAnswer(t, stdout)
+		df, ok := deltaFileByPath(answer.Files, "sub/gone.go")
+		if !ok {
+			t.Fatalf("Files = %+v; want an entry for %q", answer.Files, "sub/gone.go")
+		}
+		if df.Disposition != quarry.DispositionRemoved {
+			t.Errorf("Disposition = %q; want %q", df.Disposition, quarry.DispositionRemoved)
+		}
+		if !hasSymbolIDCLI(answer.Deleted, "sub#Gone") {
+			t.Errorf("Deleted = %+v; want it to contain %q", answer.Deleted, "sub#Gone")
+		}
+	})
+
+	// GitFailureForNonUsageReasonIsInternal covers the one remaining case discussion.md's own
+	// command-line list names: a git invocation failing for a reason that is not a usage error. Only
+	// the from-side blob's own loose object file is made unreadable, rather than the whole object
+	// store, so the top-level and revision checks -- and the name-status diff itself, which compares
+	// tree entries and never opens blob content -- have already passed by the time the blob read
+	// fails. Skipped when the process can read the path regardless, which is the normal state when
+	// tests run as a privileged user.
+	t.Run("GitFailureForNonUsageReasonIsInternal", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("running as a privileged user for whom chmod 0000 does not block reads")
+		}
+		f := newDeltaCLIFixture(t)
+		from := f.writeAndCommit("pkg/a.go", "package pkg\n\nfunc Foo() {}\n", "add Foo")
+		f.writeAndCommit("pkg/a.go", "package pkg\n\nfunc Foo() {}\n\nfunc Bar() {}\n", "add Bar")
+
+		hash := f.git("rev-parse", from+":pkg/a.go")
+		obj := filepath.Join(f.root, ".git", "objects", hash[:2], hash[2:])
+		if err := os.Chmod(obj, 0o000); err != nil {
+			t.Fatalf("os.Chmod(%q, 0000) failed: %v", obj, err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(obj, 0o644) })
+		if err := exec.Command("git", "-C", f.root, "cat-file", "-p", hash).Run(); err == nil {
+			t.Skip("chmod 0000 did not block reads in this environment")
+		}
+
+		code, stdout, stderr := runCLI([]string{"delta", ".", "--from", from, "--root", f.root})
+		if code != exitInternal {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitInternal)
+		}
+		envErr := failureEnvelope(t, stdout)
+		if !strings.HasPrefix(envErr, "internal error: ") {
+			t.Errorf("error = %q; want it to start with %q", envErr, "internal error: ")
+		}
+		if envErr == "internal error: " {
+			t.Errorf("error = %q; want git's own message carried whole behind the prefix", envErr)
+		}
+	})
+}
+
+// TestRun_DeltaTargetResolution pins the shared rule runDelta's own doc comment states: a lone dot
+// given to this verb from a subdirectory scopes to that subdirectory, producing the same scope the
+// table-of-contents verb's lone dot produces from the same directory.
+func TestRun_DeltaTargetResolution(t *testing.T) {
+	f := newDeltaCLIFixture(t)
+	from := f.writeAndCommit("pkg/sub/a.go", "package sub\n\nfunc A() {}\n", "base")
+	f.writeAndCommit("pkg/sub/a.go", "package sub\n\nfunc A() {}\n\nfunc B() {}\n", "add B")
+
+	subdir := filepath.Join(f.root, "pkg", "sub")
+
+	// Neither call passes --root: base must come from Run's own cwd discovery, which is the one
+	// thing this test exists to pin. Passing --root would set base to the fixture root regardless of
+	// cwd and defeat the point.
+	var deltaOut, tocOut bytes.Buffer
+	var deltaErr, tocErr bytes.Buffer
+	code := runFromDir(t, subdir, []string{"delta", ".", "--from", from}, &deltaOut, &deltaErr)
+	if code != exitOK {
+		t.Fatalf("delta code = %d, stderr = %q; want %d", code, deltaErr.String(), exitOK)
+	}
+	answer := decodeGitDeltaAnswer(t, deltaOut.String())
+	df, ok := deltaFileByPath(answer.Files, "pkg/sub/a.go")
+	if !ok {
+		t.Fatalf("Files = %+v; want an entry for %q, proving the lone dot scoped to pkg/sub", answer.Files, "pkg/sub/a.go")
+	}
+	if df.Disposition != quarry.DispositionChanged {
+		t.Errorf("Disposition = %q; want %q", df.Disposition, quarry.DispositionChanged)
+	}
+
+	tocCode := runFromDir(t, subdir, []string{"toc", "."}, &tocOut, &tocErr)
+	if tocCode != exitOK {
+		t.Fatalf("toc code = %d, stderr = %q; want %d", tocCode, tocErr.String(), exitOK)
+	}
+	var tocAnswer quarry.DirAnswer
+	if err := json.Unmarshal(tocOut.Bytes(), &tocAnswer); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", tocOut.String(), err)
+	}
+	if tocAnswer.Dir != "pkg/sub" {
+		t.Errorf("toc's lone-dot Dir = %q; want %q, the same scope delta's lone dot produced", tocAnswer.Dir, "pkg/sub")
+	}
+}
+
+// runFromDir runs Run with the process working directory changed to dir for the duration of the
+// call, restoring it afterwards. This is the one test in this file that changes the working
+// directory, which is why it is isolated in its own helper rather than folded into runCLI: every
+// other test in this package passes an explicit --root so Run's own os.Getwd call never matters.
+func runFromDir(t *testing.T, dir string, args []string, stdout, stderr *bytes.Buffer) int {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("os.Chdir(%q): %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("os.Chdir(%q) (restore): %v", cwd, err)
+		}
+	})
+	return Run(args, stdout, stderr)
+}
+
+func TestCodeForDeltaError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"nil", nil, exitOK},
+		{"unknown-revision", &quarry.UnknownRevisionError{Rev: "x"}, exitUsage},
+		{"wrapped-unknown-revision", fmt.Errorf("wrap: %w", &quarry.UnknownRevisionError{Rev: "x"}), exitUsage},
+		{"not-a-repository", quarry.ErrNotARepository, exitUsage},
+		{"wrapped-not-a-repository", fmt.Errorf("wrap: %w", quarry.ErrNotARepository), exitUsage},
+		{"root-not-top-level", &quarry.RootNotTopLevelError{Root: "/a", TopLevel: "/b"}, exitUsage},
+		{"wrapped-root-not-top-level", fmt.Errorf("wrap: %w", &quarry.RootNotTopLevelError{Root: "/a", TopLevel: "/b"}), exitUsage},
+		{"arbitrary-error", errors.New("boom"), exitInternal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := codeForDeltaError(tt.err); got != tt.want {
+				t.Errorf("codeForDeltaError(%v) = %d; want %d", tt.err, got, tt.want)
 			}
 		})
 	}

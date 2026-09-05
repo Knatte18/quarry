@@ -1,0 +1,9 @@
+from rev1 to rev2
+
+files:
+pkg/a.go removed
+pkg/b.go added
+
+renamed:
+from function pkg/a.go:3-5 (sig 3-3) pkg#Old: func Old()
+to function pkg/b.go:3-5 (sig 3-3) pkg#New: func New()

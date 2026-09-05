@@ -1,0 +1,7 @@
+from rev1 to rev2
+
+files:
+pkg/old.go removed
+
+deleted:
+function pkg/old.go:3-3 (sig 3-3) pkg#Old: func Old()

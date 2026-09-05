@@ -252,9 +252,9 @@ func TestParseArgs_UsageErrors(t *testing.T) {
 		{"unknown-flag", []string{"toc", "--depht", "t"}, "unknown flag: --depht"},
 		{"missing-target", []string{"toc"}, "toc takes exactly one target, got 0"},
 		{"two-targets", []string{"toc", "a", "b"}, "toc takes exactly one target, got 2"},
-		{"missing-verb", []string{}, "no verb given; expected: toc, glyphs, resolve, expand, or name"},
+		{"missing-verb", []string{}, "no verb given; expected: toc, glyphs, resolve, expand, delta, or name"},
 		{"unknown-verb", []string{"bogus", "t"}, "unknown verb: bogus"},
-		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc, glyphs, resolve, expand, or name"},
+		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc, glyphs, resolve, expand, delta, or name"},
 		{"depth-not-valid-for-resolve", []string{"resolve", "--depth", "3", "t"}, "--depth is not valid for resolve"},
 		{"depth-not-valid-for-resolve-bad-value", []string{"resolve", "--depth", "x", "t"}, "--depth is not valid for resolve"},
 		{"symbols-not-valid-for-resolve", []string{"resolve", "--symbols", "t"}, "--symbols is not valid for resolve"},
@@ -328,10 +328,11 @@ func TestParseArgs_SingleDashHole(t *testing.T) {
 	}
 }
 
-// TestParseArgs_FiveVerbGate pins that all five verbs are accepted, with no target-shape
-// rejection for the verbs that do not require one. Unlike the other four rows, whose req.verb is
-// the verb they were given, the "glyphs" row's req.verb is "toc" after the rewrite — stated here
-// so a reader comparing the rows does not mistake it for a bug.
+// TestParseArgs_FiveVerbGate pins that all six verbs are accepted, with no target-shape rejection
+// for the verbs that do not require one. The name is unchanged from when the gate accepted three,
+// then four, verbs; the table below is what now asserts six. Unlike the other five rows, whose
+// req.verb is the verb they were given, the "glyphs" row's req.verb is "toc" after the rewrite —
+// stated here so a reader comparing the rows does not mistake it for a bug.
 func TestParseArgs_FiveVerbGate(t *testing.T) {
 	tests := []struct {
 		name string
@@ -342,6 +343,7 @@ func TestParseArgs_FiveVerbGate(t *testing.T) {
 		{"glyphs", []string{"glyphs", "t"}, "toc"}, // rewritten: glyphs' own req.verb is "toc".
 		{"resolve", []string{"resolve", "t"}, "resolve"},
 		{"expand", []string{"expand", "t#u"}, "expand"},
+		{"delta", []string{"delta", "--from", "HEAD", "t"}, "delta"},
 		{"name", []string{"name", "--unit", "u", "t"}, "name"},
 	}
 	for _, tt := range tests {
@@ -371,8 +373,9 @@ func TestParseArgs_ExpandAcceptsHashBearingTarget(t *testing.T) {
 }
 
 // TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs pins that --text is accepted on every verb,
-// while --root is accepted on the four repository verbs only, unlike --depth, --symbols and
-// --no-symbols, which are toc only.
+// while --root is accepted on the five repository verbs only, unlike --depth, --symbols and
+// --no-symbols, which are toc only, --from and --to, which are delta only, and --unit, which name
+// alone requires.
 func TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs(t *testing.T) {
 	tests := []struct {
 		name string
@@ -386,6 +389,8 @@ func TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs(t *testing.T) {
 		{"resolve-root", []string{"resolve", "--root", "/repo", "t"}},
 		{"expand-text", []string{"expand", "--text", "t#u"}},
 		{"expand-root", []string{"expand", "--root", "/repo", "t#u"}},
+		{"delta-text", []string{"delta", "--from", "HEAD", "--text", "t"}},
+		{"delta-root", []string{"delta", "--from", "HEAD", "--root", "/repo", "t"}},
 		{"name-text", []string{"name", "--unit", "u", "--text", "t"}},
 	}
 	for _, tt := range tests {
@@ -440,6 +445,7 @@ func TestParseArgs_Help(t *testing.T) {
 		{"resolve-alongside-invalid-flag", []string{"resolve", "--depth", "-h"}},
 		{"expand-after-verb", []string{"expand", "--help"}},
 		{"expand-alongside-invalid-flag", []string{"expand", "--symbols", "-h"}},
+		{"delta-after-verb-no-target-no-revisions", []string{"delta", "--help"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -623,5 +629,186 @@ func TestParseArgs_GlyphsIsTheFrozenTOCExpansion(t *testing.T) {
 	tocReq.symbols = nil
 	if !reflect.DeepEqual(glyphsReq, tocReq) {
 		t.Errorf("parseArgs(glyphs, x) = %+v; want deep-equal to parseArgs(toc expansion) = %+v", glyphsReq, tocReq)
+	}
+}
+
+// TestParseArgs_Delta covers the delta verb's own argument shape: both revision flags in both
+// forms, the absent-to-revision default, an equals-sign-bearing value surviving verbatim, the
+// missing-from-revision rejection, each revision flag given without a value, each revision flag
+// given an explicitly empty value in the equals form, and the exactly-one-target rule.
+func TestParseArgs_Delta(t *testing.T) {
+	t.Run("BothRevisionsSpaceSeparated", func(t *testing.T) {
+		got, err := parseArgs([]string{"delta", "--from", "abc123", "--to", "def456", "t"})
+		if err != nil {
+			t.Fatalf("parseArgs = _, %v; want nil error", err)
+		}
+		if got.from != "abc123" {
+			t.Errorf("from = %q; want %q", got.from, "abc123")
+		}
+		if got.to != "def456" {
+			t.Errorf("to = %q; want %q", got.to, "def456")
+		}
+	})
+
+	t.Run("BothRevisionsEqualsForm", func(t *testing.T) {
+		got, err := parseArgs([]string{"delta", "--from=abc123", "--to=def456", "t"})
+		if err != nil {
+			t.Fatalf("parseArgs = _, %v; want nil error", err)
+		}
+		if got.from != "abc123" {
+			t.Errorf("from = %q; want %q", got.from, "abc123")
+		}
+		if got.to != "def456" {
+			t.Errorf("to = %q; want %q", got.to, "def456")
+		}
+	})
+
+	t.Run("AbsentToLeavesFieldEmpty", func(t *testing.T) {
+		got, err := parseArgs([]string{"delta", "--from", "abc123", "t"})
+		if err != nil {
+			t.Fatalf("parseArgs = _, %v; want nil error", err)
+		}
+		if got.to != "" {
+			t.Errorf("to = %q; want empty, which is how the working tree is spelled", got.to)
+		}
+	})
+
+	t.Run("ValueContainingEqualsSignSurvivesVerbatim", func(t *testing.T) {
+		got, err := parseArgs([]string{"delta", "--from=a=b", "t"})
+		if err != nil {
+			t.Fatalf("parseArgs = _, %v; want nil error", err)
+		}
+		if got.from != "a=b" {
+			t.Errorf("from = %q; want %q", got.from, "a=b")
+		}
+	})
+
+	t.Run("MissingFromRevisionRejected", func(t *testing.T) {
+		_, err := parseArgs([]string{"delta", "t"})
+		ue, ok := err.(usageError)
+		if !ok {
+			t.Fatalf("parseArgs error type = %T; want usageError", err)
+		}
+		if want := "delta requires --from"; string(ue) != want {
+			t.Errorf("error = %q; want %q", string(ue), want)
+		}
+	})
+
+	t.Run("FromWithoutValueRejected", func(t *testing.T) {
+		_, err := parseArgs([]string{"delta", "--from"})
+		ue, ok := err.(usageError)
+		if !ok {
+			t.Fatalf("parseArgs error type = %T; want usageError", err)
+		}
+		if want := "--from requires a value"; string(ue) != want {
+			t.Errorf("error = %q; want %q", string(ue), want)
+		}
+	})
+
+	t.Run("ToWithoutValueRejected", func(t *testing.T) {
+		_, err := parseArgs([]string{"delta", "--from", "HEAD", "--to"})
+		ue, ok := err.(usageError)
+		if !ok {
+			t.Fatalf("parseArgs error type = %T; want usageError", err)
+		}
+		if want := "--to requires a value"; string(ue) != want {
+			t.Errorf("error = %q; want %q", string(ue), want)
+		}
+	})
+
+	t.Run("FromExplicitlyEmptyRejected", func(t *testing.T) {
+		_, err := parseArgs([]string{"delta", "--from=", "t"})
+		ue, ok := err.(usageError)
+		if !ok {
+			t.Fatalf("parseArgs error type = %T; want usageError", err)
+		}
+		if want := "--from value must not be empty"; string(ue) != want {
+			t.Errorf("error = %q; want %q", string(ue), want)
+		}
+	})
+
+	t.Run("ToExplicitlyEmptyRejected", func(t *testing.T) {
+		_, err := parseArgs([]string{"delta", "--from", "HEAD", "--to=", "t"})
+		ue, ok := err.(usageError)
+		if !ok {
+			t.Fatalf("parseArgs error type = %T; want usageError", err)
+		}
+		if want := "--to value must not be empty"; string(ue) != want {
+			t.Errorf("error = %q; want %q", string(ue), want)
+		}
+	})
+
+	t.Run("ZeroTargetsRejectedWithCount", func(t *testing.T) {
+		_, err := parseArgs([]string{"delta", "--from", "HEAD"})
+		ue, ok := err.(usageError)
+		if !ok {
+			t.Fatalf("parseArgs error type = %T; want usageError", err)
+		}
+		if want := "delta takes exactly one target, got 0"; string(ue) != want {
+			t.Errorf("error = %q; want %q", string(ue), want)
+		}
+	})
+
+	t.Run("TwoTargetsRejectedWithCount", func(t *testing.T) {
+		_, err := parseArgs([]string{"delta", "--from", "HEAD", "t", "u"})
+		ue, ok := err.(usageError)
+		if !ok {
+			t.Fatalf("parseArgs error type = %T; want usageError", err)
+		}
+		if want := "delta takes exactly one target, got 2"; string(ue) != want {
+			t.Errorf("error = %q; want %q", string(ue), want)
+		}
+	})
+}
+
+// TestParseArgs_DeltaFlagValidity covers the validity matrix in both directions: --from and --to
+// rejected for each of the other three verbs, and --depth, --symbols and --no-symbols each
+// rejected for delta, all with the same "%s is not valid for %s" message shape.
+func TestParseArgs_DeltaFlagValidity(t *testing.T) {
+	revisionFlagCases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"from-not-valid-for-toc", []string{"toc", "--from", "HEAD", "t"}, "--from is not valid for toc"},
+		{"to-not-valid-for-toc", []string{"toc", "--to", "HEAD", "t"}, "--to is not valid for toc"},
+		{"from-not-valid-for-resolve", []string{"resolve", "--from", "HEAD", "t"}, "--from is not valid for resolve"},
+		{"to-not-valid-for-resolve", []string{"resolve", "--to", "HEAD", "t"}, "--to is not valid for resolve"},
+		{"from-not-valid-for-expand", []string{"expand", "--from", "HEAD", "t#u"}, "--from is not valid for expand"},
+		{"to-not-valid-for-expand", []string{"expand", "--to", "HEAD", "t#u"}, "--to is not valid for expand"},
+	}
+	for _, tt := range revisionFlagCases {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseArgs(tt.args)
+			ue, ok := err.(usageError)
+			if !ok {
+				t.Fatalf("parseArgs(%v) error type = %T; want usageError", tt.args, err)
+			}
+			if string(ue) != tt.want {
+				t.Errorf("parseArgs(%v) error = %q; want %q", tt.args, string(ue), tt.want)
+			}
+		})
+	}
+
+	tocOnlyFlagCases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"depth-not-valid-for-delta", []string{"delta", "--from", "HEAD", "--depth", "3", "t"}, "--depth is not valid for delta"},
+		{"symbols-not-valid-for-delta", []string{"delta", "--from", "HEAD", "--symbols", "t"}, "--symbols is not valid for delta"},
+		{"no-symbols-not-valid-for-delta", []string{"delta", "--from", "HEAD", "--no-symbols", "t"}, "--no-symbols is not valid for delta"},
+	}
+	for _, tt := range tocOnlyFlagCases {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseArgs(tt.args)
+			ue, ok := err.(usageError)
+			if !ok {
+				t.Fatalf("parseArgs(%v) error type = %T; want usageError", tt.args, err)
+			}
+			if string(ue) != tt.want {
+				t.Errorf("parseArgs(%v) error = %q; want %q", tt.args, string(ue), tt.want)
+			}
+		})
 	}
 }

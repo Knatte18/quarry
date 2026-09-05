@@ -1,0 +1,40 @@
+{
+  "from": "rev1",
+  "to": "rev2",
+  "files": [
+    {
+      "path": "pkg/a.go",
+      "disposition": "removed"
+    },
+    {
+      "path": "pkg/b.go",
+      "disposition": "added"
+    }
+  ],
+  "created": [],
+  "deleted": [],
+  "modified": null,
+  "renamed": [
+    {
+      "from": {
+        "id": "pkg#Old",
+        "kind": "function",
+        "file": "pkg/a.go",
+        "start": 3,
+        "sigend": 3,
+        "end": 5,
+        "signature": "func Old()"
+      },
+      "to": {
+        "id": "pkg#New",
+        "kind": "function",
+        "file": "pkg/b.go",
+        "start": 3,
+        "sigend": 3,
+        "end": 5,
+        "signature": "func New()"
+      }
+    }
+  ],
+  "rename_candidates": []
+}
