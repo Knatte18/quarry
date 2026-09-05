@@ -1,6 +1,6 @@
 # Quarry roadmap
 
-What happens next, in order. Updated 2026-09-04, after this task's breadth matrix (M1). The
+What happens next, in order. Updated 2026-09-05, after the decisive ladder-d rerun (M3). The
 build record — what was made, by which task, in which wave — is git history (`archive/<slug>`
 tags) and `HANDOFF.md`; this file only ever says what is ahead.
 
@@ -9,18 +9,25 @@ a breadth matrix across three shapes — the negative control, multi-package exp
 whole-repo cold-start orientation — found no shape where directory-level `toc` separates from its
 control on any cost metric at n=5
 (`bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md`), so the build queue stops
-until measurement says where — or whether — the surface pays.
+until measurement says where — or whether — the surface pays. M3 then took that matrix's one live
+shape to a predeclared n=15 and found no separation there either
+(`bench/loomyard-eval/ladder/results/2026-09-05-ladder-d/conclusion.md`).
 
 ## Parked
 
 **T8, the type checker** (`impact`, `assert-no-callers`, `verified`, the DAG tightening) is
 parked, not cancelled. It unparks on either of:
 
-- a measured win from M1 that re-establishes the surface's value to an agent — the breadth
-  matrix does not supply one:
-  `bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md` finds toc separating from
-  its control on no cost metric, in either direction, across all three shapes it measured, at
-  n=5, or
+- ~~a measured win that re-establishes the surface's value to an agent~~ — **closed 2026-09-05.**
+  The breadth matrix found no separation in any of three shapes at n=5
+  (`bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md`), and the decisive rerun
+  of its one live shape — ladder d, whole-repo cold-start orientation, at a predeclared n=15 with
+  a predeclared one-sided Mann–Whitney U — rejects nothing on either predeclared metric (turns
+  U=105, p≈0.375; cost_usd U=92, p≈0.198; critical U≤72), with the cost_usd median now pointing
+  slightly *against* the hypothesis
+  (`bench/loomyard-eval/ladder/results/2026-09-05-ladder-d/conclusion.md`): the surface does not
+  pay at any measured shape or n, so this condition can no longer be met by measurement already
+  in scope, or
 - an explicit re-justification by *function* — the §8.1 validator's Delete gate needs
   `assert-no-callers` regardless of agent token costs — recorded here as the reason, in its own
   words, before the task is written.
@@ -33,6 +40,9 @@ decided when it unparks, not before.
 
 - Move the `docs/research/output-formats/after/` goldens to `internal/cli/testdata/` — they are
   living test fixtures; the research directory stays a frozen record. `mill-quick` candidate.
+- Ladder harness: `mkdir -p` the results root before writing `provenance.json`. A fresh `-results`
+  path fails on rep 0 with `write provenance ...: no such file or directory`, so every new root has
+  to be created by hand first. Hit informally 2026-09-04 and again by M3.
 - Wiki grooming: the completed rewrite tasks' `[done]` entries.
 - A same-config rerun of ladder a (task 01) on the OSL-1033 host, if and when it becomes
   available again — operator-coordinated; the one remaining way to isolate the host variable

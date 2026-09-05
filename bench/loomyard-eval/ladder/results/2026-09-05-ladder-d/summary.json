@@ -1,0 +1,429 @@
+{
+  "cells": [
+    {
+      "id": "d0-none",
+      "ladder": "d",
+      "task": "06-loomyard-cold-start-orientation",
+      "allowed": null,
+      "control": true,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 32005,
+          "min": 24875,
+          "max": 45767,
+          "n": 15
+        },
+        "cache_read_input_tokens": {
+          "median": 152169,
+          "min": 105333,
+          "max": 389015,
+          "n": 15
+        },
+        "cost_usd": {
+          "median": 0.3005599,
+          "min": 0.24518020000000001,
+          "max": 0.3966825,
+          "n": 15
+        },
+        "duration_ms": {
+          "median": 42025,
+          "min": 30613,
+          "max": 62008,
+          "n": 15
+        },
+        "grep_fallback_total": {
+          "median": 3,
+          "min": 2,
+          "max": 13,
+          "n": 15
+        },
+        "input_tokens_total": {
+          "median": 181838,
+          "min": 136742,
+          "max": 421153,
+          "n": 15
+        },
+        "output_tokens": {
+          "median": 9,
+          "min": 5,
+          "max": 57,
+          "n": 15
+        },
+        "precision": {
+          "median": 0.92,
+          "min": 0.85,
+          "max": 1,
+          "n": 15
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 15
+        },
+        "read_bytes": {
+          "median": 46705,
+          "min": 46705,
+          "max": 71316,
+          "n": 15
+        },
+        "recall": {
+          "median": 0.76,
+          "min": 0.65,
+          "max": 0.88,
+          "n": 15
+        },
+        "tool_result_bytes": {
+          "median": 70839,
+          "min": 56516,
+          "max": 91898,
+          "n": 15
+        },
+        "tool_uses": {
+          "median": 10,
+          "min": 8,
+          "max": 23,
+          "n": 15
+        },
+        "turns": {
+          "median": 11,
+          "min": 9,
+          "max": 24,
+          "n": 15
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "d1-toc-dir",
+      "ladder": "d",
+      "task": "06-loomyard-cold-start-orientation",
+      "allowed": [
+        "toc"
+      ],
+      "control": false,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 32170,
+          "min": 23848,
+          "max": 42293,
+          "n": 15
+        },
+        "cache_read_input_tokens": {
+          "median": 126468,
+          "min": 81000,
+          "max": 302281,
+          "n": 15
+        },
+        "cost_usd": {
+          "median": 0.3024363,
+          "min": 0.2345152,
+          "max": 0.3589683,
+          "n": 15
+        },
+        "duration_ms": {
+          "median": 41557,
+          "min": 31305,
+          "max": 67732,
+          "n": 15
+        },
+        "grep_fallback_total": {
+          "median": 2,
+          "min": 1,
+          "max": 6,
+          "n": 15
+        },
+        "input_tokens_total": {
+          "median": 162904,
+          "min": 121930,
+          "max": 334469,
+          "n": 15
+        },
+        "output_tokens": {
+          "median": 8,
+          "min": 6,
+          "max": 53,
+          "n": 15
+        },
+        "precision": {
+          "median": 0.85,
+          "min": 0.75,
+          "max": 0.94,
+          "n": 15
+        },
+        "quarry_tool_uses": {
+          "median": 1,
+          "min": 1,
+          "max": 2,
+          "n": 15
+        },
+        "read_bytes": {
+          "median": 54037,
+          "min": 30467,
+          "max": 72762,
+          "n": 15
+        },
+        "recall": {
+          "median": 0.78,
+          "min": 0.62,
+          "max": 0.92,
+          "n": 15
+        },
+        "tool_result_bytes": {
+          "median": 67920,
+          "min": 53638,
+          "max": 88011,
+          "n": 15
+        },
+        "tool_uses": {
+          "median": 10,
+          "min": 7,
+          "max": 18,
+          "n": 15
+        },
+        "turns": {
+          "median": 11,
+          "min": 8,
+          "max": 19,
+          "n": 15
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    }
+  ],
+  "comparisons": [
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "turns",
+      "cell_median": 11,
+      "control_median": 11,
+      "cell_range": [
+        8,
+        19
+      ],
+      "control_range": [
+        9,
+        24
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "duration_ms",
+      "cell_median": 41557,
+      "control_median": 42025,
+      "cell_range": [
+        31305,
+        67732
+      ],
+      "control_range": [
+        30613,
+        62008
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "cost_usd",
+      "cell_median": 0.3024363,
+      "control_median": 0.3005599,
+      "cell_range": [
+        0.2345152,
+        0.3589683
+      ],
+      "control_range": [
+        0.24518020000000001,
+        0.3966825
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "cache_read_input_tokens",
+      "cell_median": 126468,
+      "control_median": 152169,
+      "cell_range": [
+        81000,
+        302281
+      ],
+      "control_range": [
+        105333,
+        389015
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "cache_creation_input_tokens",
+      "cell_median": 32170,
+      "control_median": 32005,
+      "cell_range": [
+        23848,
+        42293
+      ],
+      "control_range": [
+        24875,
+        45767
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "output_tokens",
+      "cell_median": 8,
+      "control_median": 9,
+      "cell_range": [
+        6,
+        53
+      ],
+      "control_range": [
+        5,
+        57
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "input_tokens_total",
+      "cell_median": 162904,
+      "control_median": 181838,
+      "cell_range": [
+        121930,
+        334469
+      ],
+      "control_range": [
+        136742,
+        421153
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "tool_uses",
+      "cell_median": 10,
+      "control_median": 10,
+      "cell_range": [
+        7,
+        18
+      ],
+      "control_range": [
+        8,
+        23
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "quarry_tool_uses",
+      "cell_median": 1,
+      "control_median": 0,
+      "cell_range": [
+        1,
+        2
+      ],
+      "control_range": [
+        0,
+        0
+      ],
+      "separated": true
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "grep_fallback_total",
+      "cell_median": 2,
+      "control_median": 3,
+      "cell_range": [
+        1,
+        6
+      ],
+      "control_range": [
+        2,
+        13
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "tool_result_bytes",
+      "cell_median": 67920,
+      "control_median": 70839,
+      "cell_range": [
+        53638,
+        88011
+      ],
+      "control_range": [
+        56516,
+        91898
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "read_bytes",
+      "cell_median": 54037,
+      "control_median": 46705,
+      "cell_range": [
+        30467,
+        72762
+      ],
+      "control_range": [
+        46705,
+        71316
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "recall",
+      "cell_median": 0.78,
+      "control_median": 0.76,
+      "cell_range": [
+        0.62,
+        0.92
+      ],
+      "control_range": [
+        0.65,
+        0.88
+      ],
+      "separated": false
+    },
+    {
+      "cell": "d1-toc-dir",
+      "control": "d0-none",
+      "metric": "precision",
+      "cell_median": 0.85,
+      "control_median": 0.92,
+      "cell_range": [
+        0.75,
+        0.94
+      ],
+      "control_range": [
+        0.85,
+        1
+      ],
+      "separated": false
+    }
+  ],
+  "incomplete": null,
+  "invalid": null,
+  "meta": {
+    "results_root": "2026-09-05-ladder-d"
+  }
+}
