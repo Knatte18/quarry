@@ -550,6 +550,237 @@ configs:
 ` + entry
 }
 
+// TestLoadLadder_PackValidation covers the pack, pack_targets and card struct-level rules: at most
+// one config in the whole file may set pack, a pack config must declare a card, pack_targets must
+// be non-empty if and only if some config sets pack, and every pack_targets entry must be
+// non-empty and unique.
+func TestLoadLadder_PackValidation(t *testing.T) {
+	rejected := []struct {
+		name     string
+		contents string
+		wantErr  string
+	}{
+		{
+			name: "TwoPackConfigsSameLetter",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: [glyph1]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: cards/a0.md}
+  - {id: a1-toc, ladder: a, task: t1, allowed: [toc], control: false, pack: true, card: cards/a1.md}
+`,
+			wantErr: "at most one config may set pack",
+		},
+		{
+			name: "TwoPackConfigsDifferentLetters",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: [glyph1]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: cards/a0.md}
+  - {id: b0-none, ladder: b, task: t1, allowed: [], pack: true, card: cards/b0.md}
+`,
+			wantErr: "at most one config may set pack",
+		},
+		{
+			name: "PackTrueWithNoCard",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: [glyph1]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true}
+`,
+			wantErr: "must be set when pack is true",
+		},
+		{
+			name: "PackTargetsSetWithNoPackCell",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: [glyph1]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: []}
+`,
+			wantErr: "no config sets pack",
+		},
+		{
+			name: "PackCellWithEmptyPackTargets",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: cards/a0.md}
+`,
+			wantErr: "must be non-empty when a config sets pack",
+		},
+		{
+			name: "EmptyStringAmongPackTargets",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: ["glyph1", ""]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: cards/a0.md}
+`,
+			wantErr: "entries must be non-empty",
+		},
+		{
+			name: "DuplicatePackTargetsEntry",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: ["glyph1", "glyph1"]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: cards/a0.md}
+`,
+			wantErr: "duplicate entry",
+		},
+		{
+			name: "TypoedPackTargetKeyRejectedByUnknownKeyRule",
+			contents: `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_target: [glyph1]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: cards/a0.md}
+`,
+			wantErr: "pack_target",
+		},
+	}
+
+	for _, tt := range rejected {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeLadderFile(t, tt.contents)
+			_, err := LoadLadder(path)
+			if err == nil {
+				t.Fatalf("LoadLadder(%s) = nil error; want error containing %q", path, tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("LoadLadder(%s) error = %q; want it to contain %q", path, err.Error(), tt.wantErr)
+			}
+		})
+	}
+
+	t.Run("Accepted", func(t *testing.T) {
+		contents := `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: ["glyph1", "glyph2"]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: cards/a0.md}
+`
+		path := writeLadderFile(t, contents)
+		l, err := LoadLadder(path)
+		if err != nil {
+			t.Fatalf("LoadLadder(%s) = %v; want no error", path, err)
+		}
+		c, ok := l.ConfigByID("a0-none")
+		if !ok || !c.Pack || c.Card != "cards/a0.md" {
+			t.Errorf("ConfigByID(a0-none) = %+v, %v; want Pack=true, Card=cards/a0.md", c, ok)
+		}
+		wantTargets := []string{"glyph1", "glyph2"}
+		if len(l.PackTargets) != len(wantTargets) {
+			t.Fatalf("PackTargets = %v; want %v", l.PackTargets, wantTargets)
+		}
+		for i, want := range wantTargets {
+			if l.PackTargets[i] != want {
+				t.Errorf("PackTargets[%d] = %q; want %q", i, l.PackTargets[i], want)
+			}
+		}
+	})
+}
+
+// TestLoadLadder_ValidateOpensNoFile loads a fixture whose card names a path that does not exist on
+// disk and asserts the load succeeds. This is the standing guard for the struct-level-only rule:
+// without it, a later reviewer's "surely validate should check the card exists" would silently
+// break every fixture in this file.
+func TestLoadLadder_ValidateOpensNoFile(t *testing.T) {
+	contents := `
+run_model: claude-sonnet-5
+reps: 1
+run_effort: medium
+max_turns: 10
+scorer: {model: claude-opus-5, effort: high}
+quarry_tools: [toc]
+tasks:
+  t1: {task_file: tasks/t1.md, pinned_sha: abc123, schema: exploration, fasit: tasks/t1.fasit.json}
+source_repo: env:LADDER_LOOMYARD_REPO
+pack_targets: [glyph1]
+configs:
+  - {id: a0-none, ladder: a, task: t1, allowed: [], pack: true, card: does/not/exist.md}
+`
+	path := writeLadderFile(t, contents)
+	if _, err := LoadLadder(path); err != nil {
+		t.Fatalf("LoadLadder(%s) = %v; want no error for a card naming a non-existent path", path, err)
+	}
+}
+
 // TestLoadLadder_RealTocFile loads the tracked, migrated ladder-toc.yaml and asserts the shape the
 // breadth matrix depends on: all eight cell ids, the single-entry tool list, the four controls, the
 // two new task entries' schema and shared pin, and the MCP prefix with and without a declared server
