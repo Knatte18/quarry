@@ -172,25 +172,39 @@ extracting files that did not change; correctness lives entirely in the table co
 ### The body token stream, and the exact-tier identity test
 
 - Decision: a symbol's **body token stream** is the sequence of `(node kind, node text)` pairs of
-  every *named, leaf* tree-sitter node under the declaration's body-bearing child, in source order,
-  taken from the same parse the extractor already performs. Whitespace, comments inside the body,
-  and line numbers contribute nothing. A symbol with no body (a Go type alias, an interface method,
-  a `var` with no initialiser) has the empty stream.
+  **every leaf tree-sitter node** under the declaration's body-bearing child, in source order, taken
+  from the same parse the extractor already performs. **Anonymous leaf nodes are included** —
+  operators, keywords and punctuation (`+`, `-`, `++`, `--`, `:=`, `return`, `if`, `{`) are
+  anonymous in the tree-sitter Go grammar, being grammar string literals rather than named rules,
+  and a stream restricted to *named* leaves would omit every one of them. Whitespace, comments
+  inside the body, and line numbers contribute nothing. A symbol with no body (a Go type alias, an
+  interface method, a `var` with no initialiser) has the empty stream.
 
-  Two symbols are **identical modulo the renamed identifier** when their body token streams have the
-  same length and, at every position, either the pairs are equal, or both nodes are `identifier`
-  nodes whose texts are respectively the deleted symbol's `Name` and the created symbol's `Name`.
-  This is an exact structural test with no threshold and no tuning knob.
+  A symbol's **signature token stream** is the same construction applied to the declaration node
+  with its body-bearing child excluded — the head only. It exists so the signature comparison below
+  has nodes to key its substitution rule on rather than raw text.
+
+  Two token streams are **identical modulo the renamed identifier** when they have the same length
+  and, at every position, either the pairs are equal, or both nodes are `identifier` nodes whose
+  texts are respectively the deleted symbol's `Name` and the created symbol's `Name`. This is an
+  exact structural test with no threshold and no tuning knob.
 - Rationale: comparing token streams rather than bytes is what makes the comparison insensitive to
-  reformatting and to line movement while staying exact. Restricting the substitution rule to
+  reformatting and to line movement while staying exact. Including anonymous leaves is a
+  correctness requirement, not a detail: with named leaves only, `x + y` and `x - y` produce
+  byte-identical streams, so a real semantic change would be reported as *unchanged* (breaking the
+  card done-check the Problem section names as a consumer), and two symbols differing only in such
+  tokens would satisfy the identity test and be **asserted** as an exact-tier rename that is false —
+  in the one tier the contract says quarry asserts. Restricting the *substitution* rule to
   `identifier` nodes carrying exactly the two names in question is what keeps the exact tier
   *exact*: it admits the recursive self-call a renamed function makes and the receiver-less use of
-  its own name, and admits nothing else. The whole tier is defined so a test can prove it and a
-  reader can predict it, which is the property "AST-exact, no threshold, quarry asserts it"
-  demands.
-- Rejected: comparing the raw byte span (reformatting would break it); comparing a hash of the
-  normalized source text (same problem, plus it cannot express "modulo the renamed identifier");
-  full tree-edit distance (a threshold in disguise, and quadratic).
+  its own name, and admits nothing else. Anonymous nodes can never be substituted, since they are
+  not `identifier` nodes, so widening the stream does not widen the substitution. The whole tier is
+  defined so a test can prove it and a reader can predict it, which is the property "AST-exact, no
+  threshold, quarry asserts it" demands.
+- Rejected: named leaves only (silently drops every operator and keyword — see the rationale);
+  comparing the raw byte span (reformatting would break it); comparing a hash of the normalized
+  source text (same problem, plus it cannot express "modulo the renamed identifier"); full
+  tree-edit distance (a threshold in disguise, and quadratic).
 
 ### Exact-tier rename scope: unit-wide, and unique or nothing
 
@@ -201,7 +215,12 @@ extracting files that did not change; correctness lives entirely in the table co
   2. Same owner chain (`sameOwner`) and same `Kind`.
   3. Different `Name` (identical names are the `modified`/`file`-move case, not a rename).
   4. Body token streams identical modulo the renamed identifier, per the previous decision.
-  5. Signature text identical modulo the renamed identifier, under the same substitution rule.
+  5. **Signature token streams** identical modulo the renamed identifier, under the same node-based
+     substitution rule — never a textual substitution over the verbatim `Signature` string. A
+     textual `Run` → `Execute` replacement would also hit the `Runner` in
+     `func (r *Runner) Run() error`, producing a false mismatch (or, with a naive replace, a false
+     match); the head's own token stream has real `identifier` nodes to key on, so the substitution
+     applies to whole identifiers and to nothing else.
   6. **Exactly one** such `C` exists for that `D`, and exactly one such `D` for that `C`.
   The two symbols may live in different files. If condition 6 fails — two deleted symbols both pair
   exactly with one created symbol, or vice versa — none of the involved symbols is asserted as
@@ -225,7 +244,9 @@ extracting files that did not change; correctness lives entirely in the table co
   candidate set, so the query has no tuning knob anywhere.
 
   Each candidate carries a `signals` object of purely mechanical, individually explainable fields:
-  - `signature_identical_modulo_name` (bool)
+  - `signature_identical_modulo_name` (bool): computed over the signature *token streams* under the
+    node-based substitution rule, exactly as exact-tier condition 5 is — never over the verbatim
+    `Signature` text.
   - `body_token_similarity` (float in `[0,1]`): the Jaccard coefficient of the two body token
     streams treated as multisets of `(kind, text)` pairs, with the identifier bearing the symbol's
     own name normalised to a single placeholder on both sides. `1.0` when both streams are empty.
@@ -491,9 +512,13 @@ unit test instead, which is what the task's "Done when" asks for.
 - No `CONSTRAINTS.md` exists at the hub root.
 - `CLAUDE.md`: this is a Go repo; **do not introduce Python**.
 - Go only, as a language target. No Python or C# extractor work here.
-- Additive only: no existing envelope, verb, flag, exit code, or golden changes. The committed
-  goldens under `docs/research/output-formats/after/` and `internal/mcpserver/testdata/golden/`
-  must stay byte-identical.
+- Additive only: no existing envelope, verb, flag, exit code, or golden changes. **Every existing
+  committed golden stays byte-identical, wherever it lives at merge time.** Today those are
+  `docs/research/output-formats/after/` and `internal/mcpserver/testdata/golden/`, but a parallel
+  `mill-quick`-sized task listed under `docs/roadmap.md`'s "Small and independent" section is moving
+  the `docs/research/output-formats/after/` set to `internal/cli/testdata/`. If that task merges
+  first, this constraint and the Testing section's `compareAfterGolden` reference name the new
+  location, not the old one — the requirement is the bytes, never the path.
 - Quarry reads. Never writes, never touches the working tree or the index. Every git call is read
   plumbing.
 - No MCP tool for this query.
@@ -519,6 +544,14 @@ every case is two string literals in the test file. Scenarios that must be cover
 - each `changed` dimension in isolation — body-only, signature-only, doc-only, file-only (the same
   symbol moved between two files in one unit) — and a combination.
 - a reformatted body (whitespace and comment changes only) asserted **not** modified.
+- **anonymous-token changes, the regression the stream definition exists to prevent:** a body
+  changing `x++` to `x--`, and one changing `a + b` to `a - b`, each asserted **modified** with
+  `changed:["body"]`; and a rename whose bodies differ only in such a token asserted **demoted to
+  the evidence tier**, never present in `renamed`. A named-leaf-only stream would pass every other
+  test in this list and fail these four.
+- a signature rename hazard: `func (r *Runner) Run() error` renamed to
+  `func (r *Runner) Execute() error`, asserted `signature_identical_modulo_name: true` — a textual
+  `Run`→`Execute` substitution would corrupt the `Runner` receiver and get this wrong.
 - exact-tier rename: identical body modulo the identifier, including a recursive self-call, with the
   pair asserted present in `renamed` and **absent** from `created` and `deleted`.
 - exact-tier demotion: the same rename with one extra statement in the body, asserted to land in
@@ -557,7 +590,9 @@ mirroring the existing `TestRenderExpandJSON_KeyOrder` shape; a text-view test m
 `Delta` called on the same entries assembled by hand — the two paths must not be able to disagree.
 
 **Goldens.** Committed golden files (JSON and text) under `internal/engine/testdata/delta/` or
-`internal/cli/testdata/`, following the existing `compareGolden`/`compareAfterGolden` pattern, for
+`internal/cli/testdata/`, following the existing `compareGolden`/`compareAfterGolden` pattern
+(wherever those helpers' own fixtures live at merge time — see Constraints on the in-flight
+goldens move), for
 the seven cases the task's "Done when" enumerates: created, deleted, modified, exact-tier rename,
 evidence-tier rename, a mixed batch, and a per-entry extraction failure inside an otherwise good
 batch. Goldens are produced under the existing `-update` flag convention and are never
