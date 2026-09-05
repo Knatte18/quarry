@@ -63,10 +63,14 @@ naming the task that will enable them, rather than silently omitting them.
   spells, with one row per language for what a trailing `"#"` means: for Go, a package directory or a
   file, both spelled as repository-relative paths, since Go's unit already is one; for Python, the
   module or package itself, which is the file, so Python has no separate file self glyph; for C#, the
-  namespace itself, and since C# has no file-level unit it has no file self glyph at all. State in
-  one sentence that the external test unit is addressable as a member glyph but has no self form of
-  its own, because the self form names a path and the `_test` pseudo-path is not one. Leave §2's
-  existing unit corner cases alone.
+  namespace itself, and since C# has no file-level unit it has no file self glyph at all. State the
+  external test unit's disposition precisely, in the terms the grammar actually implements rather
+  than as a blanket denial: its self glyph is well-formed and parses like any other, and it always
+  resolves `not_found` with the unit reported as found, because the pseudo-unit has no directory of
+  its own while the directory it borrows its symbols from does exist. Do not write that the external
+  test unit has no self form — the parser accepts one, cards 6 and 9 table it as an accept, and card
+  36 turns this section's claims into test rows, so a denial here would become a test asserting a
+  rejection the parser does not perform. Leave §2's existing unit corner cases alone.
 - **Commit:** `docs(glyph): specify the self form in the form and unit sections`
 
 ### Card 34: `docs/glyph.md` §3, §5, §6 and §7 — the member, resolution, the API and the neighbours

@@ -50,8 +50,9 @@ rewrite, while `repo.go` already houses the two target sentinels and needs no he
   `engine: expand <id>: not a type, a self glyph names the unit or file itself`. In the unexported
   `expand` worker, return the zero `ExpandAnswer` and a `*SelfGlyphError` carrying `g.String()`
   immediately after `glyph.Parse` succeeds and before `m.dirsOf` and `m.symbolsOf` are called, when
-  `g.IsSelf()` reports true — a gate before resolution means no directory is read for a question that
-  has no answer, which is what makes the memo's `parses` counter observably zero for this case.
+  `g.IsSelf()` reports true — a gate before resolution means no unit is parsed and no unit-directory
+  lookup is made for a question that has no answer, which is what leaves the memo's `parses` counter
+  at zero and its `dirs` map empty for this case.
   `codeForExpandError` in `internal/cli` must map it to the negative exit; that mapping is batch 4's
   card and is not written here. The type's doc comment records why this is a typed error rather than
   a sixth `Kind` value: `Kind` is documented as the closed vocabulary a `Symbol`'s kind is drawn from
@@ -120,12 +121,16 @@ rewrite, while `repo.go` already houses the two target sentinels and needs no he
 - **Moves:** none
 - **Requirements:** Add a case asserting that expanding a self glyph naming an existing package
   directory returns the zero `ExpandAnswer` and an error that `errors.As` reaches as a
-  `*SelfGlyphError` whose `ID` is the argument with its trailing `"#"` intact. Assert that no
-  directory was read, by constructing a `unitMemo` with `newUnitMemo`, passing it to the unexported
-  `expand` worker, and reading its `parses` counter as zero afterwards — that counter is the existing
-  seam for exactly this kind of claim, and it is what proves the gate sits before the directory work
-  rather than after it. Assert the error's message text too, so the sentence is pinned rather than
-  only its type. Leave the existing `TestExpand_MalformedTarget` rows alone: the no-separator row
+  `*SelfGlyphError` whose `ID` is the argument with its trailing `"#"` intact. Assert that the gate
+  ran before any unit work, by constructing a `unitMemo` with `newUnitMemo`, passing it to the
+  unexported `expand` worker, and afterwards reading its `parses` counter as zero and its `dirs` map
+  as empty. Both assertions are needed and neither alone is the claim: `parses` is incremented only
+  in `symbolsOf`, so on its own it proves no unit was parsed and says nothing about the directory
+  lookup, which happens in `dirsOf` and is uncounted; the empty `dirs` map is what proves no
+  unit-directory lookup was made either. Word the test's own doc comment as "no unit was parsed and
+  no unit-directory lookup was made" rather than as a claim about directory reads in general, so it
+  states exactly what the two seams measure. Assert the error's message text too, so the sentence is
+  pinned rather than only its type. Leave the existing `TestExpand_MalformedTarget` rows alone: the no-separator row
   still asserts `ReasonNoSeparator`, which batch 1 did not change, and its doc comment's claim that
   `expand` writes no separator check of its own is still true and becomes truer in batch 4.
 - **Commit:** `test(engine): pin the self-glyph expand gate and its zero reads`

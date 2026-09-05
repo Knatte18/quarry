@@ -18,9 +18,11 @@ This batch makes `Resolve` take glyphs only. It deletes the engine's own `#`-con
 engine, the facade's text renderer, and the two test files that name the field must move together or
 the module stops compiling.
 
-It depends on batch 1 for `Glyph.IsSelf`. It does not depend on batch 3: the two batches touch
-disjoint files (`resolve.go`/`answer.go`/`walk.go`/`quarry/text.go` here, `expand.go`/`repo.go`/
-`quarry/quarry.go` there) and may run in parallel.
+It depends on batch 1 for `Glyph.IsSelf`. Batch 3 depends on this one, but not for data: the two
+batches touch disjoint files (`resolve.go`/`answer.go`/`walk.go`/`quarry/text.go` here,
+`expand.go`/`repo.go`/`quarry/quarry.go` there). The edge is sequencing — both batches share the same
+`verify:` scope, and running them in order keeps each batch's verify a statement about that batch
+alone.
 
 The external interface batch 4 consumes: a `Resolve` that answers a bare path with a
 `no_separator` rejection payload rather than a listing, and `ResolveResult.Listing`.

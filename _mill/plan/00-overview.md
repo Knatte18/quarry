@@ -3,7 +3,7 @@
 ```yaml
 task: "Glyph self-form and the resolve contract (C1)"
 slug: "glyph-self-form"
-approved: false
+approved: true
 discussion_sha: "70a9ac5cd076e5bd8ac27a426a43b2283fe73717"
 started: "20260905-113711"
 parent: "main"
@@ -63,9 +63,16 @@ batches:
 
 - **Decision:** every card that changes behaviour also rewrites the doc comments that describe that
   behaviour, in the same commit. The discussion enumerates the falsified comments with line ranges —
-  five in `glyph/` (D15/Scope-In), seven paragraphs in `internal/cli` (D7) — and each is named on the
-  card that owns it. A card that lands code without its comment edit is incomplete, not partially
-  done.
+  five in `glyph/` (D15/Scope-In), seven paragraphs in `internal/cli` (D7), plus `usage.go`'s verb
+  line (D21) — and each is named on the card that owns it. Planning found three more in
+  `internal/cli` that D7 does not list: the `exitUsage` constant's enumeration of its causes,
+  `runTOC`'s step 1 in `Run`'s doc comment, and `Run`'s closing paragraph on exit-1 message
+  composition, all falsified or left incomplete by the separator reject and the rewritten expand
+  message. D7 asks for exactly that — a site it did not name is a finding against its list, not a
+  licence to leave it standing. Card 28's own count of ten paragraphs is the authoritative per-card
+  number: it carries six of D7's seven (the seventh, `parseArgs`' doc comment, belongs to card 27),
+  D21's `usage.go` line, and the three found here. A card that lands code without its comment edit is
+  incomplete, not partially done.
 - **Rationale:** this repository's comment density is deliberate: doc comments carry the rationale
   and the rejected alternatives, and `docs/rewrite-plan.md` plus the package docs are treated as part
   of the contract surface (discussion, Technical context).
