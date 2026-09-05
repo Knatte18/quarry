@@ -137,11 +137,14 @@ not the reason here: `Repo` is locally defined and carries methods perfectly wel
   because the existing resolve renderer's success branches already drop it in favour of the id, and
   for a one-per-call CLI the input is on the command line beside the output.
 
-  Failure otherwise: one line, `normalizeProse(r.Target)`, then ` error `, then `r.Reason`, then
-  `: `, then `normalizeProse(r.Error)`. This is the resolve renderer's own empty-status branch, so
-  follow that branch's degenerate-value guards exactly: emit the reason segment only when `r.Reason`
-  is non-empty, and the colon-and-message segment only when the normalised message is non-empty, so
-  an externally constructed zero-ish value still satisfies the no-trailing-whitespace invariant.
+  Failure otherwise: one line, built from `normalizeProse(r.Target)` followed by the literal
+  ` error` with no trailing space, then — only when `r.Reason` is non-empty — a space followed by
+  `r.Reason`, then — only when `normalizeProse(r.Error)` is non-empty — `: ` followed by that
+  normalised message. Spelling the segments this way rather than as a trailing-space ` error ` is
+  what keeps an empty-reason value from emitting trailing whitespace, and it is the exact segment
+  split the resolve renderer's own empty-status branch already uses. Follow that branch's
+  degenerate-value guards: this renderer promises the no-trailing-whitespace invariant for every
+  input, including an externally constructed zero-ish value the facade never produces.
 
   The echoed target goes through `normalizeProse` too, not only the message. A declaration head
   legitimately spans lines — an ungrouped var's signature is the whole declaration text — so echoing

@@ -3,7 +3,7 @@
 ```yaml
 task: 'The glyph-maker: declaration to glyph (P1, roadmap 2b)'
 slug: 'glyph-maker'
-approved: false
+approved: true
 started: '20260905-142520'
 parent: 'main'
 root: ""
@@ -104,9 +104,9 @@ Batch-local decisions live in each batch file._
 
 ### Decision: verify scope is one package per batch
 
-- **Decision:** each batch's `verify:` runs `go test` over the single package it touches, narrowed with `-run` where the package holds a large unrelated suite.
-- **Rationale:** `verify:` runs after every implementer and fixer round. The repo-wide gate already exists as `pipeline.done_gate` (`go test ./... && golangci-lint run`), which mill-go runs once before marking the task done, so a repo-wide per-batch command would buy nothing and cost minutes per round.
-- **Applies to:** all batches.
+- **Decision:** each code batch's `verify:` runs `go test` over the single package it touches, narrowed with `-run` where the package holds a large unrelated suite. The docs batch is the one carve-out: it changes prose only, spans four packages and two Markdown files, and asserts nothing a package test could run, so it is gated by `go build ./... && go vet ./...` instead.
+- **Rationale:** `verify:` runs after every implementer and fixer round. The repo-wide gate already exists as `pipeline.done_gate` (`go test ./... && golangci-lint run`), which mill-go runs once before marking the task done, so a repo-wide per-batch command would buy nothing and cost minutes per round. Build and vet are the whole of what is mechanically checkable for a comment-only change, and they are cheap enough to run repo-wide.
+- **Applies to:** batches 1 through 4 in the one-package form; batch 5 in the build-and-vet form.
 
 ### Decision: goldens are payload bytes only
 
