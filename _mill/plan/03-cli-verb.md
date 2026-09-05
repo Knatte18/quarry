@@ -109,9 +109,13 @@ machine-independent, so this is the one golden table in the package that needs n
      facade contracts a positional one-to-one mapping, so this is unreachable and is stated so a
      contract change cannot silently produce a zero exit code. Take the single result.
   2. Check `result.Reason == quarry.NameReasonInternal` **before rendering anything**. When it is,
-     take `fail`'s path — the compact error envelope on stdout, the same sentence on stderr, exit 3 —
-     passing `result.Error` as the message, which already carries the `internal error: ` prefix exit
-     3's own rule requires. No payload is written on this route, and the function returns here.
+     take `fail`'s path — the compact error envelope on stdout, the same sentence on stderr — passing
+     `result.Error` as the message, which already carries the `internal error: ` prefix exit 3's own
+     rule requires, and passing `codeForNameResult(result)` as the code rather than the `exitInternal`
+     constant. Routing the code through the mapper here keeps one source for the verb's exit codes,
+     matching `runExpand`, which passes `codeForExpandError(err)` into `fail` on every one of its
+     error branches for exactly that reason. No payload is written on this route, and the function
+     returns here.
   3. Otherwise render the payload — `quarry.RenderNameText` under `--text`, `quarry.RenderNameJSON`
      otherwise — write it to stdout, and only then compute and return `codeForNameResult(result)`. A
      render error or a failed write is `exitInternal`. The payload-before-code order matters for the
@@ -199,6 +203,13 @@ machine-independent, so this is the one golden table in the package that needs n
   table: its name and its table both encode the count, so both change in one edit. The `name` row
   must supply `--unit`, since the verb requires it.
 
+  Rename `TestParseArgs_TextAndRootValidForAllVerbs` and correct its doc comment. Its name and its
+  comment both state that `--text` and `--root` are accepted on every verb, and card 8 makes `--root`
+  a per-verb rejection for `name`, so both go false in one edit. Rename it for the property that
+  survives — `--text` on every verb, `--root` on the three repository verbs — and add a `name --text`
+  row to its table. This file is edited by this batch, so the docs batch's "files no earlier batch
+  edits" carve-out does not reach it and the correction belongs here.
+
   Add usage-error rows: `--unit` rejected for each of `toc`, `resolve` and `expand`, with the
   per-verb message shape; `--root` rejected for `name`; `--depth`, `--symbols` and `--no-symbols`
   each rejected for `name`; `--unit` given with no value producing the requires-a-value message;
@@ -233,11 +244,16 @@ machine-independent, so this is the one golden table in the package that needs n
   `codeForNameResult` as a direct table test, like the three existing mappers: an id set gives 0; the
   internal reason gives 3; any other error gives 1; the neither-id-nor-error shape gives 3.
 
-  The internal-reason bytes: a result carrying that reason takes the compact error envelope on
-  stdout, the same sentence on stderr, exit 3, and writes no payload — asserted as bytes, not only as
-  an exit code, since the divergence between the facade and the CLI is exactly a bytes difference.
-  Construct the result directly and drive the renderer and mapper, since the facade cannot be made to
-  produce the internal reason while Go is always wired.
+  The internal reason, as a mapper assertion plus a stated disposition rather than a bytes
+  assertion. `codeForNameResult` maps that reason to 3, covered by the table above. The bytes
+  `runName` writes on that branch — the compact envelope on stdout, the same sentence on stderr, no
+  payload — are deliberately left untested, and the test file says so in a comment naming the reason:
+  `runName` calls the facade directly with no injectable seam, and the facade cannot produce the
+  internal reason while the Go grammar is always wired, so the only way to reach those bytes would be
+  to add a maker seam to production code for a branch that cannot fire. That trade is worse than the
+  untested branch: it would put a test-only indirection on the verb's one hot path to cover a
+  condition the code already spells rather than falls through. The branch's contract lives in
+  `runName`'s own doc comment per card 9, which states the step order and why the check comes first.
 
   The no-repository-root proof, asserting both halves in one place with `t.Chdir("/")`: from the
   filesystem root, `quarry name --unit u/v "func F() error"` exits 0 with the expected id on stdout,
@@ -249,8 +265,10 @@ machine-independent, so this is the one golden table in the package that needs n
 
   The multi-line head in both views, as one test: a declaration head spanning lines — an ungrouped
   var with a composite literal — run under `--text` produces stdout containing exactly one newline,
-  at the end, while the same invocation without `--text` produces JSON whose `target` value carries
-  its newlines intact.
+  at the end, while the same invocation without `--text` produces JSON whose decoded `target` value
+  still carries the head's line breaks. Assert the JSON half after unmarshalling the payload, not
+  against its raw bytes: the shared encoder disables HTML escaping only, so a newline is emitted as
+  the two-character escape and a raw-byte assertion would be asserting the wrong thing.
 
   Help-text assertions: `usageText` contains the `name` usage line, the `--unit` flag row, and the
   `--root` not-valid-for-name marker, and remains ASCII only — assert every byte is below 0x80, which

@@ -189,7 +189,10 @@ not the reason here: `Repo` is locally defined and carries methods perfectly wel
 
   The multi-line divergence, as one test asserting both halves in one place: a declaration head
   spanning lines rendered through `RenderNameText` contains exactly one newline, at the end, while
-  the same input rendered through `RenderNameJSON` echoes `target` with its newlines intact. Pinning
+  the same input rendered through `RenderNameJSON` still carries the head's line breaks in its
+  `target` value. Assert the JSON half after unmarshalling the rendered bytes, never against the raw
+  bytes: `renderJSON` disables HTML escaping only, so the encoder still emits a newline as the
+  two-character escape sequence, and a raw-byte assertion would be asserting the wrong thing. Pinning
   both halves together is what makes the divergence deliberate rather than a discrepancy someone
   later "fixes".
 - **Commit:** `test(quarry): facade delegation, both name renderers, and the multi-line divergence`
