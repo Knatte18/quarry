@@ -13,28 +13,25 @@ the loop.
 
 ## The order of work
 
-**1. C1 — `glyph-self-form` (in flight).** The contract adjustments (trailing-`#` self form,
-resolve-takes-glyphs-only, separator rejection, `dir`→`listing`, the compose API in
-`glyph/`), settled before Loomyard consumes the envelope. Worker active; discussion approved
-2026-09-05.
-
-**2. M4 — `ladder-kickstart` (in flight).** The push-mode bench: pre-resolved glyph pack in
+**1. M4 — `ladder-kickstart` (in flight).** The push-mode bench: pre-resolved glyph pack in
 the prompt vs names-only and whole-file controls, predeclared Mann–Whitney n=10. Decides
 whether kick-start pack injection joins the Loomyard adoption; everything else in the
 adoption is mechanical and independent of the result. Carries the harness `mkdir -p`
-results-root fix. Worker active; discussion in review-fix round. If — and only if — e1
-separates, an edit-task variant (M4b: agent revising code in a throwaway worktree) becomes a
-candidate follow-up.
+results-root fix. Worker finalizing; the matrix run itself (batch 7) was descoped 2026-09-05
+to an operator-driven step after the merge — the predeclared rule in the task body applies
+verbatim when it runs. If — and only if — e1 separates, an edit-task variant (M4b: agent
+revising code in a throwaway worktree) becomes a candidate follow-up.
 
-**3. The plan-alphabet primitives.** Three plan-unaware surfaces, built here as ordinary
+**2. The plan-alphabet primitives.** Three plan-unaware surfaces, built here as ordinary
 quarry tasks. No dependency on Loomyard — quarry imports nothing from it, and the
 consumer-blindness worry that would argue for waiting is already answered: their
 requirements are fixed in detail by the orchestration design recorded in Loomyard issue
-#226. The one real ordering constraint is internal: **after C1 merges** (they emit and
-consume the envelope and self-forms C1 changes). Any order among the three; in parallel
-with or ahead of the Loomyard adoption:
+#226. Their one ordering constraint — C1's contract merge (they emit and consume the
+envelope and self-forms C1 changed) — was satisfied 2026-09-05 (`49304ca`), so all three
+are unblocked. Any order among the three; in parallel with or ahead of the Loomyard
+adoption:
 
-- **3a. The `glyphs` verb — the planner's index.** A flat projection of the complete toc
+- **2a. The `glyphs` verb — the planner's index.** A flat projection of the complete toc
   answer — one line per symbol: `id`, kind, file, span; no doc, no signature, no recursive
   envelope. Design principles to keep: extraction stays complete underneath ("views filter;
   no view is ever forced"); the base `toc` carries the full flag set (`--view`, `--depth`,
@@ -46,7 +43,7 @@ with or ahead of the Loomyard adoption:
   here because the consumer only looks up spellings, never answers from the view (V1's
   measured 0.96→0.82 precision drop came from agents *answering* from a lossy view).
 
-- **3b. The glyph-maker (declaration → glyph).** Input per entry: a unit plus an intended
+- **2b. The glyph-maker (declaration → glyph).** Input per entry: a unit plus an intended
   declaration head (`func (f *Focus) Reset() error`); output: the glyph that declaration
   will have, plus kind, in the standard envelope. Facade form is batched from the start
   (all of a plan's Create declarations in one call, per-entry status, `target` echo — the
@@ -60,7 +57,7 @@ with or ahead of the Loomyard adoption:
   import. Stretches "quarry reads, never edits" only in that the input is a supplied
   fragment; it still only reads.
 
-- **3c. Diff-to-symbols.** Never parses a textual diff — double extraction + symbol-table
+- **2c. Diff-to-symbols.** Never parses a textual diff — double extraction + symbol-table
   comparison: extract both versions of each changed file with the same extractor toc uses,
   compare tables (after-only → created, before-only → deleted, both-but-different tokens →
   modified). Layered input: the core takes (path, before-bytes, after-bytes) pairs and
@@ -73,9 +70,9 @@ with or ahead of the Loomyard adoption:
   changed; candidates with similarity signals, quarry decides nothing — the `ambiguous`
   philosophy: never a silent pick).
 
-**4. In parallel, not quarry work: Loomyard adopts glyphs (Loomyard issue #226).** Work in
-Loomyard's repository, starts once C1 has merged the contract it consumes; runs alongside
-point 3, not after it. The full orchestration design settled with the operator 2026-09-05
+**3. In parallel, not quarry work: Loomyard adopts glyphs (Loomyard issue #226).** Work in
+Loomyard's repository, unblocked since C1 merged the contract it consumes; runs alongside
+point 2, not after it. The full orchestration design settled with the operator 2026-09-05
 lives in issue #226; in brief: planparser imports `glyph`; one batched `Resolve` per plan
 draft validates everything; the hard rule that the LLM never spells a glyph (existing
 symbols are copied from quarry answers, new symbols get tentative `plan:<expected-glyph>`
@@ -84,7 +81,7 @@ done from diff-to-symbols; drift detection with exact-tier auto-repair and evide
 review; validator reports echoing kind + signature. Quarry never sees a plan; Loomyard
 never parses code.
 
-**5. T8 — the type checker (parked).** `impact`, `assert-no-callers`, `verified`, the DAG
+**4. T8 — the type checker (parked).** `impact`, `assert-no-callers`, `verified`, the DAG
 tightening. Unparks only on an explicit re-justification by *function* — the validator's
 Delete gate needs `assert-no-callers` regardless of agent token costs — recorded here as
 the reason, in its own words, before the task is written. (The alternative unpark
@@ -92,7 +89,7 @@ condition, a measured win for the agent-tool surface, closed 2026-09-05 — see 
 roots above.) Its open decision (gopls vs `go/packages` in-process) is decided at unpark,
 not before.
 
-**6. More languages.** Python, then C#, per `docs/glyph.md` — one language per task, when
+**5. More languages.** Python, then C#, per `docs/glyph.md` — one language per task, when
 wanted: its alphabet in `glyph/`, an extractor written fresh against the contract, its
 `expand` head, its package-doc source. Done when the T3-style round trip over a real
 repository in that language reaches 100 %.
