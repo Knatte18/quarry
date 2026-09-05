@@ -15,7 +15,7 @@ const (
 	ReasonUnsupportedLanguage Reason = "unsupported_language"
 	// ReasonInvalidUTF8 fires when the input is not valid UTF-8.
 	ReasonInvalidUTF8 Reason = "invalid_utf8"
-	// ReasonNoSeparator fires when the input has no "#": a glyph needs a unit and a member.
+	// ReasonNoSeparator fires when the input carries no "#" at all.
 	ReasonNoSeparator Reason = "no_separator"
 	// ReasonMultipleSeparators fires when the input carries more than one "#".
 	ReasonMultipleSeparators Reason = "multiple_separators"
@@ -79,7 +79,7 @@ var Reasons = []Reason{
 var reasonText = map[Reason]string{
 	ReasonUnsupportedLanguage:  "this language is not implemented",
 	ReasonInvalidUTF8:          "input is not valid UTF-8",
-	ReasonNoSeparator:          "a glyph needs a \"#\" and a repository-relative path is not a glyph",
+	ReasonNoSeparator:          "a glyph needs a \"#\"; a path is addressed as its own glyph by appending one to its repository-relative form",
 	ReasonMultipleSeparators:   "a glyph has exactly one \"#\"; a unit or member component may not contain one",
 	ReasonUnitEmpty:            "unit is empty",
 	ReasonUnitEmptySegment:     "unit has an empty segment",
@@ -97,7 +97,8 @@ var reasonText = map[Reason]string{
 
 // ParseError reports why Parse rejected an input. Callers use errors.As and switch on Reason.
 // Detail carries the offending segment, component or rune where one exists and is empty
-// otherwise — a blank Detail carries no meaning and is never a discriminator.
+// otherwise — a blank Detail carries no meaning and is never a discriminator. It also carries a
+// suggested spelling for no_separator and the whole input for multiple_separators.
 type ParseError struct {
 	// Lang is the language Parse was asked to check the input against.
 	Lang Language
@@ -106,6 +107,8 @@ type ParseError struct {
 	// Reason is the closed vocabulary value naming why Parse rejected Input.
 	Reason Reason
 	// Detail carries the offending segment, component or rune where one exists, empty otherwise.
+	// It also carries a suggested spelling for no_separator and the whole input for
+	// multiple_separators.
 	Detail string
 }
 
