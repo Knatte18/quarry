@@ -97,11 +97,17 @@ func TestGolden_LoomyardParentDirDepthZero(t *testing.T) {
 	}
 }
 
-// compareGolden marshals got to indented JSON and either compares it byte for byte against the
-// committed golden testdata/loomyard/name, or — under "-update" — rewrites that golden from got.
-// The indentation and trailing newline are fixed here once, so a golden produced by one run of
-// -update compares equal to itself on every later run that made no source change.
-func compareGolden(t *testing.T, name string, got DirAnswer) {
+// compareGolden marshals got — any value, not a directory answer specifically: card 16's naming
+// round trip passes a small local struct of pinned counts through this same helper — to indented
+// JSON and either compares it byte for byte against the committed golden testdata/loomyard/name, or
+// — under "-update" — rewrites that golden from got. The indentation and trailing newline are fixed
+// here once, so a golden produced by one run of -update compares equal to itself on every later run
+// that made no source change.
+//
+// This is a test-helper signature change, not a behaviour change: the additive constraint (see the
+// plan's "additive only" Shared Decision) governs the product's envelopes, verbs and exit codes,
+// none of which this touches.
+func compareGolden(t *testing.T, name string, got any) {
 	t.Helper()
 
 	gotJSON, err := json.MarshalIndent(got, "", "  ")
