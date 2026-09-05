@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-config-surface
+phase: approved-provenance
 slug: ladder-kickstart
 branch: ladder-kickstart
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-fix-r3  '2026-09-05T12:06:15Z'
 planned  '2026-09-05T12:06:32Z'
 implementing  '2026-09-05T12:07:02Z'
 approved-config-surface  '2026-09-05T12:13:44Z'
+approved-provenance  '2026-09-05T12:17:51Z'
 ```
 
 ## Batches
@@ -43,9 +44,10 @@ batches:
     commit_sha: 8e6e948216db9d9cd16ffaf5aa8b76a5a09322cb
     verify_baseline_failures: []
   - name: provenance
-    state: running
+    state: approved
     implementer_session: 64c56c81-a564-46a5-8927-9d793199276d
     start_sha: 7f637d238cb03cdee965aab432bbe5df226a9cdb
+    commit_sha: 0009f84978ffc6b8948f95590e3a933dd9c9db42
     verify_baseline_failures: []
   - name: control-sweep-and-card
     state: pending
