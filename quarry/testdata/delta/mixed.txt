@@ -1,0 +1,33 @@
+from rev1 to rev2
+
+files:
+pkg/added.go added
+pkg/removed.go removed
+pkg/modified.go changed
+pkg/lineshift.go changed
+renameexact/a.go removed
+renameexact/b.go added
+renameevidence/evidence.go changed [lossy_after]
+
+created:
+function pkg/added.go:3-3 (sig 3-3) pkg#Added: func Added()
+function renameevidence/evidence.go:3-5 (sig 3-3) renameevidence#NewEvidence: func NewEvidence()
+function renameevidence/evidence.go:7-7 renameevidence#Broken: func Broken(
+
+deleted:
+var pkg/removed.go:3-3 pkg#Removed: var Removed = 1
+function renameevidence/evidence.go:3-5 (sig 3-3) renameevidence#OldEvidence: func OldEvidence()
+
+modified:
+pkg#Mod function changed:body
+before pkg/modified.go:3-6 (sig 3-3)
+after function pkg/modified.go:3-6 (sig 3-3) pkg#Mod: func Mod()
+
+renamed:
+from function renameexact/a.go:3-5 (sig 3-3) renameexact#OldExact: func OldExact()
+to function renameexact/b.go:3-5 (sig 3-3) renameexact#NewExact: func NewExact()
+
+rename_candidates:
+renameevidence#OldEvidence function
+candidate function renameevidence#NewEvidence renameevidence/evidence.go signals sig_identical=true body_similarity=1 body_tokens_before=5 body_tokens_after=5 doc_identical=true
+candidate function renameevidence#Broken renameevidence/evidence.go signals sig_identical=false body_similarity=0 body_tokens_before=5 body_tokens_after=0 doc_identical=true

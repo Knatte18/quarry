@@ -305,6 +305,13 @@ func assertSymbolsEqual(t *testing.T, got, want []Symbol) {
 	for i := range want {
 		gotCompare := got[i]
 		gotCompare.Glyph = glyph.Glyph{}
+		// DeclStart, BodyStart and DeclEnd are JSON-hidden internals with one consumer; every want
+		// literal in this file is written before their introduction and would otherwise need roughly
+		// seventeen hand-written byte offsets added for no coverage gain. offsets_test.go pins them
+		// directly and per builder shape instead, so they are zeroed here exactly as Glyph is above.
+		gotCompare.DeclStart = 0
+		gotCompare.BodyStart = 0
+		gotCompare.DeclEnd = 0
 		if !reflect.DeepEqual(gotCompare, want[i]) {
 			t.Errorf("Symbols()[%d] = %+v; want %+v", i, got[i], want[i])
 		}

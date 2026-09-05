@@ -1,0 +1,9 @@
+from rev1 to rev2
+
+files:
+pkg/a.go changed
+
+modified:
+pkg#F function changed:body
+before pkg/a.go:3-6 (sig 3-3)
+after function pkg/a.go:3-6 (sig 3-3) pkg#F: func F()

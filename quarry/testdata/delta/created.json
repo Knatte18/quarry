@@ -1,0 +1,25 @@
+{
+  "from": "rev1",
+  "to": "rev2",
+  "files": [
+    {
+      "path": "pkg/new.go",
+      "disposition": "added"
+    }
+  ],
+  "created": [
+    {
+      "id": "pkg#New",
+      "kind": "function",
+      "file": "pkg/new.go",
+      "start": 3,
+      "sigend": 3,
+      "end": 3,
+      "signature": "func New()"
+    }
+  ],
+  "deleted": [],
+  "modified": null,
+  "renamed": null,
+  "rename_candidates": []
+}

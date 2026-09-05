@@ -308,6 +308,210 @@ func TestRenderExpandJSON_NotFoundOmitsHeadAndMembers(t *testing.T) {
 	}
 }
 
+// deltaSampleAnswer builds one GitDeltaAnswer exercising every section a delta can carry: the files
+// echo (an added entry, a removed entry, and a changed entry carrying both lossy flags and an error
+// message together, so a key-order check has one object to check all three optional fields' order
+// against), a created symbol, a deleted symbol, a modified entry, a renamed pair, and a candidate
+// entry with every signal set. It is shared by both tests in this file that need a fully populated
+// answer, so the two tests cannot silently drift apart on what "every shape" means.
+func deltaSampleAnswer(to *string) GitDeltaAnswer {
+	created := Symbol{ID: "pkg#New", Kind: KindFunction, File: "pkg/a.go", Start: 1, End: 2, Signature: "func New()"}
+	deleted := Symbol{ID: "pkg#Gone", Kind: KindFunction, File: "pkg/a.go", Start: 3, End: 4, Signature: "func Gone()"}
+	modifiedAfter := Symbol{ID: "pkg#Changed", Kind: KindFunction, File: "pkg/a.go", Start: 5, End: 7, Signature: "func Changed()"}
+	renameFrom := Symbol{ID: "pkg#OldName", Kind: KindFunction, File: "pkg/a.go", Start: 8, End: 9, Signature: "func OldName()"}
+	renameTo := Symbol{ID: "pkg#NewName", Kind: KindFunction, File: "pkg/a.go", Start: 10, End: 11, Signature: "func NewName()"}
+
+	return GitDeltaAnswer{
+		From: "abc123",
+		To:   to,
+		DeltaAnswer: DeltaAnswer{
+			Files: []DeltaFile{
+				{Path: "pkg/added.go", Disposition: DispositionAdded},
+				{Path: "pkg/removed.go", Disposition: DispositionRemoved},
+				{Path: "pkg/a.go", Disposition: DispositionChanged, Error: "boom", LossyBefore: true, LossyAfter: true},
+			},
+			Created: []Symbol{created},
+			Deleted: []Symbol{deleted},
+			Modified: []ModifiedSymbol{
+				{
+					ID:      "pkg#Changed",
+					Kind:    KindFunction,
+					Changed: []ChangedDimension{ChangedBody, ChangedSignature},
+					Before:  []SymbolLocation{{File: "pkg/a.go", Start: 5, SigEnd: 6, End: 7}},
+					After:   []Symbol{modifiedAfter},
+				},
+			},
+			Renamed: []RenamedPair{{From: renameFrom, To: renameTo}},
+			RenameCandidates: []RenameCandidateEntry{
+				{
+					ID:   "pkg#Deleted2",
+					Kind: KindFunction,
+					Candidates: []RenameCandidate{
+						{
+							ID:   "pkg#Created2",
+							Kind: KindFunction,
+							File: "pkg/a.go",
+							Signals: RenameSignals{
+								SignatureIdenticalModuloName: true,
+								BodyTokenSimilarity:          0.75,
+								BodyTokensBefore:             10,
+								BodyTokensAfter:              12,
+								DocIdentical:                 false,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TestRenderDeltaJSON_KeyOrder pins the top-level key order — from, to, files, created, deleted,
+// modified, renamed, rename_candidates — and the key order inside a file echo entry, a modified
+// entry, a renamed pair, a candidate entry and a signals block, all to GitDeltaAnswer's and its
+// constituent types' own field declaration order.
+func TestRenderDeltaJSON_KeyOrder(t *testing.T) {
+	to := "def456"
+	a := deltaSampleAnswer(&to)
+
+	got, err := RenderDeltaJSON(a)
+	if err != nil {
+		t.Fatalf("RenderDeltaJSON() error = %v", err)
+	}
+	s := string(got)
+
+	assertKeyOrder(t, s, []string{
+		`"from"`, `"to"`, `"files"`, `"created"`, `"deleted"`, `"modified"`, `"renamed"`, `"rename_candidates"`,
+	})
+
+	filesIdx := strings.Index(s, `"files"`)
+	createdIdx := strings.Index(s, `"created"`)
+	if filesIdx == -1 || createdIdx == -1 || filesIdx >= createdIdx {
+		t.Fatalf("RenderDeltaJSON() = %s; want \"files\" before \"created\"", s)
+	}
+	assertKeyOrder(t, s[filesIdx:createdIdx], []string{
+		`"path"`, `"disposition"`, `"error"`, `"lossy_before"`, `"lossy_after"`,
+	})
+
+	modifiedIdx := strings.Index(s, `"modified"`)
+	renamedIdx := strings.Index(s, `"renamed"`)
+	if modifiedIdx == -1 || renamedIdx == -1 || modifiedIdx >= renamedIdx {
+		t.Fatalf("RenderDeltaJSON() = %s; want \"modified\" before \"renamed\"", s)
+	}
+	assertKeyOrder(t, s[modifiedIdx:renamedIdx], []string{
+		`"id"`, `"kind"`, `"changed"`, `"before"`, `"after"`,
+	})
+
+	renameCandidatesIdx := strings.Index(s, `"rename_candidates"`)
+	if renamedIdx == -1 || renameCandidatesIdx == -1 || renamedIdx >= renameCandidatesIdx {
+		t.Fatalf("RenderDeltaJSON() = %s; want \"renamed\" before \"rename_candidates\"", s)
+	}
+	assertKeyOrder(t, s[renamedIdx:renameCandidatesIdx], []string{`"from"`, `"to"`})
+
+	assertKeyOrder(t, s[renameCandidatesIdx:], []string{`"id"`, `"kind"`, `"candidates"`})
+	candidateIdx := strings.Index(s[renameCandidatesIdx:], `"candidates"`) + renameCandidatesIdx
+	assertKeyOrder(t, s[candidateIdx:], []string{`"id"`, `"kind"`, `"file"`, `"signals"`})
+	signalsIdx := strings.Index(s[candidateIdx:], `"signals"`) + candidateIdx
+	assertKeyOrder(t, s[signalsIdx:], []string{
+		`"signature_identical_modulo_name"`, `"body_token_similarity"`, `"body_tokens_before"`, `"body_tokens_after"`, `"doc_identical"`,
+	})
+}
+
+// TestRenderDeltaJSON_ByteContract covers two-space indentation, exactly one trailing newline, that a
+// signature containing angle brackets and an ampersand survives unescaped, the null-versus-string
+// distinction between a working-tree after side and a revision after side, and that a flag omitted
+// when false is absent from an ordinary entry and present when set.
+func TestRenderDeltaJSON_ByteContract(t *testing.T) {
+	t.Run("IndentAndNewline", func(t *testing.T) {
+		a := deltaSampleAnswer(nil)
+		got, err := RenderDeltaJSON(a)
+		if err != nil {
+			t.Fatalf("RenderDeltaJSON() error = %v", err)
+		}
+		s := string(got)
+		if !strings.Contains(s, "\n  \"from\"") {
+			t.Errorf("RenderDeltaJSON() = %q; want two-space indentation before \"from\"", s)
+		}
+		if !strings.HasSuffix(s, "\n") || strings.HasSuffix(s, "\n\n") {
+			t.Errorf("RenderDeltaJSON() = %q; want exactly one trailing newline", s)
+		}
+	})
+
+	t.Run("HTMLNotEscaped", func(t *testing.T) {
+		sym := Symbol{ID: "pkg#Sym", Kind: KindFunction, File: "pkg/a.go", Start: 1, End: 1, Signature: "func Sym() <T & U>"}
+		a := GitDeltaAnswer{From: "abc", DeltaAnswer: DeltaAnswer{Created: []Symbol{sym}}}
+		got, err := RenderDeltaJSON(a)
+		if err != nil {
+			t.Fatalf("RenderDeltaJSON() error = %v", err)
+		}
+		s := string(got)
+		if !strings.Contains(s, "func Sym() <T & U>") {
+			t.Errorf("RenderDeltaJSON() = %s; want the literal unescaped signature", s)
+		}
+		backslash := string(rune(0x5c))
+		for _, htmlEscape := range []string{backslash + "u003c", backslash + "u003e", backslash + "u0026"} {
+			if strings.Contains(s, htmlEscape) {
+				t.Errorf("RenderDeltaJSON() = %s; want no %s escape", s, htmlEscape)
+			}
+		}
+	})
+
+	t.Run("ToNullForWorkingTree", func(t *testing.T) {
+		a := GitDeltaAnswer{From: "abc"}
+		got, err := RenderDeltaJSON(a)
+		if err != nil {
+			t.Fatalf("RenderDeltaJSON() error = %v", err)
+		}
+		if !strings.Contains(string(got), "\"to\": null") {
+			t.Errorf("RenderDeltaJSON() = %s; want \"to\": null for a working-tree after side", got)
+		}
+	})
+
+	t.Run("ToStringForRevision", func(t *testing.T) {
+		to := "def456"
+		a := GitDeltaAnswer{From: "abc", To: &to}
+		got, err := RenderDeltaJSON(a)
+		if err != nil {
+			t.Fatalf("RenderDeltaJSON() error = %v", err)
+		}
+		if !strings.Contains(string(got), `"to": "def456"`) {
+			t.Errorf("RenderDeltaJSON() = %s; want \"to\": \"def456\" for a revision after side", got)
+		}
+	})
+
+	t.Run("OmittedFlagsAbsentWhenFalse", func(t *testing.T) {
+		a := GitDeltaAnswer{From: "abc", DeltaAnswer: DeltaAnswer{
+			Files: []DeltaFile{{Path: "pkg/a.go", Disposition: DispositionChanged}},
+		}}
+		got, err := RenderDeltaJSON(a)
+		if err != nil {
+			t.Fatalf("RenderDeltaJSON() error = %v", err)
+		}
+		s := string(got)
+		for _, absent := range []string{`"error"`, `"lossy_before"`, `"lossy_after"`} {
+			if strings.Contains(s, absent) {
+				t.Errorf("RenderDeltaJSON() = %s; want no %s key on an ordinary entry", s, absent)
+			}
+		}
+	})
+
+	t.Run("PresentFlagsWhenSet", func(t *testing.T) {
+		a := GitDeltaAnswer{From: "abc", DeltaAnswer: DeltaAnswer{
+			Files: []DeltaFile{{Path: "pkg/a.go", Disposition: DispositionChanged, LossyBefore: true, LossyAfter: true, Error: ""}},
+		}}
+		got, err := RenderDeltaJSON(a)
+		if err != nil {
+			t.Fatalf("RenderDeltaJSON() error = %v", err)
+		}
+		s := string(got)
+		for _, present := range []string{`"lossy_before"`, `"lossy_after"`} {
+			if !strings.Contains(s, present) {
+				t.Errorf("RenderDeltaJSON() = %s; want %s key present when set", s, present)
+			}
+		}
+	})
+}
+
 // TestRenderErrorJSON covers the exact bytes RenderErrorJSON emits: a plain message, one with '<'
 // and '&' left unescaped, and one with a double quote escaped normally.
 func TestRenderErrorJSON(t *testing.T) {
