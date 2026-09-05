@@ -54,10 +54,10 @@ func repoRelPath(root, base, target string) (string, error) {
 // "#". This is the path arithmetic a caller wants when a target that escapes the root, or that
 // collides with the glyph grammar's separator, must be refused here rather than reaching the
 // engine. The order matters: an escaping target still reports the escape, which is why the
-// separator check runs after the existing one and not before it. toc is the only verb that reaches
-// this function's exported form, and a "#" in a path segment is an explicit error for it too, so
-// that the glyph grammar's rule against the separator holds everywhere a target is taken, not only
-// where a bare "#" would otherwise be read as a glyph.
+// separator check runs after the existing one and not before it. toc and delta are the only two
+// verbs that reach this function's exported form, and a "#" in a path segment is an explicit
+// error for both, so that the glyph grammar's rule against the separator holds everywhere a
+// target is taken, not only where a bare "#" would otherwise be read as a glyph.
 func repoRelTarget(root, base, target string) (string, error) {
 	rel, err := repoRelPath(root, base, target)
 	if err != nil {
@@ -77,10 +77,10 @@ func repoRelTarget(root, base, target string) (string, error) {
 	return rel, nil
 }
 
-// RepoRelTarget exports repoRelTarget for callers outside this package: the CLI's toc verb, and
-// the MCP server's own target conversion, both of which must reject an escaping target, or one
-// carrying the glyph grammar's "#" separator in any path segment, here rather than letting it
-// reach the engine.
+// RepoRelTarget exports repoRelTarget for callers outside this package: the CLI's toc and delta
+// verbs, and the MCP server's own target conversion, all of which must reject an escaping target,
+// or one carrying the glyph grammar's "#" separator in any path segment, here rather than letting
+// it reach the engine.
 func RepoRelTarget(root, base, target string) (string, error) {
 	return repoRelTarget(root, base, target)
 }
