@@ -379,11 +379,15 @@ construction, and there is never a parallel naming rulebook that can drift from 
    `goUngroupedTypeSymbol` cut the signature at the body's start byte, so a struct's `Signature`
    is `type T struct`. This is the whole reason the completion retry exists. Anyone writing the
    round trip without it will see every struct and interface in Loomyard fail.
-2. **Grouped const/var signatures are already complete.** `goGroupedConstOrVarSymbols` prepends
-   the keyword (`"const "` / `"var "`) to the spec's own text, so a grouped member's signature is
-   `const A Kind = iota`, which parses standalone and yields exactly one symbol. No special
-   handling needed. Ungrouped ones use `SignatureCut(decl, nil, src)`, the whole declaration text,
-   which also parses.
+2. **Grouped const/var signatures are already complete — including bare iota continuations.**
+   `goGroupedConstOrVarSymbols` prepends the keyword (`"const "` / `"var "`) to the spec's own
+   text, so a grouped member's signature is `const A Kind = iota` for an explicit spec and just
+   `const B` for a bare continuation spec in an iota block. **Both parse cleanly and yield exactly
+   one symbol** — measured, not assumed (see the verification table below). This matters because
+   an iota enum is the single most common grouped-const shape in Loomyard, so a bare continuation
+   failing would have failed the round trip on every enum in the checkout. No special handling is
+   needed for either. Ungrouped ones use `SignatureCut(decl, nil, src)`, the whole declaration
+   text, which also parses.
 3. **Interface-method signatures are not declarations.** `goInterfaceMethodSymbols` emits
    `KindMethod` symbols whose `Signature` is the method element text. There is no wrapping that
    recovers the right owner from that fragment alone. This is the first non-goal.
@@ -401,6 +405,28 @@ construction, and there is never a parallel naming rulebook that can drift from 
    Several `init`s in one package collapse to one glyph in the *repository*, but a single fragment
    declares one, so the maker answers it. The multipart status is a resolve-time fact, not a
    naming-time one.
+
+**Verified against tree-sitter-go, not assumed.** Every claim above about what parses was measured
+during discussion by wrapping the fragment in `"package q\n\n" + frag + "\n"` and calling the
+registered Go strategy's `Symbols("u/v", root, src)` — the exact shape the maker will use.
+`partial` is `treesitter.WithTree`'s own flag:
+
+| fragment | `partial` | symbols | ids |
+| --- | --- | --- | --- |
+| `const B` (bare iota continuation) | false | 1 | `u/v#B` const |
+| `const A Kind = iota` | false | 1 | `u/v#A` const |
+| `type T struct` | **true** | 0 | — |
+| `type T struct {}` | false | 1 | `u/v#T` type |
+| `func F() error` (bodyless) | false | 1 | `u/v#F` function |
+| `func (f *Focus) Reset() error` | false | 1 | `u/v#Focus.Reset` method |
+| `const X, Y = 1, 2` | false | 2 | `u/v#X`, `u/v#Y` const |
+
+Three things this pins down for the plan. First, the completion retry's trigger is real:
+`type T struct` reports a partial parse *and* yields zero symbols, and appending `" {}"` produces
+exactly the id the complete form does. Second, a bodyless func and a bodyless method both parse
+clean, so the retry never fires for them. Third, the unit in every id above is the parameter
+`u/v`, never the synthetic clause `q` — the unit-independence property, observed rather than
+argued.
 
 ## Constraints
 
@@ -434,6 +460,13 @@ Table tests over the maker function directly, no fixtures on disk, no repository
 - One case per accepted kind: free function, method, struct type, interface type, type alias,
   named type, ungrouped const, ungrouped var, grouped const member, grouped var member. Each
   asserts the produced `id` and `kind`.
+- **Bare iota-continuation const member** — a fragment of exactly `const B`, the signature
+  `goGroupedConstOrVarSymbols` emits for a continuation spec in an iota block. Measured to parse
+  cleanly and yield one symbol (verification table above), and it is its own case rather than a
+  row folded into the grouped-const case, because an iota enum is Loomyard's most common grouped
+  shape: if this ever regresses, the round trip fails on every enum in the checkout at once, and
+  the failure must be attributable to one named unit test rather than to a whole-repository walk.
+  The `var` counterpart (`var B`) gets a row too.
 - **Unit independence:** a unit unrelated to the synthetic package clause (`internal/reedengine`,
   say) produces a glyph carrying that unit. This is the test that proves the clause is inert.
 - **Nonexistent receiver type:** a method on a type declared nowhere answers normally. Explicitly
