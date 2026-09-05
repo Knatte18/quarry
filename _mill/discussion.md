@@ -37,9 +37,14 @@ extracting files that did not change; correctness lives entirely in the table co
 - A new pure core in `internal/engine`: given a batch of `(path, before-bytes, after-bytes, units)`
   entries, produce a symbol-table delta — `created`, `deleted`, `modified`, `renamed` (exact tier),
   and `rename_candidates` (evidence tier), plus a `files` block echoing every entry's disposition.
+- Three new **JSON-hidden byte-offset fields on `engine.Symbol`** — `DeclStart`, `BodyStart`,
+  `DeclEnd` — filled by every builder in `internal/engine/golang.go` from the same node it already
+  hands `SignatureCut`. This is the seam the token streams need; without it nothing in the
+  extractor's output can reach a symbol's declaration node. The emitted JSON key set is unchanged
+  (all three are `json:"-"`, like `HeadStart`/`HeadEnd`).
 - Three new exported entry points in `internal/engine`, all extracted from the existing
   `dirPackage`/`unitFor` implementations rather than copied: `PackageClause` (bytes → package
-  clause), `(*Repo).ClauseMapForDir` (on-disk clause map for one directory), and
+  clause), `(*Repo).ClauseMapForFiles` (on-disk clause map for a supplied file list), and
   `UnitsForClauseMap` (the clause vote plus the unit derivation). `dirPackage` is refactored to call
   the first and third so there is exactly one implementation of each rule.
 - A new package `internal/gitsrc`: a thin, read-only git plumbing layer (`git rev-parse --verify`,
@@ -49,7 +54,8 @@ extracting files that did not change; correctness lives entirely in the table co
 - Two facade methods on `quarry.Repo`: `Delta(entries)` (pure) and `DeltaGit(from, to, target)`
   (convenience, delegating to `internal/gitsrc` then `Delta`).
 - A new CLI verb `delta`, with `--from`, `--to`, the existing `--text` and `--root`, exactly one
-  target (`.` meaning the whole repository), the standard JSON envelope and the standard exit-code
+  target, resolved through `repopath.RepoRelTarget` exactly as `toc`'s is (so `.` means the current
+  directory, not the repository root), the standard JSON envelope and the standard exit-code
   contract.
 - New JSON and text renderers in `quarry/` (`RenderDeltaJSON`, `RenderDeltaText`), sharing the
   existing `renderJSON` encoder configuration.
@@ -85,7 +91,7 @@ extracting files that did not change; correctness lives entirely in the table co
 
 - Decision: each core entry carries an explicit `BeforeUnit` and `AfterUnit` string. The core never
   derives a unit and never touches the filesystem or git. A separate exported engine helper —
-  working name `UnitsForDir(dirRel string, clauses map[string]string) (dirPkg string, unitOf
+  `engine.UnitsForClauseMap(dirRel string, clauses map[string]string) (dirPkg string, unitOf
   func(base string) string)` or equivalent — derives them, and is called once per changed directory
   per side by the layer above (the git layer, or a caller of the pure facade method).
 - Rationale: the glyph unit is a *directory-level* fact. `internal/engine/walk.go`'s `unitFor`
@@ -150,17 +156,18 @@ extracting files that did not change; correctness lives entirely in the table co
   following differ, and the entry carries a `changed` array naming which of them did, drawn from
   the closed set `["body", "signature", "doc", "file"]`:
   - `body` — the body token stream differs (see the next decision for what a token stream is).
-  - `signature` — the verbatim `Signature` text differs. This is `SignatureCut`'s own span, which is
-    byte-for-byte the span the signature token stream is built over (see the next decision), so the
-    text comparison here and the token comparison used for renames can never disagree about which
-    bytes are "the signature".
+  - `signature` — the `Signature` text differs. It is built over the same byte span the signature
+    token stream is (see the next decision, including the synthesized keyword prefix for grouped
+    declarations), so the text comparison here and the token comparison used for renames cannot
+    disagree about which bytes are "the signature".
   - `doc` — the `Doc` text differs.
   - `file` — the symbol's repository-relative file differs between the sides.
 
   A symbol whose only difference is its line numbers (`Start`/`SigEnd`/`End` shifted because
   something above it grew or shrank) is **not** modified and appears nowhere in the delta. A
-  `modified` entry carries the after-side `Symbol` in full plus a `before` block holding the
-  before-side `file`, `start`, `sigend` and `end`.
+  `modified` entry carries `after` (the after-side `Symbol`s in full) and `before` (the before-side
+  `file`/`start`/`sigend`/`end` blocks) as **arrays** — length one in the ordinary case; see "The
+  symbol table key, and `func init`" for why the shape is uniformly an array.
 - Rationale: line-shift-insensitivity is the entire point of glyph identity — "a plan needs a
   stable name; an implementer needs where that is right now, which moves with every edit"
   (`docs/rewrite-plan.md` §2 item 4). Beyond that, all four kinds of change matter to a real
@@ -177,21 +184,45 @@ extracting files that did not change; correctness lives entirely in the table co
 
 ### The body token stream, and the exact-tier identity test
 
-- Decision: the two streams are defined by **byte range**, split at exactly the byte
+- Decision, and the seam it needs: **`Symbol` gains three JSON-hidden byte offsets**, and the two
+  streams are defined by **byte range** over them, split at exactly the byte
   `internal/engine/nodes.go`'s `SignatureCut` already cuts at — never by node exclusion.
 
-  Let `bodyStart` be `body.StartByte()` when the declaration has a body-bearing child, and
-  `decl.EndByte()` when it has none. `body` is the same node `SignatureCut(decl, body, src)` and
-  `SigEnd(decl, body)` already receive, resolved per language exactly as the strategy already
-  resolves it — for Go, `decl.ChildByFieldName("body")` for functions and methods, `goTypeBody(spec)`
-  for types. Then:
-  - the **signature token stream** is every leaf node of `decl` whose start byte lies in
-    `[decl.StartByte(), bodyStart)`;
-  - the **body token stream** is every leaf node of `decl` whose start byte lies in
-    `[bodyStart, decl.EndByte())`.
+  `Strategy.Symbols(unit, root, src) []Symbol` returns symbols only, and `Symbol` carries lines and
+  text but no byte offsets, so nothing in today's extractor output can reach a symbol's declaration
+  node. Rather than add a `Strategy` method or walk the tree a second time, `Symbol` gains
+  `DeclStart`, `BodyStart` and `DeclEnd` — byte offsets, all `json:"-"`, following the precedent
+  `HeadStart`/`HeadEnd` already set for JSON-hidden fields that exist for one consumer. Every builder
+  in `internal/engine/golang.go` fills them from **the same node it already hands `SignatureCut`**:
+  - `goDeclSymbol` (function, method): `decl` is the declaration node, `body` its `"body"` field.
+  - `goUngroupedTypeSymbol`: `decl` is the `type_declaration`, `body` is `goTypeBody(spec)`.
+  - `goGroupedTypeSymbol`: `decl` is **the spec**, `body` is `goTypeBody(spec)`.
+  - `goUngroupedConstOrVarSymbols` / `goGroupedConstOrVarSymbols`: `decl` is the declaration and the
+    spec respectively, and `body` is **nil** for both.
+  - `goInterfaceMethodSymbols`: `decl` is the `method_elem`, `body` is nil.
+  `BodyStart` is `body.StartByte()` when `body` is non-nil and `DeclEnd` when it is nil, so the
+  nil-body case needs no separate branch anywhere downstream. Then:
+  - the **signature token stream** is every leaf node whose start byte lies in
+    `[DeclStart, BodyStart)`;
+  - the **body token stream** is every leaf node whose start byte lies in
+    `[BodyStart, DeclEnd)`.
 
-  Both are sequences of `(node kind, node text)` pairs in source order, taken from the same parse
-  the extractor already performs. **Anonymous leaf nodes are included** — operators, keywords and
+  The delta core already parses each side's bytes inside one `treesitter.WithTree` callback; in that
+  same callback it walks the root's leaves **once**, in source order, and buckets each leaf into the
+  stream its start byte falls in. No per-symbol node lookup, no second parse, no second walk.
+
+  **What the invariant against `Symbol.Signature` actually is.** The signature stream spans exactly
+  the bytes `SignatureCut` cuts, but `Symbol.Signature` is not always those bytes verbatim: it is
+  `strings.TrimSpace` of them, and for the two grouped shapes a keyword is **synthesized** in front —
+  `goGroupedTypeSymbol` builds `"type " + SignatureCut(spec, body, src)` and
+  `goGroupedConstOrVarSymbols` builds `"const " + …` or `"var " + …`. The invariant is therefore:
+  *the signature token stream covers the same byte span `SignatureCut` was given, and
+  `Symbol.Signature` equals that span trimmed, with a synthesized `"type "`, `"const "` or `"var "`
+  prefix for a grouped declaration and no prefix otherwise.* A test asserting byte-for-byte equality
+  in general would be false; the test asserts this invariant per shape instead.
+
+  Both streams are sequences of `(node kind, node text)` pairs in source order, taken from the same
+  parse the extractor already performs. **Anonymous leaf nodes are included** — operators, keywords and
   punctuation (`+`, `-`, `++`, `--`, `:=`, `return`, `if`, `{`) are anonymous in the tree-sitter Go
   grammar, being grammar string literals rather than named rules, and a stream restricted to *named*
   leaves would omit every one of them. Whitespace and line numbers contribute nothing. Neither
@@ -313,13 +344,27 @@ extracting files that did not change; correctness lives entirely in the table co
 
 ### The symbol table key, and `func init`
 
-- Decision: the symbol table is keyed by `(Symbol.ID, Symbol.Kind)`. When a key holds more than one
-  symbol on a side — Go's several `func init()` in one package all carry the id `<unit>#init`, per
-  `internal/engine/golang.go`'s own doc comment — the two sides are compared as **multisets of body
-  token stream hashes**: equal multisets means unchanged; any difference reports **one** `modified`
-  entry for that key, with `changed` naming the dimensions and a `count_before`/`count_after` pair
-  when the multiplicities differ. A multi-occurrence key is never a rename candidate on either
-  tier.
+- Decision: the symbol table is keyed by `(Symbol.ID, Symbol.Kind)`.
+
+  Every occurrence — single or multiple — reduces to one **comparison tuple**:
+  `(body token stream hash, signature text, doc text, file)`. That is the same four dimensions the
+  `changed` array is drawn from, so the comparison and the reporting cannot cover different ground.
+
+  When a key holds more than one symbol on a side — Go's several `func init()` in one package all
+  carry the id `<unit>#init`, per `internal/engine/golang.go`'s own doc comment — the two sides are
+  compared as **multisets of those tuples**, never of body hashes alone: equal multisets means
+  unchanged; any difference reports **one** `modified` entry for that key. Its `changed` array is
+  the union of the dimensions that differ across the multiset difference, so a doc-only change to
+  one of two `init` functions is reported as `changed:["doc"]` rather than vanishing.
+
+  **The `modified` entry shape is uniformly arrays**, so a multi-occurrence key needs no second
+  shape: the entry carries `after` (every after-side occurrence's `Symbol`, in file-then-line order)
+  and `before` (every before-side occurrence's `file`/`start`/`sigend`/`end`, same order). For the
+  ordinary single-occurrence case both arrays have length one. When the multiplicities differ, that
+  is visible from the array lengths themselves and needs no separate `count_before`/`count_after`
+  pair.
+
+  A multi-occurrence key is never a rename candidate on either tier.
 - Rationale: including `Kind` in the key means a `const` replaced by a `var` of the same name is a
   delete plus a create — two different declarations — rather than a modification, which is the
   truthful reading. The multiset rule handles `init` without a special case for the word "init" and
@@ -340,8 +385,10 @@ extracting files that did not change; correctness lives entirely in the table co
   - `added`, `removed`, `changed` — the file was extracted on the sides where it exists.
   - `unsupported` — the file's extension resolves to no registered strategy. It contributes no
     symbols on either side and is not an error.
-  - `error` — extraction failed for this entry; the entry additionally carries `error` with the
-    message. It contributes no symbols to any delta list.
+  - `error` — extraction failed for this entry, or the entry was refused before extraction (an
+    unmerged path, an unrecognised git status letter — see the status-letter table under "Git
+    plumbing"); the entry additionally carries `error` with the message. It contributes no symbols
+    to any delta list.
   A failing entry never fails the batch: the whole `Delta` call still returns a nil error, and the
   answer is still rendered as a success envelope.
 - Rationale: echoing every entry is what makes the batch auditable — a caller can tell "this file
@@ -386,9 +433,13 @@ extracting files that did not change; correctness lives entirely in the table co
     four conditions under which `dirPackage` records no clause today. This is the one function that
     turns bytes into a clause, and `dirPackage` is refactored to call it so there is not a second
     copy of that sequence.
-  - `(*engine.Repo).ClauseMapForDir(dirRel string) (map[string]string, error)` — the on-disk clause
-    map for one directory, ignore-filtered exactly as `dirPackage` already is. Used for the
-    working-tree side.
+  - `(*engine.Repo).ClauseMapForFiles(dirRel string, bases []string) (map[string]string, error)` —
+    the on-disk clause map for exactly the base names in `bases`, read from `dirRel` and passed
+    through `PackageClause`. It takes the file list rather than enumerating the directory itself,
+    which is what lets both sides of a comparison be voted over **one** enumeration rule chosen by
+    the caller (see the next decision). Note that `dirPackage` does not filter either: `walkDir`
+    hands it entries that are already ignore-filtered, so "reuse `dirPackage`" was never a statement
+    about enumeration.
   - `engine.UnitsForClauseMap(dirRel string, clauses map[string]string) (dirPkg string, unitOf
     func(base string) string)` — the vote and the derivation, extracted from `dirPackage`'s
     tie-break and `unitFor` so both callers share one implementation rather than a reimplementation.
@@ -396,8 +447,20 @@ extracting files that did not change; correctness lives entirely in the table co
   Which layer calls which: for a **revision** side, `DeltaGit` asks `internal/gitsrc` for the
   directory's file names (`git ls-tree`) and each `.go` file's bytes (`git show`), calls
   `engine.PackageClause` on those bytes to build the map, then `engine.UnitsForClauseMap`. For the
-  **working-tree** side it calls `(*engine.Repo).ClauseMapForDir` and then the same
-  `UnitsForClauseMap`. `internal/gitsrc` never sees a clause, a unit, or a tree-sitter node.
+  **working-tree** side it enumerates by the same rule (see the next decision), calls
+  `(*engine.Repo).ClauseMapForFiles` with that list, and then the same `UnitsForClauseMap`.
+  `internal/gitsrc` never sees a clause, a unit, or a tree-sitter node.
+
+  **One enumeration rule, both sides.** The set of files a directory's clause vote is taken over is
+  produced by a single function in the facade, applied identically to each side: *every `.go` file
+  git lists for that directory on that side* — `git ls-tree` for a revision side, and
+  `git ls-files --cached --others --exclude-standard` for the working-tree side. Both are
+  tracked-inclusive and neither applies the engine's `ignoreSet`, so a tracked-but-gitignored `.go`
+  file votes on **both** sides or neither. This is the property the comparison depends on: a
+  `dirPkg` that differs between the sides changes the unit, which changes every glyph in the
+  directory, which turns the whole directory into a create-plus-delete storm. Reading the
+  working-tree side from disk is a detail of *how the bytes are fetched*, never of *which files
+  count*.
 - Rationale: the task fixes the layering — the core takes byte pairs and knows nothing about git —
   and the reason is testability: a pure core needs no repository, no fixture tree and no commits to
   be exercised exhaustively. Putting `DeltaGit` on the facade rather than only in the CLI is what
@@ -427,8 +490,27 @@ extracting files that did not change; correctness lives entirely in the table co
   - `git ls-tree --name-only <rev> <dir>/` to enumerate a changed directory's files at a revision,
     so the package-clause vote for that side can be taken over the whole directory; combined with
     `git show` for each `.go` file's bytes, which the facade turns into clauses via
-    `engine.PackageClause`. The working-tree side calls `(*engine.Repo).ClauseMapForDir` instead.
+    `engine.PackageClause`. The working-tree side is enumerated with
+    `git ls-files --cached --others --exclude-standard -- <dir>/` and read from disk via
+    `(*engine.Repo).ClauseMapForFiles`, so both sides vote over the same rule.
   Nothing else. No `checkout`, no `stash`, no index write, no config write, no `-M`/`-C`.
+
+  **The status letter is mapped explicitly, and the mapping is total:**
+
+  | letter | meaning | entry |
+  |---|---|---|
+  | `A` | added | `nil` before, bytes after → `disposition: added` |
+  | `M` | modified | bytes both sides → `disposition: changed` |
+  | `D` | deleted | bytes before, `nil` after → `disposition: removed` |
+  | `T` | typechange (file ↔ symlink) | bytes both sides → `disposition: changed`; a side that is now a symlink yields its link text, which is not parseable Go and therefore produces no symbols on that side, exactly as any other unparseable content does |
+  | `U` | unmerged | **no extraction**: `disposition: error`, message `unmerged path` |
+  | anything else | — | `disposition: error`, message naming the letter verbatim |
+
+  `R` and `C` cannot appear, because `--no-renames` disables both rename and copy detection; the
+  `anything else` row covers them anyway rather than relying on that argument. `U` is reachable on
+  the working-tree path during a merge conflict — the primary consumer's own path — and a
+  conflicted file's working-tree content is conflict markers, which must never be extracted as if
+  it were code.
 - Rationale: `--no-renames` is not an optimisation, it is a correctness requirement. Git's rename
   detection is a similarity threshold; letting it run would mean quarry's answer silently inherited
   a heuristic the whole two-tier design exists to replace. With `--no-renames` a rename arrives as a
@@ -568,7 +650,7 @@ returning `""`, and a file whose unit is unspellable by `glyph.Parse` (checked b
 contributes no symbols at all — the delta core must honour that same rule. Both are refactored, not
 copied: `dirPackage`'s "bytes to clause" step becomes the exported `engine.PackageClause`, its
 tie-break plus `unitFor` become the exported `engine.UnitsForClauseMap`, and the on-disk map becomes
-the exported `(*engine.Repo).ClauseMapForDir`. Export is not decoration here — package `quarry`
+the exported `(*engine.Repo).ClauseMapForFiles`, which takes the file list rather than enumerating. Export is not decoration here — package `quarry`
 cannot call `dirPackage` or `unitFor`, both unexported, and it is the layer that assembles the batch.
 
 **`SignatureCut`, `SigEnd` and the body-bearing child.** `internal/engine/nodes.go`'s
@@ -581,6 +663,26 @@ The `body` node is resolved per declaration kind by the strategy —
 grammar exposes with no named body node and no 'body' field at all", and nil for `type ID string`
 and `type Alias = T`. That asymmetry is exactly why the token streams in the Decisions are defined
 by byte range rather than by node containment.
+
+**Grouped declarations pass the *spec*, not the declaration.** `goGroupedTypeSymbol` and
+`goGroupedConstOrVarSymbols` call `SignatureCut(spec, …)` and prepend a synthesized keyword —
+`"type "`, `"const "`, `"var "` — so `Symbol.Signature` for a grouped shape is *not* the cut bytes
+verbatim. The new `DeclStart`/`BodyStart`/`DeclEnd` must be filled from whichever node that builder
+passed, so the byte spans and the `Signature` string always describe the same declaration.
+
+**Interface methods are already symbols.** `goInterfaceMethodSymbols` extracts each `method_elem` of
+an interface as its own `KindMethod` `Symbol`, owned by the interface, with `SignatureCut(elem, nil,
+src)` and no body. Two consequences for the delta: adding a method to an interface shows up both as
+a **created** method symbol and as a **modified** interface type (its body stream now covers the new
+element) — both are true and neither is redundant; and an interface method's own body stream is
+always empty, so two interface methods differing only in their signatures are correctly compared
+through the signature stream, not the body one.
+
+**`Symbol` carries no byte offsets today.** `Strategy.Symbols(unit, root, src)` returns `[]Symbol`
+and nothing else, and byte offsets appear only inside `nodes.go`'s `SignatureCut`. The three new
+JSON-hidden fields are the whole seam; no `Strategy` method is added, and the delta core does not
+walk the tree a second time — it buckets leaves by byte offset in the same `WithTree` callback that
+produced the symbols.
 
 **Where the symbol shape comes from.** `internal/engine/answer.go` declares `Symbol`, `Kind`,
 `Status`, `DirAnswer`, `FileEntry`, `ResolveResult`, `ExpandAnswer`. Its own file comment states
@@ -707,8 +809,20 @@ every case is two string literals in the test file. Scenarios that must be cover
   both would fail, because `goTypeBody` returns the bare `"{"` leaf for an interface.
 - a struct with a changed field, and a `type Alias = T` changed to `type Alias = U`, each asserted
   `modified` — the nil-body branch must not collapse to an empty comparison.
-- an interface's signature stream asserted byte-identical to the symbol's own `Signature` string,
-  proving the two definitions cut at the same place.
+- the **signature invariant, per shape**: for each of the five builders (ungrouped func/method,
+  ungrouped type, grouped type, ungrouped const/var, grouped const/var, plus interface `method_elem`)
+  the signature token stream's byte span equals the span that builder handed `SignatureCut`, and
+  `Symbol.Signature` equals that span trimmed with the synthesized `"type "`/`"const "`/`"var "`
+  prefix where the builder adds one. A flat byte-identity assertion would be false for the grouped
+  shapes.
+- **`func init` multi-occurrence across all four dimensions:** two `init` before and two after
+  differing only in the *doc* of one of them, asserted `modified` with `changed:["doc"]` — a
+  multiset of body hashes alone would report nothing here. Likewise a signature-only difference.
+- a `modified` entry's `after`/`before` arrays asserted length one for an ordinary symbol and
+  length two for a two-occurrence `init`, with the multiplicity change visible from the lengths.
+- **interface method extraction:** adding a method to an interface asserted to produce *both* a
+  `created` `KindMethod` symbol owned by the interface *and* a `modified` entry for the interface
+  type, since `goInterfaceMethodSymbols` already emits interface methods as their own symbols.
 - exact-tier rename: identical body modulo the identifier, including a recursive self-call, with the
   pair asserted present in `renamed` and **absent** from `created` and `deleted`.
 - exact-tier demotion: the same rename with one extra statement in the body, asserted to land in
@@ -747,7 +861,16 @@ error, not a panic. Additionally:
 - a tracked-but-gitignored `.go` file **is** kept, with the divergence from `toc`'s listing
   asserted deliberately so the decision cannot be silently reverted;
 - an unresolvable revision returns `gitsrc.ErrUnknownRevision`, matched with `errors.Is`, before any
-  diff is attempted.
+  diff is attempted;
+- **the status-letter mapping is total**: a table test over `A`, `M`, `D`, `T`, `U` and an
+  unrecognised letter, asserting the disposition each produces and that `U` yields
+  `disposition: error` with no extraction attempted — a conflicted file's content is conflict
+  markers, and extracting it as Go would be a silent lie;
+- **both sides of a directory's clause vote enumerate the same file set**: a fixture with a
+  tracked-but-gitignored `.go` file asserts that file votes on the revision side and on the
+  working-tree side alike, so `dirPkg` — and therefore every glyph unit in the directory — agrees.
+  A divergence here turns a whole directory into a create-plus-delete storm, so this is asserted
+  directly rather than left to follow from the enumeration code.
 
 **`quarry` facade and renderers.** Key-order and byte-contract tests for `RenderDeltaJSON`
 mirroring the existing `TestRenderExpandJSON_KeyOrder` shape; a text-view test mirroring
@@ -800,7 +923,7 @@ verb. No other document changes on this branch.
 - **Q:** How are whole-file adds/removes and unsupported files represented? **A:** [auto-pick] `nil` bytes mean absent on that side; every entry is echoed in a `files` block with a closed `disposition` word. **Why:** a caller must be able to distinguish "no symbol changes" from "never read" before trusting an empty delta.
 - **Q:** How do per-entry extraction failures surface? **A:** [auto-pick] `disposition: error` plus a message in the `files` block; no symbols from that entry; the batch still succeeds and exits 0. **Why:** the resolve pattern the task mandates — per-entry errors fail their entry, never the batch.
 - **Q:** Where do the core, the git layer and the facade methods live? **A:** [auto-pick] `internal/engine/delta.go` (pure), a new `internal/gitsrc` (read-only plumbing), and two facade methods `Delta` and `DeltaGit`; the CLI calls `DeltaGit`. **Why:** Loomyard's pipeline is a Go caller that needs the git convenience too; putting it only in the CLI would force a second implementation of the one thing that layer exists to hold.
-- **Q:** What are `--from`/`--to` semantics, and does `delta` keep the one-target rule? **A:** [auto-pick] `--from` required, `--to` optional (absent = working tree); exactly one target as every verb, with `.` meaning the whole repository. **Why:** keeps `parseArgs`' target-count rule intact, and `.` already means the root everywhere else in the CLI.
+- **Q:** What are `--from`/`--to` semantics, and does `delta` keep the one-target rule? **A:** [auto-pick] `--from` required, `--to` optional (absent = working tree); exactly one target as every verb. **Why:** keeps `parseArgs`' target-count rule intact. _(Superseded in part by review r2: the claim that `.` means the repository root was wrong — see the r2 entry below. The target goes through `RepoRelTarget`, so `.` means the current directory.)_
 - **Q:** Which git commands, and is git's own rename detection used? **A:** [auto-pick] `git diff --name-status --no-renames`, `git show`, `git ls-tree`; git's `-M` is never used. **Why:** `--no-renames` is a correctness requirement, not an optimisation — git's rename detection is a similarity threshold, exactly what the two-tier design replaces.
 - **Q:** Does `delta` support `--text`? **A:** [auto-pick] Yes, a lossless text view. **Why:** `--text` is valid for every verb, and the task's "Done when" asks for goldens in both views.
 - **Q:** What are `delta`'s exit codes? **A:** [auto-pick] 0 on any computed delta (empty included, errored entries included), 2 usage, 3 internal; exit 1 documented as unreachable. **Why:** "nothing changed" is a true answer, not a negative one; the alternatives would make a complete answer look like a failure to a shell gate.
@@ -816,8 +939,15 @@ verb. No other document changes on this branch.
 - **Q:** [review r2, BLOCKING] `goTypeBody` returns the bare `"{"` leaf for an interface, so a node-containment body stream is empty for every interface. **A:** [auto-pick] Define both streams by **byte range** split at `SignatureCut`'s own cut point. **Why:** node containment makes interface method-set changes invisible and lets two unrelated interfaces be asserted as a rename; the mirror rule ("declaration minus body child") instead leaves interface methods in the *signature* stream, where `Symbol.Signature` does not have them.
 - **Q:** [review r2, BLOCKING] "Signature token stream" had two incompatible readings, so `changed:["signature"]` and `signature_identical_modulo_name` could be computed over different spans. **A:** [auto-pick] Same byte-range fix — the signature stream is byte-for-byte the span `SignatureCut` returns. **Why:** the text comparison and the token comparison must be over the same bytes by construction, not by agreement.
 - **Q:** [review r2, BLOCKING] With `--to` absent, `git diff` lists tracked files only — what happens to a file a card created but never `git add`ed? **A:** [auto-pick] Enumerate untracked files with `git ls-files --others --exclude-standard`; they arrive as `disposition: added`. **Why:** the working-tree path *is* Loomyard's card-done binding, and without this the file's symbols are silently absent from `created` with the `files` echo unable to record the omission.
-- **Q:** [review r2, BLOCKING] `internal/gitsrc` was specified as holding no quarry types and no tree-sitter, yet also as building the per-directory clause maps — which only `Strategy.Package` inside `treesitter.WithTree` can produce. **A:** [auto-pick] Name three exported engine entry points — `PackageClause`, `(*Repo).ClauseMapForDir`, `UnitsForClauseMap` — and have the facade call them; `gitsrc` returns paths, bytes and errors only. **Why:** `dirPackage` and `unitFor` are unexported, so package `quarry` cannot reach them; export is the only seam across the boundary, and the refactor keeps one implementation of each rule.
+- **Q:** [review r2, BLOCKING] `internal/gitsrc` was specified as holding no quarry types and no tree-sitter, yet also as building the per-directory clause maps — which only `Strategy.Package` inside `treesitter.WithTree` can produce. **A:** [auto-pick] Name three exported engine entry points — `PackageClause`, `(*Repo).ClauseMapForFiles`, `UnitsForClauseMap` — and have the facade call them; `gitsrc` returns paths, bytes and errors only. **Why:** `dirPackage` and `unitFor` are unexported, so package `quarry` cannot reach them; export is the only seam across the boundary, and the refactor keeps one implementation of each rule.
 - **Q:** [review r2, NIT] Is the git-sourced batch gitignore-filtered, given `toc` never lists an ignored file? **A:** [auto-pick] Untracked files are filtered (`--exclude-standard`); tracked-but-gitignored files are kept, as a documented divergence from `toc`'s listing rule. **Why:** the `.gitignore` chain is itself version-dependent, so filtering would need a revision to be taken against and would make the two sides' enumerations — and their clause votes — disagree with each other; mutual consistency between the sides is the property the comparison depends on, agreement with `toc` is not.
 - **Q:** [review r2, NIT] The rationale claimed "`.` already means the repository root everywhere else in the CLI" — is that true? **A:** [auto-pick] No, it was wrong. `runTOC` resolves through `RepoRelTarget(root, base, target)` with `base = cwd` unless `--root`, so `toc .` from a subdirectory names that subdirectory. `delta`'s target goes through the same call, and `.` means the current directory. **Why:** git would resolve a raw pathspec against the root while quarry resolves against the cwd — one argument with two meanings.
 - **Q:** [review r2, NIT] "No fuzzy matching anywhere in the query" contradicted emitting a Jaccard float. **A:** [auto-pick] Narrow the constraint to "nothing quarry decides is fuzzy" and cite `docs/rewrite-plan.md` §9. **Why:** §9's non-goal governs how quarry *answers*; the evidence tier is the `ambiguous` branch of that same rule, and no asserted outcome reads the similarity value.
 - **Q:** [review r2, NIT] `--from bogus` would fail inside git and land on exit 3 with git's raw message. **A:** [auto-pick] `git rev-parse --verify` each revision first; an unresolvable one is exit 2 with `unknown revision: <rev>`, matched via an `errors.Is` sentinel. **Why:** `exitUsage` already means "the caller asked wrong … a `--root` that does not resolve"; a revision that does not resolve is the same class, and it is this verb's most likely user error.
+- **Q:** [review r3, BLOCKING] The token streams were defined over `decl`/`body` nodes, but `Strategy.Symbols` returns only `[]Symbol` and `Symbol` carries no byte offsets — what is the seam? **A:** [auto-pick] Add three JSON-hidden byte offsets to `Symbol` (`DeclStart`, `BodyStart`, `DeclEnd`), filled by each builder from the same node it already hands `SignatureCut`; the core buckets leaves by offset in the same `WithTree` callback. **Why:** it needs no new `Strategy` method and no second walk, and it follows the `HeadStart`/`HeadEnd` precedent for JSON-hidden fields serving one consumer.
+- **Q:** [review r3, BLOCKING] "`Symbol.Signature` is byte-for-byte the signature stream's span" — is that true? **A:** [auto-pick] No. `goGroupedTypeSymbol` builds `"type " + SignatureCut(spec, …)` and `goGroupedConstOrVarSymbols` builds `"const "/"var " + …`, and grouped shapes pass the *spec* rather than the declaration. The invariant is restated per shape: same byte span, trimmed, plus a synthesized keyword prefix for grouped declarations. **Why:** the flat claim was false, and the test it justified could not have passed.
+- **Q:** [review r3, BLOCKING] A multi-occurrence key was compared as a multiset of *body* hashes while its `changed` array names four dimensions — so a doc-only change to one of two `init` functions reports nothing. **A:** [auto-pick] Compare a multiset of full comparison tuples `(body hash, signature, doc, file)`, and make the `modified` entry's `after`/`before` uniformly arrays. **Why:** the comparison and the reporting must cover the same dimensions, and arrays remove the need for a second entry shape or a `count_before`/`count_after` pair.
+- **Q:** [review r3, BLOCKING] `git diff --name-status` also emits `T` and `U` — how do they map? **A:** [auto-pick] A total table: `A`→added, `M`/`T`→changed, `D`→removed, `U`→`disposition: error` with no extraction, anything else→error naming the letter. **Why:** `U` is reachable on the working-tree path during a conflict, and a conflicted file's content is conflict markers; extracting it as Go would be a silent lie.
+- **Q:** [review r3, NIT] The clause vote used `git ls-tree` on a revision side and an ignore-filtered on-disk read on the working-tree side, so a tracked-and-ignored file voted on one side only. **A:** [auto-pick] One enumeration rule for both sides, chosen by the facade and passed to `ClauseMapForFiles` as an explicit file list. **Why:** a `dirPkg` differing between the sides changes the unit and turns the whole directory into a create-plus-delete storm. (Also corrected: `dirPackage` does not filter — `walkDir` hands it pre-filtered entries.)
+- **Q:** [review r3, NIT] Scope still said `.` means the whole repository, contradicting the r2 correction. **A:** [auto-pick] Corrected in Scope and the superseded Q&A entry annotated. **Why:** a plan writer reading Scope alone would implement the withdrawn rule.
+- **Q:** [review r3, NIT] The unit helper was named `UnitsForDir` in one decision and `UnitsForClauseMap` elsewhere. **A:** [auto-pick] `UnitsForClauseMap` throughout. **Why:** one name; the map-taking form is what both callers share.
