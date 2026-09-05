@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: glyph-self-form
 branch: glyph-self-form
 plan: _mill/plan
@@ -41,6 +41,7 @@ holistic-fixing  '2026-09-05T12:56:33Z'
 nits-fixed-holistic  '2026-09-05T12:58:18Z'
 holistic-approved  '2026-09-05T12:58:26Z'
 done  '2026-09-05T12:58:57Z'
+pr-pending  '2026-09-05T13:00:42Z'
 ```
 
 ## Batches
