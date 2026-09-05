@@ -93,6 +93,18 @@ func unitFor(dirRel, dirPkg, fileClause string) string {
 // minting a unit spelling glyph.Parse itself rejects. What the repository root's own unit should
 // spell is an open gap in the identifier contract (docs/glyph.md §2), not something this engine
 // decides on the contract's behalf.
+//
+// For a unit whose own name carries a "#", the probe string unit+"#x" now carries two of them and
+// is rejected as ReasonMultipleSeparators where, before the resolve contract closed over the
+// grammar, it was rejected as ReasonMemberBadRune instead — the probe's reason changed, and the
+// boolean this function returns from it did not, so every answer this function emits is
+// byte-identical to what it emitted before, and the round trip stays true by construction. That
+// change is a deliberate asymmetry, not a bug: naming such a directory as a resolve or expand target
+// is now an error under the closed grammar — a "#" in a unit component can never be part of a
+// well-formed glyph — while encountering one below a listed target during a walk is still a silent
+// listing with no symbols, exactly as before. The contract governs what a caller may name; this
+// function governs what the walk may mint, and the two are allowed to disagree on a directory
+// neither of them expects to see.
 func (r *Repo) unitSpellable(unit string) bool {
 	_, err := glyph.Parse(glyph.Go, unit+"#x")
 	return err == nil

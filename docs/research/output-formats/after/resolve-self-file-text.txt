@@ -1,0 +1,6 @@
+$ quarry resolve --text internal/logger/logger.go#
+
+internal/logger/logger.go# found
+internal/logger (package logger, go), 1 file
+Package logger is a minimal log/slog wrapper shared across lyx's internal packages, extended with a process-wide trace identity, explicit-parent diagnostic spans, and a durable per-process trace-file sink. It keeps stdout free of log noise (reed and other commands write their JSON envelope to stdout via internal/output) by routing all log output to a dedicated stderr sink, which defaults to os.Stderr and is silent unless the caller opts in via SetVerbosity. Every Debug/Info/Warn call also fans out to the durable trace-file sink (sink.go), independently gated at Info and above regardless of the stderr threshold -- see dualHandler's doc comment for the composite's exact semantics.
+logger.go: logger.go provides a thin log/slog wrapper for lyx: a package-level level threshold, an injectable io.Writer stderr sink (defaulting to os.Stderr), and Debug/Info/Warn helpers that fan every call out to that stderr sink and, independently, to the durable trace-file sink (sink.go) via the composite dualHandler defined below. Callers never see slog directly; they call SetVerbosity to raise the stderr threshold and Debug/Info/Warn to emit.

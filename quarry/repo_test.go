@@ -195,28 +195,30 @@ func TestRepoResolve_GlyphMemberMissingIsNotFound(t *testing.T) {
 	}
 }
 
-// TestRepoResolve_PathTarget asserts a repository-relative path target resolves to StatusFound with
-// a non-nil directory answer.
-func TestRepoResolve_PathTarget(t *testing.T) {
-	root := writeScratchTree(t, "resolve-path", map[string]string{"sub/a.go": resolveExpandFixture})
+// TestRepoResolve_SelfTarget asserts a self glyph naming a repository-relative directory resolves
+// to StatusFound with a non-nil listing. The bare path "sub" this test resolved before card 12 is
+// now a no_separator rejection with an empty status, not a resolution at all — the self glyph
+// "sub#" is that path's own address under the new contract.
+func TestRepoResolve_SelfTarget(t *testing.T) {
+	root := writeScratchTree(t, "resolve-self", map[string]string{"sub/a.go": resolveExpandFixture})
 	r, err := Open(root)
 	if err != nil {
 		t.Fatalf("Open(%q) returned error: %v", root, err)
 	}
 
-	results, err := r.Resolve([]string{"sub"})
+	results, err := r.Resolve([]string{"sub#"})
 	if err != nil {
-		t.Fatalf("Resolve([%q]) returned error: %v", "sub", err)
+		t.Fatalf("Resolve([%q]) returned error: %v", "sub#", err)
 	}
 	if len(results) != 1 {
-		t.Fatalf("len(Resolve([%q])) = %d; want 1", "sub", len(results))
+		t.Fatalf("len(Resolve([%q])) = %d; want 1", "sub#", len(results))
 	}
 	got := results[0]
 	if got.Status != StatusFound {
 		t.Errorf("Status = %q; want %q", got.Status, StatusFound)
 	}
-	if got.Dir == nil {
-		t.Fatalf("Dir = nil; want a non-nil directory answer")
+	if got.Listing == nil {
+		t.Fatalf("Listing = nil; want a non-nil directory answer")
 	}
 }
 

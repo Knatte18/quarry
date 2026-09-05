@@ -1,6 +1,6 @@
-// after_test.go pins the twelve docs/research/output-formats/after/ files as goldens: one real
+// after_test.go pins the fifteen docs/research/output-formats/after/ files as goldens: one real
 // invocation of Run, in-process, against a Loomyard checkout at loomyardPin, compared byte for
-// byte against the committed golden. These twelve files are also the task's committed evidence —
+// byte against the committed golden. These fifteen files are also the task's committed evidence —
 // the golden fixture and the regression gate are the same artifact. The table spans three verbs —
 // toc, resolve, and expand — and each row carries its own expected exit code: the expected code
 // lives here, in the table, and in docs/research/output-formats/after/INDEX.md, never in a trailer
@@ -109,10 +109,31 @@ var afterGoldenCases = []afterGoldenCase{
 		exitCode:   exitNegative,
 	},
 	{
-		golden:     "resolve-path.txt",
+		golden:     "resolve-self-file.txt",
 		verb:       "resolve",
-		invocation: "internal/logger/logger.go",
-		verbArgs:   []string{"internal/logger/logger.go"},
+		invocation: "internal/logger/logger.go#",
+		verbArgs:   []string{"internal/logger/logger.go#"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "resolve-self-dir.txt",
+		verb:       "resolve",
+		invocation: "internal/logger#",
+		verbArgs:   []string{"internal/logger#"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "resolve-self-file-text.txt",
+		verb:       "resolve",
+		invocation: "--text internal/logger/logger.go#",
+		verbArgs:   []string{"--text", "internal/logger/logger.go#"},
+		exitCode:   exitOK,
+	},
+	{
+		golden:     "resolve-self-dir-text.txt",
+		verb:       "resolve",
+		invocation: "--text internal/logger#",
+		verbArgs:   []string{"--text", "internal/logger#"},
 		exitCode:   exitOK,
 	},
 	{

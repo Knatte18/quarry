@@ -100,6 +100,53 @@ func TestRepoRelTarget_EscapesRoot(t *testing.T) {
 	}
 }
 
+// TestRepoRelTarget_RejectsSeparator pins the separator reject repoRelTarget adds after the
+// existing escape check: a target whose cleaned relative form carries a "#" in its first segment,
+// in a middle segment, or in its basename is rejected with quarry.ErrTargetHasSeparator.
+func TestRepoRelTarget_RejectsSeparator(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{"first-segment", "a#b/c.go"},
+		{"middle-segment", "a/b#c/d.go"},
+		{"basename", "a/b/c#.go"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := RepoRelTarget("/repo", "/repo", tt.target)
+			if !errors.Is(err, quarry.ErrTargetHasSeparator) {
+				t.Errorf("RepoRelTarget(%q) error = %v; want errors.Is(_, quarry.ErrTargetHasSeparator)", tt.target, err)
+			}
+		})
+	}
+}
+
+// TestRepoRelTarget_EscapeWinsOverSeparator pins the order between the two rejections: a target
+// that both escapes the root and carries a "#" still reports the escape, since the escape check
+// runs first.
+func TestRepoRelTarget_EscapeWinsOverSeparator(t *testing.T) {
+	_, err := RepoRelTarget("/repo", "/repo", "../out#side")
+	if !errors.Is(err, quarry.ErrTargetOutsideRepo) {
+		t.Errorf("RepoRelTarget(escaping and separator) error = %v; want errors.Is(_, quarry.ErrTargetOutsideRepo)", err)
+	}
+	if errors.Is(err, quarry.ErrTargetHasSeparator) {
+		t.Errorf("RepoRelTarget(escaping and separator) error = %v; want not errors.Is(_, quarry.ErrTargetHasSeparator)", err)
+	}
+}
+
+// TestRepoRelTarget_CleanTargetUnaffected pins that a target with no "#" anywhere in its cleaned
+// relative form is unaffected by the separator reject.
+func TestRepoRelTarget_CleanTargetUnaffected(t *testing.T) {
+	got, err := RepoRelTarget("/repo", "/repo", "a/b/c.go")
+	if err != nil {
+		t.Fatalf("RepoRelTarget(clean) = _, %v; want nil error", err)
+	}
+	if want := "a/b/c.go"; got != want {
+		t.Errorf("RepoRelTarget(clean) = %q; want %q", got, want)
+	}
+}
+
 func TestRepoRelTarget_NativeSeparatorsToForwardSlash(t *testing.T) {
 	root := filepath.Join(string(filepath.Separator) + "repo")
 	base := root
@@ -114,10 +161,10 @@ func TestRepoRelTarget_NativeSeparatorsToForwardSlash(t *testing.T) {
 	}
 }
 
-// TestRepoRelPath_LeadingDotDotNotRejected pins that repoRelPath is arithmetic only: a target
-// that leaves the root comes back as a leading-".." relative path rather than an error, for a
-// sibling directory of the root and for a parent of the root.
-func TestRepoRelPath_LeadingDotDotNotRejected(t *testing.T) {
+// TestRepoRelPathArithmetic_LeadingDotDotNotRejected pins that repoRelPath is arithmetic only: a
+// target that leaves the root comes back as a leading-".." relative path rather than an error, for
+// a sibling directory of the root and for a parent of the root.
+func TestRepoRelPathArithmetic_LeadingDotDotNotRejected(t *testing.T) {
 	tests := []struct {
 		name   string
 		root   string
@@ -141,9 +188,12 @@ func TestRepoRelPath_LeadingDotDotNotRejected(t *testing.T) {
 	}
 }
 
-// TestRepoRelPath_AgreesWithRepoRelTarget pins that repoRelPath and repoRelTarget agree on every
-// input that does not escape the root, including the root itself and a nested path.
-func TestRepoRelPath_AgreesWithRepoRelTarget(t *testing.T) {
+// TestRepoRelPathArithmetic_AgreesWithRepoRelTarget pins that repoRelPath and repoRelTarget agree
+// on every input that neither escapes the root nor contains a "#", including the root itself and
+// a nested path. The separator divergence is asserted as its own row, since it is where the two
+// functions now disagree: repoRelPath returns the cleaned relative path with no error, while
+// repoRelTarget rejects it with quarry.ErrTargetHasSeparator.
+func TestRepoRelPathArithmetic_AgreesWithRepoRelTarget(t *testing.T) {
 	tests := []struct {
 		name   string
 		root   string
@@ -165,6 +215,26 @@ func TestRepoRelPath_AgreesWithRepoRelTarget(t *testing.T) {
 				t.Errorf("repoRelPath(%q) = %q; repoRelTarget(%q) = %q; want equal", tt.target, pathGot, tt.target, targetGot)
 			}
 		})
+	}
+}
+
+// TestRepoRelPathArithmetic_DivergesOnSeparator pins the one input class where repoRelPath and
+// repoRelTarget now disagree: a target whose cleaned relative form carries a "#". repoRelPath
+// still returns it as ordinary arithmetic; repoRelTarget rejects it.
+func TestRepoRelPathArithmetic_DivergesOnSeparator(t *testing.T) {
+	root, base, target := "/repo", "/repo", "a#b/c.go"
+
+	pathGot, pathErr := repoRelPath(root, base, target)
+	if pathErr != nil {
+		t.Fatalf("repoRelPath(%q) = _, %v; want nil error", target, pathErr)
+	}
+	if want := "a#b/c.go"; pathGot != want {
+		t.Errorf("repoRelPath(%q) = %q; want %q", target, pathGot, want)
+	}
+
+	_, targetErr := repoRelTarget(root, base, target)
+	if !errors.Is(targetErr, quarry.ErrTargetHasSeparator) {
+		t.Errorf("repoRelTarget(%q) error = %v; want errors.Is(_, quarry.ErrTargetHasSeparator)", target, targetErr)
 	}
 }
 

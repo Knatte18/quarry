@@ -1,6 +1,6 @@
-// target.go declares repoRelPath and repoRelTarget, the pure path arithmetic behind RepoRelPath
-// and RepoRelTarget, the exported functions a caller uses to convert a caller-supplied target into
-// a clean, forward-slash, repository-relative path before the engine ever sees it.
+// target.go declares repoRelPath and repoRelTarget, the pure path arithmetic behind RepoRelTarget,
+// the exported function a caller uses to convert a caller-supplied target into a clean,
+// forward-slash, repository-relative path before the engine ever sees it.
 
 package repopath
 
@@ -26,9 +26,8 @@ import (
 // Native separators are accepted on input; the returned path is always forward-slash and
 // repository-root relative, which is the form the engine takes and emits. repoRelPath returns the
 // cleaned relative form even when it begins with "..": it does not reject a target that leaves the
-// root. A caller that wants a target that escapes the root to reach the engine — so the engine's
-// own outside-repository rule produces the answer, rather than this package synthesising a second
-// copy of it — calls RepoRelPath. It returns an error only when filepath.Rel itself fails, and
+// root. repoRelTarget, below, is the only caller, and it applies the escape rejection itself once
+// this arithmetic is done. repoRelPath returns an error only when filepath.Rel itself fails, and
 // that error is quarry.ErrTargetOutsideRepo.
 func repoRelPath(root, base, target string) (string, error) {
 	var abs string
@@ -50,17 +49,15 @@ func repoRelPath(root, base, target string) (string, error) {
 	return path.Clean(relSlash), nil
 }
 
-// RepoRelPath exports repoRelPath for callers outside this package that want the arithmetic-only
-// conversion, without RepoRelTarget's escape rejection — the CLI's resolve verb calls this so a
-// target that escapes the root is passed through to the engine, letting the engine's own
-// outside-repository rule produce the answer, rather than rejecting the target here.
-func RepoRelPath(root, base, target string) (string, error) {
-	return repoRelPath(root, base, target)
-}
-
 // repoRelTarget converts target the same way repoRelPath does, then rejects a result that leaves
-// the repository root. This is the path arithmetic a caller wants when a target that escapes the
-// root must be refused here rather than reaching the engine.
+// the repository root, and then rejects a result any of whose "/"-separated segments carries a
+// "#". This is the path arithmetic a caller wants when a target that escapes the root, or that
+// collides with the glyph grammar's separator, must be refused here rather than reaching the
+// engine. The order matters: an escaping target still reports the escape, which is why the
+// separator check runs after the existing one and not before it. toc is the only verb that reaches
+// this function's exported form, and a "#" in a path segment is an explicit error for it too, so
+// that the glyph grammar's rule against the separator holds everywhere a target is taken, not only
+// where a bare "#" would otherwise be read as a glyph.
 func repoRelTarget(root, base, target string) (string, error) {
 	rel, err := repoRelPath(root, base, target)
 	if err != nil {
@@ -71,12 +68,19 @@ func repoRelTarget(root, base, target string) (string, error) {
 		return "", quarry.ErrTargetOutsideRepo
 	}
 
+	for _, seg := range strings.Split(rel, "/") {
+		if strings.Contains(seg, "#") {
+			return "", quarry.ErrTargetHasSeparator
+		}
+	}
+
 	return rel, nil
 }
 
 // RepoRelTarget exports repoRelTarget for callers outside this package: the CLI's toc verb, and
-// the MCP server's own target conversion, both of which must reject an escaping target here
-// rather than letting it reach the engine.
+// the MCP server's own target conversion, both of which must reject an escaping target, or one
+// carrying the glyph grammar's "#" separator in any path segment, here rather than letting it
+// reach the engine.
 func RepoRelTarget(root, base, target string) (string, error) {
 	return repoRelTarget(root, base, target)
 }
