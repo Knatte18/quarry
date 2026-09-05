@@ -237,6 +237,7 @@ answer.
   - `quarry/delta.go`
   - `quarry/quarry.go`
   - `internal/cli/loomyard_test.go`
+  - `internal/engine/answer_test.go`
 - **Edits:**
   - `internal/cli/cli_test.go`
 - **Creates:** none
@@ -258,6 +259,16 @@ answer.
   Include the case that proves this verb performs no stat: a target naming a path that no longer
   exists but did at the from revision, asserted the success code with that path's symbols in the
   deleted array.
+  Include also the one remaining case the discussion's own command-line list names: a git invocation
+  failing for a reason that is not a usage error, asserted the internal code with the internal-error
+  prefix and git's own message carried whole behind it.
+  Construct it by making the fixture repository's object store unreadable after the repository is
+  built, so a blob read fails while the top-level and revision checks have already passed — the same
+  permission technique the existing unreadable-file case in `internal/engine/answer_test.go` uses,
+  with its cleanup — and skip the case when the process can read the path regardless, which is the
+  normal state when tests run as a privileged user.
+  This case matters because it is the only one that pins the *message* shape rather than the code:
+  the mapping-function table below asserts the code alone.
   `TestRun_DeltaTargetResolution` pins the shared rule: a lone dot given to this verb from a
   subdirectory scopes to that subdirectory, and produces the same scope the table-of-contents verb's
   lone dot produces from the same directory — the two verbs resolve one argument the same way or the

@@ -170,6 +170,9 @@ contradict that; it is the single documented exception to the facade's aliases-o
   For a revision side, enumerate the directory's immediate Go children at that revision through the
   git layer, read each one's bytes through the git layer, and turn those bytes into clauses with the
   engine's bytes-to-clause helper.
+  That helper applies every skip condition itself, the UTF-8 rejection included, so this side needs
+  no validity step of its own and both sides of a directory's vote apply one rule — a file whose
+  bytes are not valid source records no clause on either side rather than voting on one.
   For the working-tree side, enumerate by the git layer's working-tree listing and hand that file
   list to the engine's on-disk clause-map method, which reads from disk and skips any name it cannot
   read — an unstaged deletion is exactly such a name and must never fail the call.
@@ -284,11 +287,20 @@ contradict that; it is the single documented exception to the facade's aliases-o
   The check reads each file's own import block, so it catches a direct import only; a package
   reaching the git layer transitively through the facade is exactly what the design intends and must
   not fail.
+  **Widen the import check's scope only, and leave the standard-output check's scope exactly as it
+  is.** The two checks share one directory-locating helper but each builds its own list of
+  directories to walk at its own call site, so widening one does not widen the other by
+  construction — keep it that way: have the helper offer the command-line package's directory as a
+  third value and have only the import check include it in its loop.
+  This is deliberate rather than incidental. The import rule for the git layer is a decision this
+  task makes and must therefore be enforced where it applies; the standard-output rule over the
+  command-line package is not — that package legitimately writes to standard output, since writing
+  the rendered answer there is its entire job, so carrying that check onto it would fail immediately
+  and for a reason this task never decided.
   Update that file's own header comment, which states which packages it covers and which single rule
   it enforces, and extend its existing note about the residual gap to say what the widened check does
-  and does not catch.
-  Confirm as well, by inspection, that no file added in this batch writes to standard output, which
-  the same test's second check already enforces for its own packages.
+  and does not catch — including that the two checks now deliberately cover different sets.
+  Confirm as well, by inspection, that no file added in this batch writes to standard output.
 - **Commit:** `test(mcpserver): forbid direct git-layer imports and cover the CLI package`
 
 ## Batch Tests

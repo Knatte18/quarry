@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r4
+phase: plan-fix-r4
 slug: diff-to-symbols
 branch: diff-to-symbols
 plan: _mill/plan
@@ -31,4 +31,5 @@ plan-fix-r2  '2026-09-05T16:13:55Z'
 plan-review-r3  '2026-09-05T16:20:13Z'
 plan-fix-r3  '2026-09-05T16:23:51Z'
 plan-review-r4  '2026-09-05T16:31:02Z'
+plan-fix-r4  '2026-09-05T16:33:14Z'
 ```

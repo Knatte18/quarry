@@ -45,6 +45,7 @@ outside this package.
   - `internal/engine/treesitter/treesitter.go`
   - `internal/engine/repo.go`
   - `internal/engine/doc.go`
+  - `internal/engine/loomyard_timing_test.go`
 - **Edits:**
   - `internal/engine/walk.go`
 - **Creates:**
@@ -59,15 +60,28 @@ outside this package.
   It resolves the language from the extension of `base` with `LanguageForExtension`, looks the
   strategy up with `StrategyFor`, parses `src` inside `treesitter.WithTree`, and returns the
   strategy's `Package` result.
-  `ok` is false for exactly the four conditions under which `dirPackage` records no clause today: an
-  extension with no language or no registered strategy, a `treesitter.WithTree` call that returns an
+  `ok` is false for exactly the four conditions the discussion fixes for this function, which are the
+  same four under which `dirPackage` records no clause today: an extension with no language or no
+  registered strategy, bytes that are not valid UTF-8, a `treesitter.WithTree` call that returns an
   error, and an empty clause string.
-  It does not check UTF-8 validity itself — that check belongs to the caller that read the bytes,
-  which is what keeps this function pure over its arguments — and its doc comment must say so and
-  name `ClauseMapForFiles` as the caller that does check.
+  The UTF-8 check belongs **inside** this function rather than in each caller: it is the one place
+  both sides of a directory's clause vote pass through, and a caller-side check would hold only for
+  the caller that reads from disk, leaving bytes fetched from a revision unchecked and letting one
+  file vote on one side of a comparison only.
   Then rewire `dirPackage` in `walk.go` to call `PackageClause` for its per-file clause step instead
-  of performing the language lookup, strategy lookup and parse inline, keeping its own
-  `os.ReadFile` and UTF-8 validity check where they are.
+  of performing the language lookup, strategy lookup and parse inline.
+  Keep an extension guard ahead of `dirPackage`'s own `os.ReadFile`, resolving the language from the
+  base name's extension before reading anything, and call `PackageClause` only for a file whose
+  extension resolves to one.
+  That ordering is load-bearing and is the order the existing code already runs in: the language and
+  strategy lookups come first and the read second, so a directory holding binaries, testdata or
+  assets never reads them at all.
+  Reading every entry before consulting its extension would leave the clauses map identical while
+  making the walk's first pass read the whole tree — a regression the walk's own priced cost note
+  records the budget for, and one the timing assertion in `internal/engine/loomyard_timing_test.go`
+  selected by this batch's `verify:` would catch.
+  `dirPackage` keeps its own read-failure handling where it is; the UTF-8 rejection now lives in
+  `PackageClause` and the two together reproduce today's skip conditions exactly.
   `dirPackage`'s observable behaviour must not change: the same files vote, the same clauses map is
   returned, and the same tie-break runs.
 - **Commit:** `refactor(engine): extract PackageClause and call it from dirPackage`
@@ -126,8 +140,12 @@ outside this package.
 - **Requirements:** Declare
   `(*Repo).ClauseMapForFiles(dirRel string, bases []string) (map[string]string, error)` in the units
   file.
-  It reads each base name in `bases` from the directory `dirRel` under the repository root, checks
-  UTF-8 validity, and records the clause `PackageClause` returns when that call reports ok.
+  It reads each base name in `bases` from the directory `dirRel` under the repository root and
+  records the clause `PackageClause` returns when that call reports ok.
+  It does not check UTF-8 validity itself — card 6 puts that check inside `PackageClause`, so both
+  this on-disk caller and the revision-side caller in batch 6 get it from one place — and it applies
+  the same extension guard ahead of its own read that `dirPackage` does, so a non-source file named
+  in `bases` is never read.
   It takes the file list rather than enumerating the directory itself, and its doc comment must say
   why: the caller chooses one enumeration rule and applies it to both sides of a comparison, so a
   directory's dominant clause cannot differ between the sides through a difference in which files
@@ -157,9 +175,12 @@ outside this package.
 - **Moves:** none
 - **Requirements:** Add `TestPackageClause`, `TestUnitsForClauseMap` and `TestClauseMapForFiles` in
   package `engine`.
-  `TestPackageClause` is a table over in-memory bytes: a plain Go file, a file whose extension has
-  no registered strategy, a file with no package clause at all, and a file whose content does not
-  parse — asserting the clause and the ok flag for each.
+  `TestPackageClause` is a table over in-memory bytes covering all four conditions that make the ok
+  flag false, plus the success case: a plain Go file, a file whose extension has no registered
+  strategy, bytes that are not valid UTF-8, a file with no package clause at all, and a file whose
+  content does not parse — asserting the clause and the ok flag for each.
+  The invalid-UTF-8 row is the one that pins the check's location: it must be false here, in the
+  function itself, rather than only in a caller.
   `TestUnitsForClauseMap` is a table over `map[base name]clause` inputs covering exactly the cases
   the discussion's rejected alternatives name, since they are the reason this helper exists: a plain
   package; a package with an external test file, where the two clauses must produce two distinct
@@ -169,8 +190,9 @@ outside this package.
   branches.
   `TestClauseMapForFiles` uses a directory built under `t.TempDir()` and asserts: a clause is
   recorded for each readable Go file; a base name naming a file that does not exist on disk is
-  skipped with no clause recorded and no error returned; and a file whose bytes are not valid UTF-8
-  is skipped the same way.
+  skipped with no clause recorded and no error returned; a file whose bytes are not valid UTF-8 is
+  skipped the same way, through the check card 6 places inside `PackageClause`; and a base name whose
+  extension resolves to no language is skipped without the file being read at all.
   Every case in these tables asserts against the helper's own return values only; none reads a
   committed fixture tree.
 - **Commit:** `test(engine): table tests for PackageClause, UnitsForClauseMap and ClauseMapForFiles`
