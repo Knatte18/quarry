@@ -1,0 +1,889 @@
+$ quarry glyphs internal/logger
+
+{
+  "target": "internal/logger",
+  "symbols": [
+    {
+      "id": "internal/logger#levelVar",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 145,
+      "end": 146
+    },
+    {
+      "id": "internal/logger#out",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 148,
+      "end": 149
+    },
+    {
+      "id": "internal/logger#currentStderr",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 151,
+      "end": 153
+    },
+    {
+      "id": "internal/logger#stderrHandlerSnapshot",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 155,
+      "end": 163
+    },
+    {
+      "id": "internal/logger#log",
+      "kind": "var",
+      "file": "internal/logger/logger.go",
+      "start": 165,
+      "end": 171
+    },
+    {
+      "id": "internal/logger#dualHandler",
+      "kind": "type",
+      "file": "internal/logger/logger.go",
+      "start": 173,
+      "end": 195
+    },
+    {
+      "id": "internal/logger#newDualHandler",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 197,
+      "end": 201
+    },
+    {
+      "id": "internal/logger#dualHandler.stderr",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 203,
+      "end": 208
+    },
+    {
+      "id": "internal/logger#dualHandler.Enabled",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 210,
+      "end": 214
+    },
+    {
+      "id": "internal/logger#dualHandler.Handle",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 216,
+      "end": 239
+    },
+    {
+      "id": "internal/logger#dualHandler.WithAttrs",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 241,
+      "end": 250
+    },
+    {
+      "id": "internal/logger#dualHandler.WithGroup",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 252,
+      "end": 260
+    },
+    {
+      "id": "internal/logger#durableWriter",
+      "kind": "type",
+      "file": "internal/logger/logger.go",
+      "start": 262,
+      "end": 267
+    },
+    {
+      "id": "internal/logger#durableWriter.Write",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 269,
+      "end": 279
+    },
+    {
+      "id": "internal/logger#durableHandler",
+      "kind": "type",
+      "file": "internal/logger/logger.go",
+      "start": 281,
+      "end": 288
+    },
+    {
+      "id": "internal/logger#newDurableHandler",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 290,
+      "end": 294
+    },
+    {
+      "id": "internal/logger#durableHandler.Enabled",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 296,
+      "end": 300
+    },
+    {
+      "id": "internal/logger#durableHandler.Handle",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 302,
+      "end": 306
+    },
+    {
+      "id": "internal/logger#durableHandler.withAttrs",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 308,
+      "end": 314
+    },
+    {
+      "id": "internal/logger#durableHandler.withGroup",
+      "kind": "method",
+      "file": "internal/logger/logger.go",
+      "start": 316,
+      "end": 320
+    },
+    {
+      "id": "internal/logger#init",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 322,
+      "end": 325
+    },
+    {
+      "id": "internal/logger#configureFromEnv",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 327,
+      "end": 349
+    },
+    {
+      "id": "internal/logger#Debug",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 351,
+      "end": 360
+    },
+    {
+      "id": "internal/logger#Info",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 362,
+      "end": 367
+    },
+    {
+      "id": "internal/logger#Warn",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 369,
+      "end": 374
+    },
+    {
+      "id": "internal/logger#SetVerbosity",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 376,
+      "end": 388
+    },
+    {
+      "id": "internal/logger#SetOutput",
+      "kind": "function",
+      "file": "internal/logger/logger.go",
+      "start": 390,
+      "end": 413
+    },
+    {
+      "id": "internal/logger#withCapturedOutput",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 16,
+      "end": 25
+    },
+    {
+      "id": "internal/logger#originalOut",
+      "kind": "var",
+      "file": "internal/logger/logger_test.go",
+      "start": 27,
+      "end": 27
+    },
+    {
+      "id": "internal/logger#TestDefaultLevel_WarnIsSilentForInfoAndDebug",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 29,
+      "end": 39
+    },
+    {
+      "id": "internal/logger#TestSetVerbosity_OneEnablesInfoNotDebug",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 41,
+      "end": 58
+    },
+    {
+      "id": "internal/logger#TestSetVerbosity_TwoEnablesDebug",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 60,
+      "end": 71
+    },
+    {
+      "id": "internal/logger#TestSetOutput_CapturesIntoCallerBuffer",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 73,
+      "end": 82
+    },
+    {
+      "id": "internal/logger#TestConfigureFromEnv_LogLevelRaisesThreshold",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 84,
+      "end": 96
+    },
+    {
+      "id": "internal/logger#TestConfigureFromEnv_UnsetLogLevelLeavesDefaultUntouched",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 98,
+      "end": 109
+    },
+    {
+      "id": "internal/logger#TestConfigureFromEnv_LogFileRedirectsOutput",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 111,
+      "end": 131
+    },
+    {
+      "id": "internal/logger#TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 133,
+      "end": 147
+    },
+    {
+      "id": "internal/logger#TestDualHandler_DebugReachesStderrOnlyNotDurableSink",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 149,
+      "end": 166
+    },
+    {
+      "id": "internal/logger#TestDualHandler_InfoReachesDurableSinkAtEveryVerbosityStderrOnlyAtDashV",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 168,
+      "end": 200
+    },
+    {
+      "id": "internal/logger#TestDualHandler_WarnReachesBothHalvesAtEveryVerbosity",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 202,
+      "end": 231
+    },
+    {
+      "id": "internal/logger#TestDualHandler_WarnWithUnarmedDurableSinkReachesStderrOnlyNoPanic",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 233,
+      "end": 246
+    },
+    {
+      "id": "internal/logger#TestDualHandler_EveryLevelStampsCurrentTraceID",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 248,
+      "end": 281
+    },
+    {
+      "id": "internal/logger#TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker",
+      "kind": "function",
+      "file": "internal/logger/logger_test.go",
+      "start": 283,
+      "end": 319
+    },
+    {
+      "id": "internal/logger_test#TestLogsDir_UnanchoredEqualsWorktreePathBased",
+      "kind": "function",
+      "file": "internal/logger/logsdir_test.go",
+      "start": 16,
+      "end": 27
+    },
+    {
+      "id": "internal/logger_test#TestLogsDir_SubpathAnchoredDiffersFromWorktreePathBased",
+      "kind": "function",
+      "file": "internal/logger/logsdir_test.go",
+      "start": 29,
+      "end": 45
+    },
+    {
+      "id": "internal/logger#retentionAgeBound",
+      "kind": "const",
+      "file": "internal/logger/retention.go",
+      "start": 21,
+      "end": 21
+    },
+    {
+      "id": "internal/logger#retentionCountBound",
+      "kind": "const",
+      "file": "internal/logger/retention.go",
+      "start": 22,
+      "end": 22
+    },
+    {
+      "id": "internal/logger#traceFileTimestampLayout",
+      "kind": "const",
+      "file": "internal/logger/retention.go",
+      "start": 23,
+      "end": 23
+    },
+    {
+      "id": "internal/logger#traceFilePattern",
+      "kind": "var",
+      "file": "internal/logger/retention.go",
+      "start": 25,
+      "end": 25
+    },
+    {
+      "id": "internal/logger#retentionCandidate",
+      "kind": "type",
+      "file": "internal/logger/retention.go",
+      "start": 27,
+      "end": 30
+    },
+    {
+      "id": "internal/logger#Sweep",
+      "kind": "function",
+      "file": "internal/logger/retention.go",
+      "start": 32,
+      "end": 83
+    },
+    {
+      "id": "internal/logger#minInt",
+      "kind": "function",
+      "file": "internal/logger/retention.go",
+      "start": 85,
+      "end": 90
+    },
+    {
+      "id": "internal/logger#deadTestPID",
+      "kind": "const",
+      "file": "internal/logger/retention_test.go",
+      "start": 15,
+      "end": 15
+    },
+    {
+      "id": "internal/logger#traceTestFileName",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 17,
+      "end": 19
+    },
+    {
+      "id": "internal/logger#writeTraceTestFile",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 21,
+      "end": 28
+    },
+    {
+      "id": "internal/logger#hexID",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 30,
+      "end": 32
+    },
+    {
+      "id": "internal/logger#assertExists",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 34,
+      "end": 39
+    },
+    {
+      "id": "internal/logger#assertAbsent",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 41,
+      "end": 46
+    },
+    {
+      "id": "internal/logger#TestSweep_AgeBound",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 48,
+      "end": 62
+    },
+    {
+      "id": "internal/logger#TestSweep_CountBound",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 64,
+      "end": 92
+    },
+    {
+      "id": "internal/logger#TestSweep_GrammarScope",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 94,
+      "end": 113
+    },
+    {
+      "id": "internal/logger#TestSweep_DeleteFailureTolerance",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 115,
+      "end": 134
+    },
+    {
+      "id": "internal/logger#TestSweep_EmptyOrAbsentDirectory",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 136,
+      "end": 151
+    },
+    {
+      "id": "internal/logger#TestSweep_LivenessSkipsSelfProcess",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 153,
+      "end": 163
+    },
+    {
+      "id": "internal/logger#TestSweep_LivenessDeletesDeadPID",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 165,
+      "end": 175
+    },
+    {
+      "id": "internal/logger#TestSweep_LiveSkipDoesNotConsumeCountBudget",
+      "kind": "function",
+      "file": "internal/logger/retention_test.go",
+      "start": 177,
+      "end": 198
+    },
+    {
+      "id": "internal/logger#sinkMaxBytes",
+      "kind": "const",
+      "file": "internal/logger/sink.go",
+      "start": 25,
+      "end": 25
+    },
+    {
+      "id": "internal/logger#LogsDir",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 27,
+      "end": 35
+    },
+    {
+      "id": "internal/logger#sinkHeader",
+      "kind": "type",
+      "file": "internal/logger/sink.go",
+      "start": 37,
+      "end": 43
+    },
+    {
+      "id": "internal/logger#headerOnce",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 45,
+      "end": 45
+    },
+    {
+      "id": "internal/logger#header",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 46,
+      "end": 46
+    },
+    {
+      "id": "internal/logger#armHeader",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 48,
+      "end": 55
+    },
+    {
+      "id": "internal/logger#Arm",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 57,
+      "end": 60
+    },
+    {
+      "id": "internal/logger#sinkOnce",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 62,
+      "end": 62
+    },
+    {
+      "id": "internal/logger#sinkPath",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 63,
+      "end": 63
+    },
+    {
+      "id": "internal/logger#sinkOK",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 64,
+      "end": 64
+    },
+    {
+      "id": "internal/logger#sinkDirOverride",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 65,
+      "end": 65
+    },
+    {
+      "id": "internal/logger#sinkMu",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 66,
+      "end": 66
+    },
+    {
+      "id": "internal/logger#sinkBytesWritten",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 67,
+      "end": 67
+    },
+    {
+      "id": "internal/logger#sinkTruncated",
+      "kind": "var",
+      "file": "internal/logger/sink.go",
+      "start": 68,
+      "end": 68
+    },
+    {
+      "id": "internal/logger#ensureDurableSink",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 70,
+      "end": 138
+    },
+    {
+      "id": "internal/logger#headerLine",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 140,
+      "end": 156
+    },
+    {
+      "id": "internal/logger#writeDurable",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 158,
+      "end": 181
+    },
+    {
+      "id": "internal/logger#appendToSink",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 183,
+      "end": 193
+    },
+    {
+      "id": "internal/logger#SetDurableSinkDir",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 195,
+      "end": 208
+    },
+    {
+      "id": "internal/logger#NotifyExit",
+      "kind": "function",
+      "file": "internal/logger/sink.go",
+      "start": 210,
+      "end": 216
+    },
+    {
+      "id": "internal/logger#sinkTestFilePattern",
+      "kind": "var",
+      "file": "internal/logger/sink_test.go",
+      "start": 19,
+      "end": 19
+    },
+    {
+      "id": "internal/logger#listSinkDirFiles",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 21,
+      "end": 34
+    },
+    {
+      "id": "internal/logger#readSinkFirstLine",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 36,
+      "end": 44
+    },
+    {
+      "id": "internal/logger#TestEnsureDurableSink_DebugOnlyNeverOpensFile",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 46,
+      "end": 53
+    },
+    {
+      "id": "internal/logger#TestEnsureDurableSink_CreatesExactlyOneFileWithHeaderFirstLine",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 55,
+      "end": 76
+    },
+    {
+      "id": "internal/logger#TestEnsureDurableSink_FilenameGrammarAndFields",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 78,
+      "end": 106
+    },
+    {
+      "id": "internal/logger#TestEnsureDurableSink_SeamPathLeavesWorktreeRootEmpty",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 108,
+      "end": 117
+    },
+    {
+      "id": "internal/logger#TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 119,
+      "end": 142
+    },
+    {
+      "id": "internal/logger#TestNotifyExit_ZeroCodeNeverOpensSink",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 144,
+      "end": 153
+    },
+    {
+      "id": "internal/logger#TestNotifyExit_NonZeroCodeOpensSinkWithHeaderOnly",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 155,
+      "end": 169
+    },
+    {
+      "id": "internal/logger#countMarkerLines",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 171,
+      "end": 179
+    },
+    {
+      "id": "internal/logger#TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 181,
+      "end": 214
+    },
+    {
+      "id": "internal/logger#TestWriteDurable_SurvivesLogsDirRenameMidProcess",
+      "kind": "function",
+      "file": "internal/logger/sink_test.go",
+      "start": 216,
+      "end": 272
+    },
+    {
+      "id": "internal/logger#Span",
+      "kind": "type",
+      "file": "internal/logger/span.go",
+      "start": 10,
+      "end": 15
+    },
+    {
+      "id": "internal/logger#StartSpan",
+      "kind": "function",
+      "file": "internal/logger/span.go",
+      "start": 17,
+      "end": 22
+    },
+    {
+      "id": "internal/logger#Span.Child",
+      "kind": "method",
+      "file": "internal/logger/span.go",
+      "start": 24,
+      "end": 29
+    },
+    {
+      "id": "internal/logger#Span.End",
+      "kind": "method",
+      "file": "internal/logger/span.go",
+      "start": 31,
+      "end": 39
+    },
+    {
+      "id": "internal/logger#Span.Debug",
+      "kind": "method",
+      "file": "internal/logger/span.go",
+      "start": 41,
+      "end": 44
+    },
+    {
+      "id": "internal/logger#Span.Info",
+      "kind": "method",
+      "file": "internal/logger/span.go",
+      "start": 46,
+      "end": 49
+    },
+    {
+      "id": "internal/logger#Span.Warn",
+      "kind": "method",
+      "file": "internal/logger/span.go",
+      "start": 51,
+      "end": 54
+    },
+    {
+      "id": "internal/logger#TestSpan_NestingProducesDottedPath",
+      "kind": "function",
+      "file": "internal/logger/span_test.go",
+      "start": 17,
+      "end": 32
+    },
+    {
+      "id": "internal/logger#TestSpan_EndDoesNotCorruptSiblingSpan",
+      "kind": "function",
+      "file": "internal/logger/span_test.go",
+      "start": 34,
+      "end": 54
+    },
+    {
+      "id": "internal/logger#TestSpan_UnendedChildDoesNotCorruptSiblingPath",
+      "kind": "function",
+      "file": "internal/logger/span_test.go",
+      "start": 56,
+      "end": 75
+    },
+    {
+      "id": "internal/logger#TestSpan_EndWithErrorRecordsErrorText",
+      "kind": "function",
+      "file": "internal/logger/span_test.go",
+      "start": 77,
+      "end": 94
+    },
+    {
+      "id": "internal/logger#TestSpan_OpenCloseRecordsAbsentFromDurableSink",
+      "kind": "function",
+      "file": "internal/logger/span_test.go",
+      "start": 96,
+      "end": 124
+    },
+    {
+      "id": "internal/logger#TestSpan_EndWithErrorReachesDurableSink",
+      "kind": "function",
+      "file": "internal/logger/span_test.go",
+      "start": 126,
+      "end": 149
+    },
+    {
+      "id": "internal/logger#TestSpan_InfoCarriesSpanPathIntoDurableSink",
+      "kind": "function",
+      "file": "internal/logger/span_test.go",
+      "start": 151,
+      "end": 177
+    },
+    {
+      "id": "internal/logger#traceOnce",
+      "kind": "var",
+      "file": "internal/logger/trace.go",
+      "start": 18,
+      "end": 18
+    },
+    {
+      "id": "internal/logger#traceID",
+      "kind": "var",
+      "file": "internal/logger/trace.go",
+      "start": 19,
+      "end": 19
+    },
+    {
+      "id": "internal/logger#mintTraceID",
+      "kind": "function",
+      "file": "internal/logger/trace.go",
+      "start": 21,
+      "end": 28
+    },
+    {
+      "id": "internal/logger#resolveTraceID",
+      "kind": "function",
+      "file": "internal/logger/trace.go",
+      "start": 30,
+      "end": 42
+    },
+    {
+      "id": "internal/logger#TraceID",
+      "kind": "function",
+      "file": "internal/logger/trace.go",
+      "start": 44,
+      "end": 48
+    },
+    {
+      "id": "internal/logger#MintOrAdoptAndExport",
+      "kind": "function",
+      "file": "internal/logger/trace.go",
+      "start": 50,
+      "end": 61
+    },
+    {
+      "id": "internal/logger#traceIDHexPattern",
+      "kind": "var",
+      "file": "internal/logger/trace_test.go",
+      "start": 14,
+      "end": 14
+    },
+    {
+      "id": "internal/logger#resetTraceState",
+      "kind": "function",
+      "file": "internal/logger/trace_test.go",
+      "start": 16,
+      "end": 25
+    },
+    {
+      "id": "internal/logger#TestMintOrAdoptAndExport_AdoptsSetEnvVarVerbatim",
+      "kind": "function",
+      "file": "internal/logger/trace_test.go",
+      "start": 27,
+      "end": 36
+    },
+    {
+      "id": "internal/logger#TestMintOrAdoptAndExport_UnsetEnvVarMints",
+      "kind": "function",
+      "file": "internal/logger/trace_test.go",
+      "start": 38,
+      "end": 48
+    },
+    {
+      "id": "internal/logger#TestMintOrAdoptAndExport_EmptyAndWhitespaceOnlyTreatedAsUnset",
+      "kind": "function",
+      "file": "internal/logger/trace_test.go",
+      "start": 50,
+      "end": 70
+    },
+    {
+      "id": "internal/logger#TestTraceID_LazyPathMintsWithNoPriorCall",
+      "kind": "function",
+      "file": "internal/logger/trace_test.go",
+      "start": 72,
+      "end": 82
+    },
+    {
+      "id": "internal/logger#TestMintOrAdoptAndExport_PropagatesExportedValueToEnv",
+      "kind": "function",
+      "file": "internal/logger/trace_test.go",
+      "start": 84,
+      "end": 94
+    }
+  ]
+}
