@@ -62,11 +62,22 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
 
   Then confirm the gate is satisfied, because `loomyardRepo` skips rather than fails when it is
   not: `git -C .scratch/loomyard-pin rev-parse HEAD` must print a hash beginning `72c23d9`, and
-  `LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/ -run TestAfterGoldens
-  -v` must report the existing golden cases as run, not skipped. If the clone step cannot be
-  completed on this machine, stop and report it rather than continuing — every remaining card in
-  this batch and in batch 3 is verified through this checkout, and continuing without it produces a
-  plan that reports green while asserting nothing.
+  `LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/ ./internal/engine/
+  -run 'TestAfterGoldens|Loomyard' -v` must report the checkout-gated cases as run, not skipped.
+
+  They must also **pass**, and that is a separate check with its own disposition. These goldens have
+  never executed on this machine, so a pre-existing mismatch at the pin is possible and would
+  otherwise first surface as a red batch-2 verify after several code cards had landed — where card
+  15's rule that any pre-existing golden change is "a defect introduced by this task's product
+  code" would misattribute it. If any pre-existing golden case fails here, before a single line of
+  this task's code exists, stop and report it as a pre-existing condition. Do not run `-update`,
+  and do not continue into card 7: whether that mismatch is fixed, worked around, or accepted is an
+  operator decision, and this task's own additivity done-criterion is unmeasurable until it is
+  settled.
+
+  If the clone step cannot be completed on this machine, stop and report that instead — every
+  remaining card in this batch and in batch 3 is verified through this checkout, and continuing
+  without it produces a plan that reports green while asserting nothing.
 
   If `.scratch/loomyard-pin` already exists and already resolves to the pin, this card is a no-op
   beyond the two confirmation commands. `.scratch/` is gitignored at the repository root, so
@@ -197,7 +208,11 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   - `--root` is accepted and consumes its value the same way the main loop's `nextValue` closure
     does: the part after `=` when the token carried one, otherwise the following token, which the
     loop then skips. This is what keeps `glyphs --root <path> <target>` counted as one target
-    rather than two;
+    rather than two. When there is no following token to consume, reject with the existing
+    `"%s requires a value"` message, exactly as the main loop's own `--root` case does — falling
+    through to the target count instead would answer `glyphs --root` with
+    `glyphs takes exactly one target, got 0`, which names the wrong problem and sends the caller
+    looking for a target they did supply;
   - any other flag token is rejected with the existing verb-free `"unknown flag: %s"` message,
     formatted with the whole token as given, matching the main loop's own use of `tok` rather than
     `name`;
@@ -226,8 +241,19 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   set `root` and leave one target; each of `--view`, `--depth`, `--symbols`, `--no-symbols` and
   `--unit` is rejected with a message naming `glyphs` and never `toc`; an unknown flag yields
   `unknown flag: --nope`; zero targets yields `glyphs takes exactly one target, got 0` and two
-  targets `... got 2`; and `glyphs --help x` still returns the help request, since the help scan
-  runs before the verb gate. Add the load-bearing case as its own named test: `parseArgs([]string{"glyphs", "x"})`
+  targets `... got 2`; `glyphs --root` with no following token yields `--root requires a value`,
+  not a target-count message; and `glyphs --help x` still returns the help request, since the help
+  scan runs before the verb gate.
+
+  `TestParseArgs_FourVerbGate` in the same file names itself and documents itself as pinning "all
+  four verbs", and this card makes the gate five-way, so that test is left stale by exactly the
+  rule the overview's `doc-comments-carry-the-reasoning` decision states. Rename it to
+  `TestParseArgs_FiveVerbGate`, update its doc comment's count, and add a `glyphs` row asserting
+  the verb parses and — unlike the other four rows, whose `req.verb` is the verb they were given —
+  that `req.verb` is `"toc"` after the rewrite. Say so in that row or in the test's comment, since
+  a reader comparing the rows will otherwise read it as a bug.
+
+  Add the load-bearing case as its own named test: `parseArgs([]string{"glyphs", "x"})`
   returns a `request` deep-equal to `parseArgs([]string{"toc", "--view", "glyphs", "--depth", "all", "--symbols", "x"})`,
   compared with `reflect.DeepEqual` after dereferencing or separately comparing the `symbols`
   pointer, since two distinct pointers to `true` are not `DeepEqual`-equal as pointers.
@@ -243,6 +269,7 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   - `internal/repopath/target.go`
 - **Edits:**
   - `internal/cli/cli.go`
+  - `internal/cli/cli_test.go`
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
@@ -268,6 +295,26 @@ Batch-local decisions beyond `## Shared Decisions` in the overview:
   it to `toc` — so say that explicitly rather than leaving a reader to infer it. Extend runTOC's
   own numbered step 5 from "quarry.RenderText under --text, quarry.RenderJSON otherwise" to name
   the glyphs branch and the two renderers it selects, and state the condition it branches on.
+
+  Add the branch's own machine-independent coverage to `internal/cli/cli_test.go`, using that
+  file's existing `newPipelineFixture` tree and its existing in-process `Run` pattern — no
+  repository checkout, no `loomyardRepo` gate. This is not duplication of card 12's byte-identity
+  test or of batch 3's goldens: both of those *skip* when `LADDER_LOOMYARD_REPO` is unset, which is
+  the state of every machine without a Loomyard checkout and of the repo-wide done gate, so without
+  the cases below nothing anywhere asserts that this branch renders the glyphs view at all. Cover:
+  - `glyphs <dir>` and `glyphs <file>` against the fixture, in JSON and under `--text`, asserting
+    exit `exitOK`, empty stderr, and that stdout is the glyphs view rather than the complete one —
+    for JSON, that the object carries `target`, `symbols` and no `dirs`, `files` or `signature`
+    key; for text, that every line matches the documented `<file>:<start>-<end> <kind> <id>` shape
+    and no directory, file, docstring or signature line appears;
+  - the same four assertions for the explicit `toc --view glyphs --depth all --symbols` spelling,
+    so the branch is covered from both the preset and the direct invocation;
+  - `toc --view glyphs <dir>` with no symbols flag, asserting a **non-empty** symbol list — the
+    machine-independent counterpart of the depth golden's own assertion that the view's symbols
+    default works;
+  - the promise `view-vocabulary` makes and no other card asserts: `toc --view full <target>`
+    produces byte-identical stdout to a viewless `toc <target>`, for a file and a directory target
+    in both formats. Without it, "an absent `--view` means `full`" is documented and unchecked.
 - **Commit:** `feat(cli): runTOC renders the glyphs view under --view glyphs`
 
 ### Card 11: the help text and the package doc comment

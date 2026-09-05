@@ -32,7 +32,7 @@ batches:
     name: goldens-and-docs
     file: 03-goldens-and-docs.md
     depends-on: [2]
-    verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/
+    verify: LADDER_LOOMYARD_REPO="$PWD/.scratch/loomyard-pin" go test ./internal/cli/ ./internal/engine/
 ```
 
 ## Shared Decisions
@@ -45,8 +45,9 @@ batches:
   still governs. Three decisions are load-bearing enough to repeat here in full, because a card that
   gets them wrong produces code that compiles and passes its own tests: `glyphs-json-shadow-struct`
   (the JSON goes through an unexported envelope, never through the answer type's own tags),
-  `viewless-output-unchanged` (no committed golden under `internal/cli/testdata/` is regenerated —
-  if one changes, that is this task's defect), and `projection-is-pure-and-late` (nothing under
+  `viewless-output-unchanged` (no committed golden under `internal/cli/testdata/` **or**
+  `internal/engine/testdata/` is regenerated — if one changes, that is this task's defect, and both
+  halves are checked, in batch 3 card 15), and `projection-is-pure-and-late` (nothing under
   `internal/engine/` is modified by any card in any batch).
 - **Rationale:** the discussion is 720 lines and no card carries all of it; naming the three that
   cannot be re-derived from a card's own text is what keeps a cold Sonnet session from
@@ -137,10 +138,27 @@ batches:
   stale one is worse than none.
 - **Applies to:** all batches
 
+### Decision: go-verify-commands-carry-no-pythonpath-prefix
+
+- **Decision:** none of the three batch `verify:` commands carries the literal `PYTHONPATH= `
+  prefix `mill-config.yaml` requires of a non-null per-batch `verify:`. They are Go commands, and
+  the prefix is omitted deliberately, not by oversight.
+- **Rationale:** the prefix exists so a Python test subprocess does not inherit the mill cache's
+  `PYTHONPATH` and load stale cache modules instead of worktree ones. `go test` reads no
+  `PYTHONPATH` at all, so the prefix would be inert decoration on a Go command. The validator check
+  that enforces the rule, `verify-not-isolated`, is itself conditional on the project's language and
+  does not fire for a Go repository — confirmed by running the validator against this plan before it
+  was committed. The sibling plan in this hub, `wts/diff-to-symbols`, carries the same decision for
+  the same reason; recording it here keeps the omission an auditable disposition rather than
+  something a reviewer has to re-derive.
+- **Applies to:** all batches
+
 ### Decision: verify-scope-and-the-done-gate
 
 - **Decision:** each batch's `verify:` is scoped to the packages it touches — `./quarry/` for batch
-  1, `./internal/cli/ ./quarry/` for batch 2, `./internal/cli/` for batch 3. The repo-wide gate
+  1, `./internal/cli/ ./quarry/` for batch 2, and `./internal/cli/ ./internal/engine/` for batch 3
+  — the engine package appears only there, and only because its own Loomyard-pinned goldens are the
+  second half of the regression gate `viewless-output-unchanged` names. The repo-wide gate
   `go test ./... && golangci-lint run` is already configured as `pipeline.done_gate` in
   `mill-config.yaml` and was confirmed green against this worktree's tip on 2026-09-05 before this
   plan was written, so it is left exactly as it is.
@@ -154,6 +172,7 @@ batches:
 - `docs/roadmap.md`
 - `internal/cli/after_test.go`
 - `internal/cli/cli.go`
+- `internal/cli/cli_test.go`
 - `internal/cli/doc.go`
 - `internal/cli/flags.go`
 - `internal/cli/flags_test.go`
