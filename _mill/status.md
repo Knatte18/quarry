@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: glyph-maker
 branch: glyph-maker
 plan: _mill/plan
@@ -28,4 +28,21 @@ plan-fix-r1  '2026-09-05T14:41:29Z'
 plan-review-r2  '2026-09-05T14:48:23Z'
 plan-fix-r2  '2026-09-05T14:49:42Z'
 planned  '2026-09-05T14:49:51Z'
+implementing  '2026-09-05T14:50:21Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: engine-maker
+    state: pending
+  - name: facade-and-renderers
+    state: pending
+  - name: naming-round-trip
+    state: pending
+  - name: cli-verb
+    state: pending
+  - name: docs-inventory
+    state: pending
 ```
