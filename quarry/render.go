@@ -1,9 +1,10 @@
-// render.go declares the JSON renderers the facade exports: RenderJSON, RenderResolveJSON and
-// RenderExpandJSON, the three successful envelopes, sharing one unexported encoder configuration in
-// renderJSON, and RenderErrorJSON, the failure envelope. All are package-level functions rather than
-// methods, per the overview's alias-types-carry-no-methods decision — DirAnswer, ResolveResult and
-// ExpandAnswer are aliases for engine types, and Go forbids a method declared here from binding to
-// any of them.
+// render.go declares the JSON renderers the facade exports: RenderJSON, RenderResolveJSON,
+// RenderExpandJSON and RenderDeltaJSON, the four successful envelopes, sharing one unexported
+// encoder configuration in renderJSON, and RenderErrorJSON, the failure envelope. All are
+// package-level functions rather than methods, per the overview's alias-types-carry-no-methods
+// decision — DirAnswer, ResolveResult, ExpandAnswer and GitDeltaAnswer are aliases for engine types
+// or, for GitDeltaAnswer, a facade type embedding one, and Go forbids a method declared here from
+// binding to any of them.
 
 package quarry
 
@@ -62,6 +63,16 @@ func RenderResolveJSON(r ResolveResult) ([]byte, error) {
 // key order within the object is ExpandAnswer's own field declaration order, so no hand-written
 // marshaller is needed.
 func RenderExpandJSON(a ExpandAnswer) ([]byte, error) {
+	return renderJSON(a)
+}
+
+// RenderDeltaJSON encodes a, the git-wrapped delta answer, as a successful JSON envelope. It emits
+// the same byte contract as RenderJSON — two-space indent, one trailing newline, no HTML escaping —
+// and its key order within the object is GitDeltaAnswer's own field declaration order (from, to, then
+// the embedded DeltaAnswer's own fields), so no hand-written marshaller is needed. RenderDeltaJSON
+// never emits the failure envelope's "ok" marker key: that key is present only on the failure path,
+// and an empty delta is a successful answer rather than a negative one.
+func RenderDeltaJSON(a GitDeltaAnswer) ([]byte, error) {
 	return renderJSON(a)
 }
 
