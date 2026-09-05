@@ -1062,6 +1062,12 @@ func TestCodeForExpandError(t *testing.T) {
 			fmt.Errorf("wrap: %w", &glyph.ParseError{Reason: glyph.ReasonNoSeparator}),
 			exitNegative,
 		},
+		{"self-glyph-error", &quarry.SelfGlyphError{ID: "x#"}, exitNegative},
+		{
+			"wrapped-self-glyph-error",
+			fmt.Errorf("wrap: %w", &quarry.SelfGlyphError{ID: "x#"}),
+			exitNegative,
+		},
 		{"plain-formatted-error-stands-in-for-invariant-failure", errors.New("engine: expand x#Y: type symbol carries no head span"), exitInternal},
 	}
 	for _, tt := range tests {
