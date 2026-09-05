@@ -27,7 +27,7 @@ batches:
     name: engine-unit-exports
     file: 02-engine-unit-exports.md
     depends-on: []
-    verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC'
+    verify: go test ./internal/engine/ -run 'TestPackageClause|TestUnitsForClauseMap|TestClauseMapForFiles|TestWalk|TestRepoTOC|TestResolve|TestExpand|TestSpansOf|TestRoundTrip'
   - number: 3
     name: delta-types-and-tokens
     file: 03-delta-types-and-tokens.md
@@ -78,6 +78,12 @@ Batch-local decisions live in each batch file._
   Where a card's Requirements restate a rule, the restatement is a convenience, not a
   substitute — an implementer who finds the two disagreeing follows the discussion and the
   disagreement is a plan defect worth reporting.
+  **The exception is a departure this plan states explicitly as its own decision**, of which there is
+  exactly one: the goldens-location decision below, which names the discussion's Testing section as
+  what it departs from and gives the reason.
+  A stated departure wins over the discussion; an unstated disagreement never does.
+  Any future departure must be recorded the same way — as its own Shared Decision naming the passage
+  it overrides — or it is a defect rather than a decision.
   Its own closing Q&A entry records that no discussion-review round ever returned APPROVE and
   names conditions 1–7 of the exact-tier rename classifier as the part most likely to still
   carry a defect.

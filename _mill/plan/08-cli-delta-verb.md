@@ -45,9 +45,14 @@ answer.
 - **Creates:** none
 - **Deletes:** none
 - **Moves:** none
-- **Requirements:** Add three fields to the parsed request shape: the from revision, the to
-  revision, and a flag recording whether the to revision was given at all, since an absent to
-  revision means the working tree and an explicitly empty one is a different thing.
+- **Requirements:** Add two fields to the parsed request shape: the from revision and the to
+  revision, each empty when the flag was absent, exactly as the existing root field already works.
+  Reject an explicitly empty value for either flag as a usage error naming the flag, which is what
+  makes one empty string mean one thing: an absent to revision is the working tree, and there is no
+  second way to spell that.
+  Do not add a third field recording whether the flag was given — the git delta method takes the two
+  revisions as plain strings with the empty string meaning the working tree, so a
+  present-but-empty state would have no way to reach it and no defined behaviour if it did.
   Add the fourth verb to the verb gate and to the two messages that enumerate the accepted verbs.
   Accept the two new flags, valid for this verb only, rejecting each for the other three with the
   same message shape the depth flag already uses, and checked at the point the flag is recognised so
@@ -122,6 +127,9 @@ answer.
   existing pipeline functions, and that its default case is unreachable for every word other than
   the three verbs; and the usage-code constant's own comment scopes the glyph-separator rejection to
   a table-of-contents target, which is now one of two path-taking verbs that raise it.
+  The dispatch switch's default case also carries an inline comment repeating the three-verb claim,
+  beside the code rather than in a doc comment; correct it too, since it is the one a reader meets
+  while editing the switch.
   Add this verb's pipeline to the entry point's numbered per-verb description as well, at the same
   level of detail the other three get, since that comment is where each pipeline's fixed step order
   is stated.
@@ -191,10 +199,12 @@ answer.
   table shape the existing parser tests in this file use and asserting on the parsed request rather
   than on any side effect, since the parser is pure over its argument slice.
   The first covers: both revision flags in the space-separated form and in the equals form; an
-  absent to revision recorded as absent rather than as an empty string; a value containing an equals
-  sign surviving verbatim; a missing from revision rejected as a usage error; each revision flag
-  given without a value rejected as a usage error; and zero targets and two targets each rejected by
-  the existing exactly-one-target rule with the count named.
+  absent to revision leaving its field empty, which is how the working tree is spelled; a value
+  containing an equals sign surviving verbatim; a missing from revision rejected as a usage error;
+  each revision flag given without a value rejected as a usage error; each revision flag given an
+  explicitly empty value in the equals form rejected as a usage error naming the flag, so the empty
+  string has exactly one meaning; and zero targets and two targets each rejected by the existing
+  exactly-one-target rule with the count named.
   The second covers the validity matrix in both directions: each revision flag rejected for each of
   the other three verbs with a message naming the flag and the verb, and the depth, symbols and
   no-symbols flags each rejected for the new verb with the same message shape.

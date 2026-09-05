@@ -83,6 +83,10 @@ contradict that; it is the single documented exception to the facade's aliases-o
   Add a root field to the facade's repository type and capture the constructor's already-validated
   root argument into it, in the same constructor, so both delta methods and any later git caller read
   one value.
+  Correct that type's own doc comment in the same commit: it states that the type holds only the
+  engine handle, which this card falsifies, and it draws its concurrency-safety claim from that
+  premise — restate the claim over the two fields it will actually hold, both of which are read-only
+  after construction.
   Capture it on the facade rather than exporting an accessor from the engine: the root is a value the
   facade constructor is already handed, and exporting an engine accessor would widen the engine's
   surface for a caller that never needed to ask it anything.
