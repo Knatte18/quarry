@@ -161,7 +161,7 @@ func Run(ctx context.Context, opts RunOptions) (exitNonZero bool, err error) {
 	var serverBinary string
 	needsServer := false
 	for _, c := range selectedConfigs {
-		if !c.IsControl() {
+		if c.GrantsTools() {
 			needsServer = true
 			break
 		}
@@ -179,7 +179,7 @@ func Run(ctx context.Context, opts RunOptions) (exitNonZero bool, err error) {
 			prov.ServerHashes = map[string]string{}
 		}
 		for _, c := range selectedConfigs {
-			if c.IsControl() {
+			if !c.GrantsTools() {
 				continue
 			}
 			for rep := 1; rep <= repsEffective; rep++ {
@@ -363,9 +363,9 @@ func runCellRepetition(
 		QuarryRepoRoot: quarryRepoRoot,
 	}
 
-	// Check (d): a control cell's rendered prompt is checked before dispatch, so a finding costs no
-	// API call.
-	if cfg.IsControl() {
+	// Check (d): a cell that grants no tools has its rendered prompt checked before dispatch, so a
+	// finding costs no API call.
+	if !cfg.GrantsTools() {
 		if f := CheckRenderedControlPrompt(prompt, blindingIn, l.QuarryTools); f != nil {
 			if err := writeVoidRepetition(dir, l, cfg, task, rep, []Finding{*f}); err != nil {
 				return repOutcome{}, err
@@ -410,9 +410,9 @@ func runCellRepetition(
 		if invokeErr == nil && t.Result != nil && !t.Result.IsError {
 			// check (e): a granted cell whose server did not connect measured a toolless run --
 			// caught here, against the candidate transcript, before this attempt is accepted and the
-			// loop breaks. A control cell is never this check's concern, matching how the blinding
-			// checks are gated by IsControl at their own call site.
-			if !cfg.IsControl() {
+			// loop breaks. A cell that grants no tools is never this check's concern, matching how the
+			// blinding checks are gated by GrantsTools at their own call site.
+			if cfg.GrantsTools() {
 				serverFinding = CheckServerConnected(t.Init, l.ServerName())
 			}
 			if serverFinding == nil {
@@ -555,7 +555,7 @@ func runCellRepetition(
 	}
 
 	var observations []Finding
-	if cfg.IsControl() {
+	if !cfg.GrantsTools() {
 		if findings := CheckBlinding(transcript, blindingIn); findings != nil {
 			for _, f := range findings {
 				if f.Fatal {
@@ -661,7 +661,7 @@ func invokeMeasuredProcess(ctx context.Context, opts RunOptions, l *Ladder, cfg 
 		"--max-turns", strconv.Itoa(l.MaxTurns),
 		"--tools", strings.Join(BuiltinTools, ","),
 	}
-	if !cfg.IsControl() {
+	if cfg.GrantsTools() {
 		prefixed := make([]string, len(cfg.Allowed))
 		for i, a := range cfg.Allowed {
 			prefixed[i] = l.MCPPrefix() + a
