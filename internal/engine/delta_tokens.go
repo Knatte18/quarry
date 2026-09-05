@@ -80,3 +80,41 @@ func walkLeaves(n *ts.Node, visit func(*ts.Node)) {
 		walkLeaves(n.Child(i), visit)
 	}
 }
+
+// identifierKind is the tree-sitter-go node kind an identifier leaf carries. It is the only kind
+// identicalModuloName's substitution rule ever admits.
+const identifierKind = "identifier"
+
+// identicalModuloName reports whether a and b are identical modulo the renamed identifier: they
+// have the same length and, at every position, either the two tokens are equal in both kind and
+// text, or both tokens are identifier nodes whose texts are respectively deletedName and
+// createdName.
+//
+// This is an exact structural test: there is no threshold, no tuning knob and no partial credit.
+// The substitution is restricted to identifier nodes carrying exactly those two names, which is
+// what keeps it exact — it admits the recursive self-call a renamed function makes and nothing
+// else. An anonymous node can never be substituted, since it is not an identifier node, so
+// including anonymous leaves in the stream (tokenStreamsForSymbols) widens what is compared
+// without widening what may be substituted; that is the property that makes this predicate safe
+// against a stream that includes every operator, keyword and punctuation token.
+//
+// The predicate is used for both the body streams and the signature streams under the same rule,
+// and never as a textual substitution over a signature string: replacing the text "Run" with
+// "Execute" inside a method head would also hit the "Runner" in its receiver, while a stream has
+// real identifier nodes to key on.
+func identicalModuloName(a, b tokenStream, deletedName, createdName string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].kind == b[i].kind && a[i].text == b[i].text {
+			continue
+		}
+		if a[i].kind == identifierKind && b[i].kind == identifierKind &&
+			a[i].text == deletedName && b[i].text == createdName {
+			continue
+		}
+		return false
+	}
+	return true
+}
