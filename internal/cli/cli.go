@@ -185,9 +185,11 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 
 // Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes two
 // steps every verb shares, then either the name verb's own early return or two further steps
-// shared by the three repository verbs, then dispatches to that verb's own pipeline — the step
-// that decides an exit code is the step that decides the message, so the two things are never
-// allowed to drift apart within any one pipeline:
+// shared by the three repository verbs the dispatch switch below holds cases for, then dispatches
+// to that verb's own pipeline — the step that decides an exit code is the step that decides the
+// message, so the two things are never allowed to drift apart within any one pipeline. "glyphs"
+// never reaches this switch: parseArgs has already rewritten it to "toc" before Run ever sees the
+// request, so req.verb is "toc" for both spellings by the time Run reads it.
 //
 //  1. Parse flags and the verb. A usage error is exit 2; anything else is exit 3.
 //  2. When help was requested, write usageText to stdout and return exit 0 — help is a successful
@@ -230,9 +232,11 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     chain at this call site, so the mapping stays table-testable. Steps 1 and 2 have already
 //     excluded both sentinel errors in the common case; these branches exist because the target can
 //     be removed between the stat and the walk, and runTOC must not report that race as success.
-//  5. Render: quarry.RenderText under --text, quarry.RenderJSON otherwise. A render error, or a
-//     failed write of its bytes to stdout, is exit 3 — that is an I/O failure, which is what exit 3
-//     already means.
+//  5. Render. When req.view is "glyphs", project the answer with quarry.GlyphView and render the
+//     projection with quarry.RenderGlyphsText under --text, quarry.RenderGlyphsJSON otherwise.
+//     Otherwise render the complete answer: quarry.RenderText under --text, quarry.RenderJSON
+//     otherwise. A render error, or a failed write of its bytes to stdout, is exit 3 — that is an
+//     I/O failure, which is what exit 3 already means.
 //
 // runResolve's own pipeline, continuing from step 4 above, performs no stat at all: the target not
 // existing is the engine's own answer with a payload, and pre-empting it with the failure path
@@ -408,6 +412,28 @@ func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
 		default:
 			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 		}
+	}
+
+	// The glyphs view renders identically for a file and a directory target — it has no directory
+	// or file line to choose a form for — so targetIsFile, which the two renderers below need, is
+	// deliberately not consulted here. Without this sentence the asymmetry would read as an
+	// oversight, since every other text rendering in this package needs the flag.
+	if req.view == "glyphs" {
+		glyphs := quarry.GlyphView(rel, answer)
+		if req.text {
+			if _, err := io.WriteString(stdout, quarry.RenderGlyphsText(glyphs)); err != nil {
+				return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+			}
+			return exitOK
+		}
+		out, err := quarry.RenderGlyphsJSON(glyphs)
+		if err != nil {
+			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+		}
+		if _, err := stdout.Write(out); err != nil {
+			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+		}
+		return exitOK
 	}
 
 	if req.text {

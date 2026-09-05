@@ -937,6 +937,139 @@ func TestRun_Expand(t *testing.T) {
 	})
 }
 
+// TestRun_GlyphsView covers runTOC's glyphs-view branch with the newPipelineFixture tree and no
+// Loomyard checkout: this is not a duplicate of TestGlyphsIsByteIdenticalToItsExpansion or of
+// batch 3's goldens, both of which skip when LADDER_LOOMYARD_REPO is unset. Without the cases
+// below, nothing on a machine with no Loomyard checkout asserts that this branch renders the
+// glyphs view at all.
+func TestRun_GlyphsView(t *testing.T) {
+	root := newPipelineFixture(t)
+
+	// assertGlyphsShape asserts the four properties every glyphs-view invocation below must have:
+	// exitOK, empty stderr, and — for JSON — the glyphs envelope's key set, or — for text — the
+	// documented line grammar with no complete-view lines mixed in.
+	assertGlyphsShape := func(t *testing.T, args []string, wantText bool) {
+		t.Helper()
+		code, stdout, stderr := runCLI(args)
+		if code != exitOK {
+			t.Fatalf("Run(%v) code = %d, stdout = %q, stderr = %q; want %d", args, code, stdout, stderr, exitOK)
+		}
+		if stderr != "" {
+			t.Errorf("Run(%v) stderr = %q; want empty", args, stderr)
+		}
+		if !wantText {
+			var raw map[string]any
+			if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+				t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+			}
+			for _, key := range []string{"target", "symbols"} {
+				if _, ok := raw[key]; !ok {
+					t.Errorf("Run(%v) payload = %v; want key %q", args, raw, key)
+				}
+			}
+			for _, key := range []string{"dirs", "files", "signature"} {
+				if _, ok := raw[key]; ok {
+					t.Errorf("Run(%v) payload = %v; want no key %q", args, raw, key)
+				}
+			}
+			return
+		}
+		for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
+			if line == "" {
+				continue
+			}
+			if strings.HasPrefix(line, "[incomplete] ") {
+				continue
+			}
+			fields := strings.SplitN(line, " ", 3)
+			if len(fields) != 3 || !strings.Contains(fields[0], ":") || !strings.Contains(fields[0], "-") {
+				t.Errorf("Run(%v) stdout line = %q; want the <file>:<start>-<end> <kind> <id> shape", args, line)
+			}
+		}
+		if strings.Contains(stdout, "(sig ") {
+			t.Errorf("Run(%v) stdout = %q; want no signature line", args, stdout)
+		}
+	}
+
+	t.Run("preset-directory", func(t *testing.T) {
+		assertGlyphsShape(t, []string{"glyphs", "pkg", "--root", root}, false)
+		assertGlyphsShape(t, []string{"glyphs", "pkg", "--text", "--root", root}, true)
+	})
+
+	t.Run("preset-file", func(t *testing.T) {
+		assertGlyphsShape(t, []string{"glyphs", "pkg/doc.go", "--root", root}, false)
+		assertGlyphsShape(t, []string{"glyphs", "pkg/doc.go", "--text", "--root", root}, true)
+	})
+
+	t.Run("explicit-directory", func(t *testing.T) {
+		assertGlyphsShape(t, []string{"toc", "pkg", "--view", "glyphs", "--depth", "all", "--symbols", "--root", root}, false)
+		assertGlyphsShape(t, []string{"toc", "pkg", "--view", "glyphs", "--depth", "all", "--symbols", "--text", "--root", root}, true)
+	})
+
+	t.Run("explicit-file", func(t *testing.T) {
+		assertGlyphsShape(t, []string{"toc", "pkg/doc.go", "--view", "glyphs", "--depth", "all", "--symbols", "--root", root}, false)
+		assertGlyphsShape(t, []string{"toc", "pkg/doc.go", "--view", "glyphs", "--depth", "all", "--symbols", "--text", "--root", root}, true)
+	})
+
+	// no-symbols-flag-still-populates is the machine-independent counterpart of the depth
+	// golden's own assertion that the view's symbols default works: pkg/other carries a free
+	// function, a type with a method, and a type with no members, so a non-empty symbol list here
+	// proves --view glyphs's default reached the query with no --symbols flag on the command line.
+	t.Run("no-symbols-flag-still-populates", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"toc", "pkg/other", "--view", "glyphs", "--root", root})
+		if code != exitOK {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+		}
+		var payload struct {
+			Symbols []quarry.Symbol `json:"symbols"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if len(payload.Symbols) == 0 {
+			t.Errorf("symbols = %+v; want a non-empty list", payload.Symbols)
+		}
+	})
+}
+
+// TestRun_ViewFullIsByteIdenticalToViewless pins the view-vocabulary promise that no other card
+// asserts: an absent --view means "full", so "toc --view full <target>" must produce byte-identical
+// stdout to a viewless "toc <target>", for both a file and a directory target, in both formats.
+func TestRun_ViewFullIsByteIdenticalToViewless(t *testing.T) {
+	root := newPipelineFixture(t)
+
+	targets := []string{"pkg", "pkg/doc.go"}
+	for _, target := range targets {
+		for _, withText := range []bool{false, true} {
+			name := target
+			if withText {
+				name += "-text"
+			}
+			t.Run(name, func(t *testing.T) {
+				viewlessArgs := []string{"toc", target, "--root", root}
+				viewFullArgs := []string{"toc", target, "--view", "full", "--root", root}
+				if withText {
+					viewlessArgs = append(viewlessArgs, "--text")
+					viewFullArgs = append(viewFullArgs, "--text")
+				}
+
+				viewlessCode, viewlessOut, viewlessErr := runCLI(viewlessArgs)
+				fullCode, fullOut, fullErr := runCLI(viewFullArgs)
+
+				if viewlessCode != fullCode {
+					t.Errorf("code = %d; want %d (viewless)", fullCode, viewlessCode)
+				}
+				if viewlessOut != fullOut {
+					t.Errorf("stdout = %q; want %q (viewless, byte-identical)", fullOut, viewlessOut)
+				}
+				if viewlessErr != fullErr {
+					t.Errorf("stderr = %q; want %q (viewless, byte-identical)", fullErr, viewlessErr)
+				}
+			})
+		}
+	}
+}
+
 func TestRun_FlagPassThrough(t *testing.T) {
 	root := newPipelineFixture(t)
 
