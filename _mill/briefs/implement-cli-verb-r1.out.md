@@ -1,5 +1,0 @@
-{"status":"success","commit_sha":"a46a0c59f1c29b51dd5f2bc72b58b70904d49edc","session_id":"5ec92f1a-50f1-4441-b622-b6fa797c2854","cards_done":[8,9,10,11,12,13]}
-
-All 6 of 6 cards in this batch (cards 8-13) are committed and verified. Files touched: `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/flags.go`, `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/cli.go`, `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/usage.go`, `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/flags_test.go`, `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/name_test.go`, `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/name_golden_test.go`, `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/loomyard_test.go`, and the twelve golden files under `/home/knatte/Code/quarry/wts/glyph-maker/internal/cli/testdata/name/`. `go test ./internal/cli/` passes in full (one unrelated test skips for lack of a Loomyard checkout, as expected on this machine).
-
-{"status":"success","commit_sha":"a46a0c59f1c29b51dd5f2bc72b58b70904d49edc","session_id":"5ec92f1a-50f1-4441-b622-b6fa797c2854","cards_done":[8,9,10,11,12,13]}
