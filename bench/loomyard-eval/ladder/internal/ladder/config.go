@@ -32,6 +32,9 @@ type Ladder struct {
 	Server      *ServerSpec     `yaml:"server"`
 	Tasks       map[string]Task `yaml:"tasks"`
 	Configs     []Config        `yaml:"configs"`
+	// PackTargets is the glyph list the pack subcommand resolves. It is a single top-level list
+	// resolved once, which is why at most one config per file may set Pack.
+	PackTargets []string `yaml:"pack_targets"`
 }
 
 // ScorerSpec names the model and effort the scoring pass runs at.
@@ -66,11 +69,33 @@ type Config struct {
 	Ladder  string   `yaml:"ladder"`
 	Task    string   `yaml:"task"`
 	Allowed []string `yaml:"allowed"`
+	// Control overrides which cell is its ladder letter's comparison baseline. A nil Control
+	// defaults to today's behaviour, len(Allowed) == 0; an explicit false is distinguishable from
+	// an omitted key, which is why this is a pointer rather than a plain bool.
+	Control *bool `yaml:"control"`
+	// Card is a repository-relative markdown file rendered into the prompt, resolved the same way
+	// Task.TaskFile is. An empty value renders today's prompt unchanged.
+	Card string `yaml:"card"`
+	// Pack marks the one cell whose card the generated kick-start pack is written into.
+	Pack bool `yaml:"pack"`
 }
 
-// IsControl reports whether c is the control cell for its ladder letter, i.e. it grants no tools.
+// IsControl reports whether c is its ladder letter's comparison baseline. When Control is set
+// explicitly, that value wins; otherwise the default is today's behaviour, len(Allowed) == 0. This
+// is a different question from GrantsTools: every cell of a ladder letter may grant no tools, in
+// which case Control is the only way to pick one of them as the baseline.
 func (c Config) IsControl() bool {
+	if c.Control != nil {
+		return *c.Control
+	}
 	return len(c.Allowed) == 0
+}
+
+// GrantsTools reports whether c has an MCP server attached, i.e. its allowed list is non-empty.
+// This is a different question from IsControl: a cell can grant no tools without being its
+// ladder letter's control, and vice versa.
+func (c Config) GrantsTools() bool {
+	return len(c.Allowed) > 0
 }
 
 // LoadLadder reads and decodes the ladder configuration file at path, rejecting any unrecognised
@@ -123,9 +148,9 @@ func (l *Ladder) ConfigByID(id string) (Config, bool) {
 	return Config{}, false
 }
 
-// ControlFor returns the single config for the given ladder letter whose allowed list is empty, and
-// reports whether one was found. validate guarantees at most one such config exists per letter that
-// appears in the file.
+// ControlFor returns the single config for the given ladder letter that IsControl reports true for,
+// and reports whether one was found. validate guarantees at most one such config exists per letter
+// that appears in the file.
 func (l *Ladder) ControlFor(letter string) (Config, bool) {
 	for _, c := range l.Configs {
 		if c.Ladder == letter && c.IsControl() {
