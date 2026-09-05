@@ -167,7 +167,6 @@ func TestParseArgs_UsageErrors(t *testing.T) {
 		{"resolve-two-targets", []string{"resolve", "a", "b"}, "resolve takes exactly one target, got 2"},
 		{"expand-missing-target", []string{"expand"}, "expand takes exactly one target, got 0"},
 		{"expand-two-targets", []string{"expand", "a#b", "c#d"}, "expand takes exactly one target, got 2"},
-		{"expand-missing-separator", []string{"expand", "no-hash-here"}, `expand takes a glyph (a target containing "#"), got: no-hash-here`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

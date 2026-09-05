@@ -301,6 +301,70 @@ func TestRun_UsageTextPlacement(t *testing.T) {
 	}
 }
 
+// TestRun_TOCTargetHasSeparator pins card 26's usage-error mapping: a toc target carrying the
+// glyph grammar's "#" separator is exit 2, with the separator sentence followed by the full usage
+// block on stderr -- both parts are asserted, since the sentence alone would pass a substring
+// check while pinning the wrong bytes.
+func TestRun_TOCTargetHasSeparator(t *testing.T) {
+	root := newPipelineFixture(t)
+
+	code, stdout, stderr := runCLI([]string{"toc", "pkg/other#Make", "--root", root})
+	if code != exitUsage {
+		t.Fatalf("code = %d; want %d", code, exitUsage)
+	}
+	envErr := failureEnvelope(t, stdout)
+	want := `target contains the glyph separator "#": pkg/other#Make`
+	if envErr != want {
+		t.Errorf("error = %q; want %q", envErr, want)
+	}
+	wantStderr := envErr + "\n" + usageText
+	if stderr != wantStderr {
+		t.Errorf("stderr = %q; want %q", stderr, wantStderr)
+	}
+}
+
+// TestRun_ExpandAndResolveAgreeOnBarePath pins the two-verb agreement the grammar-only
+// classification buys: the same bare path given to expand and to resolve both exit 1, asserted in
+// one test so their agreement is what the test is about rather than a coincidence of two separate
+// rows. expand's full sentence is asserted, not the bare reason word.
+func TestRun_ExpandAndResolveAgreeOnBarePath(t *testing.T) {
+	root := newPipelineFixture(t)
+	barePath := "pkg/other/other.go"
+
+	expandCode, expandStdout, expandStderr := runCLI([]string{"expand", barePath, "--root", root})
+	if expandCode != exitNegative {
+		t.Fatalf("expand code = %d; want %d", expandCode, exitNegative)
+	}
+	_, parseErr := glyph.Parse(glyph.Go, barePath)
+	var pe *glyph.ParseError
+	if !errors.As(parseErr, &pe) {
+		t.Fatalf("glyph.Parse(%q) error = %v; want a *glyph.ParseError", barePath, parseErr)
+	}
+	wantExpandErr := "expand: " + pe.Error()
+	expandErr := failureEnvelope(t, expandStdout)
+	if expandErr != wantExpandErr {
+		t.Errorf("expand error = %q; want %q", expandErr, wantExpandErr)
+	}
+	if expandStderr != wantExpandErr+"\n" {
+		t.Errorf("expand stderr = %q; want %q", expandStderr, wantExpandErr+"\n")
+	}
+
+	resolveCode, resolveStdout, resolveStderr := runCLI([]string{"resolve", barePath, "--root", root})
+	if resolveCode != exitNegative {
+		t.Fatalf("resolve code = %d; want %d", resolveCode, exitNegative)
+	}
+	if resolveStderr != "" {
+		t.Errorf("resolve stderr = %q; want empty", resolveStderr)
+	}
+	var result quarry.ResolveResult
+	if err := json.Unmarshal([]byte(resolveStdout), &result); err != nil {
+		t.Fatalf("json.Unmarshal(%q): %v", resolveStdout, err)
+	}
+	if result.Reason != string(glyph.ReasonNoSeparator) {
+		t.Errorf("resolve reason = %q; want %q", result.Reason, glyph.ReasonNoSeparator)
+	}
+}
+
 func TestRun_Help(t *testing.T) {
 	tests := [][]string{
 		{"--help"},
@@ -449,8 +513,8 @@ func TestRun_Resolve(t *testing.T) {
 		}
 	})
 
-	t.Run("path-directory", func(t *testing.T) {
-		code, stdout, stderr := runCLI([]string{"resolve", "pkg", "--root", root})
+	t.Run("self-glyph-directory", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"resolve", "pkg#", "--root", root})
 		if code != exitOK {
 			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
 		}
@@ -466,8 +530,8 @@ func TestRun_Resolve(t *testing.T) {
 		}
 	})
 
-	t.Run("path-file", func(t *testing.T) {
-		code, stdout, stderr := runCLI([]string{"resolve", "pkg/doc.go", "--root", root})
+	t.Run("self-glyph-file", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"resolve", "pkg/doc.go#", "--root", root})
 		if code != exitOK {
 			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
 		}
@@ -489,7 +553,53 @@ func TestRun_Resolve(t *testing.T) {
 		}
 	})
 
-	t.Run("path-not-found", func(t *testing.T) {
+	t.Run("self-glyph-missing-file", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"resolve", "pkg/missing.go#", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		if stderr != "" {
+			t.Errorf("stderr = %q; want empty", stderr)
+		}
+		var result quarry.ResolveResult
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if result.Status != quarry.StatusNotFound {
+			t.Errorf("status = %q; want %q", result.Status, quarry.StatusNotFound)
+		}
+		if result.Unit != quarry.StatusNotFound {
+			t.Errorf("unit = %q; want %q", result.Unit, quarry.StatusNotFound)
+		}
+	})
+
+	// self-glyph-external-test-unit pins the same collision unitDirs's own doc comment records: no
+	// "pkg_test" directory exists on disk, but unitDirs strips the "_test" suffix and finds "pkg",
+	// so the self glyph reports not_found with unit: found.
+	t.Run("self-glyph-external-test-unit", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"resolve", "pkg_test#", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		if stderr != "" {
+			t.Errorf("stderr = %q; want empty", stderr)
+		}
+		var result quarry.ResolveResult
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if result.Status != quarry.StatusNotFound {
+			t.Errorf("status = %q; want %q", result.Status, quarry.StatusNotFound)
+		}
+		if result.Unit != quarry.StatusFound {
+			t.Errorf("unit = %q; want %q", result.Unit, quarry.StatusFound)
+		}
+	})
+
+	// bare-path-rejected-missing-name pins that a bare path given to resolve is a grammar
+	// rejection now, not an engine not-found answer: the grammar is the only classifier, so a
+	// string with no "#" never reaches the engine at all.
+	t.Run("bare-path-rejected-missing-name", func(t *testing.T) {
 		code, stdout, stderr := runCLI([]string{"resolve", "nope", "--root", root})
 		if code != exitNegative {
 			t.Fatalf("code = %d; want %d", code, exitNegative)
@@ -497,19 +607,20 @@ func TestRun_Resolve(t *testing.T) {
 		if stderr != "" {
 			t.Errorf("stderr = %q; want empty", stderr)
 		}
-		var raw map[string]any
-		if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		var result quarry.ResolveResult
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
 		}
-		if _, ok := raw["unit"]; ok {
-			t.Errorf("payload = %v; want no %q key for a path result", raw, "unit")
-		}
-		if raw["status"] != "not_found" {
-			t.Errorf(`payload["status"] = %v; want "not_found"`, raw["status"])
+		if result.Reason != string(glyph.ReasonNoSeparator) {
+			t.Errorf("reason = %q; want %q", result.Reason, glyph.ReasonNoSeparator)
 		}
 	})
 
-	t.Run("path-escapes-root", func(t *testing.T) {
+	// bare-path-rejected-dot-dot pins the same rejection for a target that used to escape the
+	// root through path arithmetic: ".." carries no "#" either, so it is rejected by the grammar
+	// before any path conversion is attempted, and the engine's own outside-repository rule is
+	// never reached from resolve any more.
+	t.Run("bare-path-rejected-dot-dot", func(t *testing.T) {
 		code, stdout, stderr := runCLI([]string{"resolve", "..", "--root", root})
 		if code != exitNegative {
 			t.Fatalf("code = %d; want %d", code, exitNegative)
@@ -521,12 +632,27 @@ func TestRun_Resolve(t *testing.T) {
 		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
 		}
-		// This is the one test anywhere in the plan that pins this exact string: the engine's own
-		// doubled "engine: ...: engine: ..." wording, carried verbatim into the payload's error
-		// field per the overview's payload-error-text Shared Decision.
-		want := `engine: resolve target "..": engine: target outside repository`
-		if result.Error != want {
-			t.Errorf("error = %q; want %q", result.Error, want)
+		if result.Reason != string(glyph.ReasonNoSeparator) {
+			t.Errorf("reason = %q; want %q", result.Reason, glyph.ReasonNoSeparator)
+		}
+	})
+
+	// two-separator-target pins that a target with more than one "#" is a payload-carried
+	// rejection, exit 1, exactly like every other grammar rejection.
+	t.Run("two-separator-target", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"resolve", "a#b#c", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		if stderr != "" {
+			t.Errorf("stderr = %q; want empty", stderr)
+		}
+		var result quarry.ResolveResult
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
+		}
+		if result.Reason != string(glyph.ReasonMultipleSeparators) {
+			t.Errorf("reason = %q; want %q", result.Reason, glyph.ReasonMultipleSeparators)
 		}
 	})
 
@@ -536,12 +662,16 @@ func TestRun_Resolve(t *testing.T) {
 			args []string
 		}{
 			{"glyph", []string{"resolve", "pkg/other#Make", "--root", root}},
-			{"directory-path", []string{"resolve", "pkg", "--root", root}},
-			{"file-path", []string{"resolve", "pkg/doc.go", "--root", root}},
+			{"self-glyph-directory", []string{"resolve", "pkg#", "--root", root}},
+			{"self-glyph-file", []string{"resolve", "pkg/doc.go#", "--root", root}},
+			{"self-glyph-missing-file", []string{"resolve", "pkg/missing.go#", "--root", root}},
+			{"self-glyph-external-test-unit", []string{"resolve", "pkg_test#", "--root", root}},
+			{"bare-path-rejected", []string{"resolve", "nope", "--root", root}},
+			{"two-separator-target", []string{"resolve", "a#b#c", "--root", root}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				_, jsonOut, _ := runCLI(tc.args)
+				jsonCode, jsonOut, _ := runCLI(tc.args)
 				var result quarry.ResolveResult
 				if err := json.Unmarshal([]byte(jsonOut), &result); err != nil {
 					t.Fatalf("json.Unmarshal(%q): %v", jsonOut, err)
@@ -550,8 +680,8 @@ func TestRun_Resolve(t *testing.T) {
 
 				textArgs := append(append([]string{}, tc.args...), "--text")
 				code, stdout, stderr := runCLI(textArgs)
-				if code != exitOK {
-					t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+				if code != jsonCode {
+					t.Fatalf("code = %d, stderr = %q; want %d (the same code the JSON run returned)", code, stderr, jsonCode)
 				}
 				if stdout != want {
 					t.Errorf("stdout = %q; want %q", stdout, want)
@@ -560,18 +690,25 @@ func TestRun_Resolve(t *testing.T) {
 		}
 	})
 
-	t.Run("target-echo-asymmetry", func(t *testing.T) {
+	// target-field-always-verbatim replaces the old target-echo-asymmetry test: card 23 removed
+	// the relativisation that used to contrast a path target, echoed as its repository-relative
+	// form, against a glyph target, echoed verbatim. Both now echo the argument verbatim, so this
+	// asserts a rule rather than a contrast.
+	t.Run("target-field-always-verbatim", func(t *testing.T) {
 		abs := filepath.Join(root, "pkg")
 		code, stdout, stderr := runCLI([]string{"resolve", abs, "--root", root})
-		if code != exitOK {
-			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitOK)
+		if code != exitNegative {
+			t.Fatalf("code = %d, stderr = %q; want %d", code, stderr, exitNegative)
 		}
 		var pathResult quarry.ResolveResult
 		if err := json.Unmarshal([]byte(stdout), &pathResult); err != nil {
 			t.Fatalf("json.Unmarshal(%q): %v", stdout, err)
 		}
-		if pathResult.Target != "pkg" {
-			t.Errorf("target = %q; want %q, the repository-relative form", pathResult.Target, "pkg")
+		if pathResult.Target != abs {
+			t.Errorf("target = %q; want %q, the absolute argument as given", pathResult.Target, abs)
+		}
+		if pathResult.Reason != string(glyph.ReasonNoSeparator) {
+			t.Errorf("reason = %q; want %q", pathResult.Reason, glyph.ReasonNoSeparator)
 		}
 
 		code, stdout, stderr = runCLI([]string{"resolve", "pkg/other#Make", "--root", root})
@@ -672,30 +809,98 @@ func TestRun_Expand(t *testing.T) {
 		}
 	})
 
+	// grammar-rejection-with-separator pins that the message carries the grammar's full sentence,
+	// not the bare reason word: the regression card 27 guards against is exactly a message that
+	// ends in the raw reason constant instead.
 	t.Run("grammar-rejection-with-separator", func(t *testing.T) {
 		code, stdout, stderr := runCLI([]string{"expand", "pkg/other#1bad", "--root", root})
 		if code != exitNegative {
 			t.Fatalf("code = %d; want %d", code, exitNegative)
 		}
+		_, parseErr := glyph.Parse(glyph.Go, "pkg/other#1bad")
+		var pe *glyph.ParseError
+		if !errors.As(parseErr, &pe) {
+			t.Fatalf("glyph.Parse(%q) error = %v; want a *glyph.ParseError", "pkg/other#1bad", parseErr)
+		}
+		want := "expand: " + pe.Error()
 		envErr := failureEnvelope(t, stdout)
-		if !strings.HasSuffix(envErr, string(glyph.ReasonMemberNotIdentifier)) {
-			t.Errorf("error = %q; want it to end in the reason word %q", envErr, glyph.ReasonMemberNotIdentifier)
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if envErr == "expand pkg/other#1bad: "+string(glyph.ReasonMemberNotIdentifier) {
+			t.Errorf("error = %q; must not be the bare reason word form card 27 deleted", envErr)
 		}
 		if strings.Contains(stderr, usageText) {
 			t.Errorf("stderr = %q; must not carry usage text", stderr)
 		}
 	})
 
-	t.Run("no-separator", func(t *testing.T) {
-		// The parser rejects this before any repository is opened, so no --root is given.
-		code, stdout, stderr := runCLI([]string{"expand", "no-separator"})
-		if code != exitUsage {
-			t.Fatalf("code = %d; want %d", code, exitUsage)
+	// bare-path-rejected pins that expand no longer has a usage gate of its own: a target with no
+	// "#" now reaches the facade, and glyph.Parse rejects it exactly as it would for resolve. The
+	// grammar's own full sentence is what runExpand carries, not the bare reason word.
+	t.Run("bare-path-rejected", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "no-separator", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		_, parseErr := glyph.Parse(glyph.Go, "no-separator")
+		var pe *glyph.ParseError
+		if !errors.As(parseErr, &pe) {
+			t.Fatalf("glyph.Parse(%q) error = %v; want a *glyph.ParseError", "no-separator", parseErr)
+		}
+		want := "expand: " + pe.Error()
+		envErr := failureEnvelope(t, stdout)
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if stderr != want+"\n" {
+			t.Errorf("stderr = %q; want %q", stderr, want+"\n")
+		}
+		if strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; must not carry usage text", stderr)
+		}
+	})
+
+	// two-separator-target pins the changed message for a target the grammar rejects with more
+	// than one "#": the full sentence, not the bare reason word.
+	t.Run("two-separator-target", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "a#b#c", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
+		}
+		_, parseErr := glyph.Parse(glyph.Go, "a#b#c")
+		var pe *glyph.ParseError
+		if !errors.As(parseErr, &pe) {
+			t.Fatalf("glyph.Parse(%q) error = %v; want a *glyph.ParseError", "a#b#c", parseErr)
+		}
+		want := "expand: " + pe.Error()
+		envErr := failureEnvelope(t, stdout)
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if stderr != want+"\n" {
+			t.Errorf("stderr = %q; want %q", stderr, want+"\n")
+		}
+	})
+
+	// self-glyph pins the *quarry.SelfGlyphError branch runExpand gained: a self glyph exits 1
+	// with the failure envelope on stdout and the message on stderr, spelled from the value's ID
+	// field rather than the engine's own error text.
+	t.Run("self-glyph", func(t *testing.T) {
+		code, stdout, stderr := runCLI([]string{"expand", "pkg#", "--root", root})
+		if code != exitNegative {
+			t.Fatalf("code = %d; want %d", code, exitNegative)
 		}
 		envErr := failureEnvelope(t, stdout)
-		wantStderr := envErr + "\n" + usageText
-		if stderr != wantStderr {
-			t.Errorf("stderr = %q; want %q", stderr, wantStderr)
+		want := "expand pkg#: not a type, self"
+		if envErr != want {
+			t.Errorf("error = %q; want %q", envErr, want)
+		}
+		if stderr != want+"\n" {
+			t.Errorf("stderr = %q; want %q", stderr, want+"\n")
+		}
+		if strings.Contains(stderr, usageText) {
+			t.Errorf("stderr = %q; must not carry usage text", stderr)
 		}
 	})
 
