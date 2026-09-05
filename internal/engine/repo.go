@@ -49,6 +49,14 @@ var ErrTargetOutsideRepo = errors.New("engine: target outside repository")
 // root. Callers wrap it the same way ErrTargetOutsideRepo is wrapped.
 var ErrTargetNotFound = errors.New("engine: target not found")
 
+// ErrTargetHasSeparator is returned when any segment of a cleaned repository-relative path target
+// contains the glyph separator "#". Callers wrap it the same way ErrTargetOutsideRepo and
+// ErrTargetNotFound are wrapped, so errors.Is(err, ErrTargetHasSeparator) still succeeds after
+// wrapping. The raiser is internal/repopath's repoRelTarget, not resolveTarget in this file:
+// resolveTarget is unchanged by this task, and internal/repopath is where both path-taking callers
+// already normalise their target.
+var ErrTargetHasSeparator = errors.New("engine: target contains the glyph separator \"#\"")
+
 // resolveTarget is the single validation path every query runs target through before answering
 // it. It performs, in order:
 //

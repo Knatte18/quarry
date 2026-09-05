@@ -1,5 +1,6 @@
 // expand.go implements the exported expand verb: what a type consists of, across files. It holds
-// Repo.Expand and its unexported worker, and NotATypeError, the one typed failure the verb returns.
+// Repo.Expand and its unexported worker, and the two typed failures the verb returns:
+// NotATypeError and SelfGlyphError.
 
 package engine
 
@@ -39,6 +40,31 @@ func (e *NotATypeError) Error() string {
 	return fmt.Sprintf("engine: expand %s: not a type, kind %s", e.ID, e.Kind)
 }
 
+// SelfGlyphError is returned by Repo.Expand when target parses as a self glyph — one naming its
+// unit's whole directory or file rather than a member within it. ID is the glyph's own String()
+// form.
+//
+// It is a struct, in the same shape as NotATypeError, rather than a bare sentinel, for the same
+// reason NotATypeError is: a caller mapping engine failures to a status word and an exit code
+// needs the glyph's identity carried with the error, without parsing a message.
+//
+// SelfGlyphError is a typed error rather than a sixth Kind value: Kind is documented as the closed
+// vocabulary a Symbol's kind is drawn from and the five values toc emits, a self glyph is not a
+// symbol, and widening a symbol vocabulary to describe a non-symbol would falsify that comment.
+//
+// It is also not answered as not_found: a self glyph matches no symbol, so the answer would fall
+// out as not_found, which says the name is free when the truth is that the verb does not apply to
+// a self glyph at all.
+type SelfGlyphError struct {
+	// ID is the glyph's own String() form.
+	ID string
+}
+
+// Error implements the error interface, naming the glyph that named itself rather than a member.
+func (e *SelfGlyphError) Error() string {
+	return fmt.Sprintf("engine: expand %s: not a type, a self glyph names the unit or file itself", e.ID)
+}
+
 // Expand answers target: the target type's own head, plus every member whose owner chain begins
 // with it. Expand builds one unitMemo with newUnitMemo, returning that error if it fails, and
 // delegates to the unexported expand — the same shell-plus-worker shape Resolve has, for the same
@@ -62,6 +88,12 @@ func (r *Repo) Expand(target string) (ExpandAnswer, error) {
 // type for one of the grammar's rejection reasons than for all the others. Unlike Resolve, expand
 // answers one target, so there is no other answer to protect and no reason to move the failure into
 // the payload.
+//
+// Immediately after a successful parse, before m.dirsOf and m.symbolsOf are called, it checks
+// g.IsSelf(): a self glyph is answered by returning the zero ExpandAnswer and a *SelfGlyphError
+// carrying g.String(), before any unit work is done. A gate before resolution means no unit is
+// parsed and no unit-directory lookup is made for a question that has no answer, which is what
+// leaves the memo's parses counter at zero and its dirs map empty for this case.
 //
 // It sets id to the parsed glyph's String(), reads m.dirsOf(g.Unit) for the directory list and the
 // collision flag, reads m.symbolsOf(g.Unit) — an error from which is returned as this call's own
@@ -146,6 +178,10 @@ func (r *Repo) expand(target string, m *unitMemo) (ExpandAnswer, error) {
 		return ExpandAnswer{}, fmt.Errorf("engine: expand %s: %w", target, err)
 	}
 	id := g.String()
+
+	if g.IsSelf() {
+		return ExpandAnswer{}, &SelfGlyphError{ID: id}
+	}
 
 	dirsRes := m.dirsOf(g.Unit)
 	symbols, err := m.symbolsOf(g.Unit)

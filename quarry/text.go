@@ -200,7 +200,7 @@ func writeSymbolLine(b *strings.Builder, sym Symbol) {
 // cannot fail and returns no error, and the returned string has no trailing whitespace on any line
 // and ends with exactly one "\n".
 //
-// RenderResolveText has three branches, checked in this order:
+// RenderResolveText has four branches, checked in this order:
 //
 //  1. r.Status == "" — a pre-resolution rejection carried by the error field. One line: the target
 //     as given, then " error", then " "+r.Reason only when Reason is non-empty, then ": "+the
@@ -209,18 +209,27 @@ func writeSymbolLine(b *strings.Builder, sym Symbol) {
 //     "<target> error" with no trailing colon or space — a shape the engine never produces, spelled
 //     only so an external caller's zero-ish value still satisfies the no-trailing-whitespace
 //     invariant this renderer promises for every input.
-//  2. r.ID != "" — a glyph target. On StatusNotFound, one line: the identifier, " not_found", then
-//     " (unit found)" or " (unit not_found)" only when the unit field is non-empty — the engine
-//     always sets it here, so the guard exists only to keep an external caller's empty-unit value
-//     from emitting a dangling space. On any other status, one line — the identifier, a space, the
-//     status word — followed by one symbol line per entry, in order: the symbols slice for found and
-//     multipart, the candidates slice for ambiguous.
-//  3. otherwise — a path target. One line: the target as given, a space, the status word. r.Dir is a
-//     pointer field; when it is nil — a shape the engine never produces for a found path, spelled for
-//     the same external-caller reason as branch 1's empty-error guard — line 1 is emitted alone.
-//     Otherwise, on found, the directory-form block for *r.Dir follows immediately, produced by
-//     joining dirBlocks(*r.Dir) with a newline, the same join RenderText's own directory form uses;
-//     on any other status nothing follows, because a path belongs to no unit.
+//  2. r.Listing != nil — a self glyph or a directory target carrying a listing. This branch is
+//     checked before the glyph branch below because a self glyph's ID is non-empty too, and would
+//     otherwise fall into branch 3 and print a bare status line with no listing at all. Line 1 is
+//     r.ID, a space, and the status word, falling back to r.Target when r.ID is empty — the same
+//     external-caller courtesy branch 1's empty-error guard already extends, keeping line 1 from
+//     ever beginning with a space. The directory-form block for *r.Listing follows immediately,
+//     produced by joining dirBlocks(*r.Listing) with a newline (the same join RenderText's own
+//     directory form uses), but only when r.Status == StatusFound — that guard is written
+//     explicitly, since a hand-built not_found value carrying a non-nil Listing would otherwise
+//     print a directory block under a negative status, a shape the engine itself never produces.
+//  3. r.ID != "" — a glyph target with no listing: a member glyph, or a self glyph whose status is
+//     not_found, which always carries a nil Listing. On StatusNotFound, one line: the identifier,
+//     " not_found", then " (unit found)" or " (unit not_found)" only when the unit field is
+//     non-empty — the engine always sets it here, so the guard exists only to keep an external
+//     caller's empty-unit value from emitting a dangling space; for a not_found self glyph the unit
+//     field is always set, so the suffix is always present. On any other status, one line — the
+//     identifier, a space, the status word — followed by one symbol line per entry, in order: the
+//     symbols slice for found and multipart, the candidates slice for ambiguous.
+//  4. otherwise — the guard for an externally constructed value with neither an ID nor a listing;
+//     the engine itself can no longer produce this shape, since every target it resolves is a glyph
+//     and every non-rejection result carries an ID. One line: r.Target, a space, the status word.
 //
 // The directory form renders a file path target too: the engine answers a file target with its
 // enclosing directory's answer holding exactly one file entry, which the directory form renders
@@ -240,6 +249,18 @@ func RenderResolveText(r ResolveResult) string {
 			b.WriteString(msg)
 		}
 		b.WriteString("\n")
+	case r.Listing != nil:
+		line1 := r.ID
+		if line1 == "" {
+			line1 = r.Target
+		}
+		b.WriteString(line1)
+		b.WriteString(" ")
+		b.WriteString(string(r.Status))
+		b.WriteString("\n")
+		if r.Status == StatusFound {
+			b.WriteString(strings.Join(dirBlocks(*r.Listing), "\n"))
+		}
 	case r.ID != "":
 		if r.Status == StatusNotFound {
 			b.WriteString(r.ID)
@@ -268,12 +289,6 @@ func RenderResolveText(r ResolveResult) string {
 		b.WriteString(" ")
 		b.WriteString(string(r.Status))
 		b.WriteString("\n")
-		if r.Dir == nil {
-			break
-		}
-		if r.Status == StatusFound {
-			b.WriteString(strings.Join(dirBlocks(*r.Dir), "\n"))
-		}
 	}
 	return b.String()
 }

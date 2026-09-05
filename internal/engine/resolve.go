@@ -151,15 +151,6 @@ func (m *unitMemo) dirsOf(unit string) unitDirsResult {
 	return res
 }
 
-// isGlyphTarget reports whether target is a glyph rather than a repository-relative path, by
-// strings.Contains(target, "#") and nothing else. A target containing "#" is a glyph and is handed
-// to glyph.Parse, which decides whether it is a well-formed one; everything else is a
-// repository-relative path. This split never pre-empts any of the grammar's own rejections — "#x",
-// with an empty unit, is a glyph target that glyph.Parse then rejects, not a path.
-func isGlyphTarget(target string) bool {
-	return strings.Contains(target, "#")
-}
-
 // statusForMatches is the whole decision Resolve and Expand turn on, expressed once so the two
 // verbs can never disagree about what a glyph resolves to. Its rows, checked in this exact order:
 //
@@ -223,7 +214,8 @@ func matchesFor(symbols []Symbol, g glyph.Glyph) []Symbol {
 	return matches
 }
 
-// resolveGlyphTarget answers one glyph target.
+// resolveGlyphTarget answers one glyph target — every target, now that the engine no longer
+// classifies a target as a path before reaching here.
 //
 // It parses target with glyph.Parse(glyph.Go, target) — the alphabet is hardcoded; a multi-alphabet
 // dispatch is where a second language would enter, and nothing about the answer's key set depends
@@ -232,17 +224,29 @@ func matchesFor(symbols []Symbol, g glyph.Glyph) []Symbol {
 // is string(parseErr.Reason), and whose Status is left empty — with a nil error, so the call
 // continues and the other targets are still answered. The four statuses are resolution outcomes,
 // and a string that is not a glyph was never searched for; answering not_found would tell a
-// validator the name is free when the truth is that it is unspellable. Should errors.As ever fail —
-// glyph.Parse returns nothing else, so it cannot — Reason is left empty rather than panicking on a
-// nil pointer.
+// validator the name is free when the truth is that it is unspellable. A bare repository-relative
+// path with no "#" fails here too, with ReasonNoSeparator, and lands on this exact shape — that is
+// the whole of what replaces the deleted path branch. Should errors.As ever fail — glyph.Parse
+// returns nothing else, so it cannot — Reason is left empty rather than panicking on a nil pointer.
 //
-// Otherwise it sets Target to the argument and ID to the parsed glyph's String(). It reads
-// m.dirsOf(g.Unit) for the collision flag and the directory list, then m.symbolsOf(g.Unit). An
-// error from symbolsOf is returned as this function's error and fails the whole call: an engine
-// read failure is not an answer about a glyph, and a unit that failed to read would otherwise
-// answer not_found for every glyph in it, which a done-check reads as success. A unit whose
-// directory does not exist is not that case and never reaches it — unitDirs returns an empty slice
-// and symbolsOfUnit over zero directories returns an empty slice and a nil error.
+// Immediately after a successful parse, before m.dirsOf is read, it branches on g.IsSelf(): a self
+// glyph is answered by resolveSelfTarget(g.Unit) instead of the member lookup below. The returned
+// result's Target is overwritten with the argument verbatim (resolveSelfTarget saw only g.Unit) and
+// its ID is set to g.String(). Unit is then set by the same rule the member branch uses below, but
+// only when the self answer's Status is StatusNotFound — matching where Unit is set for a member
+// glyph, and leaving it unset on the pre-resolution rejection resolveSelfTarget's own
+// ErrTargetOutsideRepo arm can still (unreachably) produce. Unit is not suppressed for the external
+// test unit case: internal/logger_test#Foo resolves through unitDirs' "_test" stripping to a real
+// directory while internal/logger_test# is a path that exists nowhere, so "status: not_found, unit:
+// found" is the only complete answer for that self glyph, and it is reached by this same rule.
+//
+// Otherwise — a member glyph — it sets Target to the argument and ID to the parsed glyph's
+// String(). It reads m.dirsOf(g.Unit) for the collision flag and the directory list, then
+// m.symbolsOf(g.Unit). An error from symbolsOf is returned as this function's error and fails the
+// whole call: an engine read failure is not an answer about a glyph, and a unit that failed to read
+// would otherwise answer not_found for every glyph in it, which a done-check reads as success. A
+// unit whose directory does not exist is not that case and never reaches it — unitDirs returns an
+// empty slice and symbolsOfUnit over zero directories returns an empty slice and a nil error.
 //
 // It filters with matchesFor, switches on statusForMatches(g, matches, res.collision), and
 // populates: StatusFound and StatusMultipart set Symbols to the matches; StatusAmbiguous sets
@@ -279,6 +283,24 @@ func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, er
 		return ResolveResult{Target: target, Error: err.Error(), Reason: reason}, nil
 	}
 
+	if g.IsSelf() {
+		res, err := r.resolveSelfTarget(g.Unit)
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		res.Target = target
+		res.ID = g.String()
+		if res.Status == StatusNotFound {
+			dirsRes := m.dirsOf(g.Unit)
+			if len(dirsRes.dirs) > 0 {
+				res.Unit = StatusFound
+			} else {
+				res.Unit = StatusNotFound
+			}
+		}
+		return res, nil
+	}
+
 	res := ResolveResult{Target: target, ID: g.String()}
 
 	dirsRes := m.dirsOf(g.Unit)
@@ -305,37 +327,43 @@ func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, er
 	return res, nil
 }
 
-// resolvePathTarget answers a target with no "#" as a repository-relative path, by calling r.TOC
-// with TOCOptions{Depth: 0, Symbols: &symbolsOff} where symbolsOff is a local false. Reusing the
-// directory answer rather than restating the rule is what makes the explicitly-named-gitignored-
-// target rule, the never-follow-a-symlink rule and the empty-string-and-dot-mean-the-root rule hold
-// here for free and keeps them from drifting.
+// resolveSelfTarget answers a self glyph — one whose member is empty, naming its unit's whole
+// directory or file rather than anything within it — by calling r.TOC with TOCOptions{Depth: 0,
+// Symbols: &symbolsOff} where symbolsOff is a local false. The argument is unit, the self glyph's
+// Unit half, never the glyph string with its trailing "#" still attached; resolveGlyphTarget is the
+// only caller and it overwrites the returned result's Target and ID itself. Reusing the directory
+// answer rather than restating the rule is what makes the explicitly-named-gitignored-target rule,
+// the never-follow-a-symlink rule and the empty-string-and-dot-mean-the-root rule hold here for
+// free and keeps them from drifting — they are TOC's rules, inherited rather than restated.
 //
-// Disposition, in this order: a nil error sets Status to StatusFound and Dir to the address of the
-// returned DirAnswer; errors.Is(err, ErrTargetNotFound) sets Status to StatusNotFound with Dir
-// absent; errors.Is(err, ErrTargetOutsideRepo) returns an entry with Status empty and Error set to
-// the error's text and Reason empty, the second and last member of the per-entry error domain; any
-// other error is returned as this function's error and fails the whole call. TOC's two sentinels
-// are the only errors this verb converts into an answer. Target is always set to the argument; ID
-// and Unit are never set on a path result, because a path has no glyph and belongs to no unit.
+// Disposition, in this order: a nil error sets Status to StatusFound and Listing to the address of
+// the returned DirAnswer; errors.Is(err, ErrTargetNotFound) sets Status to StatusNotFound with
+// Listing absent; errors.Is(err, ErrTargetOutsideRepo) returns an entry with Status empty and Error
+// set to the error's text and Reason empty, the second and last member of the per-entry error
+// domain; any other error is returned as this function's error and fails the whole call. TOC's two
+// sentinels are the only errors this verb converts into an answer. The ErrTargetOutsideRepo arm is
+// unreachable in practice: checkGoUnit rejects a "." or ".." segment before a Glyph naming one can
+// ever exist, so unit can never escape the repository by the time it reaches here. It is kept
+// deliberately, as a defensive sentinel translation, rather than deleted — TOC's contract still
+// documents the sentinel, and this verb's job is to translate whatever TOC can return.
 //
 // Symbols are switched off explicitly rather than left to the per-target default, which would turn
-// them on for a file target: this verb answers where a thing is and whether it exists, and what is
-// inside it is the table-of-contents question. A plan card whose target is a Markdown page has no
-// symbols to want, and paying a tree-sitter parse per Go path target inside a call measured against
-// a 150 ms budget would be a cost with no consumer. A file target's answer is its enclosing
-// directory's answer holding exactly that one file entry — the shape TOC already produces — so the
-// caller can read the package and language a bare file entry would not carry.
-func (r *Repo) resolvePathTarget(target string) (ResolveResult, error) {
+// them on for a file target: a self glyph answers where a thing is, not what is inside it. A plan
+// card whose target is a Markdown page has no symbols to want, and paying a tree-sitter parse per
+// Go self target inside a call measured against a 150 ms budget would be a cost with no consumer. A
+// file target's answer is its enclosing directory's answer holding exactly that one file entry —
+// the shape TOC already produces — so the caller can read the package and language a bare file
+// entry would not carry.
+func (r *Repo) resolveSelfTarget(unit string) (ResolveResult, error) {
 	symbolsOff := false
-	dir, err := r.TOC(target, TOCOptions{Depth: 0, Symbols: &symbolsOff})
+	dir, err := r.TOC(unit, TOCOptions{Depth: 0, Symbols: &symbolsOff})
 	switch {
 	case err == nil:
-		return ResolveResult{Target: target, Status: StatusFound, Dir: &dir}, nil
+		return ResolveResult{Target: unit, Status: StatusFound, Listing: &dir}, nil
 	case errors.Is(err, ErrTargetNotFound):
-		return ResolveResult{Target: target, Status: StatusNotFound}, nil
+		return ResolveResult{Target: unit, Status: StatusNotFound}, nil
 	case errors.Is(err, ErrTargetOutsideRepo):
-		return ResolveResult{Target: target, Error: err.Error()}, nil
+		return ResolveResult{Target: unit, Error: err.Error()}, nil
 	default:
 		return ResolveResult{}, err
 	}
@@ -348,10 +376,10 @@ func (r *Repo) resolvePathTarget(target string) (ResolveResult, error) {
 // duplicate or a malformed target cannot silently vanish.
 //
 // A ResolveResult expresses either a resolution outcome or a pre-resolution rejection of the target
-// string, never an engine failure: every engine error other than the two TOC sentinels the path
-// branch converts fails the whole call, and losing the other answers is right precisely because an
-// engine failure makes the whole answer untrustworthy, unlike a malformed target, which taints only
-// itself.
+// string, never an engine failure: every engine error other than the two TOC sentinels
+// resolveSelfTarget converts fails the whole call, and losing the other answers is right precisely
+// because an engine failure makes the whole answer untrustworthy, unlike a malformed target, which
+// taints only itself.
 //
 // "Grouped by unit" is an execution property, not the output shape — the answer is flat, and each
 // distinct unit is parsed exactly once per call by the memo. The output is not grouped because a
@@ -377,20 +405,15 @@ func (r *Repo) Resolve(targets []string) ([]ResolveResult, error) {
 // test can construct one, pass it in, and read parses afterwards; Resolve itself never exposes it.
 //
 // resolve allocates a result slice of exactly len(targets), and for each target in order calls
-// resolveGlyphTarget when isGlyphTarget reports true and resolvePathTarget otherwise. Any error from
-// either fails the whole call: it returns a nil slice and that error, unwrapped further only if it
-// does not already name the target or unit it was reading. A nil targets slice yields an empty,
-// non-nil result slice and a nil error.
+// resolveGlyphTarget — every target, unconditionally, since the grammar is the only classifier and
+// a bare path with no "#" is simply a glyph glyph.Parse rejects with ReasonNoSeparator. Any error
+// from resolveGlyphTarget fails the whole call: it returns a nil slice and that error, unwrapped
+// further only if it does not already name the target or unit it was reading. A nil targets slice
+// yields an empty, non-nil result slice and a nil error.
 func (r *Repo) resolve(targets []string, m *unitMemo) ([]ResolveResult, error) {
 	results := make([]ResolveResult, len(targets))
 	for i, target := range targets {
-		var res ResolveResult
-		var err error
-		if isGlyphTarget(target) {
-			res, err = r.resolveGlyphTarget(target, m)
-		} else {
-			res, err = r.resolvePathTarget(target)
-		}
+		res, err := r.resolveGlyphTarget(target, m)
 		if err != nil {
 			return nil, err
 		}
@@ -589,6 +612,12 @@ func sameOwner(a, b []string) bool {
 // It then builds a fresh ignoreSet for the repository root carrying the root's own patterns only —
 // newIgnoreSet(r.root) followed by one extend(".") — calls symbolsOfUnit, and filters the result by
 // owner chain and name.
+//
+// A self glyph reaches this function's own inline owner-and-name filter exactly like any other
+// glyph, matching nothing — its Owner is nil and its Name is "", and no real declaration is ever
+// extracted with that empty a name — so it returns the existing empty slice with a nil error.
+// SpansOf has no status vocabulary, and "nothing matches" is exactly what an empty slice with a nil
+// error means here; a self glyph needs no branch of its own.
 func (r *Repo) SpansOf(g glyph.Glyph) ([]Symbol, error) {
 	if g.Lang != glyph.Go {
 		return nil, fmt.Errorf("engine: spans of %q: %w", g.String(), ErrLanguageUnsupported)

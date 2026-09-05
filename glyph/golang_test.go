@@ -131,14 +131,15 @@ func TestParse_GoAccept_ReceiverIsHalfTheKey(t *testing.T) {
 // left-to-right and first-failure-wins. "(*dualHandler).Handle" carries both "*" and parentheses
 // and reports ReasonMemberPointer, because the pointer check runs before the parens check. The §7
 // dotted spelling ("internal/reedengine/render.Renderer.Draw") never reaches the member checks at
-// all: it has no "#", so it fails the split.
+// all: it has no "#", so it fails the split, and Detail names the fix — the input with "#"
+// appended — the same way every other no_separator row does.
 var goReject = []rejectCase{
 	{name: "no separator", lang: Go, input: "internal/logger",
-		reason: ReasonNoSeparator, detail: ""},
+		reason: ReasonNoSeparator, detail: "internal/logger#"},
 	{name: "empty string", lang: Go, input: "",
-		reason: ReasonNoSeparator, detail: ""},
+		reason: ReasonNoSeparator, detail: "#"},
 	{name: "dotted spelling has no #", lang: Go, input: "internal/reedengine/render.Renderer.Draw", section: "7",
-		reason: ReasonNoSeparator, detail: ""},
+		reason: ReasonNoSeparator, detail: "internal/reedengine/render.Renderer.Draw#"},
 	{name: "unit empty", lang: Go, input: "#run",
 		reason: ReasonUnitEmpty, detail: ""},
 	{name: "leading slash", lang: Go, input: "/internal/logger#run",
@@ -163,8 +164,6 @@ var goReject = []rejectCase{
 		reason: ReasonUnitBadRune, detail: `' '`},
 	{name: "tab in second unit segment", lang: Go, input: "internal/lo\tgger#run",
 		reason: ReasonUnitBadRune, detail: `'\t'`},
-	{name: "member empty", lang: Go, input: "internal/logger#",
-		reason: ReasonMemberEmpty, detail: ""},
 	{name: "leading dot component", lang: Go, input: "internal/logger#.Handle",
 		reason: ReasonMemberEmptyComponent, detail: ""},
 	{name: "trailing dot component", lang: Go, input: "internal/logger#Handle.",
@@ -189,8 +188,8 @@ var goReject = []rejectCase{
 		reason: ReasonMemberPointer, detail: `'*'`},
 	{name: "pointer receiver, bare", lang: Go, input: "internal/logger#*dualHandler.Handle", section: "3",
 		reason: ReasonMemberPointer, detail: `'*'`},
-	{name: "second hash reaches the member validator", lang: Go, input: "internal/logger#a#b",
-		reason: ReasonMemberBadRune, detail: `'#'`},
+	{name: "second hash is caught by the count rule", lang: Go, input: "internal/logger#a#b",
+		reason: ReasonMultipleSeparators, detail: "internal/logger#a#b"},
 	{name: "space inside a member component", lang: Go, input: "internal/logger#A .b",
 		reason: ReasonMemberBadRune, detail: `' '`},
 	{name: "trailing space", lang: Go, input: "internal/logger#run ",

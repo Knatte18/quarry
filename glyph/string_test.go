@@ -64,6 +64,17 @@ func TestGlyph_String(t *testing.T) {
 	}
 }
 
+// TestGlyph_String_SelfForm asserts that String needs no edit for the self form: a Glyph with only
+// Unit set prints Unit + "#", by test rather than by reading, so a future edit that started
+// trimming empty parts would break this silently.
+func TestGlyph_String_SelfForm(t *testing.T) {
+	g := Glyph{Lang: Go, Unit: "a/b"}
+	want := "a/b#"
+	if got := g.String(); got != want {
+		t.Errorf("Glyph{Unit: %q}.String() = %q; want %q", g.Unit, got, want)
+	}
+}
+
 // TestGlyph_String_Zero asserts only that String does not panic on the zero Glyph.
 func TestGlyph_String_Zero(t *testing.T) {
 	var g Glyph
@@ -92,12 +103,24 @@ func TestGlyph_String_DoesNotMutateOwner(t *testing.T) {
 	}
 }
 
-// TestRoundTrip_ParseThenString asserts that, for every input in the Go accept table, Parse then
-// String returns exactly the original input. This is total over goAccept: the Go alphabet accepts
-// only the canonical spelling, so no case is carved out.
+// TestRoundTrip_ParseThenString asserts that, for every input in the Go accept table and every
+// self-form input in selfAccept, Parse then String returns exactly the original input. This is
+// total over goAccept: the Go alphabet accepts only the canonical spelling, so no case is carved
+// out.
 func TestRoundTrip_ParseThenString(t *testing.T) {
 	for _, tt := range goAccept {
 		t.Run(tt.name+"/"+tt.section, func(t *testing.T) {
+			g, err := Parse(Go, tt.input)
+			if err != nil {
+				t.Fatalf("Parse(Go, %q) error = %v; want nil", tt.input, err)
+			}
+			if got := g.String(); got != tt.input {
+				t.Errorf("Parse(Go, %q).String() = %q; want %q", tt.input, got, tt.input)
+			}
+		})
+	}
+	for _, tt := range selfAccept {
+		t.Run("self/"+tt.name, func(t *testing.T) {
 			g, err := Parse(Go, tt.input)
 			if err != nil {
 				t.Fatalf("Parse(Go, %q) error = %v; want nil", tt.input, err)
