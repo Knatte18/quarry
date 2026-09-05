@@ -303,6 +303,9 @@ func runTOC(req request, root, base string, stdout, stderr io.Writer) int {
 		if errors.Is(err, quarry.ErrTargetOutsideRepo) {
 			return fail(stdout, stderr, exitNegative, "target outside repository: "+req.target, false)
 		}
+		if errors.Is(err, quarry.ErrTargetHasSeparator) {
+			return fail(stdout, stderr, exitUsage, "target contains the glyph separator \"#\": "+req.target, true)
+		}
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
 
