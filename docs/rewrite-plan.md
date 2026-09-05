@@ -9,10 +9,10 @@ this file's git history.
 
 ## 1. What quarry is
 
-One identifier — the glyph, `unit#member` — and three queries over one tree-sitter parse:
+One identifier — the glyph, `unit#member` — and four queries over one tree-sitter parse:
 `toc` (what is here), `resolve` (where is this, right now), `expand` (what does this type
-consist of). Go only. No daemon, no index, no cache: every answer reads the source as it is at
-that moment. Quarry reads; it never edits.
+consist of), `delta` (what changed between two versions). Go only. No daemon, no index, no
+cache: every answer reads the source as it is at that moment. Quarry reads; it never edits.
 
 Surfaces, in order of importance: the `glyph` package (importable without the engine, Loomyard's
 plan parser first); the `quarry/` Go facade (the primary consumer is Go code, never the LLM);
@@ -112,6 +112,18 @@ toc.
 answer of §4. One target per call. A `#` in any path segment is rejected as an explicit error,
 never reclassified as a glyph.
 
+**`delta <target> --from <rev> [--to <rev>]`** — what changed in the symbol table between two
+versions of a target, with the after side defaulting to the working tree when `--to` is
+omitted. It never parses a textual diff; it extracts a symbol table on each side with the same
+extractor the other three queries use and compares the two tables, reporting every created,
+deleted and modified symbol. A rename is reported two ways, never one: the exact tier asserts a
+pair only when the deleted and created symbols' bodies and signatures agree token-for-token
+modulo the renamed identifier and the match is unique on both sides, removing the pair from
+created and deleted; the evidence tier reports every other structurally-plausible pair — same
+unit, same owner, same kind, different name — as a candidate carrying its mechanical signals,
+deciding nothing. No threshold, no score cut-off and no similarity value gates any outcome
+anywhere in `delta`.
+
 **No reference query in phase 1.** A textual search on a shared name never returns zero and
 its hits mean nothing; on a unique name grep is as good. Anything about callers waits for the
 type checker: at a call site `x.Run()` the receiver type is not in the syntax, and guessing is
@@ -153,8 +165,9 @@ in one facade `Resolve` call.
 **Mechanical use, no LLM:** the execution DAG (`Uses` ∩ targets, every edge checkable);
 done-checks per card (a Create that does not resolve is not done; a Delete that still resolves
 is not done); plan-pack generation (resolved spans injected at dispatch, re-resolved, never
-cached); diff-to-symbols; documentation drift; repository invariants (every package a doc,
-every exported symbol a doc).
+cached); `delta` between the changed files' before and after versions, so a review gate reads a
+symbol-table change instead of a textual diff; documentation drift; repository invariants
+(every package a doc, every exported symbol a doc).
 
 **LLM use:** only through the same surfaces, and only tools a ladder cell measures. The
 planner's settled set is `toc` plus Loomyard's validator; everything else is a ladder question.
