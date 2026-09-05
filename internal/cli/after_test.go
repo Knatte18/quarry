@@ -1,12 +1,12 @@
-// after_test.go pins the fifteen docs/research/output-formats/after/ files as goldens: one real
+// after_test.go pins the fifteen testdata/ golden files as goldens: one real
 // invocation of Run, in-process, against a Loomyard checkout at loomyardPin, compared byte for
 // byte against the committed golden. These fifteen files are also the task's committed evidence —
 // the golden fixture and the regression gate are the same artifact. The table spans three verbs —
 // toc, resolve, and expand — and each row carries its own expected exit code: the expected code
-// lives here, in the table, and in docs/research/output-formats/after/INDEX.md, never in a trailer
+// lives here, in the table, and in testdata/INDEX.md, never in a trailer
 // inside a golden file itself.
 //
-// TestAfterGoldens is named so that "-run TestAfter -update" (docs/research/output-formats/after's
+// TestAfterGoldens is named so that "-run TestAfter -update" (testdata/INDEX.md's
 // own regeneration instructions) matches it by prefix: a differently named function would make that
 // -update run a silent no-op that produces no files at all, which is why the name and the
 // regeneration command are load-bearing on each other and must not be changed independently.
@@ -18,7 +18,7 @@
 // file and loomyard_test.go / cli.go must not be changed independently of each other.
 //
 // This file opens a deliberate red window with the batch it ships in: it compares against
-// after/toc-dir.txt and the other eleven golden files before the card that creates the eight new
+// testdata/toc-dir.txt and the other eleven golden files before the card that creates the eight new
 // ones has run, so on a machine with the pinned checkout "go test ./internal/cli/..." fails on a
 // missing golden between this card's commit and the next one's. That window is expected and
 // bounded to within the batch — the batch's own verify only runs once every card has landed — and
@@ -47,7 +47,7 @@ type afterGoldenCase struct {
 	exitCode   int
 }
 
-// afterGoldenCases is docs/research/output-formats/after/'s own table: which golden file each
+// afterGoldenCases is testdata/INDEX.md's own table: which golden file each
 // invocation produces, the exact invocation-line suffix it records, and the exit code Run is
 // expected to return. Each row spells its own suffix literally, rather than deriving it from
 // verbArgs, so a machine-specific --root cannot leak into a committed golden by construction.
@@ -183,13 +183,12 @@ func TestAfterGoldens(t *testing.T) {
 	}
 }
 
-// compareAfterGolden compares got byte for byte against
-// docs/research/output-formats/after/name, or — under -update — writes got to that path,
-// creating the after/ directory if it does not yet exist.
+// compareAfterGolden compares got byte for byte against testdata/name, or — under -update —
+// writes got to that path, creating the testdata/ directory if it does not yet exist.
 func compareAfterGolden(t *testing.T, name, got string) {
 	t.Helper()
 
-	path := filepath.Join("..", "..", "docs", "research", "output-formats", "after", name)
+	path := filepath.Join("testdata", name)
 
 	if *updateGoldens {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

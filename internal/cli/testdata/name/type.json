@@ -1,0 +1,6 @@
+{
+  "unit": "pkg",
+  "target": "type Widget struct{}",
+  "id": "pkg#Widget",
+  "kind": "type"
+}

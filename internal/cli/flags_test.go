@@ -153,9 +153,9 @@ func TestParseArgs_UsageErrors(t *testing.T) {
 		{"unknown-flag", []string{"toc", "--depht", "t"}, "unknown flag: --depht"},
 		{"missing-target", []string{"toc"}, "toc takes exactly one target, got 0"},
 		{"two-targets", []string{"toc", "a", "b"}, "toc takes exactly one target, got 2"},
-		{"missing-verb", []string{}, "no verb given; expected: toc, resolve, expand, or delta"},
+		{"missing-verb", []string{}, "no verb given; expected: toc, resolve, expand, delta, or name"},
 		{"unknown-verb", []string{"bogus", "t"}, "unknown verb: bogus"},
-		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc, resolve, expand, or delta"},
+		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc, resolve, expand, delta, or name"},
 		{"depth-not-valid-for-resolve", []string{"resolve", "--depth", "3", "t"}, "--depth is not valid for resolve"},
 		{"depth-not-valid-for-resolve-bad-value", []string{"resolve", "--depth", "x", "t"}, "--depth is not valid for resolve"},
 		{"symbols-not-valid-for-resolve", []string{"resolve", "--symbols", "t"}, "--symbols is not valid for resolve"},
@@ -167,6 +167,17 @@ func TestParseArgs_UsageErrors(t *testing.T) {
 		{"resolve-two-targets", []string{"resolve", "a", "b"}, "resolve takes exactly one target, got 2"},
 		{"expand-missing-target", []string{"expand"}, "expand takes exactly one target, got 0"},
 		{"expand-two-targets", []string{"expand", "a#b", "c#d"}, "expand takes exactly one target, got 2"},
+		{"unit-not-valid-for-toc", []string{"toc", "--unit", "u", "t"}, "--unit is not valid for toc"},
+		{"unit-not-valid-for-resolve", []string{"resolve", "--unit", "u", "t"}, "--unit is not valid for resolve"},
+		{"unit-not-valid-for-expand", []string{"expand", "--unit", "u", "t#u"}, "--unit is not valid for expand"},
+		{"root-not-valid-for-name", []string{"name", "--unit", "u", "--root", "/repo", "t"}, "--root is not valid for name"},
+		{"depth-not-valid-for-name", []string{"name", "--unit", "u", "--depth", "3", "t"}, "--depth is not valid for name"},
+		{"symbols-not-valid-for-name", []string{"name", "--unit", "u", "--symbols", "t"}, "--symbols is not valid for name"},
+		{"no-symbols-not-valid-for-name", []string{"name", "--unit", "u", "--no-symbols", "t"}, "--no-symbols is not valid for name"},
+		{"unit-no-value", []string{"name", "--unit"}, "--unit requires a value"},
+		{"name-missing-unit", []string{"name", "t"}, "--unit is required for name"},
+		{"name-missing-target", []string{"name", "--unit", "u"}, "name takes exactly one target, got 0"},
+		{"name-two-targets", []string{"name", "--unit", "u", "a", "b"}, "name takes exactly one target, got 2"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -215,10 +226,11 @@ func TestParseArgs_SingleDashHole(t *testing.T) {
 	}
 }
 
-// TestParseArgs_ThreeVerbGate pins that all four verbs are accepted and land in req.verb
+// TestParseArgs_FiveVerbGate pins that all five verbs are accepted and land in req.verb
 // unchanged, with no target-shape rejection for the verbs that do not require one. The name is
-// unchanged from when the gate accepted three verbs; the table below is what now asserts four.
-func TestParseArgs_ThreeVerbGate(t *testing.T) {
+// unchanged from when the gate accepted three, then four, verbs; the table below is what now
+// asserts five.
+func TestParseArgs_FiveVerbGate(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -228,6 +240,7 @@ func TestParseArgs_ThreeVerbGate(t *testing.T) {
 		{"resolve", []string{"resolve", "t"}, "resolve"},
 		{"expand", []string{"expand", "t#u"}, "expand"},
 		{"delta", []string{"delta", "--from", "HEAD", "t"}, "delta"},
+		{"name", []string{"name", "--unit", "u", "t"}, "name"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -255,9 +268,11 @@ func TestParseArgs_ExpandAcceptsHashBearingTarget(t *testing.T) {
 	}
 }
 
-// TestParseArgs_TextAndRootValidForAllVerbs pins that --text and --root are accepted on every
-// verb, unlike --depth, --symbols, --no-symbols, --from and --to.
-func TestParseArgs_TextAndRootValidForAllVerbs(t *testing.T) {
+// TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs pins that --text is accepted on every verb,
+// while --root is accepted on the four repository verbs only, unlike --depth, --symbols and
+// --no-symbols, which are toc only, --from and --to, which are delta only, and --unit, which name
+// alone requires.
+func TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -270,11 +285,40 @@ func TestParseArgs_TextAndRootValidForAllVerbs(t *testing.T) {
 		{"expand-root", []string{"expand", "--root", "/repo", "t#u"}},
 		{"delta-text", []string{"delta", "--from", "HEAD", "--text", "t"}},
 		{"delta-root", []string{"delta", "--from", "HEAD", "--root", "/repo", "t"}},
+		{"name-text", []string{"name", "--unit", "u", "--text", "t"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := parseArgs(tt.args); err != nil {
 				t.Errorf("parseArgs(%v) = _, %v; want nil error", tt.args, err)
+			}
+		})
+	}
+}
+
+// TestParseArgs_NameUnitAndTarget pins that a name invocation's --unit and target land in the
+// request unchanged, in both the space-separated and the --unit=value equals forms.
+func TestParseArgs_NameUnitAndTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantUnit   string
+		wantTarget string
+	}{
+		{"space-separated", []string{"name", "--unit", "pkg", "func F() error"}, "pkg", "func F() error"},
+		{"equals-form", []string{"name", "--unit=pkg", "func F() error"}, "pkg", "func F() error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseArgs(tt.args)
+			if err != nil {
+				t.Fatalf("parseArgs(%v) = _, %v; want nil error", tt.args, err)
+			}
+			if got.unit != tt.wantUnit {
+				t.Errorf("parseArgs(%v).unit = %q; want %q", tt.args, got.unit, tt.wantUnit)
+			}
+			if got.target != tt.wantTarget {
+				t.Errorf("parseArgs(%v).target = %q; want %q", tt.args, got.target, tt.wantTarget)
 			}
 		})
 	}

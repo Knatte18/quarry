@@ -204,3 +204,31 @@ type RootNotTopLevelError = gitsrc.RootNotTopLevelError
 // imports internal/gitsrc — the same transitivity argument RootNotTopLevelError's own doc comment
 // makes above.
 type UnknownRevisionError = gitsrc.UnknownRevisionError
+
+// Declaration is an alias for engine.Declaration, not a defined type. Go enforces the internal rule
+// on import paths, not on types reached through an alias, so an external importer can name the
+// maker's input shape without importing internal/engine.
+type Declaration = engine.Declaration
+
+// NameResult is an alias for engine.NameResult, not a defined type, for the same reason Declaration
+// is: it makes the maker's answer shape nameable without importing internal/engine.
+type NameResult = engine.NameResult
+
+// The four reason words the maker itself produces, aliased from the engine so a caller can name them
+// without importing internal/engine.
+const (
+	// NameReasonParse marks a declaration head that still does not parse after the completion retry.
+	NameReasonParse = engine.NameReasonParse
+	// NameReasonNoDeclaration marks a declaration head that declares no symbol.
+	NameReasonNoDeclaration = engine.NameReasonNoDeclaration
+	// NameReasonSeveralDeclarations marks a declaration head that declares more than one symbol.
+	NameReasonSeveralDeclarations = engine.NameReasonSeveralDeclarations
+	// NameReasonInternal marks a failure with no cause in the caller's own input: an unwired grammar,
+	// a tree-sitter error, or an extractor invariant violated.
+	NameReasonInternal = engine.NameReasonInternal
+)
+
+// NameReasons is the engine's own NameReasons value, not a copy, so a caller enumerating the
+// vocabulary and the engine's own test are reading one slice, for the same reason the error-sentinel
+// vars above are the engine's own values.
+var NameReasons = engine.NameReasons
