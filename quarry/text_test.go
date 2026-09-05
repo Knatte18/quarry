@@ -4,6 +4,8 @@
 package quarry
 
 import (
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -468,6 +470,251 @@ func TestRenderExpandText(t *testing.T) {
 			}
 			assertNoTrailingWhitespaceAndOneNewline(t, got)
 		})
+	}
+}
+
+// TestRenderDeltaText asserts the exact rendered string for a hand-built GitDeltaAnswer exercising
+// every section RenderDeltaText's grammar defines: a file echo carrying each disposition and both
+// lossy flags, a created symbol, a deleted symbol, a modified entry naming several changed dimensions
+// with a multi-occurrence before and after array, a renamed pair, and a candidate entry with every
+// signal. It also asserts the two invariants RenderDeltaText promises: no trailing whitespace on any
+// line and exactly one closing newline.
+func TestRenderDeltaText(t *testing.T) {
+	to := "def456"
+	a := GitDeltaAnswer{
+		From: "abc123",
+		To:   &to,
+		DeltaAnswer: DeltaAnswer{
+			Files: []DeltaFile{
+				{Path: "pkg/added.go", Disposition: DispositionAdded},
+				{Path: "pkg/removed.go", Disposition: DispositionRemoved},
+				{Path: "pkg/a.go", Disposition: DispositionChanged, LossyBefore: true, LossyAfter: true},
+				{Path: "pkg/bad.go", Disposition: DispositionError, Error: "line one\nline two"},
+			},
+			Created: []Symbol{
+				{ID: "pkg#New", Kind: KindFunction, File: "pkg/a.go", Start: 1, End: 2, Signature: "func New()"},
+			},
+			Deleted: []Symbol{
+				{ID: "pkg#Gone", Kind: KindFunction, File: "pkg/a.go", Start: 3, End: 4, Signature: "func Gone()"},
+			},
+			Modified: []ModifiedSymbol{
+				{
+					ID:      "pkg#init",
+					Kind:    KindFunction,
+					Changed: []ChangedDimension{ChangedBody, ChangedSignature, ChangedDoc, ChangedFile},
+					Before: []SymbolLocation{
+						{File: "pkg/a.go", Start: 5, SigEnd: 6, End: 7},
+						{File: "pkg/a.go", Start: 20, End: 21},
+					},
+					After: []Symbol{
+						{ID: "pkg#init", Kind: KindFunction, File: "pkg/b.go", Start: 9, End: 12, SigEnd: 10, Signature: "func init()"},
+						{ID: "pkg#init", Kind: KindFunction, File: "pkg/b.go", Start: 30, End: 31, Signature: "func init()"},
+					},
+				},
+			},
+			Renamed: []RenamedPair{
+				{
+					From: Symbol{ID: "pkg#OldName", Kind: KindFunction, File: "pkg/a.go", Start: 8, End: 9, Signature: "func OldName()"},
+					To:   Symbol{ID: "pkg#NewName", Kind: KindFunction, File: "pkg/a.go", Start: 10, End: 11, Signature: "func NewName()"},
+				},
+			},
+			RenameCandidates: []RenameCandidateEntry{
+				{
+					ID:   "pkg#Deleted2",
+					Kind: KindFunction,
+					Candidates: []RenameCandidate{
+						{
+							ID:   "pkg#Created2",
+							Kind: KindFunction,
+							File: "pkg/a.go",
+							Signals: RenameSignals{
+								SignatureIdenticalModuloName: true,
+								BodyTokenSimilarity:          0.75,
+								BodyTokensBefore:             10,
+								BodyTokensAfter:              12,
+								DocIdentical:                 false,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	want := "from abc123 to def456\n" +
+		"\n" +
+		"files:\n" +
+		"pkg/added.go added\n" +
+		"pkg/removed.go removed\n" +
+		"pkg/a.go changed [lossy_before] [lossy_after]\n" +
+		"pkg/bad.go error [error line one line two]\n" +
+		"\n" +
+		"created:\n" +
+		"function pkg/a.go:1-2 pkg#New: func New()\n" +
+		"\n" +
+		"deleted:\n" +
+		"function pkg/a.go:3-4 pkg#Gone: func Gone()\n" +
+		"\n" +
+		"modified:\n" +
+		"pkg#init function changed:body,signature,doc,file\n" +
+		"before pkg/a.go:5-7 (sig 5-6)\n" +
+		"before pkg/a.go:20-21\n" +
+		"after function pkg/b.go:9-12 (sig 9-10) pkg#init: func init()\n" +
+		"after function pkg/b.go:30-31 pkg#init: func init()\n" +
+		"\n" +
+		"renamed:\n" +
+		"from function pkg/a.go:8-9 pkg#OldName: func OldName()\n" +
+		"to function pkg/a.go:10-11 pkg#NewName: func NewName()\n" +
+		"\n" +
+		"rename_candidates:\n" +
+		"pkg#Deleted2 function\n" +
+		"candidate function pkg#Created2 pkg/a.go signals sig_identical=true body_similarity=0.75 body_tokens_before=10 body_tokens_after=12 doc_identical=false\n"
+
+	got := RenderDeltaText(a)
+	if got != want {
+		t.Errorf("RenderDeltaText() = %q; want %q", got, want)
+	}
+	assertNoTrailingWhitespaceAndOneNewline(t, got)
+}
+
+// TestRenderDeltaText_Lossless asserts losslessness structurally rather than by eye: every value
+// present in the JSON view of a fully populated GitDeltaAnswer appears somewhere in the text view,
+// including each signal's value and each changed dimension's word. It also covers the case that makes
+// the kind load-bearing — a const replaced by a var of the same name, giving one created and one
+// deleted symbol with an identical identifier and differing kinds, asserted to render as two
+// distinguishable records — a case whose doc text spans several lines and contains runs of whitespace,
+// asserted collapsed to single spaces, and a case whose after-side revision is the working tree,
+// asserted to render the explicit word rather than an empty field.
+func TestRenderDeltaText_Lossless(t *testing.T) {
+	a := GitDeltaAnswer{
+		From: "abc123",
+		// To is nil: the after side is the working tree.
+		DeltaAnswer: DeltaAnswer{
+			Files: []DeltaFile{
+				{Path: "pkg/a.go", Disposition: DispositionChanged, LossyBefore: true, LossyAfter: true},
+			},
+			// A const replaced by a var of the same identifier: one created and one deleted symbol
+			// sharing an ID, differing only in Kind. Without the kind prefix these two lines would be
+			// indistinguishable.
+			Created: []Symbol{
+				{ID: "pkg#Same", Kind: KindVar, File: "pkg/a.go", Start: 1, End: 1, Signature: "var Same = 1",
+					Doc: "Same is a value.\nIt   has   whitespace."},
+			},
+			Deleted: []Symbol{
+				{ID: "pkg#Same", Kind: KindConst, File: "pkg/a.go", Start: 2, End: 2, Signature: "const Same = 1"},
+			},
+			Modified: []ModifiedSymbol{
+				{
+					ID:      "pkg#Changed",
+					Kind:    KindFunction,
+					Changed: []ChangedDimension{ChangedBody},
+					Before:  []SymbolLocation{{File: "pkg/a.go", Start: 3, End: 4}},
+					After:   []Symbol{{ID: "pkg#Changed", Kind: KindFunction, File: "pkg/a.go", Start: 3, End: 5, Signature: "func Changed()"}},
+				},
+			},
+			Renamed: []RenamedPair{
+				{
+					From: Symbol{ID: "pkg#OldName", Kind: KindFunction, File: "pkg/a.go", Start: 8, End: 9, Signature: "func OldName()"},
+					To:   Symbol{ID: "pkg#NewName", Kind: KindFunction, File: "pkg/a.go", Start: 10, End: 11, Signature: "func NewName()"},
+				},
+			},
+			RenameCandidates: []RenameCandidateEntry{
+				{
+					ID:   "pkg#Deleted2",
+					Kind: KindFunction,
+					Candidates: []RenameCandidate{
+						{
+							ID:   "pkg#Created2",
+							Kind: KindFunction,
+							File: "pkg/a.go",
+							Signals: RenameSignals{
+								SignatureIdenticalModuloName: true,
+								BodyTokenSimilarity:          0.625,
+								BodyTokensBefore:             7,
+								BodyTokensAfter:              9,
+								DocIdentical:                 true,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	jsonBytes, err := RenderDeltaJSON(a)
+	if err != nil {
+		t.Fatalf("RenderDeltaJSON() error = %v", err)
+	}
+	text := RenderDeltaText(a)
+	assertNoTrailingWhitespaceAndOneNewline(t, text)
+
+	if !strings.Contains(text, "working tree") {
+		t.Errorf("RenderDeltaText() = %q; want the explicit \"working tree\" word for a nil To", text)
+	}
+
+	// Both the created var and the deleted const must be distinguishable: their shared identifier
+	// each appears once per kind word.
+	if !strings.Contains(text, "var pkg/a.go:1-1 pkg#Same") {
+		t.Errorf("RenderDeltaText() = %q; want the created entry's kind (var) to distinguish it", text)
+	}
+	if !strings.Contains(text, "const pkg/a.go:2-2 pkg#Same") {
+		t.Errorf("RenderDeltaText() = %q; want the deleted entry's kind (const) to distinguish it", text)
+	}
+
+	// The multi-line, whitespace-heavy doc collapses to single spaces, losing no words.
+	if !strings.Contains(text, "Same is a value. It has whitespace.") {
+		t.Errorf("RenderDeltaText() = %q; want the doc collapsed to single spaces with no words dropped", text)
+	}
+
+	// Every JSON-carried value must appear somewhere in the text view, decoded generically rather
+	// than compared against a hand-written string, so this assertion cannot silently drift from the
+	// answer's own shape.
+	var decoded map[string]any
+	if err := json.Unmarshal(jsonBytes, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(RenderDeltaJSON()) error = %v", err)
+	}
+	for _, v := range collectJSONScalars(decoded) {
+		if !strings.Contains(text, v) {
+			t.Errorf("RenderDeltaText() = %q; missing JSON-carried value %q", text, v)
+		}
+	}
+}
+
+// collectJSONScalars walks a decoded JSON value (as produced by json.Unmarshal into `any`) and
+// returns the string form of every scalar leaf it holds: strings verbatim, numbers formatted with
+// strconv.FormatFloat('f', -1, 64) exactly as RenderDeltaText's own signals line does, and bools as
+// "true"/"false". Keys, nulls and structural values contribute nothing, since a text view is not
+// required to spell a JSON key verbatim — only every carried value.
+func collectJSONScalars(v any) []string {
+	switch val := v.(type) {
+	case string:
+		if val == "" {
+			return nil
+		}
+		// Normalised the same way RenderDeltaText itself normalises every doc, signature and error
+		// value before printing: a raw multi-line or whitespace-heavy JSON string, such as a
+		// docstring, is never expected to survive the text view's own newlines and runs of
+		// whitespace collapsed to single spaces, so this check compares against the same normalised
+		// form the renderer actually emits.
+		return []string{normalizeProse(val)}
+	case float64:
+		return []string{strconv.FormatFloat(val, 'f', -1, 64)}
+	case bool:
+		return []string{strconv.FormatBool(val)}
+	case map[string]any:
+		var out []string
+		for _, child := range val {
+			out = append(out, collectJSONScalars(child)...)
+		}
+		return out
+	case []any:
+		var out []string
+		for _, child := range val {
+			out = append(out, collectJSONScalars(child)...)
+		}
+		return out
+	default:
+		return nil
 	}
 }
 
