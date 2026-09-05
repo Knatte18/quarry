@@ -1,9 +1,10 @@
-$ quarry resolve internal/logger/logger.go
+$ quarry resolve internal/logger/logger.go#
 
 {
-  "target": "internal/logger/logger.go",
+  "target": "internal/logger/logger.go#",
+  "id": "internal/logger/logger.go#",
   "status": "found",
-  "dir": {
+  "listing": {
     "dir": "internal/logger",
     "package": "logger",
     "language": "go",

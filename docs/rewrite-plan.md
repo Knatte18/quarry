@@ -77,8 +77,15 @@ Every command, every surface, the same shape:
   argument, `false` for a directory).
 - **`toc` lists every non-gitignored file, not only source.** A file without a language gets
   `name` and a `header` from wherever its format keeps one; never `symbols`. The alphabet is
-  chosen per file, never per repository. A target without `#` is a path; with `#`, a glyph.
-- **Glyphs as keys in every output**, under `id`. What `toc` lists is what `resolve` takes.
+  chosen per file, never per repository. `toc` takes a path; `resolve` takes a glyph, and a
+  trailing `#` addresses a unit or a file as itself.
+- **Glyphs as keys in every output**, under `id`. `toc`'s file and directory entries carry no
+  identifier of their own — only a symbol entry does — so once `resolve` takes glyphs only, a
+  consumer holding a listing cannot feed a file entry back to `resolve` without concatenating the
+  directory, a slash, the name and a `#` by hand, which is the printing the one-implementation
+  rule forbids outside package `glyph`. The round trip is made two ways instead: a symbol entry's
+  `id` is already a glyph, and a file or directory entry's self glyph is built from its path with
+  the `Self` constructor.
 - **JSON is the contract** for CLI and facade; the MCP `content[].text` block is a lossless text
   view of the same data. MCP spells whole-tree depth `-1` where the CLI says `--depth all`.
 
@@ -87,13 +94,14 @@ The byte-level record of every output shape is `docs/research/output-formats/aft
 
 ## 5. The queries
 
-**`resolve <glyph|path>`** — location(s) and status, one target per CLI call (one invocation,
+**`resolve <glyph>`** — location(s) and status, one target per CLI call (one invocation,
 one answer, one exit code); the facade keeps the engine's multi-target `Resolve(targets
 []string)` so the validator (§7) batches many glyphs, grouped by unit, each unit parsed once.
-A `not_found` says whether the *unit* exists (`unit: found|not_found`) — a Create card needs
-the first, a typo produces the second. Negative answers render the payload (`unit`,
-`candidates`, `reason`) with exit 1; the error envelope is only for usage/internal errors with
-no payload.
+A bare path is rejected pre-resolution with a message naming the fix — append the trailing `#`;
+that trailing `#` is how a whole file is a plan target. A `not_found` says whether the *unit*
+exists (`unit: found|not_found`) — a Create card needs the first, a typo produces the second.
+Negative answers render the payload (`unit`, `candidates`, `reason`) with exit 1; the error
+envelope is only for usage/internal errors with no payload.
 
 **`expand <glyph>`** — the type's head plus every member with location, sorted by file and
 line. `toc`'s question asked of an owner instead of a container; it stays a separate verb, and
@@ -101,7 +109,8 @@ line. `toc`'s question asked of an owner instead of a container; it stays a sepa
 toc.
 
 **`toc <dir|file> [--depth N|all] [--symbols]`** — a table of contents over the recursive
-answer of §4. One target per call.
+answer of §4. One target per call. A `#` in any path segment is rejected as an explicit error,
+never reclassified as a glyph.
 
 **No reference query in phase 1.** A textual search on a shared name never returns zero and
 its hits mean nothing; on a unique name grep is as good. Anything about callers waits for the

@@ -1,62 +1,108 @@
 # Quarry roadmap
 
-What happens next, in order. Updated 2026-09-05, after the decisive ladder-d rerun (M3). The
-build record — what was made, by which task, in which wave — is git history (`archive/<slug>`
-tags) and `HANDOFF.md`; this file only ever says what is ahead.
+What happens next, in order. Updated 2026-09-05. The build record — what was made, by which
+task, in which wave — is git history (`archive/<slug>` tags) and `HANDOFF.md`; this file only
+ever says what is ahead.
 
-**The standing rule:** nothing is built without a measured win behind it. M1 enforced it further:
-a breadth matrix across three shapes — the negative control, multi-package exploration, and
-whole-repo cold-start orientation — found no shape where directory-level `toc` separates from its
-control on any cost metric at n=5
-(`bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md`), so the build queue stops
-until measurement says where — or whether — the surface pays. M3 then took that matrix's one live
-shape to a predeclared n=15 and found no separation there either
-(`bench/loomyard-eval/ladder/results/2026-09-05-ladder-d/conclusion.md`).
+**The standing rule:** nothing is built without a measured win behind it. The 2026-09
+measurement programme closed negative for quarry as a *mid-session agent tool* (three
+conclusions: `results/2026-09-04-toc`, `results/2026-09-04-breadth`,
+`results/2026-09-05-ladder-d` — each root stands alone); quarry's remaining value is the
+*function* track: the glyph as Loomyard's plan alphabet, and mechanical uses with no LLM in
+the loop.
 
-## Parked
+## The order of work
 
-**T8, the type checker** (`impact`, `assert-no-callers`, `verified`, the DAG tightening) is
-parked, not cancelled. It unparks on either of:
+**1. C1 — `glyph-self-form` (in flight).** The contract adjustments (trailing-`#` self form,
+resolve-takes-glyphs-only, separator rejection, `dir`→`listing`, the compose API in
+`glyph/`), settled before Loomyard consumes the envelope. Worker active; discussion approved
+2026-09-05.
 
-- ~~a measured win that re-establishes the surface's value to an agent~~ — **closed 2026-09-05.**
-  The breadth matrix found no separation in any of three shapes at n=5
-  (`bench/loomyard-eval/ladder/results/2026-09-04-breadth/conclusion.md`), and the decisive rerun
-  of its one live shape — ladder d, whole-repo cold-start orientation, at a predeclared n=15 with
-  a predeclared one-sided Mann–Whitney U — rejects nothing on either predeclared metric (turns
-  U=105, p≈0.375; cost_usd U=92, p≈0.198; critical U≤72), with the cost_usd median now pointing
-  slightly *against* the hypothesis
-  (`bench/loomyard-eval/ladder/results/2026-09-05-ladder-d/conclusion.md`): the surface does not
-  pay at any measured shape or n, so this condition can no longer be met by measurement already
-  in scope, or
-- an explicit re-justification by *function* — the §8.1 validator's Delete gate needs
-  `assert-no-callers` regardless of agent token costs — recorded here as the reason, in its own
-  words, before the task is written.
+**2. M4 — `ladder-kickstart` (in flight).** The push-mode bench: pre-resolved glyph pack in
+the prompt vs names-only and whole-file controls, predeclared Mann–Whitney n=10. Decides
+whether kick-start pack injection joins the Loomyard adoption; everything else in the
+adoption is mechanical and independent of the result. Carries the harness `mkdir -p`
+results-root fix. Worker active; discussion in review-fix round. If — and only if — e1
+separates, an edit-task variant (M4b: agent revising code in a throwaway worktree) becomes a
+candidate follow-up.
 
-Whether that leaves T8 parked, or whether the second condition is enough on its own, is the
-operator's call — not decided here. Its open decision (gopls vs `go/packages` in-process) is
-decided when it unparks, not before.
+**3. The plan-alphabet primitives.** Three plan-unaware surfaces, built here as ordinary
+quarry tasks. No dependency on Loomyard — quarry imports nothing from it, and the
+consumer-blindness worry that would argue for waiting is already answered: their
+requirements are fixed in detail by the orchestration design recorded in Loomyard issue
+#226. The one real ordering constraint is internal: **after C1 merges** (they emit and
+consume the envelope and self-forms C1 changes). Any order among the three; in parallel
+with or ahead of the Loomyard adoption:
+
+- **3a. The `glyphs` verb — the planner's index.** A flat projection of the complete toc
+  answer — one line per symbol: `id`, kind, file, span; no doc, no signature, no recursive
+  envelope. Design principles to keep: extraction stays complete underneath ("views filter;
+  no view is ever forced"); the base `toc` carries the full flag set (`--view`, `--depth`,
+  `--symbols`); named verbs are frozen flag presets over that one query — `quarry glyphs
+  <target>` rewrites argv and runs the exact same code path as its `toc` flag expansion,
+  enforced by a golden test requiring byte-identical output, never a parallel
+  implementation. Same pattern in the facade (`Glyphs()`) and MCP (only presets exposed as
+  tools). Exact preset values are decided in the task's discussion. Lossy-by-design is safe
+  here because the consumer only looks up spellings, never answers from the view (V1's
+  measured 0.96→0.82 precision drop came from agents *answering* from a lossy view).
+
+- **3b. The glyph-maker (declaration → glyph).** Input per entry: a unit plus an intended
+  declaration head (`func (f *Focus) Reset() error`); output: the glyph that declaration
+  will have, plus kind, in the standard envelope. Facade form is batched from the start
+  (all of a plan's Create declarations in one call, per-entry status, `target` echo — the
+  resolve pattern; the CLI mirrors one target per call as always). The load-bearing
+  requirement: the maker wraps the fragment in a synthetic in-memory file and parses it
+  with the SAME extractor that later reads the real code — prediction and eventual
+  extraction are the same function by construction; never a parallel naming rulebook.
+  Tree-sitter does not type-check, so declarations referencing types the same plan creates
+  parse fine. Carries C# for free (parameter lists are part of the glyph there). Placement:
+  needs tree-sitter, so engine/facade/CLI — the `glyph` package stays cgo-free for Loomyard
+  import. Stretches "quarry reads, never edits" only in that the input is a supplied
+  fragment; it still only reads.
+
+- **3c. Diff-to-symbols.** Never parses a textual diff — double extraction + symbol-table
+  comparison: extract both versions of each changed file with the same extractor toc uses,
+  compare tables (after-only → created, before-only → deleted, both-but-different tokens →
+  modified). Layered input: the core takes (path, before-bytes, after-bytes) pairs and
+  knows nothing about git; a thin convenience layer (CLI `--from R1 --to R2`) runs
+  `git diff --name-only` + `git show` — git only avoids extracting untouched files,
+  correctness lives in the table comparison; the after side may be the working tree.
+  Output adds **renamed**, detected in two sharply separated tiers: **exact** (deleted D
+  and created C, same owner/unit, body token streams identical modulo the renamed
+  identifier — AST-exact, no threshold, quarry asserts it) and **evidence** (the body also
+  changed; candidates with similarity signals, quarry decides nothing — the `ambiguous`
+  philosophy: never a silent pick).
+
+**4. In parallel, not quarry work: Loomyard adopts glyphs (Loomyard issue #226).** Work in
+Loomyard's repository, starts once C1 has merged the contract it consumes; runs alongside
+point 3, not after it. The full orchestration design settled with the operator 2026-09-05
+lives in issue #226; in brief: planparser imports `glyph`; one batched `Resolve` per plan
+draft validates everything; the hard rule that the LLM never spells a glyph (existing
+symbols are copied from quarry answers, new symbols get tentative `plan:<expected-glyph>`
+handles canonicalized by the pipeline via the glyph-maker); DAG on handles with binding at
+done from diff-to-symbols; drift detection with exact-tier auto-repair and evidence-tier
+review; validator reports echoing kind + signature. Quarry never sees a plan; Loomyard
+never parses code.
+
+**5. T8 — the type checker (parked).** `impact`, `assert-no-callers`, `verified`, the DAG
+tightening. Unparks only on an explicit re-justification by *function* — the validator's
+Delete gate needs `assert-no-callers` regardless of agent token costs — recorded here as
+the reason, in its own words, before the task is written. (The alternative unpark
+condition, a measured win for the agent-tool surface, closed 2026-09-05 — see the results
+roots above.) Its open decision (gopls vs `go/packages` in-process) is decided at unpark,
+not before.
+
+**6. More languages.** Python, then C#, per `docs/glyph.md` — one language per task, when
+wanted: its alphabet in `glyph/`, an extractor written fresh against the contract, its
+`expand` head, its package-doc source. Done when the T3-style round trip over a real
+repository in that language reaches 100 %.
 
 ## Small and independent, any time
 
-- Move the `docs/research/output-formats/after/` goldens to `internal/cli/testdata/` — they are
-  living test fixtures; the research directory stays a frozen record. `mill-quick` candidate.
-- Ladder harness: `mkdir -p` the results root before writing `provenance.json`. A fresh `-results`
-  path fails on rep 0 with `write provenance ...: no such file or directory`, so every new root has
-  to be created by hand first. Hit informally 2026-09-04 and again by M3.
+- Move the `docs/research/output-formats/after/` goldens to `internal/cli/testdata/` — they
+  are living test fixtures; the research directory stays a frozen record. `mill-quick`
+  candidate.
 - Wiki grooming: the completed rewrite tasks' `[done]` entries.
 - A same-config rerun of ladder a (task 01) on the OSL-1033 host, if and when it becomes
   available again — operator-coordinated; the one remaining way to isolate the host variable
-  behind T7's task-01 discrepancy. Deferred by M1, not resolved.
-
-## External (not tasks in this repository)
-
-- Loomyard adopts glyphs: `planparser` imports `glyph`, the validator calls `resolve`, the plan
-  format's spelling changes (`internal/shedrecipe#Lookup`). Unblocked since T5b merged; work in
-  Loomyard's repository.
-
-## Not tasks yet
-
-A second language (Python, then C#, per `docs/glyph.md`) becomes a task when it is wanted, one
-language per task: its alphabet in `glyph/`, an extractor written fresh against the contract,
-its `expand` head, its package-doc source. Done when the T3-style round trip over a real
-repository in that language reaches 100 %.
+  behind T7's task-01 discrepancy.

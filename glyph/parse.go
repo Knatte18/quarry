@@ -20,9 +20,13 @@ func Parse(lang Language, s string) (Glyph, error) {
 		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonInvalidUTF8}
 	}
 
+	if strings.Count(s, "#") > 1 {
+		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonMultipleSeparators, Detail: s}
+	}
+
 	unit, member, ok := splitGlyph(s)
 	if !ok {
-		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonNoSeparator}
+		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonNoSeparator, Detail: s + "#"}
 	}
 
 	switch lang {
@@ -36,7 +40,9 @@ func Parse(lang Language, s string) (Glyph, error) {
 }
 
 // splitGlyph divides s at its first "#" into unit and member. ok is false when s has no "#" at
-// all. splitGlyph is language-free: it is what every alphabet's Parse dispatch reuses.
+// all. splitGlyph is language-free: it is what every alphabet's Parse dispatch reuses. Parse calls
+// splitGlyph only after its own count check has confirmed s carries exactly one "#", so ok is false
+// here only in the zero-separator case.
 func splitGlyph(s string) (unit, member string, ok bool) {
 	return strings.Cut(s, "#")
 }

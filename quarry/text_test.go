@@ -289,8 +289,8 @@ func TestRenderText_SymbolLine_FilePrefix(t *testing.T) {
 }
 
 // TestRenderResolveText covers every branch of RenderResolveText's grammar, exercised in the same
-// order the grammar is spelled: the pre-resolution rejection branch, the glyph branch, and the path
-// branch, plus every totality guard that branch owns.
+// order the grammar is spelled: the pre-resolution rejection branch, the listing branch, the glyph
+// branch, and the reduced default branch, plus every totality guard each branch owns.
 func TestRenderResolveText(t *testing.T) {
 	sym1 := Symbol{ID: "pkg#Fn", Start: 1, End: 5, SigEnd: 2, Signature: "func Fn()"}
 	sym2 := Symbol{ID: "pkg#Fn2", Start: 7, End: 7, Signature: "func Fn2()"}
@@ -346,22 +346,58 @@ func TestRenderResolveText(t *testing.T) {
 			"pkg#Fn ambiguous\n1-5 (sig 1-2) pkg#Fn: func Fn()\n7-7 pkg#Fn2: func Fn2()\n",
 		},
 		{
-			"PathFound",
-			ResolveResult{Target: "pkg", Status: StatusFound, Dir: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
+			// Retargeted from the bare-path "PathFound" row: card 12 turns a bare path into a
+			// no_separator rejection, so this is now the self glyph naming that same directory.
+			"SelfFound",
+			ResolveResult{Target: "pkg#", ID: "pkg#", Status: StatusFound, Listing: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
+			"pkg# found\npkg, 1 file\na.go\n",
+		},
+		{
+			// Retargeted from "PathFoundOneFileEntry" the same way, for a self glyph naming a file.
+			"SelfFoundOneFileEntry",
+			ResolveResult{Target: "pkg/a.go#", ID: "pkg/a.go#", Status: StatusFound, Listing: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
+			"pkg/a.go# found\npkg, 1 file\na.go\n",
+		},
+		{
+			"SelfNotFoundUnitFound",
+			ResolveResult{Target: "pkg#", ID: "pkg#", Status: StatusNotFound, Unit: StatusFound},
+			"pkg# not_found (unit found)\n",
+		},
+		{
+			// A self glyph whose unit directory does not exist either — the path's own unit does not
+			// exist.
+			"SelfNotFoundUnitNotFound",
+			ResolveResult{Target: "pkg#", ID: "pkg#", Status: StatusNotFound, Unit: StatusNotFound},
+			"pkg# not_found (unit not_found)\n",
+		},
+		{
+			// Guard: a hand-built not_found value carrying a non-nil Listing, a shape the engine never
+			// produces. The listing branch's explicit Status == StatusFound guard means line 1 is
+			// emitted alone, with no directory block under a negative status.
+			"ListingBranchGuard_NotFoundWithListingEmitsLine1Only",
+			ResolveResult{Target: "pkg#", ID: "pkg#", Status: StatusNotFound, Listing: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
+			"pkg# not_found\n",
+		},
+		{
+			// Guard: a hand-built value carrying a Listing and an empty ID, a shape the engine never
+			// produces since a found self glyph always carries an ID. Line 1 falls back to Target so it
+			// never begins with a space.
+			"ListingBranchGuard_EmptyIDFallsBackToTarget",
+			ResolveResult{Target: "pkg", Status: StatusFound, Listing: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
 			"pkg found\npkg, 1 file\na.go\n",
 		},
 		{
-			"PathFoundOneFileEntry",
-			ResolveResult{Target: "pkg/a.go", Status: StatusFound, Dir: &DirAnswer{Dir: "pkg", Files: []FileEntry{{Name: "a.go"}}}},
-			"pkg/a.go found\npkg, 1 file\na.go\n",
-		},
-		{
-			"PathNotFound",
+			// Renamed from "PathNotFound": this is the external-caller guard for a hand-built value
+			// with neither an ID nor a Listing, not a path answer — the engine can no longer produce a
+			// path result at all. It reaches the reduced default arm unchanged.
+			"DefaultGuard_NoIDNoListingNotFound",
 			ResolveResult{Target: "missing", Status: StatusNotFound},
 			"missing not_found\n",
 		},
 		{
-			"PathFoundNilDir_TotalityGuard",
+			// Renamed from "PathFoundNilDir_TotalityGuard": the reduced default arm's own totality
+			// guard, for a hand-built value with no ID and no Listing. Line 1 alone.
+			"DefaultGuard_NoIDNoListingFound",
 			ResolveResult{Target: "pkg", Status: StatusFound},
 			"pkg found\n",
 		},

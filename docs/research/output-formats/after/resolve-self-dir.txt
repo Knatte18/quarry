@@ -1,0 +1,66 @@
+$ quarry resolve internal/logger#
+
+{
+  "target": "internal/logger#",
+  "id": "internal/logger#",
+  "status": "found",
+  "listing": {
+    "dir": "internal/logger",
+    "package": "logger",
+    "language": "go",
+    "doc": "Package logger is a minimal log/slog wrapper shared across lyx's internal\npackages, extended with a process-wide trace identity, explicit-parent\ndiagnostic spans, and a durable per-process trace-file sink. It keeps\nstdout free of log noise (reed and other commands write their JSON\nenvelope to stdout via internal/output) by routing all log output to a\ndedicated stderr sink, which defaults to os.Stderr and is silent unless\nthe caller opts in via SetVerbosity. Every Debug/Info/Warn call also fans\nout to the durable trace-file sink (sink.go), independently gated at Info\nand above regardless of the stderr threshold -- see dualHandler's doc\ncomment for the composite's exact semantics.",
+    "files": [
+      {
+        "name": "logger.go",
+        "header": "logger.go provides a thin log/slog wrapper for lyx: a package-level level threshold, an\ninjectable io.Writer stderr sink (defaulting to os.Stderr), and Debug/Info/Warn helpers that fan\nevery call out to that stderr sink and, independently, to the durable trace-file sink (sink.go)\nvia the composite dualHandler defined below.\nCallers never see slog directly;\nthey call SetVerbosity to raise the stderr threshold and Debug/Info/Warn to emit."
+      },
+      {
+        "name": "logger_test.go",
+        "header": "logger_test.go verifies the default-Warn silence, the SetVerbosity thresholds driven by the\n-v/-vv flag, and the SetOutput test seam.",
+        "test": true
+      },
+      {
+        "name": "logsdir_test.go",
+        "header": "logsdir_test.go tests the AnchorPath-anchored LogsDir constructor on hand-built Locations — pure\npath arithmetic, no spawning, untagged (Tier 1).\nIt replaces worktreelogs_test.go: every assertion there pinned the old WorktreePath-anchored\nbehaviour, which this batch inverts.",
+        "test": true,
+        "package": "logger_test"
+      },
+      {
+        "name": "retention.go",
+        "header": "retention.go implements the durable trace-file retention sweep: a standalone function over a\ndirectory path that enforces the age and count bounds discussion.md's `retention` decision\ndescribes.\nIt is deliberately independent of the durable sink (batch 4), lyxcwd (batch 1), and trace\nidentity (batch 2) — Sweep takes a directory path from its caller and needs only internal/proc's\nliveness probe plus the standard library."
+      },
+      {
+        "name": "retention_test.go",
+        "header": "retention_test.go exercises Sweep's age bound, count bound, grammar-scoping, and delete-failure\ntolerance over a t.TempDir() — pure filesystem logic, no git/exec spawns, per the Test Tier\nPurity Invariant.",
+        "test": true
+      },
+      {
+        "name": "sink.go",
+        "header": "sink.go implements the durable second sink: a per-process trace file opened lazily on one of two\ntriggers (discussion.md's `sink-open-triggers` decision) — the first Info-or-above record,\nor the process exiting with a non-zero code — and written to under a size cap with a single\ntruncation marker once that cap is crossed.\nUnlike the stderr sink logger.go already provides, this file is never the default\n`Debug`/`Info`/`Warn` output path itself;\nbatch 5 wires those helpers to fan out to it via ensureDurableSink once this file's open logic\nhas run."
+      },
+      {
+        "name": "sink_test.go",
+        "header": "sink_test.go covers the durable sink's naming, lazy-open header composition, both open triggers,\nand the size-cap truncation marker.\nEvery case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across\ncases, so no lyxcwd.Resolve ever runs (Test Tier Purity) and every case starts from a fully reset\nsink regardless of what an earlier case in this file (or logger_test.go/span_test.go) already\ntriggered.",
+        "test": true
+      },
+      {
+        "name": "span.go",
+        "header": "span.go implements explicit-parent diagnostic spans layered on top of the process-wide trace\nidentity (trace.go): a Span is a plain value carrying a dotted path built up via StartSpan/Child,\nwith span-scoped Debug/Info/Warn methods that stamp span=<path> alongside the trace= field every\npackage-level Debug/Info/Warn call already stamps.\nPer discussion.md's explicit-span-parenting decision, there is no ambient \"current span\" global\n-- a caller always holds and threads its own *Span explicitly."
+      },
+      {
+        "name": "span_test.go",
+        "header": "span_test.go covers Span's explicit-parent dotted-path construction, sibling independence (no\nglobal to leak between spans), End's record levels, and the durable sink's visibility of span=\nrecords versus open/close records.\nEvery sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one\ncall across cases, per sink.go's SetDurableSinkDir doc.",
+        "test": true
+      },
+      {
+        "name": "trace.go",
+        "header": "trace.go implements the process-wide trace-identity primitive: a single 16-hex-character ID that\nis minted or adopted once per process and stamped onto every emitted log line (batch 5's\nDebug/Info/Warn rewrite wires the call site).\nIt provides two entry points: the lazy TraceID() accessor, used by any code path that logs before\ncmd/lyx's root hook has run, and MintOrAdoptAndExport, the root hook's explicit call that also\nexports the ID into the environment so spawned children inherit it."
+      },
+      {
+        "name": "trace_test.go",
+        "header": "trace_test.go covers trace.go's mint/adopt/export precedence: LYX_TRACE_ID adoption, minted-value\nshape, empty/whitespace-only treated as unset, the lazy TraceID() path, and the env-propagation\ncontract MintOrAdoptAndExport promises spawned children.",
+        "test": true
+      }
+    ]
+  }
+}
