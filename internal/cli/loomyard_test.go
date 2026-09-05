@@ -30,9 +30,9 @@ import (
 // no checkout at all, since the maker reads no repository. It is this package's own flag.Bool,
 // distinct from internal/engine's flag of the same name: flag.Bool panics on a duplicate name
 // only within one binary, and each package's tests build their own binary.
-var updateGoldens = flag.Bool("update", false, "regenerate the after/ and name/ goldens under docs/research/output-formats/after and internal/cli/testdata/name; only after/ needs a LADDER_LOOMYARD_REPO checkout")
+var updateGoldens = flag.Bool("update", false, "regenerate the after-side and name/ goldens under internal/cli/testdata; only the after-side goldens need a LADDER_LOOMYARD_REPO checkout")
 
-// loomyardPin is the commit the rewrite plan's after/ outputs were taken at, identical to
+// loomyardPin is the commit the rewrite plan's after-side outputs were taken at, identical to
 // internal/engine's own loomyardPin.
 const loomyardPin = "72c23d9"
 
