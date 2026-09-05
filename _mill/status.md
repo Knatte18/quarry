@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: blocked
+phase: implementing
 slug: glyphs-verb
 branch: glyphs-verb
 plan: _mill/plan
@@ -33,6 +33,7 @@ self-resolved-verify-logic  '2026-09-05T17:47:42Z'
 approved-cli-view-flag-and-glyphs-verb  '2026-09-05T17:57:18Z'
 self-resolved-verify-logic  '2026-09-05T18:04:03Z'
 blocked  '2026-09-05T18:10:26Z'
+implementing  '2026-09-05T18:58:20Z'
 ```
 
 ## Batches
@@ -53,10 +54,9 @@ batches:
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-05T17:47:42Z'
   - name: goldens-and-docs
-    state: blocked
+    state: pending
     implementer_session: 73ea5979-52e1-4d8f-9dfe-3a9c70fe1021
     start_sha: 4dff18863012a6c89312beca2a5945e86969b1c9
-    blocked_reason: 'verify/logic: unresolved after retry'
     verify_baseline_failures: []
     self_resolve_remint_at: '2026-09-05T18:04:03Z'
 ```
