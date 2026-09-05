@@ -22,9 +22,10 @@ The form is the same for every language. What may appear in `unit` and in `membe
 language (§2, §3), because each language already has its own compiler-guaranteed way of naming a
 namespace and a symbol uniquely, and those ways differ. A glyph borrows the language's own
 uniqueness instead of inventing one. `#` is the only separator with a fixed meaning; `.`, `/`, `(`
-and `,` mean whatever the language's alphabet says.
+and `,` mean whatever the language's alphabet says. `member` may be empty: a glyph with nothing
+after its `#` is the self form, naming the unit itself rather than a symbol inside it (§3).
 
-Structurally, any glyph splits at its first `#`. That split needs no language.
+Structurally, a glyph contains exactly one `#` and splits there.
 Whether the two halves are well-formed is checked against one language's alphabet by `Parse` (§6), and the language is the caller's to say:
 the string alone cannot tell a Python module path from a C# namespace, and a symbol a plan is about to create has no source to look at yet.
 For an existing symbol the language is what `toc` reported for its file; for a new one, the plan card carries it.
@@ -41,6 +42,8 @@ Glyphs are case-sensitive and each symbol has exactly one glyph. No short form, 
 | `internal/logger#dualHandler.stderr` | Go | method `stderr` on `dualHandler` |
 | `internal/reedengine/render#Renderer.Draw` | Go | method `Draw` on `Renderer` |
 | `cmd/lyx#run` | Go | function `run` in a `package main` |
+| `internal/reedengine/render#` | Go | the package `internal/reedengine/render` itself |
+| `internal/reedengine/render/focus.go#` | Go | the file `internal/reedengine/render/focus.go` itself |
 | `loomyard.engine.layout#Beta.Inner.handle` | Python | method on class `Inner` nested in `Beta`, module `loomyard/engine/layout.py` |
 | `Loomyard.Engine.Layout#Renderer.Draw(int)` | C# | the `Draw` overload taking one `int` |
 | `Loomyard.Engine.Layout#Renderer.Title` | C# | property `Title` |
@@ -69,6 +72,20 @@ Unit corner cases:
   declared, which is the one case where a glyph would depend on something outside the source.
 - **C#, the global namespace.** A type declared outside any namespace has the unit `global`, as in
   C#'s own `global::`.
+
+In the self form (§3) the left half is the thing's own repository-relative path or unit name,
+whichever the language spells, and what a trailing `#` means differs per language:
+
+| language | a trailing `#` means |
+|---|---|
+| Go | a package directory or a file, both spelled as their repository-relative path — Go's unit already is one |
+| Python | the module or package itself, which is the file; Python has no separate file self glyph |
+| C# | the namespace itself; C# has no file-level unit, so it has no file self glyph at all |
+
+The external test unit's self glyph is well-formed and parses like any other. It always resolves
+`not_found`, with the unit reported as found: the pseudo-unit, `internal/logger_test`, has no
+directory of its own, while `internal/logger` — the directory it borrows its symbols from — does
+exist.
 
 The price is that a Go glyph carries `internal/` where Go's own name does. Shorter schemes were
 considered and rejected, each for the same reason — the glyph would change without the symbol
