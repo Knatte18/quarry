@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussion-gap-fix-r4
+phase: discussed
 slug: glyph-self-form
 branch: glyph-self-form
 plan: null
@@ -19,4 +19,6 @@ discussion-fix-r1  '2026-09-05T10:59:44Z'
 discussion-gap-fix-r2  '2026-09-05T11:10:41Z'
 discussion-gap-fix-r3  '2026-09-05T11:18:38Z'
 discussion-gap-fix-r4  '2026-09-05T11:26:36Z'
+discussion-fix-r5  '2026-09-05T11:31:45Z'
+discussed  '2026-09-05T11:31:45Z'
 ```
