@@ -52,7 +52,8 @@ remember to leave empty.
 
 ### Card 14: Add the kickstart_pack block and carry it forward on merge
 
-- **Context:** none
+- **Context:**
+  - `bench/loomyard-eval/ladder/internal/ladder/run.go`
 - **Edits:**
   - `bench/loomyard-eval/ladder/internal/ladder/provenance.go`
 - **Creates:** none

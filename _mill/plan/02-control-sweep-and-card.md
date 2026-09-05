@@ -109,6 +109,11 @@ planning and implementation would otherwise be silently missed.
   Reword `MCPConfigDocument`'s doc comment, which currently defines the first branch as "a control —
   a config whose allowed list is empty": it is now "a cell that grants no tools". The granted
   branch's description and the `{target_dir}` substitution contract are unchanged.
+  Two further texts in the same file assert the same superseded equation and are reworded with it, no
+  behaviour attached: the file's own header comment, which says a control cell's document declares no
+  server at all, and the `mcpConfigDoc` type comment, which says a control cell's document has an
+  empty map. Both now say "a cell that grants no tools", so the whole file stops claiming that
+  control and tool-less are the same thing while its code no longer does.
   Confirm while editing that the scorer's own call, which passes a zero-valued `Config`, still takes
   the empty-servers branch: a zero `Config` has a nil `Control` and an empty `Allowed`, so
   `GrantsTools` is false. State that confirmation in the commit message; no code change follows from
