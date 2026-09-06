@@ -1,0 +1,155 @@
+[
+  {
+    "target": "internal/fabriccli#addWeftVerbs",
+    "id": "internal/fabriccli#addWeftVerbs",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/fabriccli#addWeftVerbs",
+        "kind": "function",
+        "file": "internal/fabriccli/weft_verbs.go",
+        "start": 39,
+        "sigend": 44,
+        "end": 355,
+        "signature": "func addWeftVerbs(cmd *cobra.Command)",
+        "doc": "addWeftVerbs installs the hidden --weft-path/--warp-path persistent flags,\nthe weft-verb-scoped PersistentPreRunE, and the status/commit/push/pull/sync/diff\nsubcommands. Normal mode resolves cwd → layout → fabric config → pathspec → Fabric\nhandle. Bypass mode (injected --weft-path/--warp-path by detached push) permits\nonly push, rejecting others with \"subcommand requires a worktree context\"."
+      }
+    ]
+  },
+  {
+    "target": "internal/fabricengine#Fabric.MergeInProgress",
+    "id": "internal/fabricengine#Fabric.MergeInProgress",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/fabricengine#Fabric.MergeInProgress",
+        "kind": "method",
+        "file": "internal/fabricengine/mergelifecycle.go",
+        "start": 414,
+        "sigend": 418,
+        "end": 420,
+        "signature": "func (f *Fabric) MergeInProgress() (bool, error)",
+        "doc": "MergeInProgress reports whether fabric has a merge in progress on this pair: mergeRecordExists()'s\nbare boolean, no MutationRecord (a read-only probe stays off the embed table by design).\nIt never consults foreignMergeStatePresent and never errors on foreign state: it answers \"does\nfabric have a merge in progress\", which foreign plain-git state does not make true."
+      }
+    ]
+  },
+  {
+    "target": "internal/fabricengine#Fabric.MergeContinue",
+    "id": "internal/fabricengine#Fabric.MergeContinue",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/fabricengine#Fabric.MergeContinue",
+        "kind": "method",
+        "file": "internal/fabricengine/mergelifecycle.go",
+        "start": 248,
+        "sigend": 270,
+        "end": 348,
+        "signature": "func (f *Fabric) MergeContinue(msg string) (res MergeResult, err error)",
+        "doc": "MergeContinue concludes an in-progress merge once every conflict has been resolved in the\nworktree: with no record and no foreign git merge state it returns *ErrNoMergeInProgress; with no\nrecord but foreign state present it returns *ErrForeignMergeState, leaving that state untouched.\nUnmerged entries remaining on either side refuse with a *MergeGuardError carrying\nmergeReasonUnresolvedConflicts, a record whose attempt never reached both sides refuses with\nmergeReasonAttemptIncomplete, and a side about to be concluded whose live git merge is no longer the\none the record describes refuses with mergeReasonRecordedMergeGone (recordedMergeGoneReason); all\nthree are aggregated into one error, so which precondition failed never discloses evaluation order.\nThe combined write lock is acquired BEFORE the record is read and the guards run — never after —\nso no concurrent lifecycle verb can retire or advance the record between what this call checked\nand what it acts on (see the in-body comment for the raced-MergeContinue shape that ordering\ncloses). It then runs concludeMergeSides with msg as the optional\nmessage override, records correspondence, deletes the merge-state record, and returns a\nMergeResult whose Committed and AlreadyUpToDate are BOTH read off the record's own fields, never\nhardcoded per return site — Committed true when the pair carries this merge's conclude-commit and\nfalse when both sides only fast-forwarded or never moved, AlreadyUpToDate true when the attempt\nhad recorded both sides already carrying the resolved source.\nAlreadyUpToDate is reachable here and not merely defensive: MergeIn/Merge's own pre-lock\nup-to-date probe is deliberately unlocked, so a call that loses that race records up_to_date on\nboth sides, and a crash before its conclude leaves exactly that record for MergeContinue to\nresume. Hardcoding false there made the resumed call disagree with what a strictly sequential run\nof the same calls reports."
+      }
+    ]
+  },
+  {
+    "target": "internal/fabricengine#mergeInProgressReason",
+    "id": "internal/fabricengine#mergeInProgressReason",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/fabricengine#mergeInProgressReason",
+        "kind": "function",
+        "file": "internal/fabricengine/mergeguards.go",
+        "start": 159,
+        "sigend": 161,
+        "end": 170,
+        "signature": "func mergeInProgressReason(f *Fabric) ([]string, error)",
+        "doc": "mergeInProgressReason reports mergeReasonAlreadyInProgress when a fabric-written merge-state\nrecord already exists on f's pair."
+      }
+    ]
+  },
+  {
+    "target": "internal/fabricengine#Fabric.mergeRecordExists",
+    "id": "internal/fabricengine#Fabric.mergeRecordExists",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/fabricengine#Fabric.mergeRecordExists",
+        "kind": "method",
+        "file": "internal/fabricengine/mergestate.go",
+        "start": 177,
+        "sigend": 179,
+        "end": 185,
+        "signature": "func (f *Fabric) mergeRecordExists() (bool, error)",
+        "doc": "mergeRecordExists reports whether a fabric-written merge-state record exists — a thin wrapper\nover loadMergeState for callers that only need the boolean."
+      }
+    ]
+  },
+  {
+    "target": "internal/fabricengine#Fabric.foreignMergeStatePresent",
+    "id": "internal/fabricengine#Fabric.foreignMergeStatePresent",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/fabricengine#Fabric.foreignMergeStatePresent",
+        "kind": "method",
+        "file": "internal/fabricengine/mergestate.go",
+        "start": 250,
+        "sigend": 272,
+        "end": 291,
+        "signature": "func (f *Fabric) foreignMergeStatePresent() (bool, error)",
+        "doc": "foreignMergeStatePresent reports whether git-level merge state exists on either side that fabric\ndid not itself start: a live MERGE_HEAD or unmerged index entries, checked on both warp and weft.\nAll four probes are evaluated unconditionally before combining, rather than short-circuiting on\nthe first true result, so no evaluation-order timing difference ever leaks which side (if either)\ncarries the state.\n\nThe two probe KINDS are not redundant spellings of one condition, and neither can be dropped as\nimplied by the other. An ordinary conflicted `git merge` sets both at once, which is what makes\nthat shape useless for proving either one; the two states that separate them are real and reachable:\n- MERGE_HEAD live with an EMPTY unmerged set — a foreign merge resolved but not concluded, seen\nonly by the MERGE_HEAD probe, and the most dangerous shape because nothing about the worktree\nlooks wrong.\n- Unmerged entries with NO MERGE_HEAD — a conflicted `git merge --squash`, which writes none, and\nequally a conflicted cherry-pick or `checkout -m`. Seen only by the conflicted-index probe.\n\nEach of the four probes is pinned by its own row of\nTestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses (three shapes x two sides). Before that\nmatrix existed, deleting either weft probe, or either warp probe, left the whole suite green.\n\nBoth weft probes are deliberately kept even though the weft is no longer a merge participant: this\nis the one weft-reading guard the change leaves in place, and it still refuses a mutating merge\nverb on weft-side foreign merge state."
+      }
+    ]
+  },
+  {
+    "target": "internal/fabricengine#ErrMergeInProgress",
+    "id": "internal/fabricengine#ErrMergeInProgress",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/fabricengine#ErrMergeInProgress",
+        "kind": "type",
+        "file": "internal/fabricengine/mergeerrors.go",
+        "start": 148,
+        "sigend": 150,
+        "end": 150,
+        "signature": "type ErrMergeInProgress struct",
+        "doc": "ErrMergeInProgress is the single typed error every sibling mutating verb returns while a fabric\nmerge record exists on the pair — the lock decision's one typed, side-free sibling-refusal error."
+      }
+    ]
+  },
+  {
+    "target": "internal/gitrepo#Repo.MergeHeadPresent",
+    "id": "internal/gitrepo#Repo.MergeHeadPresent",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/gitrepo#Repo.MergeHeadPresent",
+        "kind": "method",
+        "file": "internal/gitrepo/merge.go",
+        "start": 249,
+        "sigend": 251,
+        "end": 262,
+        "signature": "func (r *Repo) MergeHeadPresent() (bool, error)",
+        "doc": "MergeHeadPresent reports whether MERGE_HEAD exists, via\n`git rev-parse --verify --quiet MERGE_HEAD`."
+      }
+    ]
+  },
+  {
+    "target": "internal/mergeresolve#Resolver.Resolve",
+    "id": "internal/mergeresolve#Resolver.Resolve",
+    "status": "found",
+    "symbols": [
+      {
+        "id": "internal/mergeresolve#Resolver.Resolve",
+        "kind": "method",
+        "file": "internal/mergeresolve/mergeresolve.go",
+        "start": 21,
+        "sigend": 29,
+        "end": 61,
+        "signature": "func (r *Resolver) Resolve(ctx context.Context, source string) (Result, error)",
+        "doc": "Resolve merges source into the current pair and, if the merge produces conflicts, drives at most\ntwo conflict-resolution sessions to clear them.\n\nThe mechanical marker re-scan (markers.go), not the session's own verdict, is what decides a\nconflict is resolved, because the conclude step is irreversible at the Fabric layer and the abort\ncall is the only checkpoint covering the attempt window: once MergeContinue lands, there is no\nundo, so Resolve never trusts a session's own claim of success and always re-verifies by content\nbefore staging and concluding."
+      }
+    ]
+  }
+]
