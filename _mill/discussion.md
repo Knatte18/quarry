@@ -89,14 +89,45 @@ and failure handling.
   ```
 
   then polls `.scratch/kickstart-run.log` (`tail`) until the harness's own rendered table appears at
-  the end of the log and the process has exited. If the process died mid-run, re-run the **identical**
-  command against the **same** results root — never with a `--reps` override.
+  the end of the log and the process has exited.
 - **Rationale:** ~30 measured claude invocations plus up to 30 scorer invocations is on the order of
   an hour of wall-clock; a foreground Bash call is capped at 600 s and would be killed. Detached +
   log-polling behaves identically whether the caller is this orchestrator or a mill-go implementer
   subagent, and does not depend on any harness background-notification semantics. The run is
   resumable by design: completed repetitions are skipped and the resumed invocation is appended to
   the provenance record.
+- **Liveness test.** `tail` alone cannot distinguish "still running" from "died"; the log goes quiet
+  in both cases. Record the launched shell's pid (`$!`) at launch and test it with `kill -0 <pid>`,
+  or, equivalently, `pgrep -f 'ladder(/| ).*run'`. The run is finished only when the process is gone
+  **and** the log's last lines carry the rendered table; the process gone without a table is a death.
+- **Resume preconditions — all three, in this order, before re-running.** A resume is not a bare
+  re-run of the same command:
+  1. **Confirm nothing is live.** `kill -0 <pid>` fails and no `go run .../cmd/ladder` or `ladder`
+     process remains (`pgrep -f`). Never resume alongside a live run.
+  2. **Clear the stale lock.** `AcquireRunLock` (`worktree.go:293-320`) opens
+     `~/.cache/ladder-eval/.ladder.lock` with `O_CREATE|O_EXCL`, **never reaps it, and never tests
+     process liveness** — its own doc comment says a stale lock is cleared by the operator. An
+     abnormally dead run therefore always leaves one behind, and the resume fails with
+     "another ladder run holds ...". Read the file first (it records `pid=` and `results=`), confirm
+     the pid is dead and the results root is this one, then delete it.
+  3. **Commit the tree clean again.** `Run` calls `WriteProvenance` after **every** repetition
+     (`run.go:224`), and card 29 committed `provenance.json`, so by resume time that tracked file is
+     modified in the working tree. Committing it before the resumed invocation is what keeps
+     `quarry_dirty: false` — the property `commit-before-each-invocation` exists to buy, which a
+     naive resume would otherwise silently forfeit. Commit message:
+     `chore(bench): checkpoint provenance before resuming the kick-start matrix`.
+
+  Then re-run the **identical** command against the **same** results root — never with a `--reps`
+  override (`run.go:100-103` refuses a differing effective count, which is correct under a locked n).
+- **A resume is permitted only for an abnormal process death, and only before any result has been
+  read.** Resuming after the invocation completed normally — to refill a repetition the harness
+  ended `incomplete`, once `table.txt` and `summary.json` exist — is optional stopping through a side
+  door and is forbidden. See Decision `short-arm-disposition`.
+- **If `quarry_dirty: true` is nevertheless recorded** for any invocation in this root (a resume that
+  skipped step 3, or any other cause), it is **not** grounds to discard the root. The conclusion's
+  coverage section must then name the invocation, quote `quarry_dirty_files` verbatim, and state
+  whether any listed path could affect the measurement — mirroring how the reference root's
+  conclusion handles its own `quarry_dirty: false` claim explicitly rather than silently.
 - **Rejected:** foreground with a 600 s timeout and repeated resumes (works, but every truncation
   kills a live `claude` child mid-repetition and manufactures avoidable `.invalid-*` attempts);
   operator runs the matrix by hand outside mill-go (defeats the point of the task being in the
@@ -112,9 +143,55 @@ and failure handling.
   so uncommitted mill bookkeeping would land in `provenance.json`'s `quarry_dirty_files` and force
   the conclusion to carry a carve-out paragraph. The reference root
   (`results/2026-09-05-ladder-d`) records `quarry_dirty: false`, and matching that costs one commit.
+- **Deviation from `docs/roadmap.md` point 1, deliberate and recorded.** That point says the bench is
+  run "from the hub against main". This task runs it from its own spawned worktree instead, because
+  that is where the task lives and the pipeline executes; the alternative is a hub run whose results
+  this branch could not commit. The measurable consequence is confined to provenance:
+  `provenance.json`'s `quarry_commit` will name this task branch's tip rather than a `main` commit,
+  unlike the reference root (`0ae4daa…`, which the ladder-d conclusion notes differs from `main` by a
+  single `_mill/status.md` bookkeeping commit and by no source file). **The conclusion's coverage
+  section must state this explicitly**: name the branch, name the commit, and confirm — with
+  `git diff --stat main...<commit> -- . ':(exclude)_mill'` — that the branch differs from `main` by
+  no file the harness or the target repository reads, so "from clean `main`" holds in substance even
+  though the recorded commit is not on `main`. If that diff is ever non-empty outside `_mill/` and
+  the new results root, the conclusion says so and names the files rather than asserting equivalence.
 - **Rejected:** accepting `quarry_dirty: true` and documenting a `_mill`-only carve-out (real work
   avoided by a `git commit`); running from the hub worktree (the task's own branch state would then
-  be invisible to the run, and the hub is not this task's worktree).
+  be invisible to the run, the hub is not this task's worktree, and card 29's and card 30's commits
+  would have nowhere to land).
+
+### short-arm-disposition
+
+- **Decision, predeclared here and therefore before rep 1:** an arm can legitimately finish with
+  fewer than ten measured repetitions. `runCellRepetition` returns `repOutcome{incomplete: true}`
+  with **no further retry** once `attempts >= MaxAttempts` (`run.go:574-584`), and
+  `summarize.go:232-239` does not count a blinding-failed repetition as present for completeness. In
+  either case the cell appears in `summary.json`'s `incomplete` list and `run` exits non-zero. The
+  disposition is:
+
+  - **A short arm voids the primary test for every comparison it participates in.** If either
+    `e0-names` or `e1-pack` realises fewer than ten repetitions in the cost sample, the conclusion
+    still reports everything — medians, ranges, the full per-repetition table, both rank sums and
+    both U values computed on the realised sample sizes, with the two identities checked against
+    those sizes — but it **does not compare U against 27, nor against any substituted critical
+    value**, and the verdict line states that the predeclared test is void for want of the
+    predeclared n. No conclusion about separation is drawn from a voided test.
+  - **The root is not re-run, not re-sampled, not extended, and no arm is dropped.** Refilling the
+    missing repetition after `table.txt` exists is optional stopping through a side door, however
+    innocent the cause.
+  - **A short `e2-files` arm voids nothing**, since no test runs on it. Report its realised n
+    alongside its medians and ranges and move on.
+  - **Realised n is reported per arm unconditionally**, alongside the ceiling and unscored counts, so
+    a full n = 10/10 matrix is visibly full rather than merely unremarked.
+- **Rationale:** the predeclared rule fixes alpha = 0.05 one-sided and n = 10 per arm; `U <= 27` is
+  the exact-table lookup *for n = 10 against n = 10*. Substituting the critical value for a realised
+  n = 9 would be renegotiating the frozen rule after seeing the run, and re-running the missing
+  repetition would be optional stopping. Voiding is the only reading that leaves the rule untouched,
+  and it costs nothing that was not already lost — every cost measurement in the root still stands
+  and is still reported.
+- **Rejected:** recomputing against the correct critical value for the realised n (changes a frozen
+  constant post hoc); declaring the whole root unusable (discards ~$12 of valid cost measurements
+  over one harness event); resuming to refill the arm after the table exists (optional stopping).
 
 ### date-resolved-once-at-card-29
 
@@ -152,12 +229,35 @@ and failure handling.
   5. record the substitution and its reason under
      `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md`'s
      `## Notes for whoever prepares C's fasit / scores this`;
-  6. re-run the fasit's cross-check.
+  6. re-run the fasit's cross-check — `git show 72c23d9:<file>` for the substitute symbol, confirming
+     it exists at the pinned SHA in the file the resolve reports, which is the same second-method
+     check the fasit itself was authored under.
 
-  All of it happens **before rep 0 or not at all**. After it, check by eye that the three cards'
-  `Uses:` lists are still identical and still match the ladder file's `pack_targets`, then run
-  `TestPreMatrix` as the mechanical backstop — the test catches the half-applied substitution where
-  the ladder file has moved on and one card has not.
+  All of it happens **before rep 1 or not at all** (the frozen spec spells this "before rep 0";
+  it means the same instant — the harness indexes repetitions from 1, `for rep := 1; rep <=
+  repsEffective`, and `verifyCardsAndPack` is the pre-rep-1 gate). After it, check by eye that the
+  three cards' `Uses:` lists are still identical and still match the ladder file's `pack_targets`,
+  then run `TestPreMatrix` as the mechanical backstop — the test catches the half-applied
+  substitution where the ladder file has moved on and one card has not.
+
+  **The fasit is frozen.** `07-fabric-merge-state-tracing.fasit.json` is never edited by this branch
+  — not its `relevant_files`, not its `key_symbols`, not its `summary`. It defines what the scorer
+  grades against, and the batch-local decision freezes it alongside the glyph list and n; editing it
+  mid-substitution would move the correctness target as well as the treatment, and no test guards
+  either list.
+
+  **Consequence, and how the conclusion handles it.** All three reserves live in files already on the
+  fasit's seven-file `relevant_files` list — `Fabric.MergeAbort` and `Fabric.mergeStateOrForeignErr`
+  in `internal/fabricengine/mergelifecycle.go` (lines 366 and 221 at the pin),
+  `Repo.ConflictedFiles` in `internal/gitrepo/merge.go` (line 157). A substitution can therefore only
+  ever **vacate** a file, never add one. Step 3 still re-derives e2's `Files:` list from the new
+  glyph set, exactly as the frozen spec directs — so if the substitution vacates a file, e2 ends up
+  naming six files against the fasit's seven. When that happens, the conclusion's
+  recall-inflation paragraph must be reworded rather than transcribed: it says that e1's card names
+  the fasit's seven files verbatim inside its pack block while e2 names only the six its glyph set
+  reaches, so **both** non-control arms remain inflated by construction and still uncomparable to the
+  control, but e2's inflation is no longer maximal — and it names which file was vacated. If no
+  substitution occurs, the paragraph stands as written in "What the conclusion must contain".
 - **Rationale:** the source discussion (`git show a69c999:_mill/discussion.md`, lines 325-338) names
   the three candidates verbatim; without them the branch would require operator judgement mid-run,
   which under an autonomous pipeline means either a halt or an unlogged treatment redesign.
@@ -173,7 +273,9 @@ and failure handling.
   - **unscored count** -> `summary.json`'s per-cell `unscored_count`;
   - **harness events** (blinding failures, attempt-exhausted repetitions, `.invalid-*` attempts) ->
     `summary.json`'s `blinding_failed_count` and `incomplete` / `invalid` lists, plus the
-    `raw/<cell>/<rep>.invalid-*/invalid_reason.txt` files;
+    `raw/<cell>/<rep>.invalid-*/invalid_reason.txt` files. A cell in the `incomplete` list means the
+    arm realised fewer than ten repetitions — read its realised n from `table.txt`'s `n` column and
+    apply Decision `short-arm-disposition`;
   - **gate passed / gate failed** -> hand-tallied from each repetition's
     `raw/<cell>/<rep>/score.json` `"summary_matches"` value, counted with `grep`.
 - **Rationale:** `ScoreRecord` is a free-form `map[string]any`, and neither `summarize.go` nor
@@ -337,10 +439,13 @@ them the results-root/provenance one the spec says to strike.
 - **Money and irreversibility.** Card 30 spends real money (~$10-15) against the live API and is the
   only card in this task that does. It is resumable but not repeatable: once rep 1 has run, the
   glyph list, the three cards, the task file, the fasit and n are frozen for the whole results root.
-  Every correction the substitution rule allows happens before rep 0 or not at all.
+  Every correction the substitution rule allows happens before rep 1 or not at all.
 - **No optional stopping, in any form.** Do not drop repetitions after seeing their scores, do not
   add repetitions after seeing any result, do not re-run an arm because its numbers look wrong, and
-  do not select cells. Each is optional stopping through a side door.
+  do not select cells. Each is optional stopping through a side door. This includes resuming a
+  *completed* invocation to refill a repetition the harness ended `incomplete` — see Decision
+  `short-arm-disposition`; the only legitimate resume is after an abnormal process death, before any
+  result has been read.
 - Write the same shape of conclusion whichever way the result falls. A negative answer is a valid,
   publishable answer.
 
@@ -392,9 +497,14 @@ The four cards are strictly sequential. Concretely:
    `$RESULTS_ROOT/provenance.json` (plus any file the contingency branch touched) with message
    `feat(bench): generate the kick-start pack for the e1 card`.
 5. Confirm the tree is clean again. **Card 30** — launch the run detached per
-   `live-matrix-runs-detached`, poll to completion, resume with the identical command if it died.
-   Then read the printed table and `summary.json`, tally the four dispositions per
-   `gate-dispositions-tallied-from-score-json`, and commit `$RESULTS_ROOT/summary.json`,
+   `live-matrix-runs-detached`, recording the pid; poll the log and the pid together. If the process
+   died without printing the table, walk the three resume preconditions in that decision (nothing
+   live, clear `~/.cache/ladder-eval/.ladder.lock`, commit the tree clean) and only then re-run the
+   identical command. **Read no result until the run has completed normally** — after that point no
+   resume is permitted, per `short-arm-disposition`.
+   Then read the printed table and `summary.json`, tally the four dispositions plus the realised n
+   per `gate-dispositions-tallied-from-score-json` and `short-arm-disposition`, and commit
+   `$RESULTS_ROOT/summary.json`,
    `$RESULTS_ROOT/table.txt` and `$RESULTS_ROOT/provenance.json` with message
    `feat(bench): run the kick-start 3x10 matrix`.
 6. **Card 31** — write `$RESULTS_ROOT/conclusion.md` per the requirements below, recompute the
@@ -417,9 +527,19 @@ Following `results/2026-09-05-ladder-d/conclusion.md`'s structure:
   five percent; critical U at or below twenty-seven. Reject the null for a metric only when its U is
   at or below that value. The descriptive arm gets medians and ranges only and no test.
 - The per-repetition table, values taken from each repetition's own `usage.json`.
-- The rank sums, the U values, and the two identity checks (`R1 + R0 = 210`, `U1 + U0 = 100`).
-- Per arm, regardless of whether any threshold is crossed: the turn-ceiling count and the unscored
-  count, so a clean matrix is visibly clean. Then the predeclared readings:
+- The rank sums, the U values, and the two identity checks. At a full n = 10 against n = 10 those are
+  `R1 + R0 = N(N+1)/2 = 210` and `U1 + U0 = n1*n2 = 100`; if either tested arm is short, both
+  identities are recomputed for the realised sizes and checked against those values instead.
+- The run's own host, branch and commit, and — because the run is not from `main` — the
+  branch-versus-`main` equivalence check named in Decision `commit-before-each-invocation`.
+- Per arm, regardless of whether any threshold is crossed: the **realised n**, the turn-ceiling count
+  and the unscored count, so a clean 10/10 matrix is visibly clean. Then the predeclared readings:
+  - **realised n below ten in either tested arm** -> the primary test is **void** for every
+    comparison that arm participates in, per Decision `short-arm-disposition`: report the rank sums
+    and U values computed on the realised sizes, do **not** compare them against 27 or any
+    substituted critical value, say so in the verdict line, and draw no separation conclusion from
+    them. No re-run, no re-sample, no dropped arm. A short `e2-files` arm voids nothing — state its
+    realised n and continue;
   - more than two of ten at the ceiling in any arm -> the turns test is **reported as censored**, said
     so in the verdict line, with cost carrying the primary comparison — and no re-run, no re-sample,
     no dropped arm;
@@ -451,4 +571,6 @@ Following `results/2026-09-05-ladder-d/conclusion.md`'s structure:
 - **Q:** What happens if a glyph does not resolve `found`? **A:** [auto-pick] Execute the full six-step substitution branch autonomously, using the three reserve candidates recovered from `git show a69c999:_mill/discussion.md`. **Why:** the reserve list is no longer missing, so the contingency is fully specified; without it the branch would need operator judgement mid-run, meaning either a halt or an unrecorded treatment redesign.
 - **Q:** How should card 32 word the new standing-rule line, given the paragraph already cites three roots? **A:** [auto-pick] One sentence in the same paragraph, worded as the *other direction* (push-mode pre-resolution), explicitly not a fourth entry in the mid-session-agent-tool list. **Why:** the three cited roots close a claim this root does not test; folding it in would misreport the measurement.
 - **Q:** Where do card 30's gate pass/fail counts come from? **A:** [auto-pick] Hand-tallied with `grep` from each repetition's `raw/<cell>/<rep>/score.json` `summary_matches`; ceiling and unscored counts come from `summary.json`. **Why:** `ScoreRecord` is a free-form map and neither `summarize.go` nor `report.go` aggregates `summary_matches`; adding that aggregation would be a harness change, which is out of scope.
+- **Q:** (review r2 gap) What exactly does a resume require after the run process dies? **A:** [auto-pick] Three preconditions before re-running: confirm nothing live via the recorded pid, delete the stale `~/.cache/ladder-eval/.ladder.lock`, and commit the tree clean. **Why:** `AcquireRunLock` is `O_CREATE|O_EXCL` and by its own doc comment never reaps and never tests liveness, so a dead run always blocks its own resume; and `Run` rewrites `provenance.json` after every repetition, so the file card 29 committed is modified by resume time and would record `quarry_dirty: true` — silently forfeiting the property the commit-before-invocation decision exists to buy.
+- **Q:** (review r2 gap) What happens if an arm finishes with fewer than ten repetitions? **A:** [auto-pick] The primary test is reported **void** for every comparison that arm participates in — U computed and shown on the realised sizes, never compared against 27 or a substituted critical value — with no re-run, no re-sample and no dropped arm. **Why:** `attempts >= MaxAttempts` returns `incomplete: true` with no further retry, so a short arm is reachable; substituting the critical value for the realised n would renegotiate a frozen constant after seeing the run, and refilling the repetition would be optional stopping. Voiding leaves the rule untouched and still reports every cost measurement the root produced.
 - **Q:** How is the repo-wide done gate run given the env-gated engine test? **A:** [auto-pick] `go test ./... && golangci-lint run` with `LADDER_LOOMYARD_REPO` unset in the shell. **Why:** `internal/engine/loomyard_test.go:53-59` reads the variable directly and skips when unset, but fails at `:69` when the checkout is not at the `72c23d9` pin (it is at `408b910`); the bench still finds the repository through `.scratch/ladder.env`.
