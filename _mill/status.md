@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: kickstart-matrix-run
 branch: kickstart-matrix-run
 plan: _mill/plan
@@ -23,4 +23,5 @@ planning  '2026-09-06T09:28:25Z'
 plan-review-r1  '2026-09-06T09:33:52Z'
 plan-fix-r1  '2026-09-06T09:37:25Z'
 plan-review-r2  '2026-09-06T09:43:21Z'
+plan-fix-r2  '2026-09-06T09:45:23Z'
 ```
