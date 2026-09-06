@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: implementing
 slug: glyph-unitpath
 branch: glyph-unitpath
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-06T09:38:56Z'
+implementing  '2026-09-06T11:38:30Z'
 ```
