@@ -1,0 +1,42 @@
+results root: 2026-09-06-kickstart
+reps: 10
+claude_code_version: 2.1.236 (Claude Code)
+cache caveat: the first repetition of a root pays cache creation while later repetitions read it -- cache-read and cache-creation figures are reported separately, never summed, and per-repetition numbers are not interchangeable; the median over repetitions is the honest statistic.
+
+cell      ladder  n   turns  duration_ms  cost_usd  cache_read  cache_creation  output_tokens  input_tokens_total  tool_uses  prefixed_tool_uses  grep_fallback  tool_result_bytes  read_bytes  recall  recall_n  precision  precision_n  flags
+e0-names  e       10  18     59234        0.4325    189309      46897           27.5           231635              17         0                   6              105895             92463       0.93    10        0.85       10           
+e1-pack   e       10  10     49132        0.3004    115443      30702           10             146735              9          0                   1              67595              59750       0.86    10        0.825      10           
+e2-files  e       10  10     46123        0.4171    167430      49962           9.5            217403.5            9          0                   1              118609             114540      0.89    10        0.895      10           
+
+
+comparison: e1-pack vs e0-names (control) on turns: median 10=18 cell-range=[9, 13] control-range=[14, 19] separated=true
+comparison: e1-pack vs e0-names (control) on duration_ms: median 49132=59234 cell-range=[41870, 58486] control-range=[49381, 118036] separated=false
+comparison: e1-pack vs e0-names (control) on cost_usd: median 0.3004=0.4325 cell-range=[0.2558, 0.4161] control-range=[0.264, 0.5267] separated=false
+comparison: e1-pack vs e0-names (control) on cache_read_input_tokens: median 115443=189309 cell-range=[101439, 168417] control-range=[96953, 369443] separated=false
+comparison: e1-pack vs e0-names (control) on cache_creation_input_tokens: median 30702=46897 cell-range=[24230, 49661] control-range=[19780, 57382] separated=false
+comparison: e1-pack vs e0-names (control) on output_tokens: median 10=27.5 cell-range=[6, 14] control-range=[8, 71] separated=false
+comparison: e1-pack vs e0-names (control) on input_tokens_total: median 146735=231635 cell-range=[138062, 218086] control-range=[125423, 423587] separated=false
+comparison: e1-pack vs e0-names (control) on tool_uses: median 9=17 cell-range=[8, 12] control-range=[13, 18] separated=true
+comparison: e1-pack vs e0-names (control) on quarry_tool_uses: median 0=0 cell-range=[0, 0] control-range=[0, 0] separated=false
+comparison: e1-pack vs e0-names (control) on grep_fallback_total: median 1=6 cell-range=[1, 2] control-range=[5, 8] separated=true
+comparison: e1-pack vs e0-names (control) on tool_result_bytes: median 67595=105895 cell-range=[53441, 118272] control-range=[39286, 125995] separated=false
+comparison: e1-pack vs e0-names (control) on read_bytes: median 59750=92463 cell-range=[43232, 113224] control-range=[30651, 106445] separated=false
+comparison: e1-pack vs e0-names (control) on recall: median 0.86=0.93 cell-range=[0.8, 0.94] control-range=[0.85, 1] separated=false
+comparison: e1-pack vs e0-names (control) on precision: median 0.825=0.85 cell-range=[0.72, 0.94] control-range=[0.79, 0.92] separated=false
+comparison: e2-files vs e0-names (control) on turns: median 10=18 cell-range=[10, 12] control-range=[14, 19] separated=true
+comparison: e2-files vs e0-names (control) on duration_ms: median 46123=59234 cell-range=[38028, 53245] control-range=[49381, 118036] separated=false
+comparison: e2-files vs e0-names (control) on cost_usd: median 0.4171=0.4325 cell-range=[0.4116, 0.4609] control-range=[0.264, 0.5267] separated=false
+comparison: e2-files vs e0-names (control) on cache_read_input_tokens: median 167430=189309 cell-range=[164774, 297549] control-range=[96953, 369443] separated=false
+comparison: e2-files vs e0-names (control) on cache_creation_input_tokens: median 49962=46897 cell-range=[48135, 51766] control-range=[19780, 57382] separated=false
+comparison: e2-files vs e0-names (control) on output_tokens: median 9.5=27.5 cell-range=[6, 27] control-range=[8, 71] separated=false
+comparison: e2-files vs e0-names (control) on input_tokens_total: median 217403.5=231635 cell-range=[213470, 348082] control-range=[125423, 423587] separated=false
+comparison: e2-files vs e0-names (control) on tool_uses: median 9=17 cell-range=[9, 11] control-range=[13, 18] separated=true
+comparison: e2-files vs e0-names (control) on quarry_tool_uses: median 0=0 cell-range=[0, 0] control-range=[0, 0] separated=false
+comparison: e2-files vs e0-names (control) on grep_fallback_total: median 1=6 cell-range=[1, 3] control-range=[5, 8] separated=true
+comparison: e2-files vs e0-names (control) on tool_result_bytes: median 118609=105895 cell-range=[114706, 119724] control-range=[39286, 125995] separated=false
+comparison: e2-files vs e0-names (control) on read_bytes: median 114540=92463 cell-range=[112470, 114910] control-range=[30651, 106445] separated=true
+comparison: e2-files vs e0-names (control) on recall: median 0.89=0.93 cell-range=[0.85, 0.94] control-range=[0.85, 1] separated=false
+comparison: e2-files vs e0-names (control) on precision: median 0.895=0.85 cell-range=[0.78, 0.94] control-range=[0.79, 0.92] separated=false
+
+incomplete: none
+invalid: none
