@@ -32,10 +32,28 @@ round (the task's own Q1 decision). The M4 matrix (`results/2026-09-06-kickstart
 the *measurement* gate — e1-pack separated — so pack injection is a candidate follow-up
 after the adoption lands; whether and when is decided in the Loomyard task, not here.
 
-**2. M4b — an edit-task variant (agent revising code in a throwaway worktree)** is now a
-candidate follow-up, per `results/2026-09-06-kickstart`, whose predeclared rule separated
-on both primary metrics — turns and cost_usd — for e1-pack against the plain-names
-control.
+**2. M4b — an edit-task variant (parked as an idea, deliberately not taken now).**
+Justified by `results/2026-09-06-kickstart` (e1-pack separated on both primary metrics),
+and by the fact that Loomyard #227/#228 would otherwise rest on an unmeasured transfer
+from an explore task to edit work. The settled design sketch, recorded 2026-09-06 so the
+task can be written when wanted: **form** — re-implement a real, already-merged Loomyard
+commit: per repetition, check out the commit's *parent* in a throwaway worktree, hand the
+agent a frozen task brief (written once from the commit, identical across arms), let it
+build. **Scoring** — mechanical: overlay the commit's own test files onto the agent's
+result and run them; tests+build+lint pass = success; turns/cost compared among successes
+only, per-arm success floor predeclared or the comparison is void. **Pack generation** —
+`diff-to-symbols` on the real commit gives the touched symbol set mechanically, resolved
+against the parent tree; production-faithful to how #227 would build packs, no human
+curation, no LLM in the loop. **Arms** — e0 symbol names in prose (control), e1 full pack,
+e2 plain file list — the file-list arm decomposes the e2-files confound the M4 root left
+open. Same frozen rule (e1 vs e0, one-sided Mann–Whitney, n=10/arm). **Commit selection**
+— criteria predeclared (3+ files, 5+ symbols, carries its own tests, not mechanical);
+chosen in discussion, frozen before any arm runs. **Hard isolation constraint** — the
+harness clones Loomyard into its own dedicated disk area pinned to one SHA; the operator's
+live Loomyard checkout is never touched (M4b agents *write*, unlike M4's readers). **Build
+scope** — three new harness pieces (worktree-per-rep lifecycle, edit-mode measured
+sessions, test-overlay scorer); a full task, kickstart-pattern descope recommended (build
+the harness, descope the matrix run to a follow-up card).
 
 **3. T8 — the type checker (parked).** `impact`, `assert-no-callers`, `verified`, the DAG
 tightening. Unparks only on an explicit re-justification by *function* — the validator's
