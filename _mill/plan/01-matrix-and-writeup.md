@@ -218,10 +218,11 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   Pass no `--cells` and no `--reps`. The run loop refuses an invocation whose effective repetition
   count differs from the one the root was written with, and under a locked n that is correct.
 
-  **`Deletes: none` above is the tracked-file inventory.** The raw tree under `$RESULTS_ROOT/raw/` is
-  git-ignored and is outside that inventory — the harness writes and rewrites it freely, and the one
-  conditional repetition-directory removal the aborted-matrix branch below authorises happens there.
-  No tracked file is deleted by this card.
+  **`Deletes: none` above is literal.** No file is deleted by this card, tracked or ignored, on any
+  branch — including the aborted-matrix branch below. The raw tree under `$RESULTS_ROOT/raw/` is
+  git-ignored and the harness writes and rewrites it freely; nothing in this card removes any part of
+  it. The one exception in the whole batch is a stale run-lock file outside the results root, cleared
+  under resume precondition 2.
 
   **Poll for completion.** Tail `.scratch/kickstart-run.log` until the trailing `LADDER_EXIT=<code>`
   line appears. Tailing alone cannot distinguish "still running" from "died" — the log goes quiet in
@@ -239,11 +240,11 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
      from here.
   - No `LADDER_EXIT` line at all — abnormal process death (kill, logout, OOM). Walk the three resume
      preconditions below and re-run the identical command against the same results root.
-  - `LADDER_EXIT=1` — the run completed its own control flow but reported a problem. A non-zero exit
-     is **not** by itself evidence of an aborted matrix: the run loop sets its non-zero-exit flag for
-     any repetition that came back `incomplete` or `blindingFailed`, and the summariser exits
-     non-zero whenever the `incomplete` or `invalid` list is non-empty — none of which stops the
-     matrix. Classify it under the branch below before touching any number.
+  - `LADDER_EXIT=1` — three different things produce this code and they are not interchangeable.
+     Classify it under the branch below before touching any number. A non-zero exit is **not** by
+     itself evidence of an aborted matrix: the run loop sets its non-zero-exit flag for any repetition
+     that came back `incomplete` or `blindingFailed`, and the summariser exits non-zero whenever the
+     `incomplete` or `invalid` list is non-empty — none of which stops the matrix.
 
   **Resume preconditions — all three, in this order.** A resume is not a bare re-run.
 
@@ -258,10 +259,32 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
 
   Then re-run the identical command against the same results root, never with a `--reps` override.
 
-  **Classifying a `LADDER_EXIT=1` run — one test, two outcomes.** The single discriminator is
-  whether some repetition's own `run.json` under `$RESULTS_ROOT/raw/<cell>/<rep>/` carries a fatal
-  finding whose gate is `memory_path_scan`. Grep for that gate name across the raw tree's `run.json`
-  files. Read nothing else — no median, no rank, no `n` — until this branch has resolved.
+  **Classifying a `LADDER_EXIT=1` run — two tests, three outcomes.** Read nothing else — no median,
+  no rank, no `n` — until this branch has resolved.
+
+  **Test 1: did this invocation reach the summariser at all?** Look for a rendered table in this
+  invocation's own `.scratch/kickstart-run.log` (the launch truncates the log each time, so what it
+  holds is this invocation only). The summariser that writes and prints the table is reached only
+  when the run function returns a nil error; when it returns an error, the command wraps it, prints
+  it and exits 1 without ever writing `summary.json` or `table.txt`. Checking for the file on disk is
+  not a substitute: on a resumed root both files may already exist from an earlier invocation.
+
+  - **No rendered table, an error line instead — a hard error, not a matrix outcome.** The run
+    function returns an error for a held or stale run lock, an effective-repetition-count mismatch, a
+    pack-hash mismatch in the pre-repetition card verification, a resume-time memory-path finding, or
+    any mid-matrix repetition error. The matrix is truncated or never started, and nothing about it
+    may be read as a result. Read the error line and act on the fault it names:
+    - held or stale lock — walk resume precondition 2, then the other two, then re-run;
+    - repetition-count mismatch — the invocation passed a differing `--reps`; re-run the identical
+      command with no `--reps` at all;
+    - pack-hash mismatch — **stop**. The pack and the committed cards have diverged. Do not
+      regenerate the pack after the cards have been committed; surface this to the operator;
+    - memory-path finding or a mid-matrix repetition error — fix the fault the message names, then
+      walk the three resume preconditions and re-run the identical command.
+
+  **Test 2, only when a table was rendered: was the matrix aborted?** The discriminator is whether
+  some repetition's own `run.json` under `$RESULTS_ROOT/raw/<cell>/<rep>/` carries a fatal finding
+  whose gate is `memory_path_scan`. Grep for that gate name across the raw tree's `run.json` files.
 
   - **A `memory_path_scan` fatal finding is present — the matrix was aborted.** This is the only
     reachable abort in this configuration: the memory-path scanner returns a fatal finding when any
@@ -272,12 +295,12 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
     about the machine, detected without reading a single score, and the run loop's own comment says
     the abort exists so a resumed invocation cannot skip past the repetition that revealed it — so
     resume is the designed recovery, not optional stopping. Fix the environment (remove the offending
-    token from the named memory file, or create the missing memory path), delete that repetition's
-    `raw/<cell>/<rep>/` directory so the resume genuinely re-runs it rather than skipping a
-    repetition that is present but not counted complete, then walk the three resume preconditions and
-    re-run the identical command. Record the deletion — cell, repetition and finding text — for card
-    31's coverage section. This is the only deletion this batch permits, and it is legal only while
-    no `summary.json` or `table.txt` number has been read.
+    token from the named memory file, or create the missing memory path), then walk the three resume
+    preconditions and re-run the identical command. **Delete nothing.** The completeness predicate the
+    resume loop guards on is state `complete` *and not* blinding-failed, so a repetition written
+    complete-with-the-blinding-failed-flag is already not counted complete and is re-attempted in
+    place; deleting its directory would destroy the transcript and the finding the harness wrote
+    there deliberately. Record the resume and the finding text for card 31's coverage section.
   - **No `memory_path_scan` fatal finding — the matrix ran to completion and the exit code is
     reporting short or invalidated repetitions, not an abort.** Both reachable causes leave the run
     loop running: a repetition that exhausted its attempt ceiling comes back `incomplete` with no
@@ -289,6 +312,10 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   Because a completed matrix can exit 1 this way, a `blinding_failed_count` above zero in
   `summary.json` on its own never establishes an abort, and neither does an `n` column below ten in
   `table.txt`. Only the gate name in `run.json` does.
+
+  **No repetition directory is deleted by this card, under any branch.** The frozen batch spec
+  anticipated one under the taint disposition; the harness's own completeness predicate makes it
+  unnecessary, and card 31's coverage section records that fact rather than a deletion.
 
   **Read the results, once the completion predicate has resolved to a completed matrix** — either
   `LADDER_EXIT=0`, or `LADDER_EXIT=1` with no `memory_path_scan` fatal finding. Read the printed table and
@@ -401,10 +428,11 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
     become a candidate and why; on a separating result, that it does, with card 32 adding it to the
     roadmap.
   - In the coverage section: if the run was ever resumed, the invocation count from the provenance
-    record's `invocations` and why each resume happened; and if a repetition directory was deleted
-    under card 30's aborted-invocation disposition, the cell, the repetition and the finding text that
-    justified it. The reference root asserts "No permitted repetition deletion" explicitly, so a root
-    that did delete one says so with equal explicitness. If any invocation recorded
+    record's `invocations` and why each resume happened — and, for a resume after a memory-path taint,
+    the cell, the repetition and the finding text, plus the fact that the repetition was re-attempted
+    in place. Assert "No permitted repetition deletion" explicitly, matching the reference root: card
+    30 deletes no repetition directory on any branch, so this root can make the same assertion the
+    reference root makes. If any invocation recorded
     `quarry_dirty: true`, name the invocation, quote `quarry_dirty_files` verbatim, and state whether
     any listed path could affect the measurement — that is not grounds to discard the root.
 
@@ -428,7 +456,10 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   Four edits to `docs/roadmap.md`, in one commit.
 
   1. **Standing-rule paragraph.** Add one sentence naming the new results root and saying in one
-     clause what it measured and what it found. Word it as the *other direction* — push-mode
+     clause what it measured and what it found. Spell the root the way the paragraph already spells
+     its three — relative to the ladder directory, as `results/<RUN_DATE>-kickstart`, not as the
+     repository-relative `bench/loomyard-eval/ladder/results/<RUN_DATE>-kickstart` this plan uses.
+     Word it as the *other direction* — push-mode
      pre-resolution, glyph spans resolved into the prompt before the agent starts — and not as a
      fourth entry in the paragraph's existing parenthesised list of three roots. That list closes a
      negative for quarry as a mid-session agent tool; this root does not test that claim, and folding
@@ -445,8 +476,10 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
        31's verdict section already records in one sentence that the M4b edit-task variant does not
        become a candidate, citing this measurement as the reason.
      - e1 separates — M4b is now genuinely ahead. Add it as a new numbered point in
-       `## The order of work`, after the Loomyard-adoption point, phrased as the deleted sentence
-       phrased it, pointing at the new results root as its justification.
+       `## The order of work`, immediately after the Loomyard-adoption point, phrased as the deleted
+       sentence phrased it, pointing at the new results root as its justification. Edit 2's
+       renumbering then yields, in order: 1 Loomyard adopts glyphs, 2 M4b, 3 T8, 4 More languages —
+       so the two T8 and More-languages points end at 3 and 4 rather than at 2 and 3.
   4. **Update the `Updated <date>` line** on line 3 to the date of this change.
 
   Do not touch the `## Small and independent, any time` section: the frozen spec's other edit — the
