@@ -27,8 +27,10 @@ are copied from quarry answers, new symbols get tentative `plan:<expected-glyph>
 canonicalized by the pipeline via the glyph-maker); DAG on handles with binding at done
 from diff-to-symbols; drift detection with exact-tier auto-repair and evidence-tier
 review; validator reports echoing kind + signature. Quarry never sees a plan; Loomyard
-never parses code. Independent of the M4 matrix conclusion (`results/2026-09-06-kickstart`)
-— the kick-start-pack piece is included, since e1-pack separated in that measurement.
+never parses code. The kick-start pack is deliberately out of scope for this adoption
+round (the task's own Q1 decision). The M4 matrix (`results/2026-09-06-kickstart`) removed
+the *measurement* gate — e1-pack separated — so pack injection is a candidate follow-up
+after the adoption lands; whether and when is decided in the Loomyard task, not here.
 
 **2. M4b — an edit-task variant (agent revising code in a throwaway worktree)** is now a
 candidate follow-up, per `results/2026-09-06-kickstart`, whose predeclared rule separated
