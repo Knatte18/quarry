@@ -193,18 +193,25 @@ and the parallel-read instruction with the spans-vs-names difference and is not 
   before this card ever launched `ladder run`); invocation 2 is this card's single `run` call, which
   completed with `LADDER_EXIT=0` on its first attempt. No abnormal process death occurred and no
   resume precondition was ever walked for the run itself.
-- **`quarry_dirty: true` on two invocations, both pre-dating the run and both harmless.** Invocation 0
-  recorded `quarry_dirty_files: ["_mill/briefs/implement-matrix-and-writeup-r1.md"]` — the injected
-  implementer brief, mill orchestrator bookkeeping unrelated to the harness or the target repository,
-  committed before the pack command was re-run. Invocation 1 recorded
+- **`quarry_dirty: true` on two invocations, both pre-dating the run and both harmless.** `Pack` calls
+  `CollectInvocation` — which polls `git status --porcelain` — before it writes the card,
+  `pack-resolve.json` or `provenance.json`, so each invocation's recorded dirty files describe the tree
+  as it stood *before* that invocation wrote anything of its own. Invocation 0 recorded
+  `quarry_dirty_files: ["_mill/briefs/implement-matrix-and-writeup-r1.md"]` — the injected implementer
+  brief, mill orchestrator bookkeeping unrelated to the harness or the target repository — and then
+  went on to write the card, `pack-resolve.json` and the provenance record itself, uncommitted.
+  Invocation 1 recorded
   `quarry_dirty_files: ["bench/loomyard-eval/cards/07-e1-pack.md", "bench/loomyard-eval/ladder/results/2026-09-06-kickstart/"]`
-  — that invocation's own just-written pack outputs, self-referential (the tool's own output directory
-  and the card block it had just rewritten, both still uncommitted at the moment the same invocation
-  wrote its provenance record), not stale drift carried over from an earlier run. Neither path is code
-  the harness or the target repository reads, so neither could affect the measurement. Invocation 2 —
-  the run this root measures — recorded `quarry_dirty: false`, matching the
-  `commit-clean-before-each-harness-invocation` Shared Decision: card 29's pack outputs were committed
-  before `ladder run` launched.
+  — not that invocation's own just-written pack outputs (its `CollectInvocation` poll ran before it had
+  written anything), but invocation 0's completed, still-uncommitted outputs left over on the tree when
+  invocation 1 launched. So the `commit-clean-before-each-harness-invocation` Shared Decision was
+  missed twice in a row — before invocation 0 (dirty on the mill brief) and again before invocation 1
+  (dirty on invocation 0's uncommitted output) — not once. Neither invocation's dirty path is code the
+  harness or the target repository reads, so neither could affect the measurement, but neither pack
+  invocation actually satisfied the preflight commit-clean step. Only invocation 2 — the `run` call
+  this root measures — recorded `quarry_dirty: false`, matching the Shared Decision: card 29's pack
+  outputs were committed before `ladder run` launched, which is the invocation the decision actually
+  gates measurement validity on.
 - **Gate failures.** `e0-names` and `e1-pack` each pass `summary_matches` on all 10 repetitions.
   `e2-files` fails on one of ten (`raw/e2-files/2/score.json`, `summary_matches: false`) — not more
   than two of ten, so `e2-files`'s cost numbers are not called suspect under the predeclared threshold,
