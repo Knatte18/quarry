@@ -82,14 +82,15 @@ and failure handling.
 - **Decision:** card 30 launches the run **detached**, not as a foreground Bash call:
 
   ```
-  nohup go run ./bench/loomyard-eval/ladder/cmd/ladder run \
+  nohup sh -c 'go run ./bench/loomyard-eval/ladder/cmd/ladder run \
     --config bench/loomyard-eval/ladder/ladder-kickstart.yaml \
-    --results <RESULTS_ROOT> \
+    --results <RESULTS_ROOT>; echo "LADDER_EXIT=$?"' \
     > .scratch/kickstart-run.log 2>&1 &
   ```
 
-  then polls `.scratch/kickstart-run.log` (`tail`) until the harness's own rendered table appears at
-  the end of the log and the process has exited.
+  then polls `.scratch/kickstart-run.log` (`tail`) until the trailing `LADDER_EXIT=<code>` line
+  appears. **The exit code is part of the completion predicate, not decoration** — see
+  "Completion predicate" below.
 - **Rationale:** ~30 measured claude invocations plus up to 30 scorer invocations is on the order of
   an hour of wall-clock; a foreground Bash call is capped at 600 s and would be killed. Detached +
   log-polling behaves identically whether the caller is this orchestrator or a mill-go implementer
@@ -97,9 +98,53 @@ and failure handling.
   resumable by design: completed repetitions are skipped and the resumed invocation is appended to
   the provenance record.
 - **Liveness test.** `tail` alone cannot distinguish "still running" from "died"; the log goes quiet
-  in both cases. Record the launched shell's pid (`$!`) at launch and test it with `kill -0 <pid>`,
-  or, equivalently, `pgrep -f 'ladder(/| ).*run'`. The run is finished only when the process is gone
-  **and** the log's last lines carry the rendered table; the process gone without a table is a death.
+  in both cases. The **authoritative** check is the lock file's own `pid=` line
+  (`~/.cache/ladder-eval/.ladder.lock`, written as `os.Getpid()` of the compiled ladder binary at
+  `worktree.go:309`) tested with `kill -0`, together with `pgrep -f 'cmd/ladder|ladder run'`. `$!`
+  from the `nohup … &` launch is the **`go run` parent shell**, a different process from the ladder
+  child the lock records — it is a convenience handle for "did my launch survive at all", never proof
+  that the ladder process is gone, and neither pid alone establishes the other's state.
+- **Completion predicate — three outcomes, not two.** The run is finished normally only when the
+  process is gone **and** the log carries `LADDER_EXIT=0` **and** the rendered table precedes it:
+  - `LADDER_EXIT=0` -> normal completion. Proceed to read results. No resume is permitted from here.
+  - **no `LADDER_EXIT` line at all** -> abnormal process death (kill, logout, OOM). Walk the resume
+    preconditions below.
+  - `LADDER_EXIT=1` -> the run **completed its own control flow** but reported a problem, and
+    `summarizeAndReport` (`main.go:98,172`) still wrote and printed `summary.json` and `table.txt`.
+    A printed table therefore does **not** prove a full matrix. Classify it per "Aborted invocation"
+    below before touching any number.
+- **Aborted invocation (`abortRun`) — detection and disposition.** Two branches set
+  `repOutcome.abortRun` and stop the whole matrix mid-run while still leaving a written, printed
+  table:
+  - **memory-path taint** (`run.go:625`): `ScanMemoryPaths` (`provenance.go:517`) returns a fatal
+    finding when any memory file matches the bare token `quarry`, **or when a named memory path does
+    not exist**. The repetition is written complete with the blinding-failed flag set, the pinned
+    worktree is restored, and the run stops.
+  - **every attempt failing to connect the same server** (`run.go:576-580`) — cannot occur here (no
+    cell grants tools, so no server is ever built), listed for completeness.
+
+  **Detect it** by: `LADDER_EXIT=1`, plus `table.txt`'s `n` column far below 10 on the aborting cell,
+  plus `blinding_failed_count > 0` in `summary.json`, plus the fatal finding in that repetition's own
+  state file under `raw/<cell>/<rep>/`.
+
+  **Disposition: clear the taint and resume, and this is not optional stopping.** A memory-path taint
+  is an environment fault about the *machine*, not a measurement outcome — it says a memory file
+  mentions quarry or a memory directory is missing, and it is detected and acted on **without reading
+  a single score**. The harness's own comment at `run.go:615-618` says the abort exists precisely so
+  "a resumed invocation must not skip past the very repetition that revealed the taint", which makes
+  resume the designed recovery rather than a workaround. Concretely: fix the environment (remove the
+  offending token from the named memory file, or create the missing memory path), **delete the
+  blinding-failed repetition's `raw/<cell>/<rep>/` directory** so the resume actually re-runs it
+  rather than skipping a repetition that is present-but-not-counted-complete, then walk the three
+  resume preconditions and re-run. **Record the deletion and its reason in the conclusion's coverage
+  section** — the reference root's conclusion asserts "No permitted repetition deletion" explicitly,
+  so a root that did delete one must say so with equal explicitness, naming the cell, the repetition
+  and the finding text.
+
+  This is the one deletion this task permits, and it is bounded by the same before-any-result rule as
+  every resume: it is legal only while no `summary.json` or `table.txt` number has been read. Once a
+  result has been read, an aborted root is dispositioned under `short-arm-disposition` like any other
+  short arm.
 - **Resume preconditions — all three, in this order, before re-running.** A resume is not a bare
   re-run of the same command:
   1. **Confirm nothing is live.** `kill -0 <pid>` fails and no `go run .../cmd/ladder` or `ladder`
@@ -215,8 +260,33 @@ and failure handling.
   - `internal/fabricengine#Fabric.mergeStateOrForeignErr`
   - `internal/gitrepo#Repo.ConflictedFiles`
 
-  If and only if `ladder pack` reports a target that did not resolve `found`, replace the offending
-  glyph with one of those three (same package, same mechanism) and then, **in this order**:
+  **Deterministic selection rule.** The reserves do not cover every package `pack_targets` names, so
+  the branch is only available for some failures. Read this table, then act:
+
+  | offending glyph's package | action |
+  |---|---|
+  | `internal/fabricengine` | substitute `Fabric.mergeStateOrForeignErr`; if that itself does not resolve `found`, `Fabric.MergeAbort`; if both fail, **halt** |
+  | `internal/gitrepo` | substitute `Repo.ConflictedFiles`; if it does not resolve `found`, **halt** |
+  | `internal/fabriccli` | **halt** — no same-package reserve exists |
+  | `internal/mergeresolve` | **halt** — no same-package reserve exists |
+
+  The order within a package is fixed above so the choice is deterministic and auditable rather than
+  a judgement call. A reserve already present in `pack_targets` is skipped (it cannot be substituted
+  for itself).
+
+  **Halt means halt**: do not substitute across packages, do not relax the `found` gate, do not edit
+  the target repository, and do not proceed to card 30. Write what failed and why into
+  `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md`'s notes section, commit, and surface to
+  the operator — a cross-package substitute changes which mechanism the task traces, which is a
+  treatment redesign this task has no authority to make.
+
+  **More than one glyph failing to resolve `found` is also a halt**, regardless of package. The
+  reserve list holds three entries for one expected failure; two or more simultaneous failures
+  indicate a pin, checkout or extractor problem rather than a bad glyph, and substituting through it
+  would paper over the real fault.
+
+  If and only if `ladder pack` reports **exactly one** target that did not resolve `found`, and the
+  table above yields a substitute, replace the offending glyph with it and then, **in this order**:
 
   1. edit `pack_targets:` in `bench/loomyard-eval/ladder/ladder-kickstart.yaml`;
   2. **hand-edit the `Uses:` list in all three cards** — `ladder pack` rewrites only the pack cell's
@@ -250,14 +320,23 @@ and failure handling.
   fasit's seven-file `relevant_files` list — `Fabric.MergeAbort` and `Fabric.mergeStateOrForeignErr`
   in `internal/fabricengine/mergelifecycle.go` (lines 366 and 221 at the pin),
   `Repo.ConflictedFiles` in `internal/gitrepo/merge.go` (line 157). A substitution can therefore only
-  ever **vacate** a file, never add one. Step 3 still re-derives e2's `Files:` list from the new
-  glyph set, exactly as the frozen spec directs — so if the substitution vacates a file, e2 ends up
-  naming six files against the fasit's seven. When that happens, the conclusion's
-  recall-inflation paragraph must be reworded rather than transcribed: it says that e1's card names
-  the fasit's seven files verbatim inside its pack block while e2 names only the six its glyph set
-  reaches, so **both** non-control arms remain inflated by construction and still uncomparable to the
-  control, but e2's inflation is no longer maximal — and it names which file was vacated. If no
-  substitution occurs, the paragraph stands as written in "What the conclusion must contain".
+  ever **vacate** a file, never add one. Step 3 re-derives e2's `Files:` list from the new glyph set,
+  exactly as the frozen spec directs.
+
+  **Both non-control arms move together — there is no asymmetry to report.** `Pack` renders e1's
+  block from the same `pack_targets` (`pack.go:287-292`, one `<target> → <file> <span>` line per
+  target), so the set of files named in e1's pack block is by construction the same set e2's `Files:`
+  list is derived from. A substitution that vacates a file vacates it from **both** cards
+  simultaneously; e1 cannot keep naming seven while e2 drops to six.
+
+  So if a substitution vacates a file, the conclusion's recall-inflation paragraph is reworded to say
+  that both non-control cards name the **same six** of the fasit's seven `relevant_files`, naming
+  which file was vacated and by which substitution. It adds that the vacated seventh file is named by
+  no card in any arm, so all three arms — control included — must find it unaided, and that this
+  narrows but does not remove the inflation: the two non-control arms still have six of seven handed
+  to them, and the control's file recall remains the only fully earned one. The
+  "never compared across arms" rule is unchanged and unconditional. If no substitution occurs, the
+  paragraph stands as written in "What the conclusion must contain".
 - **Rationale:** the source discussion (`git show a69c999:_mill/discussion.md`, lines 325-338) names
   the three candidates verbatim; without them the branch would require operator judgement mid-run,
   which under an autonomous pipeline means either a halt or an unlogged treatment redesign.
@@ -288,7 +367,7 @@ and failure handling.
 
 ### roadmap-card-32-adaptation
 
-- **Decision:** card 32 becomes **three** edits in one commit, not the spec's two:
+- **Decision:** card 32 becomes **four** edits in one commit, not the spec's two:
 
   1. Add **one sentence** to the standing-rule paragraph naming the new results root and saying in
      one clause what it measured and what it found — worded so it reads as the *other direction*
@@ -301,13 +380,26 @@ and failure handling.
      renumber points 2, 3, 4 to 1, 2, 3. Point 2's closing clause ("Independent of point 1 — only the
      kick-start-pack piece waits on the matrix result") must be rewritten to refer to the conclusion
      rather than to a point that no longer exists.
-  3. Update the file's `Updated <date>` line on line 3 to the date of this change.
+  3. **Preserve the M4b conditional, whose only record is the deleted point 1.** Its last sentence
+     (`docs/roadmap.md:23-24`) reads "If — and only if — e1 separates, an edit-task variant (M4b:
+     agent revising code in a throwaway worktree) becomes a candidate follow-up." Deleting point 1
+     deletes that condition, and the file's own charter — it "only ever says what is ahead" — makes
+     the disposition depend on the result:
+     - **e1 does not separate** -> the condition is discharged, not lost. It is deleted from the
+       roadmap, and the conclusion's verdict section records in one sentence that the M4b edit-task
+       variant does not become a candidate, citing this measurement as the reason.
+     - **e1 separates** -> M4b is now genuinely ahead. Card 32 adds it as a new numbered point in
+       `## The order of work` (after the Loomyard-adoption point), phrased as the deleted sentence
+       phrased it, with a pointer to the new results root as its justification.
+  4. Update the file's `Updated <date>` line on line 3 to the date of this change.
 - **Rationale:** the spec's first edit — striking the small-and-independent bullet about creating the
   results root before writing the provenance record — is already done: commit `9f3096a` restructured
   `docs/roadmap.md` and that bullet is gone. Re-applying it is impossible. The spec's surviving
-  intent is edits (1) and (3); the wiki task body's operational note 3 adds (2) explicitly.
+  intent is edits (1) and (4); the wiki task body's operational note 3 adds (2) explicitly.
   Renumbering forces the point-2 cross-reference fix, which is not optional — leaving it would leave
-  a dangling reference.
+  a dangling reference. Edit (3) exists because the deletion in (2) would otherwise silently discard
+  the M4b condition, which is exactly the kind of forward-looking commitment the roadmap is the sole
+  record of.
 - **Rejected:** appending the new root as a fourth item in the parenthesised list (conflates two
   different claims); giving it its own paragraph (the card says "add one line to the standing-rule
   paragraph"); leaving point 1 in place (the task body says to remove it).
@@ -497,11 +589,14 @@ The four cards are strictly sequential. Concretely:
    `$RESULTS_ROOT/provenance.json` (plus any file the contingency branch touched) with message
    `feat(bench): generate the kick-start pack for the e1 card`.
 5. Confirm the tree is clean again. **Card 30** — launch the run detached per
-   `live-matrix-runs-detached`, recording the pid; poll the log and the pid together. If the process
-   died without printing the table, walk the three resume preconditions in that decision (nothing
-   live, clear `~/.cache/ladder-eval/.ladder.lock`, commit the tree clean) and only then re-run the
-   identical command. **Read no result until the run has completed normally** — after that point no
-   resume is permitted, per `short-arm-disposition`.
+   `live-matrix-runs-detached`; poll the log for the trailing `LADDER_EXIT=` line, using the lock
+   file's own `pid=` plus `pgrep` as the authoritative liveness check. Branch on the three-outcome
+   completion predicate: `LADDER_EXIT=0` proceeds; no `LADDER_EXIT` line is an abnormal death, so
+   walk the three resume preconditions (nothing live, clear `~/.cache/ladder-eval/.ladder.lock`,
+   commit the tree clean) and re-run the identical command; `LADDER_EXIT=1` is classified under
+   "Aborted invocation" **before any number is read** — a printed table does not prove a full matrix.
+   **Read no result until the run has completed normally** — after that point no resume and no
+   repetition deletion is permitted, per `short-arm-disposition`.
    Then read the printed table and `summary.json`, tally the four dispositions plus the realised n
    per `gate-dispositions-tallied-from-score-json` and `short-arm-disposition`, and commit
    `$RESULTS_ROOT/summary.json`,
@@ -561,6 +656,14 @@ Following `results/2026-09-05-ladder-d/conclusion.md`'s structure:
   does not separate either, the surface has now been measured from both directions and the parked
   condition is closed twice over; if it does separate, the win belongs to **pre-resolution** rather
   than to a tool, which is a different product from the one the parked task assumed.
+- **One sentence on the M4b condition**, per Decision `roadmap-card-32-adaptation` edit (3): on a
+  non-separating result, that the edit-task variant does not become a candidate and why; on a
+  separating result, that it does, with card 32 adding it to the roadmap.
+- In the coverage section, if the run was ever resumed: the invocation count from
+  `provenance.json.invocations`, why each resume happened, and — if a repetition directory was
+  deleted under the aborted-invocation disposition — the cell, the repetition and the finding text
+  that justified it. The reference root asserts "No permitted repetition deletion" explicitly, so a
+  root that did delete one says so with equal explicitness rather than by omission.
 
 ## Q&A log
 
@@ -573,4 +676,7 @@ Following `results/2026-09-05-ladder-d/conclusion.md`'s structure:
 - **Q:** Where do card 30's gate pass/fail counts come from? **A:** [auto-pick] Hand-tallied with `grep` from each repetition's `raw/<cell>/<rep>/score.json` `summary_matches`; ceiling and unscored counts come from `summary.json`. **Why:** `ScoreRecord` is a free-form map and neither `summarize.go` nor `report.go` aggregates `summary_matches`; adding that aggregation would be a harness change, which is out of scope.
 - **Q:** (review r2 gap) What exactly does a resume require after the run process dies? **A:** [auto-pick] Three preconditions before re-running: confirm nothing live via the recorded pid, delete the stale `~/.cache/ladder-eval/.ladder.lock`, and commit the tree clean. **Why:** `AcquireRunLock` is `O_CREATE|O_EXCL` and by its own doc comment never reaps and never tests liveness, so a dead run always blocks its own resume; and `Run` rewrites `provenance.json` after every repetition, so the file card 29 committed is modified by resume time and would record `quarry_dirty: true` — silently forfeiting the property the commit-before-invocation decision exists to buy.
 - **Q:** (review r2 gap) What happens if an arm finishes with fewer than ten repetitions? **A:** [auto-pick] The primary test is reported **void** for every comparison that arm participates in — U computed and shown on the realised sizes, never compared against 27 or a substituted critical value — with no re-run, no re-sample and no dropped arm. **Why:** `attempts >= MaxAttempts` returns `incomplete: true` with no further retry, so a short arm is reachable; substituting the critical value for the realised n would renegotiate a frozen constant after seeing the run, and refilling the repetition would be optional stopping. Voiding leaves the rule untouched and still reports every cost measurement the root produced.
+- **Q:** (review r3 gap) How is a whole-run abort detected and dispositioned, given that it still prints a table? **A:** [auto-pick] Capture the run's exit code into the log (`LADDER_EXIT=`) and make it part of a three-outcome completion predicate; on `LADDER_EXIT=1` classify as an aborted invocation before reading any number, then fix the environment, delete the tainted repetition's directory, and resume. **Why:** `abortRun` stops the matrix mid-run but `Run` returns `nil`, so `summarizeAndReport` still writes and prints `summary.json` and `table.txt` — a printed table does not prove a full matrix. A memory-path taint is an environment fault detected without reading any score, and the harness's own comment at `run.go:615-618` shows resume is the designed recovery, so it is not optional stopping.
+- **Q:** (review r3 gap) Which reserve replaces a failing glyph, and what covers packages with no reserve? **A:** [auto-pick] A fixed per-package table — `fabricengine` -> `mergeStateOrForeignErr` then `MergeAbort`; `gitrepo` -> `ConflictedFiles`; `fabriccli` and `mergeresolve` -> halt — plus halt on any multi-glyph failure. **Why:** the three reserves cover only two of the four packages `pack_targets` names, and a cross-package substitute would change which mechanism the task traces, which is a treatment redesign this task has no authority to make; two simultaneous failures indicate a pin or extractor fault rather than a bad glyph.
+- **Q:** (review r3 gap) Does a substitution make e1 and e2 name different file sets? **A:** [auto-pick] No — both drop together; the earlier claim of an e1/e2 asymmetry was wrong and has been removed. **Why:** `Pack` renders e1's block from the same `pack_targets` e2's `Files:` list is derived from (`pack.go:287-292`), so a vacated file leaves both cards at the same six; the conclusion instead reports that the vacated seventh is named by no card in any arm.
 - **Q:** How is the repo-wide done gate run given the env-gated engine test? **A:** [auto-pick] `go test ./... && golangci-lint run` with `LADDER_LOOMYARD_REPO` unset in the shell. **Why:** `internal/engine/loomyard_test.go:53-59` reads the variable directly and skips when unset, but fails at `:69` when the checkout is not at the `72c23d9` pin (it is at `408b910`); the bench still finds the repository through `.scratch/ladder.env`.
