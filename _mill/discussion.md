@@ -308,8 +308,10 @@ and failure handling.
 - `ResolveWorktreeRoot` (`worktree.go:163`) resolves `$LADDER_WORKTREE_ROOT`, else
   `$XDG_CACHE_HOME/ladder-eval`, else `~/.cache/ladder-eval`. It **refuses** any path that is the
   quarry repo root, is under it, or contains the case-insensitive substring `quarry`. On this
-  machine it resolves to `~/.cache/ladder-eval`, which already holds worktrees for tasks 01, 02, 04
-  and 06 and **no** stale lock file. Task 07's pinned worktree does not exist yet; `Pack` creates it.
+  machine it resolves to `~/.cache/ladder-eval`, which carries **no** stale lock file. Its
+  `worktrees/` subdirectory currently holds only `probe` (three relocated log files, not a git
+  worktree); task 07's pinned worktree does not exist, so `PrepareWorktree` creates it during
+  card 29.
 - Target repository state, verified: `/home/knatte/Code/loomyard/wts/loomyard` is clean, HEAD is
   `408b91033c34e4ec6af621f80cb3afcc40247e96`, and the pinned commit
   `72c23d9eecc1fa55add567622093a8bbbfba8c1d` **exists** in it (`git cat-file -t` -> `commit`). The
