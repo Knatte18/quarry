@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-reviewing
+phase: holistic-approved
 slug: kickstart-matrix-run
 branch: kickstart-matrix-run
 plan: _mill/plan
@@ -32,6 +32,7 @@ approved-matrix-and-writeup  '2026-09-06T10:42:01Z'
 holistic-reviewing  '2026-09-06T10:42:44Z'
 holistic-fixing  '2026-09-06T10:46:57Z'
 holistic-reviewing  '2026-09-06T10:49:37Z'
+holistic-approved  '2026-09-06T10:54:10Z'
 ```
 
 ## Batches

@@ -1,0 +1,1 @@
+- "self-referential" framing undersells two decision misses as harmless by construction: **Location:** `bench/loomyard-eval/ladder/results/2026-09-06-kickstart/conclusion.md:196-201`
