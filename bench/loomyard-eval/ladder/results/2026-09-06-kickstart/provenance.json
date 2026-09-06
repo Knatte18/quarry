@@ -1,0 +1,94 @@
+{
+  "written_at": "2026-09-06T09:55:37Z",
+  "ladder_file": "bench/loomyard-eval/ladder/ladder-kickstart.yaml",
+  "quarry_commit": "ac012f7df85f101a6ae21553d9bdd6da5f22bc40",
+  "quarry_dirty": true,
+  "quarry_dirty_files": [
+    "bench/loomyard-eval/cards/07-e1-pack.md",
+    "bench/loomyard-eval/ladder/results/2026-09-06-kickstart/"
+  ],
+  "loomyard_commit": "408b91033c34e4ec6af621f80cb3afcc40247e96",
+  "loomyard_repo_sha256": "21051e3d290c1dab1ab0d53cafc099faa133917eb17e0c5f7e3c6b2d9601ed41",
+  "hostname": "Neve",
+  "go_version": "go1.26.0",
+  "claude_version": "2.1.236 (Claude Code)",
+  "server_hashes": {},
+  "selected_cells": [
+    "e0-names",
+    "e1-pack",
+    "e2-files"
+  ],
+  "reps_effective": 10,
+  "memory_path_hashes": [],
+  "server_name": "quarry",
+  "session_fingerprints": {},
+  "invocations": [
+    {
+      "written_at": "2026-09-06T09:54:56Z",
+      "ladder_file": "bench/loomyard-eval/ladder/ladder-kickstart.yaml",
+      "selected_cells": [
+        "e0-names",
+        "e1-pack",
+        "e2-files"
+      ],
+      "reps_effective": 10,
+      "quarry_commit": "a2bb6efb7df18ce22bf6cfac38324d54a95b7174",
+      "quarry_dirty": true,
+      "quarry_dirty_files": [
+        "_mill/briefs/implement-matrix-and-writeup-r1.md"
+      ],
+      "loomyard_commit": "408b91033c34e4ec6af621f80cb3afcc40247e96",
+      "loomyard_repo_sha256": "21051e3d290c1dab1ab0d53cafc099faa133917eb17e0c5f7e3c6b2d9601ed41",
+      "claude_version": "2.1.236 (Claude Code)",
+      "go_version": "go1.26.0",
+      "hostname": "Neve",
+      "server_name": "quarry",
+      "memory_path_hashes": null,
+      "server_hashes": null
+    },
+    {
+      "written_at": "2026-09-06T09:55:37Z",
+      "ladder_file": "bench/loomyard-eval/ladder/ladder-kickstart.yaml",
+      "selected_cells": [
+        "e0-names",
+        "e1-pack",
+        "e2-files"
+      ],
+      "reps_effective": 10,
+      "quarry_commit": "ac012f7df85f101a6ae21553d9bdd6da5f22bc40",
+      "quarry_dirty": true,
+      "quarry_dirty_files": [
+        "bench/loomyard-eval/cards/07-e1-pack.md",
+        "bench/loomyard-eval/ladder/results/2026-09-06-kickstart/"
+      ],
+      "loomyard_commit": "408b91033c34e4ec6af621f80cb3afcc40247e96",
+      "loomyard_repo_sha256": "21051e3d290c1dab1ab0d53cafc099faa133917eb17e0c5f7e3c6b2d9601ed41",
+      "claude_version": "2.1.236 (Claude Code)",
+      "go_version": "go1.26.0",
+      "hostname": "Neve",
+      "server_name": "quarry",
+      "memory_path_hashes": null,
+      "server_hashes": null
+    }
+  ],
+  "kickstart_pack": {
+    "generated_at": "2026-09-06T09:55:37Z",
+    "quarry_commit": "ac012f7df85f101a6ae21553d9bdd6da5f22bc40",
+    "quarry_dirty": true,
+    "loomyard_commit": "408b91033c34e4ec6af621f80cb3afcc40247e96",
+    "targets": [
+      "internal/fabriccli#addWeftVerbs",
+      "internal/fabricengine#Fabric.MergeInProgress",
+      "internal/fabricengine#Fabric.MergeContinue",
+      "internal/fabricengine#mergeInProgressReason",
+      "internal/fabricengine#Fabric.mergeRecordExists",
+      "internal/fabricengine#Fabric.foreignMergeStatePresent",
+      "internal/fabricengine#ErrMergeInProgress",
+      "internal/gitrepo#Repo.MergeHeadPresent",
+      "internal/mergeresolve#Resolver.Resolve"
+    ],
+    "pack_sha256": "3269190699d03fc53fb7bf9f9178f50514538d3799135959b1ff584432d3999c",
+    "resolve_sha256": "539d51ff1e3d071bebf2b288df1c41a7ccf118e033c3364573fc2b6da40475fd",
+    "card_file": "bench/loomyard-eval/cards/07-e1-pack.md"
+  }
+}
