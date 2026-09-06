@@ -65,14 +65,21 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   1. Confirm `.scratch/ladder.env` exists in this worktree and its `LADDER_LOOMYARD_REPO` value names
      the loomyard checkout. Verify it; do not re-copy it, and do not `export`
      `LADDER_LOOMYARD_REPO` into the shell environment at any point in this batch.
-  2. Confirm there is no stale lock file directly under `~/.cache/ladder-eval/` — `AcquireRunLock`
-     opens `~/.cache/ladder-eval/.ladder.lock` with `O_CREATE|O_EXCL`, never reaps it and never tests
-     process liveness, so a leftover file from an earlier dead run blocks this one. If one is present,
-     read it (it records `pid=` and `results=`), confirm the pid is dead with `kill -0`, and delete it.
+  2. Resolve the worktree root and bind it as `<worktree-root>` for the rest of this batch. The
+     harness resolves it as `LADDER_WORKTREE_ROOT` if set, else `$XDG_CACHE_HOME/ladder-eval`, else
+     `~/.cache/ladder-eval` — and it refuses any path that is the quarry repository root, is under
+     it, or contains the case-insensitive substring `quarry`. Do not assume the third alternative;
+     read the environment and record which one applies. Then confirm there is no stale lock file at
+     `<worktree-root>/.ladder.lock`: the lock is opened with `O_CREATE|O_EXCL`, is never reaped, and
+     never tests process liveness, so a leftover file from an earlier dead run blocks this one. If
+     one is present, read it (it records `pid=` and `results=`), confirm the pid is dead with
+     `kill -0`, and delete it.
   3. Resolve the date once: `RUN_DATE=$(date -u +%F)` and
-     `RESULTS_ROOT=bench/loomyard-eval/ladder/results/$RUN_DATE-kickstart`. Write the resolved
-     worktree-relative results-root path as the single line of `.scratch/kickstart-results-root.txt`.
-     Cards 30, 31 and 32 read that file rather than re-deriving the date.
+     `RESULTS_ROOT=bench/loomyard-eval/ladder/results/$RUN_DATE-kickstart`. Write two lines into
+     `.scratch/kickstart-results-root.txt`: one spelled `RESULTS_ROOT=` followed by the
+     worktree-relative results-root path, and one spelled `LADDER_WORKTREE_ROOT_RESOLVED=` followed
+     by the worktree root resolved in step 2. Cards 30, 31 and 32 read that file rather than
+     re-deriving the date or re-resolving the worktree root.
   4. Commit any pending worktree state so `git status --porcelain` is empty outside ignored paths,
      per the `commit-clean-before-each-harness-invocation` Shared Decision.
 
@@ -92,9 +99,26 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   in `bench/loomyard-eval/cards/07-e1-pack.md`, and written `pack-resolve.json` plus a provenance
   invocation recording `reps_effective: 10` under the results root.
 
-  **Contingency branch — exactly one target not resolving `found`.** Only if the pack command fails
-  naming exactly one offending target, apply the deterministic substitution table below. The three
-  reserve candidates are `internal/fabricengine#Fabric.MergeAbort`,
+  **Contingency branch — enumerate the failures first.** The pack subcommand's error message names
+  exactly one target no matter how many failed: the renderer returns on the *first* result whose
+  `Error` is non-empty, whose status is not `StatusFound`, or which carries other than one symbol,
+  and it returns before the resolve record is written, so no `pack-resolve.json` exists to read the
+  rest out of. The pack command's own error is therefore not a count and must never be used as one.
+
+  On a pack failure, enumerate the full resolve set independently before deciding anything. The
+  pinned worktree the pack command prepared is at `<worktree-root>/worktrees/07-fabric-merge-state-tracing`,
+  where `<worktree-root>` is the resolved worktree root defined in the preflight above; it survives
+  the failed pack. For each of the nine entries in `pack_targets` in
+  `bench/loomyard-eval/ladder/ladder-kickstart.yaml`, run the repository's own resolver against that
+  worktree — `go run ./cmd/quarry resolve <glyph> --root <pinned worktree> --text` — and record
+  whether it answers found. Exit code 1 from that command is a negative answer (not found, ambiguous,
+  outside the repository, or not a well-formed glyph) and counts as a failure to resolve `found`.
+  The count of failures in that enumeration, never the pack command's message, is what the halt test
+  below is applied to.
+
+  **Substitution, only when the enumeration shows exactly one failing target.** Apply the
+  deterministic substitution table below. The three reserve candidates are
+  `internal/fabricengine#Fabric.MergeAbort`,
   `internal/fabricengine#Fabric.mergeStateOrForeignErr` and `internal/gitrepo#Repo.ConflictedFiles`.
   A reserve already present in `pack_targets` is skipped — it cannot substitute for itself.
 
@@ -105,7 +129,12 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   | `internal/fabriccli` | halt — no same-package reserve exists |
   | `internal/mergeresolve` | halt — no same-package reserve exists |
 
-  Two or more targets failing simultaneously is also a halt regardless of package: the reserve list
+  Test each candidate reserve with the same `go run ./cmd/quarry resolve <glyph> --root <pinned worktree> --text`
+  invocation the enumeration uses, before editing anything — that is what "does not resolve `found`"
+  means in the table's cascade.
+
+  Two or more targets failing simultaneously in that enumeration is also a halt regardless of
+  package: the reserve list
   holds three entries for one expected failure, and multiple failures indicate a pin, checkout or
   extractor problem rather than a bad glyph. Halt means halt — do not substitute across packages, do
   not relax the `found` gate, do not touch the loomyard checkout, and do not proceed to card 30.
@@ -126,8 +155,11 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   5. record the substitution and its reason under the
      `## Notes for whoever prepares C's fasit / scores this` section of
      `bench/loomyard-eval/tasks/07-fabric-merge-state-tracing.md`;
-  6. re-run the fasit's own cross-check — `git show 72c23d9:<file>` for the substitute symbol,
-     confirming it exists at the pinned SHA in the file the resolve reports.
+  6. re-run the fasit's own cross-check for the substitute symbol against the read-only loomyard
+     checkout named by `LADDER_LOOMYARD_REPO` in `.scratch/ladder.env` — a `git -C <that checkout>
+     show 72c23d9:<file>`, never a bare `git show`, since `72c23d9` is the loomyard pin from
+     `pinned_sha` and does not exist in this quarry worktree — confirming the symbol exists at the
+     pinned SHA in the file the resolve reports.
 
   All of this happens before repetition 1 or not at all; the run loop indexes repetitions from 1 and
   gates them behind `verifyCardsAndPack`.
@@ -167,7 +199,8 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
 - **Moves:** none
 - **Requirements:**
 
-  Read the results root from `.scratch/kickstart-results-root.txt` and bind it as `$RESULTS_ROOT`.
+  Read `.scratch/kickstart-results-root.txt` and bind both recorded values: the results root as
+  `$RESULTS_ROOT` and the resolved worktree root as `<worktree-root>`.
   Confirm the tree is clean again (`git status --porcelain` empty outside ignored paths) before
   launching, per the `commit-clean-before-each-harness-invocation` Shared Decision.
 
@@ -185,10 +218,15 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   Pass no `--cells` and no `--reps`. The run loop refuses an invocation whose effective repetition
   count differs from the one the root was written with, and under a locked n that is correct.
 
+  **`Deletes: none` above is the tracked-file inventory.** The raw tree under `$RESULTS_ROOT/raw/` is
+  git-ignored and is outside that inventory — the harness writes and rewrites it freely, and the one
+  conditional repetition-directory removal the aborted-matrix branch below authorises happens there.
+  No tracked file is deleted by this card.
+
   **Poll for completion.** Tail `.scratch/kickstart-run.log` until the trailing `LADDER_EXIT=<code>`
   line appears. Tailing alone cannot distinguish "still running" from "died" — the log goes quiet in
-  both cases — so the authoritative liveness check is the lock file's own `pid=` line under
-  `~/.cache/ladder-eval/.ladder.lock` tested with `kill -0`, together with
+  both cases — so the authoritative liveness check is the lock file's own `pid=` line at
+  `<worktree-root>/.ladder.lock` tested with `kill -0`, together with
   `pgrep -f 'cmd/ladder|ladder run'`. The `$!` handle from the launch is the `go run` parent shell,
   a different process from the ladder child the lock records; it shows whether the launch survived at
   all and is never proof that the ladder process is gone.
@@ -201,14 +239,17 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
      from here.
   - No `LADDER_EXIT` line at all — abnormal process death (kill, logout, OOM). Walk the three resume
      preconditions below and re-run the identical command against the same results root.
-  - `LADDER_EXIT=1` — the run completed its own control flow but reported a problem. Classify it
-     under the aborted-invocation branch below before touching any number.
+  - `LADDER_EXIT=1` — the run completed its own control flow but reported a problem. A non-zero exit
+     is **not** by itself evidence of an aborted matrix: the run loop sets its non-zero-exit flag for
+     any repetition that came back `incomplete` or `blindingFailed`, and the summariser exits
+     non-zero whenever the `incomplete` or `invalid` list is non-empty — none of which stops the
+     matrix. Classify it under the branch below before touching any number.
 
   **Resume preconditions — all three, in this order.** A resume is not a bare re-run.
 
   1. Confirm nothing is live: `kill -0 <pid>` fails and `pgrep -f` finds no remaining ladder process.
      Never resume alongside a live run.
-  2. Clear the stale lock at `~/.cache/ladder-eval/.ladder.lock`. Read it first, confirm the recorded
+  2. Clear the stale lock at `<worktree-root>/.ladder.lock`. Read it first, confirm the recorded
      pid is dead and the recorded results root is this one, then delete it.
   3. Commit the tree clean again. The run loop rewrites the provenance record after every repetition
      and card 29 committed that file, so by resume time it is modified in the working tree; committing
@@ -217,22 +258,40 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
 
   Then re-run the identical command against the same results root, never with a `--reps` override.
 
-  **Aborted invocation — detection and disposition.** Detect it by `LADDER_EXIT=1` together with an
-  `n` column far below 10 on the aborting cell in `table.txt`, `blinding_failed_count` above zero in
-  `summary.json`, and the fatal finding in that repetition's own state file under
-  `$RESULTS_ROOT/raw/<cell>/<rep>/`. The reachable cause here is a memory-path taint: `ScanMemoryPaths`
-  returns a fatal finding when any memory file matches the bare token `quarry`, or when a named memory
-  path does not exist. That is an environment fault about the machine, detected without reading a
-  single score, and the run loop's own comment says the abort exists so a resumed invocation cannot
-  skip past the repetition that revealed the taint — so resume is the designed recovery, not optional
-  stopping. Fix the environment (remove the offending token from the named memory file, or create the
-  missing memory path), delete the blinding-failed repetition's `raw/<cell>/<rep>/` directory so the
-  resume genuinely re-runs it, then walk the three resume preconditions and re-run. Record the
-  deletion — cell, repetition and finding text — for card 31's coverage section. This is the only
-  deletion this batch permits and it is legal only while no `summary.json` or `table.txt` number has
-  been read.
+  **Classifying a `LADDER_EXIT=1` run — one test, two outcomes.** The single discriminator is
+  whether some repetition's own `run.json` under `$RESULTS_ROOT/raw/<cell>/<rep>/` carries a fatal
+  finding whose gate is `memory_path_scan`. Grep for that gate name across the raw tree's `run.json`
+  files. Read nothing else — no median, no rank, no `n` — until this branch has resolved.
 
-  **Read the results, once the run has completed normally.** Read the printed table and
+  - **A `memory_path_scan` fatal finding is present — the matrix was aborted.** This is the only
+    reachable abort in this configuration: the memory-path scanner returns a fatal finding when any
+    memory file matches the bare token `quarry`, or when a named memory path does not exist, and that
+    branch stops the whole invocation after writing the repetition complete with the blinding-failed
+    flag. (The other abort branch — every attempt failing to connect the same server — cannot occur
+    here, since no cell grants tools and no server is ever built.) The taint is an environment fault
+    about the machine, detected without reading a single score, and the run loop's own comment says
+    the abort exists so a resumed invocation cannot skip past the repetition that revealed it — so
+    resume is the designed recovery, not optional stopping. Fix the environment (remove the offending
+    token from the named memory file, or create the missing memory path), delete that repetition's
+    `raw/<cell>/<rep>/` directory so the resume genuinely re-runs it rather than skipping a
+    repetition that is present but not counted complete, then walk the three resume preconditions and
+    re-run the identical command. Record the deletion — cell, repetition and finding text — for card
+    31's coverage section. This is the only deletion this batch permits, and it is legal only while
+    no `summary.json` or `table.txt` number has been read.
+  - **No `memory_path_scan` fatal finding — the matrix ran to completion and the exit code is
+    reporting short or invalidated repetitions, not an abort.** Both reachable causes leave the run
+    loop running: a repetition that exhausted its attempt ceiling comes back `incomplete` with no
+    abort flag, and a repetition the post-run blinding check fails comes back `blindingFailed` with
+    no abort flag. Neither is an environment fault and neither licenses a resume or a deletion.
+    Treat the run as complete, read the results, and let card 31 disposition the realised n under the
+    `no-optional-stopping` Shared Decision. Do not re-run, re-sample, extend or drop an arm.
+
+  Because a completed matrix can exit 1 this way, a `blinding_failed_count` above zero in
+  `summary.json` on its own never establishes an abort, and neither does an `n` column below ten in
+  `table.txt`. Only the gate name in `run.json` does.
+
+  **Read the results, once the completion predicate has resolved to a completed matrix** — either
+  `LADDER_EXIT=0`, or `LADDER_EXIT=1` with no `memory_path_scan` fatal finding. Read the printed table and
   `summary.json` under the results root, and record per cell:
 
   - turn-ceiling count — the per-cell `max_turns_count`;
