@@ -35,5 +35,8 @@ implementing  '2026-09-06T09:53:09Z'
 ```yaml
 batches:
   - name: matrix-and-writeup
-    state: pending
+    state: running
+    implementer_session: 48888e82-b02c-4269-8bca-fa191f1a539e
+    start_sha: 13a5bc6fdb79f750a9ecdac76df708430c292cbb
+    verify_baseline_failures: []
 ```
