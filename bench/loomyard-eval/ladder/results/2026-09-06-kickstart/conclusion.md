@@ -149,6 +149,46 @@ revising code in a throwaway worktree, starting from a pre-resolved pack rather 
 tool) now becomes a candidate follow-up, with this results root as its justification; card 32 adds it
 to the roadmap.
 
+## Mechanism check: is the pack actually read in parallel and used?
+
+The numbers above establish *that* `e1-pack` separates; they do not by themselves establish *why* —
+the predeclared design assumes the pack's parallel-read instruction is followed and its signatures are
+used, but that assumption was not verified against the raw transcripts before this conclusion was first
+drafted. A post-hoc audit (outside the predeclared design, not itself a tested claim) read 5 of the 10
+`e1-pack` transcripts in depth (reps 1, 3, 5, 6, 9; all 10 `answer.json`/`score.json` skimmed) plus 3
+`e0-names` transcripts for contrast, from `raw/<cell>/<rep>/transcript.jsonl`.
+
+- **Parallel-read instruction genuinely followed.** The JSONL transcript logs each content block of one
+  LLM completion as a separate line, so line-adjacency alone cannot distinguish "7 tool calls in one
+  parallel turn" from "7 serial round-trips" — only matching each block's `request_id` can. Doing that
+  in all 5 sampled reps: the first substantive assistant turn (one `request_id`) issues one
+  acknowledgment plus 7 parallel `Read` calls covering all 9 injected spans (7 reads suffice because two
+  files each hold two of the listed symbols) — e.g. rep 1, `transcript.jsonl` lines 2-16,
+  `request_id=req_011CemzEVkwoci1mSfrdPB7Y`. `usage.json`'s `tool_uses_breakdown` corroborates per rep
+  (rep 1: `{Read: 7, Grep: 2}`).
+- **No hallucination; genuine extension beyond the pack.** Every claim in the 5 sampled answers traces
+  to a tool result in that rep's own transcript. All 10 `answer.json` files surface `key_symbols` beyond
+  the 9 injected names (e.g. `mergeBlocksMutation`, `ErrForeignMergeState`) found via the agent's own
+  follow-up `Grep` calls issued after the initial parallel-read batch — these are exactly the symbols
+  the actual question needs and are not handed to the agent by the pack.
+- **Methodological note on `turns`.** This harness's `num_turns` counts *tool invocations*, not LLM API
+  round-trips: `usage.json` confirms `num_turns = tool_uses + 1` in every rep checked (e1-pack rep 1:
+  9 tool_uses -> 10 turns; e0-names rep 1: 17 tool_uses -> 18 turns). Both arms already batch tool calls
+  into parallel, multi-block turns at the API level — parallel batching is not unique to `e1-pack` and
+  does not by itself explain the turn-count gap. What differs is tool-call *count*: `e0-names` needs a
+  locate-by-grep phase (turn 1: 4 parallel `Grep`s to find files by name; turn 2: whole-file `Read`s of
+  what those greps found; further turns to pin exact line numbers and chase call sites) that `e1-pack`
+  skips entirely, going straight from the pack's given file:line spans to targeted reads. `e0-names`
+  rep 1: 17 tool calls across ~6 round-trips; `e1-pack` reps 1/3/5/6/9: 8-12 tool calls across 3-4
+  round-trips.
+
+This confirms the pack's own mechanism is genuinely engaged as designed — the turn/cost separation is
+not an artifact of a differently-shaped prompt or of the agent ignoring the pack — but it does not
+change, and does not resolve, the `e2-files` confound described below: a plain file list collapses
+tool-call count by nearly the same margin without any spans or signatures, so this audit cannot say
+whether the *resolved signatures specifically* (as opposed to just knowing which files to look at) are
+what the turns/cost separation is paying for.
+
 ## Recall and precision are descriptive only, never compared across arms
 
 Both non-control arms have file recall inflated by construction: the treatment card (`e1-pack`) names
