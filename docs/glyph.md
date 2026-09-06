@@ -110,7 +110,9 @@ Go, removing the trailing `#` yields the plain repository-relative path in both 
 other conversion — this holds only because Go's unit is itself spelled as a repository-relative
 path (§2). It does not hold unscoped: a Python dotted module and a C# namespace are not
 repository-relative paths, so stripping the trailing `#` from a Python or C# self glyph does not
-yield one.
+yield one. This direction is exposed as `UnitPath()` on the parsed `Glyph`, which answers the path
+from the unit half and reports whether the glyph's alphabet spells units as paths at all, so no
+consumer performs the strip itself.
 
 **Go.** `Name` for a package-level `func`, `type`, `const` or `var`; `Type.Name` for a method or an
 interface method. The receiver type is half the key — `dualHandler.Handle` and
