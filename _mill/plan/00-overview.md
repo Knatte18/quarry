@@ -3,7 +3,7 @@
 ```yaml
 task: 'M4 matrix run: execute the descoped kick-start batch (cards 29-32)'
 slug: 'kickstart-matrix-run'
-approved: false
+approved: true
 discussion_sha: '8f49f98695d6259a805f628a0f64752aaf3df0d2'
 started: '20260906-092512'
 parent: 'main'
@@ -31,9 +31,11 @@ batches:
 
 - **Decision:** the placeholder `<RUN_DATE>` appearing in every `Creates:`/`Edits:` path under
   `bench/loomyard-eval/ladder/results/` is not a literal directory name. Card 29 resolves it once
-  with `date -u +%F`, writes the resolved absolute results-root path into
+  with `date -u +%F`, writes the resolved **worktree-relative** results-root path into
   `.scratch/kickstart-results-root.txt`, and cards 30, 31 and 32 read that file and reuse the
-  resolved path verbatim. No card re-derives the date.
+  resolved path verbatim. Worktree-relative is the authoritative spelling everywhere in this plan:
+  it is what card 30's `--results <RESULTS_ROOT>` invocation needs, since every harness command runs
+  from the worktree root. No card re-derives the date.
 - **Rationale:** the frozen batch spec calls the date "a fact about the run, not a plan constant".
   Hard-coding a date in the plan breaks if mill-go executes on a later day, and re-deriving it per
   card breaks if the run crosses midnight UTC.
@@ -87,6 +89,7 @@ batches:
 ## All Files Touched
 
 - `.scratch/kickstart-results-root.txt`
+- `.scratch/kickstart-run.log`
 - `bench/loomyard-eval/cards/07-e0-names.md`
 - `bench/loomyard-eval/cards/07-e1-pack.md`
 - `bench/loomyard-eval/cards/07-e2-files.md`

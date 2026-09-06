@@ -110,11 +110,19 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   where `<worktree-root>` is the resolved worktree root defined in the preflight above; it survives
   the failed pack. For each of the nine entries in `pack_targets` in
   `bench/loomyard-eval/ladder/ladder-kickstart.yaml`, run the repository's own resolver against that
-  worktree — `go run ./cmd/quarry resolve <glyph> --root <pinned worktree> --text` — and record
-  whether it answers found. Exit code 1 from that command is a negative answer (not found, ambiguous,
-  outside the repository, or not a well-formed glyph) and counts as a failure to resolve `found`.
-  The count of failures in that enumeration, never the pack command's message, is what the halt test
-  below is applied to.
+  worktree — `go run ./cmd/quarry resolve <glyph> --root <pinned worktree> --text` — and judge each
+  answer by the same gate the pack renderer applies, not by the command's exit code: the target
+  passes only when the `--text` output's first line ends in the status word `found` **and** exactly
+  one symbol line follows it. Anything else — `not_found`, `ambiguous`, `error`, `multipart`, or a
+  `found` answer carrying zero or more than one symbol — is a failure. Keying on the exit code alone
+  would undercount: the resolver exits 0 for a multipart answer, which the pack renderer treats as
+  fatal. The count of failures in that enumeration, never the pack command's message, is what the
+  halt test below is applied to.
+
+  **Zero failures in the enumeration is itself a halt.** The pack command failed but every target
+  resolves cleanly on its own, which means the fault is in the pack path — the batched resolve, the
+  pinned worktree, the card's sentinels, or the write — and not in a glyph. Substituting a glyph
+  would paper over it. Record what the pack command reported and stop.
 
   **Substitution, only when the enumeration shows exactly one failing target.** Apply the
   deterministic substitution table below. The three reserve candidates are
@@ -130,8 +138,8 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
   | `internal/mergeresolve` | halt — no same-package reserve exists |
 
   Test each candidate reserve with the same `go run ./cmd/quarry resolve <glyph> --root <pinned worktree> --text`
-  invocation the enumeration uses, before editing anything — that is what "does not resolve `found`"
-  means in the table's cascade.
+  invocation and the same status-word-plus-one-symbol gate the enumeration uses, before editing
+  anything — that is what "does not resolve `found`" means in the table's cascade.
 
   Two or more targets failing simultaneously in that enumeration is also a halt regardless of
   package: the reserve list
@@ -193,6 +201,7 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
 - **Edits:**
   - `bench/loomyard-eval/ladder/results/<RUN_DATE>-kickstart/provenance.json`
 - **Creates:**
+  - `.scratch/kickstart-run.log`
   - `bench/loomyard-eval/ladder/results/<RUN_DATE>-kickstart/summary.json`
   - `bench/loomyard-eval/ladder/results/<RUN_DATE>-kickstart/table.txt`
 - **Deletes:** none
@@ -424,9 +433,11 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
     not separate either, the surface has now been measured from both directions and the parked
     condition is closed twice over; if it does separate, the win belongs to pre-resolution rather than
     to a tool, which is a different product from the one the parked task assumed.
-  - One sentence on the M4b condition: on a non-separating result, that the edit-task variant does not
-    become a candidate and why; on a separating result, that it does, with card 32 adding it to the
-    roadmap.
+  - One sentence on the M4b condition, in three branches matching the three possible readings: on a
+    non-separating result, that the edit-task variant does not become a candidate and why; on a
+    separating result, that it does, with card 32 adding it to the roadmap; and on a **void** result,
+    that the condition is neither discharged nor met — the run could not test it — so it carries
+    forward unchanged and awaits a future measurement.
   - In the coverage section: if the run was ever resumed, the invocation count from the provenance
     record's `invocations` and why each resume happened — and, for a resume after a memory-path taint,
     the cell, the repetition and the finding text, plus the fact that the repetition was re-attempted
@@ -459,7 +470,10 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
      clause what it measured and what it found. Spell the root the way the paragraph already spells
      its three — relative to the ladder directory, as `results/<RUN_DATE>-kickstart`, not as the
      repository-relative `bench/loomyard-eval/ladder/results/<RUN_DATE>-kickstart` this plan uses.
-     Word it as the *other direction* — push-mode
+     If card 31's primary test came out void, say that in the same sentence — the root measured the
+     other direction but its predeclared test could not be applied for want of the predeclared n —
+     rather than reporting a finding the run does not support. Word it as the *other direction* —
+     push-mode
      pre-resolution, glyph spans resolved into the prompt before the agent starts — and not as a
      fourth entry in the paragraph's existing parenthesised list of three roots. That list closes a
      negative for quarry as a mid-session agent tool; this root does not test that claim, and folding
@@ -480,6 +494,12 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
        sentence phrased it, pointing at the new results root as its justification. Edit 2's
        renumbering then yields, in order: 1 Loomyard adopts glyphs, 2 M4b, 3 T8, 4 More languages —
        so the two T8 and More-languages points end at 3 and 4 rather than at 2 and 3.
+     - the primary test is void (card 31 reports a realised n below ten in a tested arm) — the
+       condition is neither discharged nor met, because the run could not test it. Carry it forward
+       unchanged: keep the M4b sentence, verbatim, attached to whichever point survives the
+       renumbering as the nearest home for it, and say in the same clause that it awaits a future
+       measurement because this root's primary test was void. Do not delete it and do not promote M4b
+       to its own numbered point.
   4. **Update the `Updated <date>` line** on line 3 to the date of this change.
 
   Do not touch the `## Small and independent, any time` section: the frozen spec's other edit — the
@@ -497,9 +517,12 @@ Batch-local notes beyond `## Shared Decisions` in the overview:
 It covers `bench/loomyard-eval/ladder/internal/ladder/prematrix_test.go`:
 `TestPreMatrix_KickstartCellPromptsAreBlind`, `TestPreMatrix_KickstartCardsShareOneUsesList`,
 `TestPreMatrix_KickstartUsesListMatchesPackTargets`,
-`TestPreMatrix_KickstartPackCellCardHasSentinels` and `TestPreMatrix_NewFasitsAreWellFormed`. It is
-green on the current tree and stays green throughout this batch; its job here is to catch a
-half-applied glyph substitution in card 29, where the ladder file has moved on and one card has not.
+`TestPreMatrix_KickstartPackCellCardHasSentinels`, `TestPreMatrix_NewFasitsAreWellFormed` and
+`TestPreMatrix_ControlPromptsAreBlind`. The last of those is selected by the `-run` prefix but is
+keyed on `ladder-toc.yaml` rather than on this batch's artefacts — the selector is deliberately
+broader than the checks the batch relies on, and it costs nothing to leave it in. It is green on the
+current tree and stays green throughout this batch; its job here is to catch a half-applied glyph
+substitution in card 29, where the ladder file has moved on and one card has not.
 
 There is no new code in this batch, so there is nothing to TDD. Everything else is verified by
 procedure inside the card that owns it:
