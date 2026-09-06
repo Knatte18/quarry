@@ -1,0 +1,747 @@
+{
+  "cells": [
+    {
+      "id": "e0-names",
+      "ladder": "e",
+      "task": "07-fabric-merge-state-tracing",
+      "allowed": null,
+      "control": true,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 46897,
+          "min": 19780,
+          "max": 57382,
+          "n": 10
+        },
+        "cache_read_input_tokens": {
+          "median": 189309,
+          "min": 96953,
+          "max": 369443,
+          "n": 10
+        },
+        "cost_usd": {
+          "median": 0.43249605,
+          "min": 0.2639901,
+          "max": 0.5267019000000001,
+          "n": 10
+        },
+        "duration_ms": {
+          "median": 59234,
+          "min": 49381,
+          "max": 118036,
+          "n": 10
+        },
+        "grep_fallback_total": {
+          "median": 6,
+          "min": 5,
+          "max": 8,
+          "n": 10
+        },
+        "input_tokens_total": {
+          "median": 231635,
+          "min": 125423,
+          "max": 423587,
+          "n": 10
+        },
+        "output_tokens": {
+          "median": 27.5,
+          "min": 8,
+          "max": 71,
+          "n": 10
+        },
+        "precision": {
+          "median": 0.85,
+          "min": 0.79,
+          "max": 0.92,
+          "n": 10
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 10
+        },
+        "read_bytes": {
+          "median": 92463,
+          "min": 30651,
+          "max": 106445,
+          "n": 10
+        },
+        "recall": {
+          "median": 0.93,
+          "min": 0.85,
+          "max": 1,
+          "n": 10
+        },
+        "tool_result_bytes": {
+          "median": 105895,
+          "min": 39286,
+          "max": 125995,
+          "n": 10
+        },
+        "tool_uses": {
+          "median": 17,
+          "min": 13,
+          "max": 18,
+          "n": 10
+        },
+        "turns": {
+          "median": 18,
+          "min": 14,
+          "max": 19,
+          "n": 10
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "e1-pack",
+      "ladder": "e",
+      "task": "07-fabric-merge-state-tracing",
+      "allowed": null,
+      "control": false,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 30702,
+          "min": 24230,
+          "max": 49661,
+          "n": 10
+        },
+        "cache_read_input_tokens": {
+          "median": 115443,
+          "min": 101439,
+          "max": 168417,
+          "n": 10
+        },
+        "cost_usd": {
+          "median": 0.3003828,
+          "min": 0.25576319999999997,
+          "max": 0.4161471,
+          "n": 10
+        },
+        "duration_ms": {
+          "median": 49132,
+          "min": 41870,
+          "max": 58486,
+          "n": 10
+        },
+        "grep_fallback_total": {
+          "median": 1,
+          "min": 1,
+          "max": 2,
+          "n": 10
+        },
+        "input_tokens_total": {
+          "median": 146735,
+          "min": 138062,
+          "max": 218086,
+          "n": 10
+        },
+        "output_tokens": {
+          "median": 10,
+          "min": 6,
+          "max": 14,
+          "n": 10
+        },
+        "precision": {
+          "median": 0.825,
+          "min": 0.72,
+          "max": 0.94,
+          "n": 10
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 10
+        },
+        "read_bytes": {
+          "median": 59750,
+          "min": 43232,
+          "max": 113224,
+          "n": 10
+        },
+        "recall": {
+          "median": 0.86,
+          "min": 0.8,
+          "max": 0.94,
+          "n": 10
+        },
+        "tool_result_bytes": {
+          "median": 67595,
+          "min": 53441,
+          "max": 118272,
+          "n": 10
+        },
+        "tool_uses": {
+          "median": 9,
+          "min": 8,
+          "max": 12,
+          "n": 10
+        },
+        "turns": {
+          "median": 10,
+          "min": 9,
+          "max": 13,
+          "n": 10
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    },
+    {
+      "id": "e2-files",
+      "ladder": "e",
+      "task": "07-fabric-merge-state-tracing",
+      "allowed": null,
+      "control": false,
+      "metrics": {
+        "cache_creation_input_tokens": {
+          "median": 49962,
+          "min": 48135,
+          "max": 51766,
+          "n": 10
+        },
+        "cache_read_input_tokens": {
+          "median": 167430,
+          "min": 164774,
+          "max": 297549,
+          "n": 10
+        },
+        "cost_usd": {
+          "median": 0.4170914,
+          "min": 0.41159179999999995,
+          "max": 0.4608826999999999,
+          "n": 10
+        },
+        "duration_ms": {
+          "median": 46123,
+          "min": 38028,
+          "max": 53245,
+          "n": 10
+        },
+        "grep_fallback_total": {
+          "median": 1,
+          "min": 1,
+          "max": 3,
+          "n": 10
+        },
+        "input_tokens_total": {
+          "median": 217403.5,
+          "min": 213470,
+          "max": 348082,
+          "n": 10
+        },
+        "output_tokens": {
+          "median": 9.5,
+          "min": 6,
+          "max": 27,
+          "n": 10
+        },
+        "precision": {
+          "median": 0.895,
+          "min": 0.78,
+          "max": 0.94,
+          "n": 10
+        },
+        "quarry_tool_uses": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "n": 10
+        },
+        "read_bytes": {
+          "median": 114540,
+          "min": 112470,
+          "max": 114910,
+          "n": 10
+        },
+        "recall": {
+          "median": 0.89,
+          "min": 0.85,
+          "max": 0.94,
+          "n": 10
+        },
+        "tool_result_bytes": {
+          "median": 118609,
+          "min": 114706,
+          "max": 119724,
+          "n": 10
+        },
+        "tool_uses": {
+          "median": 9,
+          "min": 9,
+          "max": 11,
+          "n": 10
+        },
+        "turns": {
+          "median": 10,
+          "min": 10,
+          "max": 12,
+          "n": 10
+        }
+      },
+      "max_turns_count": 0,
+      "unscored_count": 0,
+      "blinding_failed_count": 0
+    }
+  ],
+  "comparisons": [
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "turns",
+      "cell_median": 10,
+      "control_median": 18,
+      "cell_range": [
+        9,
+        13
+      ],
+      "control_range": [
+        14,
+        19
+      ],
+      "separated": true
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "duration_ms",
+      "cell_median": 49132,
+      "control_median": 59234,
+      "cell_range": [
+        41870,
+        58486
+      ],
+      "control_range": [
+        49381,
+        118036
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "cost_usd",
+      "cell_median": 0.3003828,
+      "control_median": 0.43249605,
+      "cell_range": [
+        0.25576319999999997,
+        0.4161471
+      ],
+      "control_range": [
+        0.2639901,
+        0.5267019000000001
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "cache_read_input_tokens",
+      "cell_median": 115443,
+      "control_median": 189309,
+      "cell_range": [
+        101439,
+        168417
+      ],
+      "control_range": [
+        96953,
+        369443
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "cache_creation_input_tokens",
+      "cell_median": 30702,
+      "control_median": 46897,
+      "cell_range": [
+        24230,
+        49661
+      ],
+      "control_range": [
+        19780,
+        57382
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "output_tokens",
+      "cell_median": 10,
+      "control_median": 27.5,
+      "cell_range": [
+        6,
+        14
+      ],
+      "control_range": [
+        8,
+        71
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "input_tokens_total",
+      "cell_median": 146735,
+      "control_median": 231635,
+      "cell_range": [
+        138062,
+        218086
+      ],
+      "control_range": [
+        125423,
+        423587
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "tool_uses",
+      "cell_median": 9,
+      "control_median": 17,
+      "cell_range": [
+        8,
+        12
+      ],
+      "control_range": [
+        13,
+        18
+      ],
+      "separated": true
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "quarry_tool_uses",
+      "cell_median": 0,
+      "control_median": 0,
+      "cell_range": [
+        0,
+        0
+      ],
+      "control_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "grep_fallback_total",
+      "cell_median": 1,
+      "control_median": 6,
+      "cell_range": [
+        1,
+        2
+      ],
+      "control_range": [
+        5,
+        8
+      ],
+      "separated": true
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "tool_result_bytes",
+      "cell_median": 67595,
+      "control_median": 105895,
+      "cell_range": [
+        53441,
+        118272
+      ],
+      "control_range": [
+        39286,
+        125995
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "read_bytes",
+      "cell_median": 59750,
+      "control_median": 92463,
+      "cell_range": [
+        43232,
+        113224
+      ],
+      "control_range": [
+        30651,
+        106445
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "recall",
+      "cell_median": 0.86,
+      "control_median": 0.93,
+      "cell_range": [
+        0.8,
+        0.94
+      ],
+      "control_range": [
+        0.85,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e1-pack",
+      "control": "e0-names",
+      "metric": "precision",
+      "cell_median": 0.825,
+      "control_median": 0.85,
+      "cell_range": [
+        0.72,
+        0.94
+      ],
+      "control_range": [
+        0.79,
+        0.92
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "turns",
+      "cell_median": 10,
+      "control_median": 18,
+      "cell_range": [
+        10,
+        12
+      ],
+      "control_range": [
+        14,
+        19
+      ],
+      "separated": true
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "duration_ms",
+      "cell_median": 46123,
+      "control_median": 59234,
+      "cell_range": [
+        38028,
+        53245
+      ],
+      "control_range": [
+        49381,
+        118036
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "cost_usd",
+      "cell_median": 0.4170914,
+      "control_median": 0.43249605,
+      "cell_range": [
+        0.41159179999999995,
+        0.4608826999999999
+      ],
+      "control_range": [
+        0.2639901,
+        0.5267019000000001
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "cache_read_input_tokens",
+      "cell_median": 167430,
+      "control_median": 189309,
+      "cell_range": [
+        164774,
+        297549
+      ],
+      "control_range": [
+        96953,
+        369443
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "cache_creation_input_tokens",
+      "cell_median": 49962,
+      "control_median": 46897,
+      "cell_range": [
+        48135,
+        51766
+      ],
+      "control_range": [
+        19780,
+        57382
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "output_tokens",
+      "cell_median": 9.5,
+      "control_median": 27.5,
+      "cell_range": [
+        6,
+        27
+      ],
+      "control_range": [
+        8,
+        71
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "input_tokens_total",
+      "cell_median": 217403.5,
+      "control_median": 231635,
+      "cell_range": [
+        213470,
+        348082
+      ],
+      "control_range": [
+        125423,
+        423587
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "tool_uses",
+      "cell_median": 9,
+      "control_median": 17,
+      "cell_range": [
+        9,
+        11
+      ],
+      "control_range": [
+        13,
+        18
+      ],
+      "separated": true
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "quarry_tool_uses",
+      "cell_median": 0,
+      "control_median": 0,
+      "cell_range": [
+        0,
+        0
+      ],
+      "control_range": [
+        0,
+        0
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "grep_fallback_total",
+      "cell_median": 1,
+      "control_median": 6,
+      "cell_range": [
+        1,
+        3
+      ],
+      "control_range": [
+        5,
+        8
+      ],
+      "separated": true
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "tool_result_bytes",
+      "cell_median": 118609,
+      "control_median": 105895,
+      "cell_range": [
+        114706,
+        119724
+      ],
+      "control_range": [
+        39286,
+        125995
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "read_bytes",
+      "cell_median": 114540,
+      "control_median": 92463,
+      "cell_range": [
+        112470,
+        114910
+      ],
+      "control_range": [
+        30651,
+        106445
+      ],
+      "separated": true
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "recall",
+      "cell_median": 0.89,
+      "control_median": 0.93,
+      "cell_range": [
+        0.85,
+        0.94
+      ],
+      "control_range": [
+        0.85,
+        1
+      ],
+      "separated": false
+    },
+    {
+      "cell": "e2-files",
+      "control": "e0-names",
+      "metric": "precision",
+      "cell_median": 0.895,
+      "control_median": 0.85,
+      "cell_range": [
+        0.78,
+        0.94
+      ],
+      "control_range": [
+        0.79,
+        0.92
+      ],
+      "separated": false
+    }
+  ],
+  "incomplete": null,
+  "invalid": null,
+  "meta": {
+    "results_root": "2026-09-06-kickstart"
+  }
+}
