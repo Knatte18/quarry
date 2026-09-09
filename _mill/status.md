@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: batch-answer-contract
 branch: batch-answer-contract
-plan: null
+plan: _mill/plan
 parent: main
 task: 'Batch-answer contract: per-target coverage + fail-closed Status helpers'
 task_description: |
@@ -20,4 +20,5 @@ discussion-gap-fix-r2  '2026-09-09T06:06:13Z'
 discussion-fix-r3  '2026-09-09T06:10:29Z'
 discussion-fix-r4  '2026-09-09T06:15:10Z'
 discussed  '2026-09-09T06:15:10Z'
+planning  '2026-09-09T06:22:25Z'
 ```
