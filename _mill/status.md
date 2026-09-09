@@ -51,6 +51,8 @@ batches:
     commit_sha: 6d6c6d7e50e1394bedc981cddadad1ad610e9825
     verify_baseline_failures: []
   - name: consumers-and-docs
-    state: pending
+    state: running
+    implementer_session: ec0cc19f-6728-413a-b8fe-c0da259cef64
+    start_sha: 7077f8e130971177facfd229ac38bebc2a83b4ad
     verify_baseline_failures: []
 ```
