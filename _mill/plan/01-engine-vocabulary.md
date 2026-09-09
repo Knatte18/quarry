@@ -104,7 +104,7 @@ This batch has no batch-local decisions that differ from the overview's Shared D
 - **Requirements:**
   Add three tests to `internal/engine/answer_test.go`, in package `engine`.
 
-  1. `TestStatusCompleteness` — mirror `TestName_ReasonCompleteness` in
+  1. `TestStatus_Completeness` — mirror `TestName_ReasonCompleteness` in
      `internal/engine/name_test.go` structurally: build a locally written `want` set holding the
      four `Status` constants, fail when `len(Statuses)` differs from `len(want)`, fail on a repeated
      element, fail on an element absent from `want`, and fail on a `want` element absent from
@@ -126,7 +126,14 @@ This batch has no batch-local decisions that differ from the overview's Shared D
 
   Follow the file's existing table-test style: a `tests` slice of anonymous structs with a `name`
   field, driven through `t.Run`, with `t.Errorf` messages in the `got = X; want Y` shape the
-  surrounding tests use.
+  surrounding tests use. The three test names above follow the file's own `TestSubject_Case` shape,
+  which every existing test in it carries; keep them exactly as prescribed.
+
+  Extend `internal/engine/answer_test.go`'s own file header comment, which enumerates what the file
+  pins, so it names the new subjects too: the `Status` vocabulary's completeness and the two
+  fail-closed predicates. The file's header is the local convention for saying what a test file
+  covers, and leaving it stale while adding three new subjects would be the same drift card 1
+  closes for `internal/engine/answer.go`'s own header.
 - **Commit:** `test(engine): cover Statuses completeness, Known and Rejected`
 
 ### Card 3: surface `Statuses` through the facade, with an identity test
