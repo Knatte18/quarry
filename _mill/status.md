@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-engine-vocabulary
 slug: batch-answer-contract
 branch: batch-answer-contract
 plan: _mill/plan
@@ -30,6 +30,7 @@ plan-review-r3  '2026-09-09T06:41:35Z'
 plan-fix-r3  '2026-09-09T06:42:20Z'
 planned  '2026-09-09T06:42:30Z'
 implementing  '2026-09-09T06:42:54Z'
+approved-engine-vocabulary  '2026-09-09T06:46:31Z'
 ```
 
 ## Batches
@@ -37,9 +38,10 @@ implementing  '2026-09-09T06:42:54Z'
 ```yaml
 batches:
   - name: engine-vocabulary
-    state: running
+    state: approved
     implementer_session: 418b14e1-b471-454c-b5b2-11ecf7725e5b
     start_sha: d4ed8eb4a4ecfe6889c58ca4c7be40d225d6f14d
+    commit_sha: 2484e5f0b41e337ffd247655aad00cb7486b3b3c
     verify_baseline_failures: []
   - name: coverage-verifiers
     state: pending
