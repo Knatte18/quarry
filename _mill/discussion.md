@@ -48,8 +48,12 @@ through a single `go.mod` bump, so they land together and are tagged together. G
   and `var Statuses []Status` enumerating the closed vocabulary.
 - `quarry/quarry.go` — `Statuses` surfaced through the facade as the engine's own value (not a copy),
   matching how `NameReasons` is surfaced.
-- `quarry/text.go` — the one in-repo consumer site (`case r.Status == "":`, line ~513) rewritten to
-  use `ResolveResult.Rejected()`.
+- `quarry/text.go` — the first of two in-repo rejection-state sites (`case r.Status == "":`, line
+  ~513) rewritten to use `ResolveResult.Rejected()`.
+- `internal/cli/cli.go` — the second rejection-state site (`codeForResolveResult`'s `case "":`,
+  lines 85–96) rewritten to use `Rejected()`; and the two consumer-side arity guards
+  (`runResolve`, line ~524, and `runName`, line ~661) deleted, since the producer now guarantees
+  what they re-check.
 - `docs/glyph.md` §5 — the batch coverage contract stated normatively (both batch verbs, plus the
   duplicate-target rule), and a sentence naming the `Status` vocabulary as closed and
   caller-checkable.
@@ -69,8 +73,10 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 - Cutting the `v0.2.0` tag. The operator cuts it after merge; the task does not tag.
 - Closing GitHub issues #30 and #31. The task makes them closeable; the operator closes them with a
   pointer to the merged commit.
-- `Expand`, `TOC`, `Delta`, `Glyphs`, and the CLI/MCP layers. `internal/cli/cli.go:runResolve`
-  passes a one-element slice and is unaffected by an additive contract.
+- `Expand`, `TOC`, `Delta`, `Glyphs`, and `internal/mcpserver`. The CLI is **not** wholly out —
+  `internal/cli/cli.go` is in scope for the two edits listed above. Nothing else in the CLI changes:
+  its answer shapes, exit-code semantics, and text/JSON output are untouched.
+- `codeForExpandAnswer` (`internal/cli/cli.go`, lines 104–113). See Decisions.
 
 ## Decisions
 
@@ -89,8 +95,14 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 ### Enforcement is a panic from a producer-side verifier
 
 - **Decision:** Each batch verb runs an unexported verifier over its own result slice immediately
-  before returning. On a violation the verifier panics with a message naming the verb, the index,
-  and the mismatch.
+  before returning. On a violation the verifier panics. There are two violation kinds and they take
+  **two different message shapes**, because an arity violation has no offending index to name:
+  - **Arity** (`len(results) != len(inputs)`): the message names the verb and the got/want lengths,
+    and no index — e.g. `engine: resolve returned 3 results for 4 targets`.
+  - **Echo mismatch** (`results[i]` does not echo `inputs[i]`): the message names the verb, the
+    index, and both the got and want echo values — e.g.
+    `engine: resolve result 2 answers "a/b#X"; want "c/d#Y"`. For `Name`, whose echo is two fields,
+    the message names whichever field diverged, with the same verb-plus-index prefix.
 - **Rationale:** A coverage violation is unreachable by construction; if it fires, the engine is
   broken and every answer in that batch is untrustworthy. A panic is the honest signal for an engine
   bug and it works uniformly at both verbs. `Name` returns no error at all — deliberately, per its
@@ -148,14 +160,38 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 
 - **Decision:** `func (s Status) Known() bool` returns true for exactly `StatusFound`,
   `StatusNotFound`, `StatusAmbiguous`, `StatusMultipart`, and false for everything else, the empty
-  string included.
+  string included. **Its body is a `switch` over the four constants, not a range over `Statuses`:**
+
+  ```go
+  switch s {
+  case StatusFound, StatusNotFound, StatusAmbiguous, StatusMultipart:
+      return true
+  default:
+      return false
+  }
+  ```
+
 - **Rationale:** Fail-closed is the entire point: a caller writes `if !res.Status.Known() { … }` and
   an unexpected value takes the explicit unknown branch instead of falling through a chain of
   equality tests. The empty string must be false — it is the rejection marker, which `Rejected()`
   names, not a resolution outcome. This also makes `res.Unit.Known()` correctly false when `Unit` is
   absent, since `Unit` is only ever set on a `not_found`.
-- **Rejected:** Treating `""` as known. It would let a rejection result slip through a `Known()`
-  gate as if it carried an outcome.
+
+  The switch form is chosen over ranging `Statuses` for two reasons. First, **`Statuses` is exported
+  and is a slice, so it is mutable by any caller** — `quarry.Statuses[0] = "nonsense"` is legal Go,
+  and under the range form that call would silently rewrite `Known()`'s answer for every consumer in
+  the process. A predicate whose truth set can be mutated at a distance is the opposite of
+  fail-closed. Second, the switch keeps `Known()` and `Statuses` **two independently written
+  enumerations of one vocabulary**, which is exactly what makes the truth-table test meaningful —
+  see the next bullet and the Testing section.
+- **Consequence for the test, stated so the plan does not write a tautology:** because the two
+  enumerations are independent, the test that ranges `Statuses` and asserts `Known()` is true for
+  every element is a real cross-check — it fails if a constant is added to the switch but not to
+  `Statuses`, or to `Statuses` but not to the switch. Under the rejected range form that same test
+  would assert nothing at all, since `Known()` would be reading the very slice the test ranges.
+- **Rejected:** (a) Treating `""` as known — it would let a rejection result slip through a
+  `Known()` gate as if it carried an outcome. (b) Implementing `Known()` as a range over `Statuses`
+  — it makes the predicate caller-mutable and turns the vocabulary test into a tautology.
 
 ### `Statuses` is exported and enumerated, mirroring `NameReasons`
 
@@ -182,18 +218,68 @@ through a single `go.mod` bump, so they land together and are tagged together. G
   would be worse than no method.
 - **Rejected:** Adding it for symmetry.
 
-### Dogfood `Rejected()` at the one in-repo consumer site
+### Dogfood `Rejected()` at both in-repo rejection-state sites
 
-- **Decision:** Rewrite `quarry/text.go`'s `case r.Status == "":` (around line 513) as
-  `case r.Rejected():`, and update the surrounding doc comment (around line 478) that spells the
-  condition out as `r.Status == ""`.
-- **Rationale:** It is the single in-repo consumer of exactly the state the helper names, so it
-  proves the helper compiles and reads well, and it makes the repository's own code the pattern
-  loomyard copies. The neighbouring `r.Status == StatusFound` / `StatusNotFound` / `StatusAmbiguous`
-  comparisons at lines 534/538/554 stay as they are — those are positive tests against named
-  constants, not fail-open unknown-value handling, and `Known()` has nothing to add to them.
-- **Rejected:** Leaving `text.go` untouched. Shipping a helper the producing repository does not use
-  is a weaker signal to the consumer than shipping one it does.
+- **Decision:** There are **two** in-repo sites branching on the rejection state, not one, and both
+  are rewritten:
+  1. `quarry/text.go`'s `case r.Status == "":` (around line 513) becomes `case r.Rejected():`, and
+     the surrounding doc comment (around line 478) that spells the condition out as `r.Status == ""`
+     is updated to name the method.
+  2. `internal/cli/cli.go`'s `codeForResolveResult` (lines 85–96) currently switches on `r.Status`
+     with an explicit `case "": return exitNegative`. Lift that case out ahead of the switch as
+     `if r.Rejected() { return exitNegative }`, leaving a switch over the four named constants plus
+     its `default: exitInternal`. Update the function's doc comment, which spells the rejection case
+     out in prose, to name the method.
+- **Rationale:** Both sites read exactly the state the helper names, so using it in the producing
+  repository proves the helper compiles and reads well and makes this repo's own code the pattern
+  loomyard copies. Lifting the CLI's rejection case out of the switch also separates the two
+  questions the switch currently conflates — "did this target reach resolution at all?" and "what
+  outcome did it get?" — which is the same separation `Rejected()` and `Known()` exist to give
+  callers.
+- **`Known()` is deliberately not used at either site.** Both switches are already total: each ends
+  in an explicit `default` that routes an unknown value somewhere safe (`exitInternal` in the CLI).
+  A total switch over named constants is already fail-closed, which is the property `Known()` sells;
+  rewriting `default:` as `if !s.Known()` would add an indirection without changing behaviour, and
+  would leave the compiler with less to check, not more. `Known()` earns its place at a caller that
+  *cannot* write a total switch — one branching on a status inside a larger condition, which is the
+  loomyard shape — not at one that already has.
+- **The neighbouring positive comparisons stay.** `quarry/text.go` lines 534/538/554
+  (`r.Status == StatusFound` / `StatusNotFound` / `StatusAmbiguous`) are positive tests against named
+  constants, not fail-open unknown-value handling. Nothing here changes them.
+- **Rejected:** (a) Leaving both sites untouched — shipping a helper the producing repository does
+  not use is a weaker signal to the consumer than shipping one it does. (b) Rewriting the `default`
+  arms with `Known()` — behaviour-neutral indirection, as above.
+
+### `codeForExpandAnswer` is left exactly as it is
+
+- **Decision:** No change to `internal/cli/cli.go`'s `codeForExpandAnswer` (lines 104–113).
+- **Rationale:** It has no rejection case to lift — consistent with the decision that `ExpandAnswer`
+  gains no `Rejected()`, because it has no such state. Its switch over three constants plus a total
+  `default: exitInternal` is already fail-closed for the same reason `codeForResolveResult`'s is, so
+  `Known()` has nothing to add there either.
+- **Rejected:** Touching it for symmetry with its sibling. The sibling changes because it has a
+  rejection case; this one does not have one.
+
+### The CLI's own two arity guards are deleted, not kept
+
+- **Decision:** Delete both consumer-side arity guards in `internal/cli/cli.go`: `runResolve`'s
+  `if len(results) != 1 { … "resolve returned N results for one target" }` (around line 524) and the
+  identical `runName` guard `… "name returned N results for one declaration"` (around line 661).
+  Both are followed by an unconditional `results[0]`, which is exactly what the producer contract now
+  guarantees for a one-element input.
+- **Rationale:** These are in-repo instances of precisely the guard class the Problem section counts
+  four of in loomyard. Deleting loomyard's four while the producing repository keeps its own two
+  would say the contract is trusted abroad but not at home — and would leave a live counter-example
+  in the tree for the next consumer to copy. The producer-side verifier panics on an arity violation
+  before any result is returned, so these guards are now unreachable by construction; keeping
+  unreachable code is worse than deleting it, because it reads as doubt about the contract.
+- **Note for the plan:** `strconv` is imported in `internal/cli/cli.go` (line 13) for these two call
+  sites and no others. Deleting both guards makes the import unused, which is a compile error in Go —
+  the import must be removed in the same edit.
+- **Rejected:** (a) Keeping both because "a CLI should be defensive" — a panic from the producer is
+  strictly louder than an `exitInternal` from the consumer, and the guard cannot fire before the
+  panic does. (b) Keeping them and documenting them as belt-and-braces — that is the
+  compounding-debt pattern this whole task exists to remove.
 
 ### `docs/glyph.md` §5 carries both statements, and covers both batch verbs
 
@@ -320,9 +406,28 @@ rejects), cited by section. The additions here are normative prose about answer 
 not new glyph-string examples, so no new row is required. If the plan's wording ends up introducing a
 new literal glyph string as an example, that string does need a `docsAccept` row.
 
-**No CLI or MCP impact.** `internal/cli/cli.go:runResolve` (around line 514) calls
-`repo.Resolve([]string{req.target})` — a one-element batch. An additive contract and two new methods
-change nothing there. `internal/mcpserver` does not call `Resolve` directly.
+**The CLI is a real consumer of both defects, and is in scope.** `internal/cli/cli.go` holds four
+relevant call sites, verified against the tree:
+
+- `codeForResolveResult` (lines 85–96) — `switch r.Status` with `case quarry.StatusFound,
+  quarry.StatusMultipart: return exitOK`, `case quarry.StatusNotFound, quarry.StatusAmbiguous:
+  return exitNegative`, `case "": return exitNegative`, `default: return exitInternal`. The `case
+  "":` arm is the rejection state; its doc comment (lines 79–84) already explains that an empty
+  status means a pre-resolution rejection and that the `default` is unreachable because the
+  vocabulary is closed. This is the site the Decisions rewrite with `Rejected()`.
+- `codeForExpandAnswer` (lines 104–113) — the same shape over three constants, with no `case ""`.
+  Unchanged, per its own Decision.
+- `runResolve` (around line 524) — `if len(results) != 1 { … strconv.Itoa(len(results)) … }`
+  immediately before `result := results[0]`. Deleted.
+- `runName` (around line 661) — the identical guard, `"name returned "+strconv.Itoa(len(results))+
+  " results for one declaration"`. Deleted. The r2 review named only the `runResolve` one; both are
+  the same class and both go.
+
+`strconv` (line 13) is imported for those two guards and nothing else — `grep -n strconv
+internal/cli/cli.go` matches exactly lines 13, 525 and 661 — so the import is removed in the same
+edit or the package will not compile.
+
+`internal/mcpserver` does not call `Resolve` or `Name` directly and is untouched.
 
 **Neighbouring style to follow.** This codebase writes long, load-bearing doc comments that state
 *why* a shape is what it is and name the alternative that was rejected. Every new exported symbol
@@ -360,19 +465,33 @@ small, pure, and fully specified above, so their tests can be written before the
 **`internal/engine` — the coverage verifiers (TDD candidates).** The verifiers are unexported, so
 their tests are white-box, in-package, and can call them directly with hand-built slices. Cover: a
 correct slice passes; a short slice, a long slice, and a slice whose element at some index echoes the
-wrong input each trip the guard; and a zero-length input is a no-op rather than a trip. Testing a
-panic needs `defer`/`recover` — the package has no existing panic test, so `internal/engine/strategy.go`'s
-duplicate-registration panic and whatever test covers it are the local precedent to check for a
-house style before inventing one. Also assert the panic message names the verb and the offending
-index, since that message is the only diagnostic an engine bug will produce.
+wrong input each trip the guard; and a zero-length input is a no-op rather than a trip.
+
+Testing a panic needs `defer`/`recover`, and the package already has the house style for it:
+`TestRegister_PanicsOnDuplicateLanguage` (`internal/engine/classify_test.go:107`) covers
+`strategy.go:74`'s duplicate-registration panic with a deferred `recover()` that fails when
+`recover()` returns nil. Follow that shape. Note what it does **not** do: it asserts only that a
+panic occurred, never anything about the message. Asserting message content here is a deliberate
+step beyond the existing precedent, taken because the panic message is the only diagnostic an engine
+bug of this class will ever produce. Assert it accordingly, matching the two message shapes the
+Decisions fix: an **arity** trip's message names the verb and the got/want lengths and must *not* be
+asserted to contain an index (there is none); an **echo-mismatch** trip's message names the verb, the
+offending index, and both echo values.
 
 **`internal/engine` — the vocabulary (TDD candidates).** A `Statuses` completeness test mirroring
 `TestName_ReasonCompleteness` (`internal/engine/name_test.go:276`): length, no duplicates, no
 unexpected values, nothing missing, against a locally-written `want` set — so adding a constant
-without adding it to `Statuses` fails. A `Known()` truth table: true for every element of `Statuses`
-(range over it rather than restating the four, which is what ties the method to the vocabulary),
-false for `Status("")`, and false for at least one plausible-looking bogus value such as
-`Status("found ")` or `Status("FOUND")`, to pin that there is no trimming and no case folding.
+without adding it to `Statuses` fails.
+
+A `Known()` truth table: true for every element of `Statuses` — ranged over, not restated as four
+literals — plus false for `Status("")` and false for at least one plausible-looking bogus value such
+as `Status("found ")` or `Status("FOUND")`, pinning that there is no trimming and no case folding.
+The range is a genuine assertion **because `Known()`'s body is a switch, not a range over the same
+slice** (see the `Status.Known()` Decision): the switch and `Statuses` are two independently written
+enumerations, so this test fails when a constant is added to one and not the other. If a plan writer
+were to implement `Known()` by ranging `Statuses`, this test would become a tautology and the
+completeness test above would be the only remaining guard — which is exactly why the implementation
+form is fixed by decision rather than left open.
 
 **`internal/engine` — `Rejected()` (TDD candidate).** True for a result whose `Status` is empty and
 whose `Error` is set; false for a result carrying each of the four statuses. The existing
@@ -402,6 +521,16 @@ so the existing `quarry/text_test.go` rendering coverage of a rejection result i
 a rejection-rendering case exists there; if none does, add one before the rewrite so the change is
 covered rather than merely believed.
 
+**`internal/cli` — the exit-code rewrite and the deleted guards.** `codeForResolveResult` is a pure
+mapping written to be table-tested directly (its sibling `codeForNameResult`'s doc comment says so
+explicitly), so the guard for the `Rejected()` rewrite is a table over all six inputs: the four
+statuses, the empty status, and one bogus value reaching `default`. Confirm such a table already
+exists in `internal/cli`'s tests and extend it if it is missing a row; the rewrite must be provably
+exit-code-neutral, since exit codes are the CLI's contract. For the two deleted arity guards there is
+nothing to add — their branches were unreachable — but check whether any existing test asserts the
+`"resolve returned N results for one target"` or `"name returned N results for one declaration"`
+message, and delete that assertion in the same edit if so, since the message no longer exists.
+
 **Docs.** `glyph/docs_test.go` must keep passing. No new row is expected (the additions are prose,
 not glyph-string examples); if the plan's wording introduces a literal glyph string as an example,
 that string needs a `docsAccept` row in the same edit.
@@ -422,3 +551,7 @@ issues being closeable.
 - **Q:** Rewrite the one in-repo consumer (`quarry/text.go`'s `case r.Status == "":`) to use `Rejected()`? **A:** [auto-pick] Yes. **Why:** It is the single in-repo site branching on exactly that state; using the helper in the producing repository is a stronger signal to loomyard than shipping one the producer ignores. The neighbouring positive `== StatusFound` comparisons stay — those are not fail-open unknown-value handling.
 - **Q:** Does `docs/glyph.md` §5 cover the `name` batch too, or only `resolve`? **A:** [auto-pick] Both, stated once. **Why:** §5 is the only doc home for batch answer shapes — the maker has no section of its own — and leaving `name` to godoc would leave the published contract half-stated for the same defect family.
 - **Q:** State the duplicate-target rule in the document, or leave it in godoc? **A:** [auto-pick] State it in §5. **Why:** It is what makes "positional coverage" unambiguous, it is cheap, and it is the property a keyed shape could not have honoured — so it belongs where the shape decision is published.
+- **Q:** How is `Known()` implemented — a switch over the four constants, or a range over the exported `Statuses`? **A:** [auto-pick] A switch over the four constants. **Why:** `Statuses` is an exported, non-copied slice, so the range form would make `Known()`'s truth set mutable by any caller at a distance — the opposite of fail-closed — and it would turn the prescribed truth-table test into a tautology. The switch keeps the method and the slice two independent enumerations, which is what makes that test a real cross-check.
+- **Q:** What disposition do the CLI's own status branches get (`codeForResolveResult`, `codeForExpandAnswer`)? **A:** [auto-pick] `codeForResolveResult`'s `case "":` is lifted out as `if r.Rejected()`; `codeForExpandAnswer` is untouched; neither `default` arm is rewritten with `Known()`. **Why:** The rejection case is exactly what `Rejected()` names, so the CLI is a second dogfood site, not an exception. But both switches are already total with an explicit `default: exitInternal`, which is the fail-closed property `Known()` sells — replacing a total switch's default with a method call adds indirection and gives the compiler less to check. `codeForExpandAnswer` has no rejection case at all, consistent with `ExpandAnswer` getting no `Rejected()`.
+- **Q:** Do the CLI's own consumer-side arity guards stay or go? **A:** [auto-pick] Both are deleted — `runResolve`'s (line ~524) and `runName`'s (line ~661). **Why:** They are in-repo instances of the exact guard class the task exists to pay for once at the producer; deleting loomyard's four while keeping two at home would say the contract is trusted abroad but not where it is written, and would leave a live counter-example for the next consumer to copy. The verifier panics before any result is returned, so both branches are now unreachable. The r2 review named only the `runResolve` one; both go. `strconv` is imported for these two sites alone and must be removed in the same edit.
+- **Q:** What does the panic message contain — the review noted an arity trip has no offending index? **A:** [auto-pick] Two message shapes, specified separately. **Why:** An arity violation genuinely has no index, so its message names the verb plus got/want lengths; an echo mismatch names the verb, the index, and both echo values. One combined spec would have forced the plan to invent an index for a case that has none.
