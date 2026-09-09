@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: batch-answer-contract
 branch: batch-answer-contract
 plan: _mill/plan
@@ -28,4 +28,17 @@ plan-fix-r2  '2026-09-09T06:36:12Z'
 plan-review-r3  '2026-09-09T06:41:35Z'
 plan-fix-r3  '2026-09-09T06:42:20Z'
 planned  '2026-09-09T06:42:30Z'
+implementing  '2026-09-09T06:42:54Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: engine-vocabulary
+    state: pending
+  - name: coverage-verifiers
+    state: pending
+  - name: consumers-and-docs
+    state: pending
 ```
