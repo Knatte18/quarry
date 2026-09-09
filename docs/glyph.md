@@ -202,6 +202,10 @@ match. Results are ordered by file and then by start line, so the answer is dete
 | `ambiguous` | several *different* declarations match: Go build-tag duplicates, a Python name defined twice in one module. The candidates are returned, with their files; nothing is chosen |
 | `not_found` | no declaration matches. A C# method glyph without parentheses is `not_found`, not "all overloads". The answer also says whether the unit exists: `unit: found` when the directory, module or namespace is there and only the member is missing, `unit: not_found` otherwise. A Create card needs the first; a misspelled unit gives the second |
 
+The four statuses above are a closed vocabulary a caller can check, not a set of strings to compare
+against ad hoc. An absent status names a pre-resolution rejection of the target string itself,
+never a resolution outcome.
+
 Resolution never guesses. There is no fuzzy matching, no case folding, no "did you mean". A glyph
 that does not resolve is `not_found`; a caller that wants to see what exists asks `toc` or
 `expand`.
@@ -216,6 +220,14 @@ rejected pre-resolution, with a message naming the fix — append the trailing `
 glyph. A self glyph answers with the same listing block `toc` would produce for that path and the
 same four statuses above: `found` with the listing, or `not_found`. That is how a whole file — an
 HTML viewer, a Markdown page — is a plan target with the same checks as a symbol.
+
+`name` is the maker verb: given a unit plus a declaration head, it predicts the id and kind that
+declaration will get once it is actually written, without reading the repository. On a call to
+`resolve` or `name` that returns answers at all, there is one answer per input, in argument order,
+with the input echoed verbatim on every answer — including a rejection — and a repeated input is
+answered once per occurrence. `resolve` can fail the entire call instead of answering: an engine
+failure then returns no answers at all, never a partial or padded slice, while a malformed target
+taints only its own answer; `name` has no such path and never fails batch-wide.
 
 A `#` in any path segment is an explicit error at both verbs — `toc` and `resolve` alike reject it,
 never reclassifying the target as the other kind. This sits beside an asymmetry that is not a
