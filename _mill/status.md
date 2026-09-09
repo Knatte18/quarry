@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: batch-answer-contract
 branch: batch-answer-contract
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-09-09T05:49:27Z'
+discussion-fix-r1  '2026-09-09T05:59:08Z'
 ```
