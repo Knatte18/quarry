@@ -4,7 +4,9 @@
 // round trip, the two different dispositions an unspellable unit can take — "listed but no
 // symbols" on the walk's side, and "rejected outright" here — the target split between a glyph and
 // a path, the found/multipart/ambiguous/not_found decision, the parse-once memo guarantee, the
-// argument-order and arity contract, and the per-entry error boundary.
+// argument-order and arity contract, and the per-entry error boundary. It also covers
+// verifyResolveCoverage directly, white-box: the passing, no-op, arity-mismatch and echo-mismatch
+// panic message shapes.
 //
 // Fixtures split the same way the rest of this package's tests do: cases that do not exercise
 // .gitignore behaviour read the committed testdata/tree/, testdata/foo_test/, testdata/glyphs/,
@@ -1000,4 +1002,89 @@ func TestResolve_MalformedGlyphEntries(t *testing.T) {
 	if mixedResults[1].Status != "" || mixedResults[1].Error == "" {
 		t.Errorf("malformed entry in a mixed call = %+v; want empty status and non-empty error", mixedResults[1])
 	}
+}
+
+// assertNoPanicResolve calls fn and fails the test if it panics — the house style's mirror image,
+// used for verifyResolveCoverage's passing and zero-length no-op cases.
+func assertNoPanicResolve(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("unexpected panic: %v", r)
+		}
+	}()
+	fn()
+}
+
+// assertPanicMessageResolve calls fn, which must panic, and asserts the recovered value is a
+// string equal to want. It follows TestRegister_PanicsOnDuplicateLanguage's deferred-recover house
+// style in classify_test.go, taken one step further: the recovered value is asserted to be a
+// string via a type assertion — failing the test when the assertion does not hold — and compared
+// against the full expected message with != rather than a substring match, so a reworded message
+// is caught rather than tolerated.
+func assertPanicMessageResolve(t *testing.T, want string, fn func()) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a panic; got none")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("recovered value = %v (%T); want a string", r, r)
+		}
+		if msg != want {
+			t.Errorf("panic message = %q; want %q", msg, want)
+		}
+	}()
+	fn()
+}
+
+// TestVerifyResolveCoverage_Passing asserts a correct slice — same length, every element echoing
+// its own target — does not panic.
+func TestVerifyResolveCoverage_Passing(t *testing.T) {
+	targets := []string{"a#B", "c#D", "e#F"}
+	results := []ResolveResult{
+		{Target: "a#B", Status: StatusFound},
+		{Target: "c#D", Status: StatusNotFound},
+		{Target: "e#F", Status: StatusAmbiguous},
+	}
+	assertNoPanicResolve(t, func() { verifyResolveCoverage(targets, results) })
+}
+
+// TestVerifyResolveCoverage_ZeroLength asserts a zero-length targets slice is a no-op, not a trip:
+// the arity check passes with both lengths zero and the per-index loop never runs.
+func TestVerifyResolveCoverage_ZeroLength(t *testing.T) {
+	assertNoPanicResolve(t, func() { verifyResolveCoverage(nil, nil) })
+}
+
+// TestVerifyResolveCoverage_ShortSlice asserts a results slice shorter than targets panics with
+// the exact arity message, naming the verb and the got/want lengths and no index.
+func TestVerifyResolveCoverage_ShortSlice(t *testing.T) {
+	targets := []string{"a#B", "c#D", "e#F"}
+	results := []ResolveResult{{Target: "a#B"}, {Target: "c#D"}}
+	want := "engine: resolve returned 2 results for 3 targets"
+	assertPanicMessageResolve(t, want, func() { verifyResolveCoverage(targets, results) })
+}
+
+// TestVerifyResolveCoverage_LongSlice asserts a results slice longer than targets panics with the
+// exact arity message, naming the verb and the got/want lengths and no index.
+func TestVerifyResolveCoverage_LongSlice(t *testing.T) {
+	targets := []string{"a#B", "c#D"}
+	results := []ResolveResult{{Target: "a#B"}, {Target: "c#D"}, {Target: "e#F"}}
+	want := "engine: resolve returned 3 results for 2 targets"
+	assertPanicMessageResolve(t, want, func() { verifyResolveCoverage(targets, results) })
+}
+
+// TestVerifyResolveCoverage_EchoMismatch asserts an echo divergence at a non-zero index panics
+// with the exact echo message, naming the verb, the index, and both quoted values.
+func TestVerifyResolveCoverage_EchoMismatch(t *testing.T) {
+	targets := []string{"t0#X", "t1#Y", "c/d#Y"}
+	results := []ResolveResult{
+		{Target: "t0#X"},
+		{Target: "t1#Y"},
+		{Target: "a/b#X"},
+	}
+	want := `engine: resolve result 2 answers "a/b#X"; want "c/d#Y"`
+	assertPanicMessageResolve(t, want, func() { verifyResolveCoverage(targets, results) })
 }
