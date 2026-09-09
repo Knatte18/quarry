@@ -6,6 +6,7 @@ slug: batch-answer-contract
 branch: batch-answer-contract
 plan: _mill/plan
 parent: main
+module_verify_baseline: clean
 task: 'Batch-answer contract: per-target coverage + fail-closed Status helpers'
 task_description: |
   Batch-answer contract: per-target coverage + fail-closed Status helpers
@@ -36,9 +37,14 @@ implementing  '2026-09-09T06:42:54Z'
 ```yaml
 batches:
   - name: engine-vocabulary
-    state: pending
+    state: running
+    implementer_session: 418b14e1-b471-454c-b5b2-11ecf7725e5b
+    start_sha: d4ed8eb4a4ecfe6889c58ca4c7be40d225d6f14d
+    verify_baseline_failures: []
   - name: coverage-verifiers
     state: pending
+    verify_baseline_failures: []
   - name: consumers-and-docs
     state: pending
+    verify_baseline_failures: []
 ```
