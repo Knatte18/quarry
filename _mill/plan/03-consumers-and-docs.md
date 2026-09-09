@@ -144,11 +144,11 @@ a larger condition, which is the loomyard shape — not at one that already has.
   arity condition of its own left to check. Say it once, in whichever of the two paragraphs reads
   more naturally, rather than twice.
 
-  After renumbering, re-read the paragraph immediately below `runResolve`'s list — it opens
-  "runExpand's own pipeline, continuing from step 4 above" — and any other cross-reference in this
-  doc comment that cites a step by number, and correct every number the renumbering invalidated. A
-  cross-reference silently pointing at the wrong step is the failure mode this instruction exists to
-  catch.
+  Renumbering `runResolve`'s list invalidates no cross-reference in this comment, and nothing else
+  in it needs touching. The four paragraph openers reading "continuing from step 4 above" — one each
+  for `runTOC`, `runResolve`, `runExpand` and `runDelta` — all cite `Run`'s own shared step 4,
+  "Resolve the repository root by calling internal/repopath.ResolveRoot", not any step of
+  `runResolve`'s inner list. Leave all four exactly as they are. Do not renumber them to step 3.
 
   No test change is needed here. Neither deleted message is asserted anywhere in the repository's
   tests — a grep over every `.go` file for `results for one target` and `results for one
@@ -178,7 +178,18 @@ a larger condition, which is the loomyard shape — not at one that already has.
 
   2. **The batch coverage paragraph**, placed with or immediately after the paragraph that begins
      `toc` takes paths; `resolve` takes glyphs — that is where the document already talks about what
-     the verbs take and return. It states, once, for both batch verbs, that on a call that returns
+     the verbs take and return.
+
+     This paragraph is the first place in the whole document to mention the `name` verb: the
+     document names only `toc`, `resolve` and `expand` today, and the one other occurrence of the
+     word — §3's Python spelling rule — is an identifier, not the verb. So open the paragraph with
+     one introductory clause defining what `name` is before any claim is made about it: the maker
+     verb, which takes a unit plus a declaration head and predicts the id and kind that declaration
+     will get once written, without reading the repository. Keep it to a single clause — a full
+     section for the maker is out of this task's scope, and the contract sentence that follows is
+     what the task is here to publish.
+
+     The paragraph then states, once, for both batch verbs, that on a call that returns
      answers at all there is one answer per input, in argument order, with the input echoed verbatim
      on every answer including a rejection, and that a repeated input is answered once per
      occurrence. The duplicate-target rule is stated here in the document, not left to godoc: it is

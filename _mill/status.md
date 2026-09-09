@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: batch-answer-contract
 branch: batch-answer-contract
 plan: _mill/plan
@@ -24,4 +24,5 @@ planning  '2026-09-09T06:22:25Z'
 plan-review-r1  '2026-09-09T06:28:13Z'
 plan-fix-r1  '2026-09-09T06:29:17Z'
 plan-review-r2  '2026-09-09T06:34:58Z'
+plan-fix-r2  '2026-09-09T06:36:12Z'
 ```

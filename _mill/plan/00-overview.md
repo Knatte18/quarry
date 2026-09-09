@@ -42,7 +42,8 @@ batches:
 - **Decision:** Every change compiles against existing callers unchanged. No exported signature
   changes, no removed or renamed exported symbols, and no change to the emitted JSON key set — no
   new struct field, no new struct tag, no renamed tag. New exported API is limited to one package
-  var and two methods on existing types.
+  var per package — `engine.Statuses`, re-exported through the facade as `quarry.Statuses` — and
+  two methods on existing types.
 - **Rationale:** The task exists so loomyard can adopt through a plain `go.mod` bump, and
   `internal/engine/answer.go`'s own file header fixes its JSON tag set as closed. Methods and a
   package var add no tag, so that rule is satisfied without touching the Shared Decision the header
