@@ -419,7 +419,33 @@ func (r *Repo) resolve(targets []string, m *unitMemo) ([]ResolveResult, error) {
 		}
 		results[i] = res
 	}
+	verifyResolveCoverage(targets, results)
 	return results, nil
+}
+
+// verifyResolveCoverage guards resolve's positional contract: resolve answers every target
+// positionally, one answer per target in argument order, with Target echoed verbatim on every
+// answer — rejections included, since a rejection is still an answer about the target string, not
+// an engine failure. It panics rather than returning an error, because the violation is
+// unreachable by construction: resolve itself builds results with make([]ResolveResult,
+// len(targets)) and fills every index in order, so a divergence here means the engine is broken
+// and every answer in the batch is untrustworthy, not that this one call had a bad input. An error
+// return would hand the caller exactly the condition this task exists to stop callers from having
+// to check. internal/engine/strategy.go's Register panics on a duplicate Strategy registration for
+// the same reason: an invariant that cannot fail by any caller input, so a panic is the honest
+// signal rather than a manufactured error path. The failure path — resolveGlyphTarget returning a
+// non-nil error — is deliberately not verified here: a nil slice with a non-nil error is resolve's
+// documented whole-call failure shape, not a coverage violation, and verifying there would panic
+// on every legitimate engine failure.
+func verifyResolveCoverage(targets []string, results []ResolveResult) {
+	if len(results) != len(targets) {
+		panic(fmt.Sprintf("engine: resolve returned %d results for %d targets", len(results), len(targets)))
+	}
+	for i, target := range targets {
+		if results[i].Target != target {
+			panic(fmt.Sprintf("engine: resolve result %d answers %q; want %q", i, results[i].Target, target))
+		}
+	}
 }
 
 // dirChainBelowRoot splits the repository-relative directory dirRel into the chain of directories
