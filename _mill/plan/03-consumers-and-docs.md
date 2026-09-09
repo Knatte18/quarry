@@ -125,6 +125,31 @@ a larger condition, which is the loomyard shape — not at one that already has.
   `strconv` import line in this same edit. Verify with a grep for `strconv` over the file after the
   edit that no occurrence remains.
 
+  `Run`'s own long doc comment, further up the same file, documents both deleted guards as numbered
+  pipeline steps, and both paragraphs must be disposed of in this same edit or the comment will
+  describe code that no longer exists:
+
+  1. `runResolve`'s numbered pipeline carries a step reading "A returned slice whose length is not
+     exactly one is exit 3, named with the count — the facade contracts a positional one-to-one
+     mapping, so this is unreachable and is stated so a contract change cannot silently produce a
+     zero exit code." Delete that step and close the numbering up, so the list runs 1..5 with no
+     gap.
+  2. `runName`'s own numbered pipeline opens with a step that folds the identical sentence into its
+     first item. Strike that sentence from the item, leaving the item's surviving instruction — call
+     the facade with a one-element slice and take the single result — intact.
+
+  In place of the deleted prose, add one sentence to the surrounding comment stating that the single
+  result is taken unconditionally because the engine's own `verifyResolveCoverage` and
+  `verifyNameCoverage` panic on an arity violation before any slice is returned, so the CLI has no
+  arity condition of its own left to check. Say it once, in whichever of the two paragraphs reads
+  more naturally, rather than twice.
+
+  After renumbering, re-read the paragraph immediately below `runResolve`'s list — it opens
+  "runExpand's own pipeline, continuing from step 4 above" — and any other cross-reference in this
+  doc comment that cites a step by number, and correct every number the renumbering invalidated. A
+  cross-reference silently pointing at the wrong step is the failure mode this instruction exists to
+  catch.
+
   No test change is needed here. Neither deleted message is asserted anywhere in the repository's
   tests — a grep over every `.go` file for `results for one target` and `results for one
   declaration` matches only these two lines in `internal/cli/cli.go` itself. Re-run that grep after

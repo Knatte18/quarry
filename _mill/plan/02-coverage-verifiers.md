@@ -180,6 +180,11 @@ loop whose invariant it guards.
   message reports `Unit` alone. That case is the one where an unspecified tie-break would make the
   assertion non-deterministic, so it is the one that pins the Shared Decision.
 
+  Extend both edited test files' own header comments, each of which enumerates what its file covers,
+  so they name the new subject: that file's coverage verifier and its two panic message shapes.
+  Leaving a header stale while adding a new subject beneath it is the drift those headers exist to
+  prevent.
+
   Do not modify `TestResolve_ArgumentOrderAndArity` or `TestName_BatchSemantics`. Both already
   assert the positional contract end to end — arity, per-index echo, the repeated-target case, and
   the empty-input empty-non-nil-slice case — and both must keep passing verbatim. If the verifiers
