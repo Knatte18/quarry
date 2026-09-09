@@ -112,8 +112,10 @@ loop whose invariant it guards.
      panic(fmt.Sprintf("engine: name result %d echoes unit %q; want %q", i, results[i].Unit, decls[i].Unit))
      ```
 
-     and return from the panic site — do not fall through to the `Target` comparison for that index.
-     Only when `Unit` matched is `Target` compared: when `results[i].Target` differs from
+     The panic ends the check for that index; there is no `return` after it, since `panic` does not
+     return and a trailing `return` would be unreachable code the overview's `go vet ./...` gate
+     flags. `Target` is compared only in the else branch — that is, only when `Unit` matched: when
+     `results[i].Target` differs from
      `decls[i].Decl`, panic with
 
      ```go

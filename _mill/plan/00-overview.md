@@ -3,7 +3,7 @@
 ```yaml
 task: 'Batch-answer contract: per-target coverage + fail-closed Status helpers'
 slug: batch-answer-contract
-approved: false
+approved: true
 started: '20260909-061811'
 parent: main
 root: ""
