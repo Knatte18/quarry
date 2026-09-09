@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-consumers-and-docs
+phase: holistic-reviewing
 slug: batch-answer-contract
 branch: batch-answer-contract
 plan: _mill/plan
@@ -33,6 +33,7 @@ implementing  '2026-09-09T06:42:54Z'
 approved-engine-vocabulary  '2026-09-09T06:46:31Z'
 approved-coverage-verifiers  '2026-09-09T06:49:46Z'
 approved-consumers-and-docs  '2026-09-09T06:53:18Z'
+holistic-reviewing  '2026-09-09T06:53:55Z'
 ```
 
 ## Batches
