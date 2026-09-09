@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: batch-answer-contract
 branch: batch-answer-contract
 plan: _mill/plan
@@ -36,6 +36,7 @@ approved-consumers-and-docs  '2026-09-09T06:53:18Z'
 holistic-reviewing  '2026-09-09T06:53:55Z'
 holistic-approved  '2026-09-09T06:55:29Z'
 done  '2026-09-09T06:56:13Z'
+pr-pending  '2026-09-09T06:57:11Z'
 ```
 
 ## Batches
