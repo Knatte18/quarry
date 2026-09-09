@@ -1,7 +1,9 @@
 // name_test.go covers Name directly: every accepted declaration kind, the completion retry, every
 // failure reason the maker itself produces, propagated glyph.Reason words for a bad unit, the
 // reason vocabulary's completeness, and the batch's positional semantics. No fixture on disk, no
-// repository — Name reads nothing but its own argument.
+// repository — Name reads nothing but its own argument. It also covers verifyNameCoverage
+// directly, white-box: the passing, no-op, arity-mismatch and echo-mismatch (Unit and Target,
+// including the both-diverge tie-break) panic message shapes.
 
 package engine
 
@@ -351,4 +353,130 @@ func TestName_BatchSemantics(t *testing.T) {
 			t.Errorf("len(Name([]Declaration{})) = %d; want 0", len(got))
 		}
 	})
+}
+
+// assertNoPanicName calls fn and fails the test if it panics — the house style's mirror image,
+// used for verifyNameCoverage's passing and zero-length no-op cases.
+func assertNoPanicName(t *testing.T, fn func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("unexpected panic: %v", r)
+		}
+	}()
+	fn()
+}
+
+// assertPanicMessageName calls fn, which must panic, and asserts the recovered value is a string
+// equal to want. It follows TestRegister_PanicsOnDuplicateLanguage's deferred-recover house style
+// in classify_test.go, taken one step further: the recovered value is asserted to be a string via
+// a type assertion — failing the test when the assertion does not hold — and compared against the
+// full expected message with != rather than a substring match, so a reworded message is caught
+// rather than tolerated.
+func assertPanicMessageName(t *testing.T, want string, fn func()) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a panic; got none")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("recovered value = %v (%T); want a string", r, r)
+		}
+		if msg != want {
+			t.Errorf("panic message = %q; want %q", msg, want)
+		}
+	}()
+	fn()
+}
+
+// TestVerifyNameCoverage_Passing asserts a correct slice — same length, every element echoing its
+// own Unit and Decl — does not panic.
+func TestVerifyNameCoverage_Passing(t *testing.T) {
+	decls := []Declaration{
+		{Unit: "u1", Decl: "func F() {}"},
+		{Unit: "u2", Decl: "type T int"},
+	}
+	results := []NameResult{
+		{Unit: "u1", Target: "func F() {}"},
+		{Unit: "u2", Target: "type T int"},
+	}
+	assertNoPanicName(t, func() { verifyNameCoverage(decls, results) })
+}
+
+// TestVerifyNameCoverage_ZeroLength asserts a zero-length decls slice is a no-op, not a trip.
+func TestVerifyNameCoverage_ZeroLength(t *testing.T) {
+	assertNoPanicName(t, func() { verifyNameCoverage(nil, nil) })
+}
+
+// TestVerifyNameCoverage_ShortSlice asserts a results slice shorter than decls panics with the
+// exact arity message, naming the verb and the got/want lengths and no index.
+func TestVerifyNameCoverage_ShortSlice(t *testing.T) {
+	decls := []Declaration{
+		{Unit: "u1", Decl: "func F() {}"},
+		{Unit: "u2", Decl: "type T int"},
+	}
+	results := []NameResult{{Unit: "u1", Target: "func F() {}"}}
+	want := "engine: name returned 1 results for 2 declarations"
+	assertPanicMessageName(t, want, func() { verifyNameCoverage(decls, results) })
+}
+
+// TestVerifyNameCoverage_LongSlice asserts a results slice longer than decls panics with the exact
+// arity message, naming the verb and the got/want lengths and no index.
+func TestVerifyNameCoverage_LongSlice(t *testing.T) {
+	decls := []Declaration{{Unit: "u1", Decl: "func F() {}"}}
+	results := []NameResult{
+		{Unit: "u1", Target: "func F() {}"},
+		{Unit: "u2", Target: "type T int"},
+	}
+	want := "engine: name returned 2 results for 1 declarations"
+	assertPanicMessageName(t, want, func() { verifyNameCoverage(decls, results) })
+}
+
+// TestVerifyNameCoverage_UnitMismatch asserts a Unit divergence at a non-zero index panics with
+// the exact echo message naming Unit, the index, and both quoted values.
+func TestVerifyNameCoverage_UnitMismatch(t *testing.T) {
+	decls := []Declaration{
+		{Unit: "u1", Decl: "func F() {}"},
+		{Unit: "u2", Decl: "type T int"},
+	}
+	results := []NameResult{
+		{Unit: "u1", Target: "func F() {}"},
+		{Unit: "wrong", Target: "type T int"},
+	}
+	want := `engine: name result 1 echoes unit "wrong"; want "u2"`
+	assertPanicMessageName(t, want, func() { verifyNameCoverage(decls, results) })
+}
+
+// TestVerifyNameCoverage_TargetMismatch asserts a Target divergence at a non-zero index, with Unit
+// matching, panics with the exact echo message naming Target, the index, and both quoted values.
+func TestVerifyNameCoverage_TargetMismatch(t *testing.T) {
+	decls := []Declaration{
+		{Unit: "u1", Decl: "func F() {}"},
+		{Unit: "u2", Decl: "type T int"},
+	}
+	results := []NameResult{
+		{Unit: "u1", Target: "func F() {}"},
+		{Unit: "u2", Target: "wrong decl"},
+	}
+	want := `engine: name result 1 echoes target "wrong decl"; want "type T int"`
+	assertPanicMessageName(t, want, func() { verifyNameCoverage(decls, results) })
+}
+
+// TestVerifyNameCoverage_BothDivergeReportsUnitAlone asserts that when a result diverges in both
+// Unit and Target at once, the panic message reports Unit alone — the Unit-first tie-break that
+// makes a two-field divergence produce one deterministic message. Without it, this case would have
+// two equally valid messages and the assertion would be non-deterministic.
+func TestVerifyNameCoverage_BothDivergeReportsUnitAlone(t *testing.T) {
+	decls := []Declaration{
+		{Unit: "u1", Decl: "func F() {}"},
+		{Unit: "u2", Decl: "type T int"},
+	}
+	results := []NameResult{
+		{Unit: "u1", Target: "func F() {}"},
+		{Unit: "wrong-unit", Target: "wrong decl"},
+	}
+	want := `engine: name result 1 echoes unit "wrong-unit"; want "u2"`
+	assertPanicMessageName(t, want, func() { verifyNameCoverage(decls, results) })
 }
