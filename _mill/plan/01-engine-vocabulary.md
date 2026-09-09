@@ -124,10 +124,12 @@ This batch has no batch-local decisions that differ from the overview's Shared D
      `Status` is `StatusNotFound` and whose `Error` is also set, so the test pins that `Rejected`
      reads `Status` and not `Error`.
 
-  Follow the file's existing table-test style: a `tests` slice of anonymous structs with a `name`
-  field, driven through `t.Run`, with `t.Errorf` messages in the `got = X; want Y` shape the
-  surrounding tests use. The three test names above follow the file's own `TestSubject_Case` shape,
-  which every existing test in it carries; keep them exactly as prescribed.
+  Write the two truth tables in the table-test style of `internal/engine/name_test.go`, which is
+  this package's precedent for it: a `tests` slice of anonymous structs with a `name` field, driven
+  through `t.Run`. `internal/engine/answer_test.go` itself holds no such table — its subtests are
+  inline `t.Run` calls — so the table style is being brought in from the sibling file rather than
+  copied from this one. Use `t.Errorf` messages in the `got = X; want Y` shape both files already
+  use. Keep the three test names exactly as prescribed above.
 
   Extend `internal/engine/answer_test.go`'s own file header comment, which enumerates what the file
   pins, so it names the new subjects too: the `Status` vocabulary's completeness and the two
