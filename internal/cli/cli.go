@@ -77,18 +77,21 @@ func codeForTOCError(err error) int {
 // a table test can be written directly against it, mirroring codeForTOCError's own rationale.
 //
 // It returns exitOK for quarry.StatusFound and quarry.StatusMultipart, and exitNegative for
-// quarry.StatusNotFound and quarry.StatusAmbiguous. The empty status also returns exitNegative,
-// because an empty status means a pre-resolution rejection carried by the result's Error field,
-// not an engine failure. The default returns exitInternal: the status vocabulary is closed, so
+// quarry.StatusNotFound and quarry.StatusAmbiguous. A pre-resolution rejection — r.Rejected() —
+// is checked first, ahead of the switch, and also returns exitNegative: the early return
+// separates the two questions the single switch used to conflate — whether this target reached
+// resolution at all, and what outcome it got — which is the same separation ResolveResult.Rejected
+// exists to give callers. The default returns exitInternal: the status vocabulary is closed, so
 // this branch is unreachable, and it exists only so a value the engine never produces cannot
 // silently route to a zero exit code.
 func codeForResolveResult(r quarry.ResolveResult) int {
+	if r.Rejected() {
+		return exitNegative
+	}
 	switch r.Status {
 	case quarry.StatusFound, quarry.StatusMultipart:
 		return exitOK
 	case quarry.StatusNotFound, quarry.StatusAmbiguous:
-		return exitNegative
-	case "":
 		return exitNegative
 	default:
 		return exitInternal
