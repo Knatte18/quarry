@@ -226,11 +226,15 @@ a larger condition, which is the loomyard shape — not at one that already has.
   which are the guard that card 9's deletions changed no observable behaviour.
 - `./quarry/` covers card 7. `quarry/text_test.go`'s `TestRenderResolveText` already holds three
   rejection-rendering rows — `RejectionWithReasonAndError`, `RejectionEmptyReason`, and
-  `RejectionEmptyError_TotalityGuard` — so the rewritten branch is covered by existing assertions
-  and no new row is required. Confirm those three rows are present and passing rather than assuming
-  it; if any is missing, add it before the rewrite so the change is covered rather than believed.
-- `./glyph/` covers card 10 by way of `glyph/docs_test.go`, §5's drift guard, which must keep
-  passing across the documentation edit.
+  `RejectionEmptyError_TotalityGuard` — verified present in the tree at the time this plan was
+  written, so the rewritten branch is covered by existing assertions, no new row is required, and no
+  card edits that file.
+- `./glyph/` must keep passing across card 10's documentation edit, but it does not verify that
+  edit: `glyph/docs_test.go`'s `docsAccept` and `docsReject` tables are hand-written Go literals and
+  nothing in the file reads `docs/glyph.md`, so the suite passes regardless of what the markdown
+  says. The documentation change itself is unverified by test — card 10's no-new-glyph-string rule
+  is what keeps that acceptable, since a new literal glyph string is the one kind of edit those
+  tables would need to mirror.
 
 The scope is three packages rather than the whole module because no card here touches
 `internal/engine`, and the two producer packages were already re-run in full by batches 1 and 2. The
