@@ -1,10 +1,11 @@
 // answer.go declares the engine package's answer shape: the closed Kind vocabulary, Symbol, the
-// recursive DirAnswer, FileEntry, TOCOptions, the closed Status vocabulary, ResolveResult, and
-// ExpandAnswer. Every JSON tag here is the exact emitted key set the plan's "the emitted key set is
-// plan §4's and is closed" Shared Decision fixes — no field is added or renamed without a
-// corresponding Shared Decision change. The C1 task ("Glyph self-form and the resolve contract") is
-// exactly such a change: it renames ResolveResult.Dir to ResolveResult.Listing and its "dir" JSON
-// key to "listing", because the field now carries a self glyph's answer as well as a path's.
+// recursive DirAnswer, FileEntry, TOCOptions, the closed Status vocabulary plus its Statuses
+// enumeration and Known() predicate, ResolveResult plus its Rejected() predicate, and ExpandAnswer.
+// Every JSON tag here is the exact emitted key set the plan's "the emitted key set is plan §4's and
+// is closed" Shared Decision fixes — no field is added or renamed without a corresponding Shared
+// Decision change. The C1 task ("Glyph self-form and the resolve contract") is exactly such a
+// change: it renames ResolveResult.Dir to ResolveResult.Listing and its "dir" JSON key to
+// "listing", because the field now carries a self glyph's answer as well as a path's.
 
 package engine
 
@@ -46,6 +47,29 @@ const (
 	// part returned.
 	StatusMultipart Status = "multipart"
 )
+
+// Statuses lists all four Status values, in the same order as the constant block above. Go cannot
+// reflect over package-level constants, so this slice is the only way a test or a caller
+// enumerating the vocabulary can range over it. Adding a constant means adding it here in the same
+// edit, exactly as NameReasons does in name.go.
+var Statuses = []Status{StatusFound, StatusNotFound, StatusAmbiguous, StatusMultipart}
+
+// Known reports whether s is one of the four values the constant block above declares. It is false
+// for the empty string, because the empty string is the pre-resolution rejection marker rather than
+// a resolution outcome — see ResolveResult.Rejected and ResolveResult.Unit/ExpandAnswer.Unit, which
+// are absent on every status but not_found.
+//
+// Ranging Statuses was rejected: Statuses is an exported slice a caller can mutate, which would
+// make this predicate's truth set changeable at a distance, and it would turn the vocabulary
+// truth-table test into a tautology.
+func (s Status) Known() bool {
+	switch s {
+	case StatusFound, StatusNotFound, StatusAmbiguous, StatusMultipart:
+		return true
+	default:
+		return false
+	}
+}
 
 // Symbol is one listable declaration extracted from a file: a function, method, type, const, or
 // var, in source order.
@@ -226,6 +250,16 @@ type ResolveResult struct {
 	// needs no exported alias for the grammar's own type.
 	Reason string `json:"reason,omitempty"`
 }
+
+// Rejected reports whether r is a pre-resolution rejection of the target string itself rather than
+// a resolution outcome. It reads r.Status because the struct's own documented rule is that Status
+// and Error are never both set and Status is absent exactly when the target never reached
+// resolution.
+//
+// Testing Error != "" instead was rejected: that would make Error, a derived marker, the primary
+// one, and it would read false for a rejection whose message happened to be empty, where
+// Status == "" still holds.
+func (r ResolveResult) Rejected() bool { return r.Status == "" }
 
 // ExpandAnswer is the answer to one glyph passed to Expand: the target type's head plus every
 // member whose owner chain begins with it. Status is found, not_found or ambiguous, and never

@@ -475,7 +475,8 @@ func writeCandidateEntry(b *strings.Builder, e RenameCandidateEntry) {
 //
 // RenderResolveText has four branches, checked in this order:
 //
-//  1. r.Status == "" — a pre-resolution rejection carried by the error field. One line: the target
+//  1. r.Rejected() — the engine's own name for a pre-resolution rejection carried by the error
+//     field, so the renderer and the engine read one spelling rather than two. One line: the target
 //     as given, then " error", then " "+r.Reason only when Reason is non-empty, then ": "+the
 //     normalised error string only when that normalised string is non-empty. An empty Reason
 //     degenerates the line to "<target> error: <message>"; an empty Error degenerates it to
@@ -510,7 +511,7 @@ func writeCandidateEntry(b *strings.Builder, e RenameCandidateEntry) {
 func RenderResolveText(r ResolveResult) string {
 	var b strings.Builder
 	switch {
-	case r.Status == "":
+	case r.Rejected():
 		b.WriteString(r.Target)
 		b.WriteString(" error")
 		if r.Reason != "" {
