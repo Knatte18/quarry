@@ -57,8 +57,13 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 - `docs/glyph.md` §5 — the batch coverage contract stated normatively (both batch verbs, plus the
   duplicate-target rule), and a sentence naming the `Status` vocabulary as closed and
   caller-checkable.
-- Tests: the verifier's own behaviour, the `Statuses` completeness test, `Known()` and `Rejected()`
-  truth tables, and a facade test that `quarry.Statuses` is the engine's own slice.
+- Tests, the full inventory (matching the Testing section item for item): the two verifiers' own
+  behaviour including their panic messages; the `Statuses` completeness test; the `Known()` and
+  `Rejected()` truth tables; a facade test asserting `quarry.Statuses` is the engine's own slice,
+  with the missing `quarry.NameReasons` twin assertion added alongside it; a `default`-arm row added
+  to `TestCodeForResolveResult` (`internal/cli/cli_test.go:1139`, which has five rows and no bogus
+  value today); and a confirmation that `quarry/text_test.go`'s existing rejection-rendering cases
+  (lines ~305–316) still cover the `text.go` rewrite.
 
 **Out:**
 
@@ -102,11 +107,14 @@ through a single `go.mod` bump, so they land together and are tagged together. G
   - **Echo mismatch** (`results[i]` does not echo `inputs[i]`): the message names the verb, the
     index, and both the got and want echo values — e.g.
     `engine: resolve result 2 answers "a/b#X"; want "c/d#Y"`. For `Name`, whose echo is two fields,
-    **`Unit` is checked first and, when it diverges, is reported alone** — the verifier returns on
-    the first diverging field rather than accumulating both. `Target` is reported only when `Unit`
-    matched. This tie-break is stated so the message is deterministic when both fields diverge at the
-    same index, which is what lets the test assert an exact string; without it, a two-field
-    divergence would have two equally valid messages.
+    **the message names the diverging field**, and **`Unit` is checked first and, when it diverges,
+    is reported alone** — the verifier returns on the first diverging field rather than accumulating
+    both. `Target` is reported only when `Unit` matched. Two verbatim exemplars, matching `resolve`'s:
+    `engine: name result 2 echoes unit "a/b"; want "c/d"` and
+    `engine: name result 2 echoes target "func X()"; want "func Y()"`. The tie-break and the field
+    label together are what make the message deterministic — without the tie-break a two-field
+    divergence would have two equally valid messages, and without the label a `Target`-only
+    divergence would print a bare got/want pair with nothing saying which field it described.
 - **Rationale:** A coverage violation is unreachable by construction; if it fires, the engine is
   broken and every answer in that batch is untrustworthy. A panic is the honest signal for an engine
   bug and it works uniformly at both verbs. `Name` returns no error at all — deliberately, per its
@@ -290,19 +298,33 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 
 ### `docs/glyph.md` §5 carries both statements, and covers both batch verbs
 
-- **Decision:** Add to §5: (a) a normative paragraph stating the batch answer contract — one answer
-  per input, in argument order, with the input echoed verbatim on every answer including a
-  rejection, and a repeated input answered once per occurrence — stated once for both batch verbs
-  (`resolve` and `name`); (b) a sentence stating that the four statuses above are a closed
-  vocabulary a caller can check, with the absent status naming a pre-resolution rejection rather
-  than an outcome.
+- **Decision:** Add to §5: (a) a normative paragraph stating the batch answer contract —
+  **on a call that returns answers at all**, one answer per input, in argument order, with the input
+  echoed verbatim on every answer including a rejection, and a repeated input answered once per
+  occurrence — stated once for both batch verbs (`resolve` and `name`); (b) a sentence stating that
+  the four statuses above are a closed vocabulary a caller can check, with the absent status naming
+  a pre-resolution rejection rather
+  than an outcome. (c) **§5 states the whole-call failure exception explicitly**, in one sentence
+  next to (a): `resolve` can fail the entire call instead of answering — an engine failure returns no
+  answers at all, not a partial or padded slice (`internal/engine/resolve.go:417` returns `nil, err`)
+  — while a malformed target taints only its own answer. `name` has no such path and never fails
+  batch-wide.
+- **Rationale for stating the exception rather than staying silent:** an unqualified "one answer per
+  input" would be false on the error path, and a consumer that read it as unconditional would be
+  entitled to assume a non-nil slice after an error — which is exactly the fail-open reading this
+  task exists to close. The distinction is already load-bearing in the godoc ("losing the other
+  answers is right precisely because an engine failure makes the whole answer untrustworthy, unlike
+  a malformed target, which taints only itself"), so §5 is restating a rule the code already keeps,
+  not inventing one. The alternative — qualifying (a) to successful calls and saying nothing about
+  the failure path — leaves the reader to guess what a failed call returns.
 - **Rationale:** §5 is the section the task names and the only home in the published documentation
   for batch answer shapes — the maker has no section of its own, and inventing one for two sentences
   would be worse than a shared statement. Stating the duplicate-target rule in the document (not
   only in godoc) is what makes "positional coverage" unambiguous, and it is the rule a keyed shape
   could not have honoured.
-- **Rejected:** Documenting `resolve` in §5 and leaving `name` to godoc — it would leave the
-  published contract half-stated for the exact defect family this task closes.
+- **Rejected:** (a) Documenting `resolve` in §5 and leaving `name` to godoc — it would leave the
+  published contract half-stated for the exact defect family this task closes. (b) Leaving §5 silent
+  on the whole-call failure path — see the rationale above.
 
 ## Technical context
 
