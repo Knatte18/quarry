@@ -228,8 +228,12 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 
 `internal/engine/resolve.go`, the unexported worker (`resolve`, around line 413) is where the
 verifier belongs — not in the exported `Resolve` (around line 396), which only builds the `unitMemo`
-and delegates. `resolve` is also called directly elsewhere in the package, so verifying there covers
-every path:
+and delegates. `resolve` has exactly one production caller — that same exported `Resolve`
+(`internal/engine/resolve.go:401`) — plus one white-box test that calls it directly with a
+hand-built memo (`internal/engine/resolve_test.go:651`). There are no other production call sites to
+hunt for. Verifying in the unexported worker rather than the exported wrapper still earns its place:
+it covers the white-box test's own path and any future in-package caller, and it puts the check
+beside the loop whose invariant it guards.
 
 ```go
 func (r *Repo) resolve(targets []string, m *unitMemo) ([]ResolveResult, error) {
@@ -383,10 +387,15 @@ per-index echo, the repeated-target case, and the `Resolve(nil)` empty-non-nil-s
 keep passing verbatim; if the verifier is right, it will. `internal/engine/name_test.go`'s existing
 batch-semantics coverage is the same check for `Name`.
 
-**`quarry` — the facade.** Assert `quarry.Statuses` is the engine's own slice, in the same shape the
-existing `NameReasons` facade coverage uses. Assert `Known()` and `Rejected()` are callable through
-the facade's aliased types — a compile-level assertion is enough, and it is what proves an external
-importer gets the methods without importing `internal/engine`.
+**`quarry` — the facade.** There is no existing facade-level test to copy: `NameReasons` is covered
+only engine-side (`internal/engine/name_test.go:278`), and no test in `quarry/` touches it. So write
+the `quarry.Statuses` identity assertion fresh — that `quarry.Statuses` and `engine.Statuses` are the
+same slice, not a copy, which is the property `quarry/quarry.go`'s own doc comment claims for
+`NameReasons` and will claim for `Statuses`. Add the missing `quarry.NameReasons` twin assertion in
+the same test, so the sibling vocabulary the new code is modelled on is finally covered at the
+facade too. Also assert `Known()` and `Rejected()` are callable through the facade's aliased types —
+a compile-level assertion is enough, and it is what proves an external importer gets the methods
+without importing `internal/engine`.
 
 **`quarry` — `text.go` regression.** The `text.go` rewrite is behaviour-preserving by construction,
 so the existing `quarry/text_test.go` rendering coverage of a rejection result is the guard. Confirm
