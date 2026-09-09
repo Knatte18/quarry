@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-engine-vocabulary
+phase: approved-coverage-verifiers
 slug: batch-answer-contract
 branch: batch-answer-contract
 plan: _mill/plan
@@ -31,6 +31,7 @@ plan-fix-r3  '2026-09-09T06:42:20Z'
 planned  '2026-09-09T06:42:30Z'
 implementing  '2026-09-09T06:42:54Z'
 approved-engine-vocabulary  '2026-09-09T06:46:31Z'
+approved-coverage-verifiers  '2026-09-09T06:49:46Z'
 ```
 
 ## Batches
@@ -44,9 +45,10 @@ batches:
     commit_sha: 2484e5f0b41e337ffd247655aad00cb7486b3b3c
     verify_baseline_failures: []
   - name: coverage-verifiers
-    state: running
+    state: approved
     implementer_session: 64223b1e-d5b1-4621-b93e-8afcf0d151e5
     start_sha: 81f73bb9fa8093258079a25512eed75c4ceecaf3
+    commit_sha: 6d6c6d7e50e1394bedc981cddadad1ad610e9825
     verify_baseline_failures: []
   - name: consumers-and-docs
     state: pending
