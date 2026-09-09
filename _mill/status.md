@@ -44,7 +44,9 @@ batches:
     commit_sha: 2484e5f0b41e337ffd247655aad00cb7486b3b3c
     verify_baseline_failures: []
   - name: coverage-verifiers
-    state: pending
+    state: running
+    implementer_session: 64223b1e-d5b1-4621-b93e-8afcf0d151e5
+    start_sha: 81f73bb9fa8093258079a25512eed75c4ceecaf3
     verify_baseline_failures: []
   - name: consumers-and-docs
     state: pending
