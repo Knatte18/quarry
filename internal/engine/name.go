@@ -85,7 +85,36 @@ func Name(decls []Declaration) []NameResult {
 	for _, d := range decls {
 		results = append(results, nameOne(d))
 	}
+	verifyNameCoverage(decls, results)
 	return results
+}
+
+// verifyNameCoverage guards Name's positional contract: Name answers every declaration
+// positionally, with Unit and Target echoing the input's Unit and Decl verbatim on every result —
+// failures included, which is exactly what nameFailure exists to guarantee. It panics rather than
+// returning an error, and here there is an extra reason beyond the unreachable-by-construction
+// argument verifyResolveCoverage documents: Name returns no error at all by design, so an error
+// return is not available without a breaking signature change. Unlike resolve, Name has no
+// whole-call failure path to exclude — it has exactly one return statement — so the call below is
+// unconditional.
+//
+// The per-index check compares Unit first and only reaches the Target comparison in the else
+// branch, when Unit matched. That ordering, and the field name each message carries, are
+// load-bearing: without the ordering a result diverging in both fields would have two equally
+// valid messages and the choice between them would be arbitrary, and without the field label a
+// Target-only divergence would print a bare got/want pair with nothing saying which field it
+// described.
+func verifyNameCoverage(decls []Declaration, results []NameResult) {
+	if len(results) != len(decls) {
+		panic(fmt.Sprintf("engine: name returned %d results for %d declarations", len(results), len(decls)))
+	}
+	for i, d := range decls {
+		if results[i].Unit != d.Unit {
+			panic(fmt.Sprintf("engine: name result %d echoes unit %q; want %q", i, results[i].Unit, d.Unit))
+		} else if results[i].Target != d.Decl {
+			panic(fmt.Sprintf("engine: name result %d echoes target %q; want %q", i, results[i].Target, d.Decl))
+		}
+	}
 }
 
 // nameFailure builds the failure NameResult for d, echoing Unit and Target and setting Reason and

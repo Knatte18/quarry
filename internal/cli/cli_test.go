@@ -1148,6 +1148,7 @@ func TestCodeForResolveResult(t *testing.T) {
 		{"not-found", quarry.ResolveResult{Status: quarry.StatusNotFound}, exitNegative},
 		{"ambiguous", quarry.ResolveResult{Status: quarry.StatusAmbiguous}, exitNegative},
 		{"empty-status-pre-resolution-rejection", quarry.ResolveResult{Status: "", Error: "boom"}, exitNegative},
+		{"bogus-status", quarry.ResolveResult{Status: "bogus"}, exitInternal},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

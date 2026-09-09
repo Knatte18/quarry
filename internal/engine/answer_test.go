@@ -1,7 +1,8 @@
 // answer_test.go pins the emitted JSON shape (the closed key set's omitempty behaviour), the
-// Depth and Symbols knobs, the failure entries, the extensionless-file header rule, and the
+// Depth and Symbols knobs, the failure entries, the extensionless-file header rule, the
 // gitignore-freshness guarantee — that nothing is cached on Repo, so an edit to a .gitignore
-// between two TOC calls on the same Repo is reflected in the second.
+// between two TOC calls on the same Repo is reflected in the second — the Status vocabulary's
+// completeness, and the two fail-closed predicates, Status.Known and ResolveResult.Rejected.
 
 package engine
 
@@ -404,5 +405,93 @@ func TestAnswerIgnoreSetFreshness(t *testing.T) {
 	}
 	if len(after.Files) != 2 {
 		t.Errorf("after: len(Files) = %d; want 2 (.gitignore, a.go)", len(after.Files))
+	}
+}
+
+// TestStatus_Completeness mirrors TestName_ReasonCompleteness: Statuses contains each of the four
+// Status constants exactly once and nothing else. want is written out as four literal map entries
+// rather than derived from Statuses, because deriving it is what would make this test assert
+// nothing.
+func TestStatus_Completeness(t *testing.T) {
+	want := map[Status]bool{
+		StatusFound:     true,
+		StatusNotFound:  true,
+		StatusAmbiguous: true,
+		StatusMultipart: true,
+	}
+	if len(Statuses) != len(want) {
+		t.Fatalf("len(Statuses) = %d; want %d", len(Statuses), len(want))
+	}
+	seen := make(map[Status]bool, len(Statuses))
+	for _, s := range Statuses {
+		if seen[s] {
+			t.Errorf("Statuses contains %q more than once", s)
+		}
+		seen[s] = true
+		if !want[s] {
+			t.Errorf("Statuses contains unexpected value %q", s)
+		}
+	}
+	for s := range want {
+		if !seen[s] {
+			t.Errorf("Statuses is missing %q", s)
+		}
+	}
+}
+
+// TestStatus_Known is a truth table over Status.Known. The true cases range over Statuses rather
+// than restating its four elements as literals, which is a genuine cross-check only because
+// Known's own body is an independent switch: the test fails when a constant is added to one
+// enumeration and not the other. The false cases pin the empty string as the pre-resolution
+// rejection marker, plus two plausible-looking bogus values that prove Known does no trimming and
+// no case folding.
+func TestStatus_Known(t *testing.T) {
+	tests := []struct {
+		name string
+		s    Status
+		want bool
+	}{
+		{"Empty", Status(""), false},
+		{"TrailingSpace", Status("found "), false},
+		{"WrongCase", Status("FOUND"), false},
+	}
+	for _, s := range Statuses {
+		tests = append(tests, struct {
+			name string
+			s    Status
+			want bool
+		}{string(s), s, true})
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.s.Known(); got != tt.want {
+				t.Errorf("Status(%q).Known() = %v; want %v", tt.s, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestResolveResult_Rejected is a truth table over hand-built ResolveResult values, no filesystem.
+// It pins that Rejected reads Status, not Error: the last case carries both StatusNotFound and a
+// non-empty Error, and still reads false.
+func TestResolveResult_Rejected(t *testing.T) {
+	tests := []struct {
+		name string
+		r    ResolveResult
+		want bool
+	}{
+		{"RejectionHasEmptyStatusAndError", ResolveResult{Error: "bad target"}, true},
+		{"Found", ResolveResult{Status: StatusFound}, false},
+		{"NotFound", ResolveResult{Status: StatusNotFound}, false},
+		{"Ambiguous", ResolveResult{Status: StatusAmbiguous}, false},
+		{"Multipart", ResolveResult{Status: StatusMultipart}, false},
+		{"StatusSetWithErrorAlsoSet", ResolveResult{Status: StatusNotFound, Error: "unused"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.r.Rejected(); got != tt.want {
+				t.Errorf("ResolveResult(%+v).Rejected() = %v; want %v", tt.r, got, tt.want)
+			}
+		})
 	}
 }

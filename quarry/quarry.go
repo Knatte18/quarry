@@ -88,6 +88,11 @@ const (
 	StatusMultipart = engine.StatusMultipart
 )
 
+// Statuses is the engine's own Statuses value, not a copy, so a caller enumerating the vocabulary
+// and the engine's own test are reading one slice, for the same reason NameReasons below is the
+// engine's own value.
+var Statuses = engine.Statuses
+
 // ErrTargetNotFound is the engine's own ErrTargetNotFound value, not a copy, so errors.Is stays
 // transitive across the facade: a caller checking errors.Is(err, quarry.ErrTargetNotFound) against
 // an error returned by (*Repo).TOC succeeds without ever importing internal/engine.
