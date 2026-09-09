@@ -102,7 +102,11 @@ through a single `go.mod` bump, so they land together and are tagged together. G
   - **Echo mismatch** (`results[i]` does not echo `inputs[i]`): the message names the verb, the
     index, and both the got and want echo values — e.g.
     `engine: resolve result 2 answers "a/b#X"; want "c/d#Y"`. For `Name`, whose echo is two fields,
-    the message names whichever field diverged, with the same verb-plus-index prefix.
+    **`Unit` is checked first and, when it diverges, is reported alone** — the verifier returns on
+    the first diverging field rather than accumulating both. `Target` is reported only when `Unit`
+    matched. This tie-break is stated so the message is deterministic when both fields diverge at the
+    same index, which is what lets the test assert an exact string; without it, a two-field
+    divergence would have two equally valid messages.
 - **Rationale:** A coverage violation is unreachable by construction; if it fires, the engine is
   broken and every answer in that batch is untrustworthy. A panic is the honest signal for an engine
   bug and it works uniformly at both verbs. `Name` returns no error at all — deliberately, per its
@@ -138,8 +142,11 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 
 ### The facade does not re-verify
 
-- **Decision:** `quarry.Resolve`, `(*quarry.Repo).Resolve` and `quarry.Name` keep delegating
-  unchanged — no filtering, no re-shaping, no re-checking.
+- **Decision:** The two facade entry points that exist — the method `(*quarry.Repo).Resolve`
+  (`quarry/repo.go:87`) and the package-level function `quarry.Name` (`quarry/name.go:22`) — keep
+  delegating unchanged: no filtering, no re-shaping, no re-checking. There is no package-level
+  `quarry.Resolve`; resolve is reached only through the `Repo` method, because it needs a repository
+  and `Name` does not.
 - **Rationale:** "Producer-side" means once, at the engine. Every facade doc comment in
   `quarry/repo.go` and `quarry/name.go` already states the pure-delegation posture; adding a check
   there would be a second implementation of the same guarantee, which is the drift this codebase's
@@ -308,6 +315,7 @@ through a single `go.mod` bump, so they land together and are tagged together. G
 | `internal/engine/name.go` | coverage verifier + call from `Name` |
 | `quarry/quarry.go` | `var Statuses = engine.Statuses` |
 | `quarry/text.go` | `case r.Rejected():` and its doc comment |
+| `internal/cli/cli.go` | `codeForResolveResult`'s `case "":` lifted to `if r.Rejected()` (+ its doc comment); both `len(results) != 1` arity guards deleted (lines ~524 and ~661); the then-unused `strconv` import (line 13) removed |
 | `docs/glyph.md` | §5 additions |
 
 **The producer sites, verbatim as they stand.**
@@ -476,7 +484,9 @@ step beyond the existing precedent, taken because the panic message is the only 
 bug of this class will ever produce. Assert it accordingly, matching the two message shapes the
 Decisions fix: an **arity** trip's message names the verb and the got/want lengths and must *not* be
 asserted to contain an index (there is none); an **echo-mismatch** trip's message names the verb, the
-offending index, and both echo values.
+offending index, and the got/want pair for the diverging field. For `Name`, cover the two-field
+divergence case explicitly and assert it reports `Unit` alone, per the tie-break the Decisions fix —
+that case is the one where an unspecified message would make the assertion non-deterministic.
 
 **`internal/engine` — the vocabulary (TDD candidates).** A `Statuses` completeness test mirroring
 `TestName_ReasonCompleteness` (`internal/engine/name_test.go:276`): length, no duplicates, no
