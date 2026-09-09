@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/internal/repopath"
@@ -274,15 +273,15 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     resolveGlyphTarget's own pre-resolution rejection rather than by anything in this pipeline.
 //  2. Open the repository. A failure is exit 3.
 //  3. Call the facade's Resolve method with a one-element slice holding req.target. A non-nil
-//     error is exit 3: an engine read failure is not an answer about a glyph.
-//  4. A returned slice whose length is not exactly one is exit 3, named with the count — the facade
-//     contracts a positional one-to-one mapping, so this is unreachable and is stated so a contract
-//     change cannot silently produce a zero exit code.
-//  5. Render the single result: quarry.RenderResolveText under --text, quarry.RenderResolveJSON
+//     error is exit 3: an engine read failure is not an answer about a glyph. The single result is
+//     then taken unconditionally: the engine's own verifyResolveCoverage panics on an arity
+//     violation before any slice is returned, so the CLI has no arity condition of its own left to
+//     check.
+//  4. Render the single result: quarry.RenderResolveText under --text, quarry.RenderResolveJSON
 //     otherwise. A render error, or a failed write of its bytes to stdout, is exit 3. The payload is
 //     written before the code is computed, in the next step, so a negative answer is rendered
 //     rather than replaced by the failure envelope.
-//  6. Return codeForResolveResult of that result.
+//  5. Return codeForResolveResult of that result.
 //
 // runExpand's own pipeline, continuing from step 4 above, takes no base directory and performs
 // neither path conversion nor a stat: this verb accepts a glyph only, and the grammar itself,
@@ -340,10 +339,9 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 // runName's own pipeline, taking no root and no base directory:
 //
 //  1. Call quarry.Name with a one-element slice holding quarry.Declaration{Unit: req.unit, Decl:
-//     req.target}. A returned slice whose length is not exactly one is exit 3, named with the
-//     count — the facade contracts a positional one-to-one mapping, so this is unreachable and is
-//     stated so a contract change cannot silently produce a zero exit code. Take the single
-//     result.
+//     req.target}, and take the single result unconditionally — Name's own verifyNameCoverage
+//     panics on an arity violation before any slice is returned, exactly as runResolve's own step 3
+//     records for verifyResolveCoverage.
 //  2. Check result.Reason == quarry.NameReasonInternal before rendering anything: the maker's
 //     internal reason is the one per-entry failure the CLI does not render as a payload. When it
 //     is, fail's own compact error envelope goes to stdout and the same sentence to stderr, using
@@ -524,9 +522,6 @@ func runResolve(req request, root, base string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
-	if len(results) != 1 {
-		return fail(stdout, stderr, exitInternal, "internal error: resolve returned "+strconv.Itoa(len(results))+" results for one target", false)
-	}
 	result := results[0]
 
 	if req.text {
@@ -659,10 +654,6 @@ func runDelta(req request, root, base string, stdout, stderr io.Writer) int {
 // the same stdout.
 func runName(req request, stdout, stderr io.Writer) int {
 	results := quarry.Name([]quarry.Declaration{{Unit: req.unit, Decl: req.target}})
-	if len(results) != 1 {
-		return fail(stdout, stderr, exitInternal,
-			"internal error: name returned "+strconv.Itoa(len(results))+" results for one declaration", false)
-	}
 	result := results[0]
 
 	if result.Reason == quarry.NameReasonInternal {
