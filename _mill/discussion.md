@@ -28,11 +28,11 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 - One tree-sitter parse per file extracts everything any path needs: package clause, header, test flag, generated flag, lossy flag, package doc, and symbols.
 - The self-target path (file targets and directory targets) and the member path (`symbolsOfUnit` / `symbolsOfDir`) both read from that memo.
 - Expand gets the same guarantee as a side effect, since it reads symbols through `unitMemo.symbolsOf`.
-- A per-file parse counter seam and the tests that pin the guarantee.
+- A per-file record-build counter seam (see the Test seam decision) and the tests that pin the guarantee.
 - Comment updates that keep the docs true after the refactor:
   - `walk.go`'s header: replace the "two parse passes" explanation with single-parse extraction plus unit stamping after the vote.
   - `fileTargetAnswer`'s doc comment in `toc.go`: it says "A gitignored file still does not vote in the package tie-break", but the code keeps an explicitly named gitignored target in the entries `dirPackage` votes over. Correct the comment to say the named target votes, matching the code and the two-level memo decision below.
-  - `unitMemo.parses`: once `symbolsOf` reads per-file records, this counter counts unit extractions requested, not parses. Restate its doc comment and `TestResolve_ParsesEachUnitOnce`'s comment that way, keeping the name or renaming it as the plan chooses. The new per-file counter is the only parse count.
+  - `unitMemo.parses`: once `symbolsOf` reads per-file records, this counter counts unit extractions requested, not parses. Restate its doc comment and `TestResolve_ParsesEachUnitOnce`'s comment that way, keeping the name or renaming it as the plan chooses. The new per-file record-build counter is the only measure of parsing.
 
 **Out:**
 
@@ -49,7 +49,7 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 
 - Decision: the first time a call touches a file, it is read and parsed once, and a per-file record is extracted from that one parse: clause, header (pre-truncation input to `FirstParagraph`), test, generated, lossy, package doc, symbols, or the read, UTF-8 or parse error that `fileEntry` would report today. Every later need for that file within the call reads the record.
 - Rationale: this is the acceptance criterion as written, and it covers both hot spots in the SIGQUIT dumps.
-- Rejected: memoising `dirPackage` only, which roughly halves the cost and fails the criterion. Also rejected: parsing the whole repository once per call, where cost scales with repo size. This repo's 469 files take 616 ms (see the `walk.go` header), so even a one-target call would pay that, which breaks `TestResolve_TwentyGlyphsUnder150ms`.
+- Rejected: memoising `dirPackage` only, which roughly halves the cost and fails the criterion. Also rejected: parsing the whole repository once per call, because cost then scales with repository size instead of with the directories the call names. Even a one-target call would pay a parse of every file in the repository; for scale, quarry's own 469 files take 616 ms (see the `walk.go` header). `TestResolve_TwentyGlyphsUnder150ms` holds Resolve on the pinned Loomyard checkout to 150 ms for twenty glyphs in five packages. That budget is priced for parsing those five packages' files, not every file in the checkout.
 
 ### Unit stamping after the vote
 
@@ -63,12 +63,12 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
   - **Walk consumer** (`fileEntry` via `walkDir` and `fileTargetAnswer`): includes the file. It receives `clauses[base] == ""`, `unitFor(dirRel, dirPkg, "")` maps it to `dirRel`, and it gets symbols stamped with that unit when symbols are wanted, plus its header and flags as usual.
   - **Member consumer** (`symbolsOfDir`): excludes it. Its `clause, ok := clauses[base]; if !ok { continue }` guard stays, so a file with no recorded clause contributes no symbols to Resolve or Expand member results.
 - The per-file record therefore stores whether a clause was recorded (`ok`), not just the clause string, and each consumer applies its own filter before stamping. Stamping is never applied to a record the consumer's filter excludes.
-- Rationale: the acceptance criterion is about parse count, and v0.2.1 must not change any answer. Unifying the two rules would change member answers (Resolve/Expand) or walk answers (TOC goldens), and that is a behaviour decision outside this task.
+- Rationale: the acceptance criterion is about how many times each file is parsed, and v0.2.1 must not change any answer. Unifying the two rules would change member answers (Resolve/Expand) or walk answers (TOC goldens), and that is a behaviour decision outside this task.
 - Rejected: stamping every record through `unitFor` for both consumers. That adds clause-less files' symbols to member results.
 
 ### Two-level memo: files by path, votes by directory
 
-- Decision: the memo holds per-file records keyed by repository-relative file path, which is where the parse counter lives, and the directory vote (`dirPackage`'s result) keyed by `dirRel`. The vote is computed from the file records without parsing.
+- Decision: the memo holds per-file records keyed by repository-relative file path, which is where the record-build counter lives, and the directory vote (`dirPackage`'s result) keyed by `dirRel`. The vote is computed from the file records without parsing.
 - Rationale: an explicitly named gitignored file target joins the vote set (`fileTargetAnswer` keeps it through its `!isTarget && ig.match` check), so its directory's vote can differ from the plain one. Keying file records by path keeps that case at one parse per file. The plan decides whether the vote for that rare set is recomputed per target or memoised under a second key; it costs no parse either way.
 - Rejected: a single record keyed only by `dirRel`. It is wrong for the gitignored-target case.
 
@@ -77,7 +77,7 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 - Decision: unexported memo-aware variants of `TOC`, `fileTargetAnswer` and `walkDir` take the memo. Exported `TOC` builds its own fresh memo, so TOC also becomes single-parse and there is one extraction code path instead of two. `resolveSelfTarget` takes `unitMemo` and calls the memo-aware variant.
 - Rationale: this matches `unitMemo`'s existing shape (`resolve(targets, m)`). With one code path, no second extraction can drift from the first. The committed goldens, including Loomyard's, pin TOC's output byte for byte against expected files, which guards the extraction through the refactor. The symbol round trip narrows to a consumer-layer check; see Testing.
 - Rejected: plumbing the memo through `TOCOptions`, which changes the exported surface. Also rejected: a memo-only path beside the untouched `fileEntry`/`dirPackage` path, which leaves two implementations of the same extraction.
-- Symbol extraction cost: a record built for a TOC call extracts symbols only when that call wants them. A record built inside Resolve or Expand always extracts them, since a later member glyph in the same call may need them and a re-parse is not allowed.
+- Symbol extraction cost: a record built for an exported TOC call extracts symbols only when that record's own file wants them. That follows TOC's per-file rule: for a file target, only the target file gets symbols, and its siblings are read for clause, header and doc only. For a directory target, every listed file gets symbols when `opts.Symbols` is true. A record built inside Resolve or Expand always extracts them, since a later member glyph in the same call may need them and a re-parse is not allowed.
 
 ### Directory self targets are in scope
 
@@ -87,7 +87,7 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 ### Test seam
 
 - Decision: the memo counts **record builds** per repository-relative file path. A record build is the one read of a file plus whatever extraction its kind allows: one tree-sitter parse for a file with a registered strategy and valid UTF-8, `HeaderForFile` for a non-language file, nothing for an unreadable or invalid-UTF-8 file. The count is incremented before the build, like `unitMemo.parses` (builds started, not builds that succeeded).
-- "Files touched" means the distinct file paths for which some consumer requested a record during the call. Tests assert that every path's build count is at most 1 and that the total equals the number of files touched. Each record build performs at most one tree-sitter parse, so "at most one build per file" implies "at most one parse per file", which is the acceptance criterion.
+- Tests assert against an **expected set of paths written out from the fixture**, never against what the memo itself saw requested, which would be true by construction. The expected set is every non-symlink file in each directory the call's targets reach: the directory of each self file target and member glyph, a directory self target's own directory, and that directory's direct subdirectories, whose identity reads their files. Gitignored files are excluded unless explicitly named. Tests assert that every path in the expected set has a build count of exactly 1 and that no path outside it was built. The second assertion pins the lazy, no-eager-parse rule. Each record build performs at most one tree-sitter parse, so "at most one build per file" implies "at most one parse per file", which is the acceptance criterion.
 - Rationale: counting builds rather than parses gives one well-defined unit for every file kind, including files that are read but never parsed. Wall-clock is the thing the guarantee's test must not depend on.
 
 ## Technical context
@@ -111,13 +111,13 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 
 ## Testing
 
-- **TDD candidate, parse-once guarantee:** use `r.resolve(targets, m)` with a constructed memo. Name several self file targets in one directory, a directory self target for that same directory, member glyphs in that directory, and a target in a second directory. The directory includes a non-Go file, so a read-only record build is covered too. Assert that every file path's record-build count is at most 1 and that the total equals the number of files touched, per the Test seam decision.
+- **TDD candidate, parse-once guarantee:** use `r.resolve(targets, m)` with a constructed memo. Name several self file targets in one directory, a directory self target for that same directory, member glyphs in that directory, and a target in a second directory. The directory includes a non-Go file, so a read-only record build is covered too. Assert the build counts against the expected path set written out from the fixture, per the Test seam decision. The repository holds directories the targets do not reach, and none of their files may be built.
 - **Equivalence:** for every self target in such a call, the memoised `Listing` must equal `r.TOC(unit, TOCOptions{Symbols: &false})` from a fresh call. Member results must equal today's results.
   These tests guard memo keying and sharing: answers must not depend on which target touched a directory first. Both sides run the same extraction code, so they do not check extraction itself.
 - **Clause-less file fixture:** an `openScratchRepo` subdirectory holding a normal Go file and a file that parses but has an empty clause (the `packag mypkg` shape from `toc_test.go`). Assert that the TOC/self-target listing gives the clause-less file its symbols (with a symbols-on TOC) and header, exactly as today. Assert that a member glyph naming a symbol declared only in the clause-less file is `not_found` (unit `found`), exactly as today. Run both in one Resolve call, and assert the clause-less file's build count is 1.
 - **Extraction-level coverage after the refactor:** `assertSymbolRoundTrip` (`roundtrip_test.go`) compares walk symbols with `symbolsOfUnit`. Once both read the same per-file records, it no longer compares two independent extractions. It still proves the two consumers' filter and stamping layers agree: every walked symbol is found by the member path and vice versa, and `glyph.Parse` round-trips each ID. Update its doc comment to say so. Extraction correctness, meaning the right symbols, headers, docs and flags for given source, stays guarded by tests independent of the memo: the committed TOC goldens and Loomyard goldens, which pin output byte for byte against expected files, and the strategy-level tests in `golang_test.go`. No new extraction-level test is required. The equivalence tests above do not replace that coverage.
-- **Gitignored explicit target:** an `openScratchRepo` fixture with a gitignored file named explicitly next to normal targets in the same directory. Its answer must equal its stand-alone answer, and the per-file parse count must stay at most 1.
-- **Existing suites unchanged:** TOC goldens, Loomyard goldens and round trip, `TestResolve_ParsesEachUnitOnce`, and `TestResolve_TwentyGlyphsUnder150ms`.
+- **Gitignored explicit target:** an `openScratchRepo` fixture with a gitignored file named explicitly next to normal targets in the same directory. Its answer must equal its stand-alone answer, and the per-file record-build count must stay at most 1.
+- **Existing suites still pass:** TOC goldens, Loomyard goldens and round trip, `TestResolve_ParsesEachUnitOnce`, and `TestResolve_TwentyGlyphsUnder150ms`. Doc-comment updates follow Scope's comment-update bullet: `TestResolve_ParsesEachUnitOnce`'s comment, a possible rename of `unitMemo.parses`, and the round-trip comment. Their assertions do not change.
 - **Before/after measurement (manual, recorded in the handoff):** the Loomyard repro below.
 
 ## Verification against Loomyard
