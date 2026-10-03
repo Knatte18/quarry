@@ -52,4 +52,5 @@ batches:
 
 ```text
 '2026-10-03T08:46:36Z'  single-parse memo  round 1
+'2026-10-03T08:49:40Z'  parse-once tests and Loomyard measurement  round 1
 ```
