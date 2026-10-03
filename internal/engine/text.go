@@ -64,7 +64,7 @@ func StripComment(text, prefix string) string {
 // source — that ordering is the whole reason this one rule covers a "//" block and a "/* */" block
 // without a per-form special case.
 //
-// The walk's file-entry rule (fileEntry, in walk.go) is the one caller for a file's header: every
+// buildRecord, in memo.go, is the one caller computing a parsed file's header: every
 // file entry's Header goes through this same truncation, and an "optimization" that skips it for
 // some file entries would be a regression, not a simplification.
 func FirstParagraph(text string) string {
