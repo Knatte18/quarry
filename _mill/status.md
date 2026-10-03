@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-single-parse memo
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
 plan: _mill/plan
@@ -29,6 +29,7 @@ plan-review-r3  '2026-10-03T08:41:29Z'
 plan-fix-r3  '2026-10-03T08:41:29Z'
 planned  '2026-10-03T08:41:37Z'
 implementing  '2026-10-03T08:41:50Z'
+approved-single-parse memo  '2026-10-03T08:46:44Z'
 ```
 
 ## Batches
@@ -36,15 +37,15 @@ implementing  '2026-10-03T08:41:50Z'
 ```yaml
 batches:
   - name: single-parse memo
-    state: running
+    state: approved
     implementer_session: bfdf3e6a-89d3-47ef-a418-a5273f93fc7d
     start_sha: c056d42def16c2f203f043c0efa5f62989e65b98
+    commit_sha: 556566b7b8f0bd8ab95f841b667929f1799d7207
     verify_baseline_failures: []
   - name: parse-once tests and Loomyard measurement
     state: pending
     verify_baseline_failures: []
 ```
-
 ## Inferred-success log
 
 ```text
