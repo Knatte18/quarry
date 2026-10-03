@@ -383,9 +383,9 @@ func (r *Repo) resolveSelfTarget(unit string, m *unitMemo) (ResolveResult, error
 // taints only itself.
 //
 // "Grouped by unit" is an execution property, not the output shape — the answer is flat, each file
-// is parsed at most once per call and each distinct unit is extracted once by the memo. The output is not grouped because a
-// per-unit group's natural key is "unit" holding a path, and docs/glyph.md §5 already spells "unit"
-// as a key holding "found" or "not_found".
+// is parsed at most once per call and each distinct unit is extracted once by the memo. The output
+// is not grouped because a per-unit group's natural key is "unit" holding a path, and
+// docs/glyph.md §5 already spells "unit" as a key holding "found" or "not_found".
 //
 // Ordering: results come back in argument order, and within a result Symbols and Candidates are
 // ordered by file then by start line, file comparison being the raw repository-relative
@@ -629,8 +629,8 @@ func sameOwner(a, b []string) bool {
 // here before any directory is ever read.
 //
 // It then builds a fresh ignoreSet for the repository root carrying the root's own patterns only —
-// newIgnoreSet(r.root) followed by one extend(".") — calls symbolsOfUnit, and filters the result by
-// owner chain and name.
+// newIgnoreSet(r.root) followed by one extend(".") — calls symbolsOfUnit with a throwaway record
+// memo, and filters the result by owner chain and name.
 //
 // A self glyph reaches this function's own inline owner-and-name filter exactly like any other
 // glyph, matching nothing — its Owner is nil and its Name is "", and no real declaration is ever
