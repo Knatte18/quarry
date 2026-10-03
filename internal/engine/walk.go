@@ -1,22 +1,17 @@
 // walk.go holds the per-directory work Repo.TOC drives, as unexported methods on *Repo:
-// dirPackage, dirDoc, fileEntry, unitSpellable, and the recursion itself, walkDir; and the
+// dirDoc, fileEntry, unitSpellable, and the recursion itself, walkDir; and the
 // unexported free function unitFor. The per-file clause read, the directory's clause vote, and the
-// unit derivation those two names once stated themselves now live in the exported PackageClause and
-// UnitsForClauseMap, declared in units.go for the caller outside this package that needs them:
-// dirPackage delegates to both for its own clause and vote, and UnitsForClauseMap's own unitOf
+// unit derivation live in the exported PackageClause and UnitsForClauseMap, declared in units.go
+// for the caller outside this package that needs them: UnitsForClauseMap's own unitOf
 // delegates to unitFor for the per-file derivation, so each rule still exists exactly once.
 //
-// How many times a file is parsed, and why. A directory is walked in exactly two parse passes
-// over its files, never three. Pass one is dirPackage, which reads package clauses only. Pass two
-// is fileEntry, whose single treesitter.WithTree callback yields that file's package
-// documentation, header, generated flag, lossy flag and symbols together — dirDoc does not
-// re-parse; it selects among the package-doc strings pass two already produced. Two passes rather
-// than one is forced and is not a defect: the glyph unit batch 4 threads into symbol extraction is
-// a directory-level fact, so no file can be extracted until every clause in the directory has been
-// read. A later reader must not "optimise" pass one away.
+// How many times a file is parsed, and why. Each file is read and parsed once per call, by
+// buildRecord in memo.go, which extracts the clause, header, flags, package doc and symbols from
+// one parse with a placeholder unit. The unit is a directory-level fact, so it is stamped onto a
+// copy of the symbols after the directory's clause vote (fileMemo.dirVote) fixes it.
 //
 // The cost is priced, not assumed: one parse of every file in this repository is measured at
-// 616 ms for 469 files, so a whole-tree walk with symbols is roughly 1.2 s and the round trip's
+// 616 ms for 469 files, so a whole-tree walk with symbols is under a second and the round trip's
 // own lookup pass brings it to under 2 s — two orders of magnitude inside go test's default
 // timeout, with no cache and no concurrency.
 
