@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -38,7 +37,16 @@ import (
 //
 // opts.Symbols nil means true for a file target and false for a directory target; a non-nil value
 // wins for every file entry at every depth.
+//
+// TOC builds a fresh record memo, so each file is parsed at most once per call.
 func (r *Repo) TOC(target string, opts TOCOptions) (DirAnswer, error) {
+	return r.toc(target, opts, newFileMemo(r, false))
+}
+
+// toc is TOC's memo-aware worker: it answers exactly as TOC does, reading and parsing each file
+// through m. Resolve's self path calls it with its own call-wide memo so a file already built
+// earlier in the call is not parsed again.
+func (r *Repo) toc(target string, opts TOCOptions, m *fileMemo) (DirAnswer, error) {
 	rel, info, err := r.resolveTarget(target)
 	if err != nil {
 		return DirAnswer{}, err
@@ -58,12 +66,12 @@ func (r *Repo) TOC(target string, opts TOCOptions) (DirAnswer, error) {
 
 	if info.IsDir() {
 		wantSymbols := opts.Symbols != nil && *opts.Symbols
-		return r.walkDir(rel, ig, opts.Depth, wantSymbols, false)
+		return r.walkDir(rel, ig, opts.Depth, wantSymbols, false, m)
 	}
 
 	_, base := splitDirBase(rel)
 	wantSymbols := opts.Symbols == nil || *opts.Symbols
-	return r.fileTargetAnswer(walkTarget, base, ig, wantSymbols)
+	return r.fileTargetAnswer(walkTarget, base, ig, wantSymbols, m)
 }
 
 // splitDirBase splits a repository-relative, forward-slash path rel into its enclosing directory
@@ -103,10 +111,10 @@ func ancestorChain(dir string) []string {
 //
 // targetBase is included in the answer even when the directory's own .gitignore would otherwise
 // exclude it: resolveTarget's validation deliberately does not consult the ignore set, since the
-// filter exists so a listing is not noise, not to make an explicitly named file unaddressable. A
-// gitignored file still does not vote in the package tie-break, matching walkDir's rule for every
-// other file in the directory.
-func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSymbols bool) (DirAnswer, error) {
+// filter exists so a listing is not noise, not to make an explicitly named file unaddressable. The
+// explicitly named target joins the package tie-break even when gitignored, because it is kept in
+// the entries the vote reads; every other gitignored file stays out of the vote, matching walkDir.
+func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSymbols bool, m *fileMemo) (DirAnswer, error) {
 	n, err := ig.extend(dirRel)
 	if err != nil {
 		return DirAnswer{}, fmt.Errorf("engine: read .gitignore for %q: %w", dirRel, err)
@@ -120,6 +128,7 @@ func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSy
 
 	var fileEntries []os.DirEntry
 	var targetEntry os.DirEntry
+	targetIgnored := false
 	for _, entry := range osEntries {
 		if entry.IsDir() {
 			continue
@@ -134,7 +143,11 @@ func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSy
 			continue
 		}
 		childRel := joinRel(dirRel, entry.Name())
-		if !isTarget && ig.match(childRel, false) {
+		ignored := ig.match(childRel, false)
+		if isTarget {
+			targetIgnored = ignored
+		}
+		if !isTarget && ignored {
 			continue
 		}
 		fileEntries = append(fileEntries, entry)
@@ -143,41 +156,33 @@ func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSy
 		return DirAnswer{}, fmt.Errorf("engine: target %q no longer exists in directory %q", targetBase, dirRel)
 	}
 
-	dirPkg, clauses := r.dirPackage(dirRel, fileEntries)
-	dirLang := ""
-	for base, clause := range clauses {
-		if clause == dirPkg {
-			if lang, ok := LanguageForExtension(filepath.Ext(base)); ok {
-				dirLang = lang
-				break
-			}
-		}
+	bases := make([]string, 0, len(fileEntries))
+	for _, entry := range fileEntries {
+		bases = append(bases, entry.Name())
 	}
+	recs := m.dirRecords(dirRel, bases, func(base string) bool { return base == targetBase && wantSymbols })
+	v := m.dirVote(dirRel, recs, !targetIgnored)
 
 	answer := DirAnswer{Dir: dirRel}
-	if dirPkg != "" {
-		answer.Package = dirPkg
-		answer.Language = dirLang
+	if v.pkg != "" {
+		answer.Package = v.pkg
+		answer.Language = v.lang
 	}
 
 	docs := make(map[string]string)
-	spellable := make(map[string]bool)
-	var targetFileEntry FileEntry
-	for _, entry := range fileEntries {
-		base := entry.Name()
-		fe, doc := r.fileEntry(dirRel, base, dirPkg, dirLang, clauses[base], base == targetBase && wantSymbols, spellable)
-		if doc != "" {
-			docs[base] = doc
-		}
-		if base == targetBase {
-			targetFileEntry = fe
+	for base, rec := range recs {
+		if rec.packageDoc != "" {
+			docs[base] = rec.packageDoc
 		}
 	}
-	if targetEntry.Type()&fs.ModeSymlink != 0 {
+	var targetFileEntry FileEntry
+	if targetEntry.Type()&fs.ModeSymlink == 0 {
+		targetFileEntry = r.fileEntry(dirRel, targetBase, recs[targetBase], v, wantSymbols, make(map[string]bool))
+	} else {
 		targetFileEntry = FileEntry{Name: targetBase}
 	}
 
-	answer.Doc = r.dirDoc(clauses, docs, dirPkg)
+	answer.Doc = r.dirDoc(v.clauses, docs, v.pkg)
 	answer.Files = []FileEntry{targetFileEntry}
 	return answer, nil
 }
