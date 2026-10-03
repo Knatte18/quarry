@@ -5,7 +5,7 @@ task: 'Resolve self-target path: per-call dirPackage memo (GH #34)'
 batch: single-parse memo
 number: 1
 cards: 5
-verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/
+verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/ ./internal/cli/ ./internal/mcpserver/ ./quarry/
 depends-on: []
 ```
 
@@ -32,7 +32,7 @@ Batch 2 consumes `unitMemo.files` and `fileMemo.builds` as its test seam.
   1. Run `git -C .scratch/loomyard-pin rev-parse HEAD`. If it prints a hash starting with `72c23d9` (the `loomyardPin` constant), the clone exists; skip to step 3.
   2. Otherwise remove any partial `.scratch/loomyard-pin` directory, then run `git clone --quiet --no-checkout /home/knatte/Code/loomyard-LYXHUB/loomyard .scratch/loomyard-pin` followed by `git -C .scratch/loomyard-pin checkout --quiet 72c23d9`, and re-run step 1's check.
      Never run any command that writes inside `/home/knatte/Code/loomyard-LYXHUB/loomyard` itself; the clone only reads it.
-  3. Run `LADDER_LOOMYARD_REPO=$PWD/.scratch/loomyard-pin go test -count=1 -v -run 'Loomyard' ./internal/engine/` and confirm every `TestGolden_Loomyard*`, `TestRoundTrip_Loomyard*` and `TestResolve_TwentyGlyphsUnder150ms` line reads `PASS`, not `SKIP`.
+  3. Run `LADDER_LOOMYARD_REPO=$PWD/.scratch/loomyard-pin go test -count=1 -v -run 'Loomyard|TwentyGlyphs' ./internal/engine/` and confirm every `TestGolden_Loomyard*`, `TestRoundTrip_Loomyard*` and `TestResolve_TwentyGlyphsUnder150ms` line reads `PASS`, not `SKIP`.
      If any fails or skips at this baseline, stop and report: the refactor cannot be judged against a broken baseline.
 - **Commit:** none
 
@@ -90,6 +90,7 @@ Batch 2 consumes `unitMemo.files` and `fileMemo.builds` as its test seam.
   - `internal/engine/answer.go`
   - `internal/engine/ignore.go`
   - `internal/engine/extension.go`
+  - `internal/engine/repo_test.go`
 - **Edits:**
   - `internal/engine/walk.go`
   - `internal/engine/toc.go`
@@ -118,9 +119,12 @@ Batch 2 consumes `unitMemo.files` and `fileMemo.builds` as its test seam.
     `toc`'s doc comment states it is the memo-aware variant Resolve's self path calls with its own call-wide memo.
   - Change `fileTargetAnswer` to take a trailing `m *fileMemo`.
     In its entry loop compute whether the target itself is ignore-matched (`ig.match(childRel, false)` for the target's own path, evaluated for the target too, while still keeping the target in `fileEntries` as today); call that `targetIgnored`.
-    Replace `dirPackage` and the per-file `fileEntry` loop: `recs := m.dirRecords(dirRel, bases, func(base string) bool { return base == targetBase && wantSymbols })`; `v := m.dirVote(dirRel, recs, !targetIgnored)`; set the answer's Package and Language fields from `v`; build `docs` from every record's non-empty `packageDoc`; call `r.fileEntry` only for the target base (the other entries were built and discarded today, and their records already hold everything `dirDoc` needs).
-    The symlink-target branch stays as it is.
+    Replace `dirPackage` and the per-file `fileEntry` loop: `recs := m.dirRecords(dirRel, bases, func(base string) bool { return base == targetBase && wantSymbols })`; `v := m.dirVote(dirRel, recs, !targetIgnored)`; set the answer's Package and Language fields from `v`; build `docs` from every record's non-empty `packageDoc`; call `r.fileEntry` only for the target base, and only when the target is not a symlink (the other entries were built and discarded today, and their records already hold everything `dirDoc` needs).
+    A symlink target never enters `fileEntries`, so `recs[targetBase]` is nil for it: guard the `r.fileEntry` call on `targetEntry.Type()&fs.ModeSymlink == 0` and let the existing symlink branch produce the name-only entry otherwise, as `TestRepoTOC_SymlinkTargetIsNameOnlyNotFollowed` in `repo_test.go` requires.
   - Correct `fileTargetAnswer`'s doc comment: the explicitly named target joins the vote even when gitignored, because it is kept in the entries the vote reads; every other gitignored file stays out of the vote, matching `walkDir`.
+
+  Remove the imports this card leaves unused in both files: in `walk.go`, `unicode/utf8`, `ts` and `treesitter` (used only by the old `fileEntry`); in `toc.go`, `path/filepath` (used only by the `dirLang` loop that moved into `dirVote`); and any other `go build ./internal/engine/` reports.
+  This card's commit must compile.
 - **Commit:** `refactor(engine): walk and file-target answers read the record memo`
 
 ### Card 4: Member consumer and Resolve share the memo
@@ -149,6 +153,8 @@ Batch 2 consumes `unitMemo.files` and `fileMemo.builds` as its test seam.
   - Change `resolveSelfTarget` to `func (r *Repo) resolveSelfTarget(unit string, m *unitMemo) (ResolveResult, error)`, calling `r.toc(unit, TOCOptions{Depth: 0, Symbols: &symbolsOff}, m.files)` in place of `r.TOC(...)`; the disposition switch is unchanged.
     `resolveGlyphTarget` passes `m`.
     Update `resolveSelfTarget`'s doc comment: it calls the memo-aware `toc`, so TOC's rules are still inherited, and the parse cost per self target is now a memo lookup for every file already built in the call.
+    Restate its "Symbols are switched off explicitly" paragraph as an emission rule only: a self glyph answers where a thing is, not what is inside it, so its listing carries no symbols.
+    Drop the cost justification (the per-target tree-sitter parse and the 150 ms budget), because the call-wide memo extracts symbols for every record it builds and the switch no longer saves any extraction.
   - Change `symbolsOfUnit` to `func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet, m *fileMemo) ([]Symbol, error)` and pass `m` to `symbolsOfDir`.
     Change `symbolsOfDir` to take a trailing `m *fileMemo`.
     Keep its `os.ReadDir` (a failure still fails the call, which `TestResolve_ReadFailureFailsTheCall` pins) and its directory/symlink/ignore filter.
@@ -165,7 +171,7 @@ Batch 2 consumes `unitMemo.files` and `fileMemo.builds` as its test seam.
   In `internal/engine/resolve_test.go`: `TestResolve_ParsesEachUnitOnce` reads `m.extractions`; restate its doc comment and failure message as unit extractions requested, not parses; its assertion value does not change.
   In `internal/engine/expand_test.go`: `TestExpand_SelfGlyph` reads `m.extractions` and its doc comment says extractions; assertion unchanged.
   In `internal/engine/roundtrip_test.go`: `assertSymbolRoundTrip` builds one `newFileMemo(r, true)` before its per-unit loop and passes it to every `r.symbolsOfUnit` call.
-  Rewrite its doc comment: the walk and the member lookup now read the same per-file records, so the round trip no longer compares two independent extractions; it proves the two consumers' filter and stamping layers agree (every walked symbol is found by the member path and vice versa) and that each ID round-trips through `glyph.Parse`; extraction correctness stays guarded by the TOC goldens, the Loomyard goldens and the strategy tests in `golang_test.go`.
+  Rewrite its doc comment: the walk (through exported `TOC`, with its own memo) and the member lookup now run the same extraction code, `buildRecord`, over separately built records, so the round trip no longer compares two independent extractions; it proves the two consumers' filter and stamping layers agree (every walked symbol is found by the member path and vice versa) and that each ID round-trips through `glyph.Parse`; extraction correctness stays guarded by the TOC goldens, the Loomyard goldens and the strategy tests in `golang_test.go`.
   Update the file header's first paragraph to match.
 - **Commit:** `refactor(engine): member lookups and Resolve self targets share one record memo`
 
@@ -199,7 +205,8 @@ Batch 2 consumes `unitMemo.files` and `fileMemo.builds` as its test seam.
 
 ## Batch Tests
 
-`verify:` runs the whole `internal/engine` package with `LADDER_LOOMYARD_REPO` pointed at card 1's pinned clone, about 9 s.
-The whole package is the right scope rather than a `-run` filter: this batch rewrites the extraction every TOC, Resolve, Expand, SpansOf and round-trip test reads, so every test in the package is affected.
+`verify:` runs the whole `internal/engine` package with `LADDER_LOOMYARD_REPO` pointed at card 1's pinned clone, plus the three packages whose goldens pin engine answers byte for byte from the outside: `internal/cli` (the Loomyard after-goldens), `internal/mcpserver` (`toc_golden_test.go`) and `quarry`.
+Together they run in about 9 s.
+Whole packages are the right scope rather than a `-run` filter: this batch rewrites the extraction every TOC, Resolve, Expand, SpansOf and round-trip test reads, so every test in these packages is affected.
 The byte-for-byte guards are the committed TOC goldens (`golden_test.go`, `answer_test.go`), the Loomyard goldens and round trip, `TestResolve_ParsesEachUnitOnce`, `TestResolve_TwentyGlyphsUnder150ms`, and the clause, tie-break, symlink and gitignore cases in `toc_test.go`, `walk_test.go` and `repo_test.go`.
 None of their assertions change.
