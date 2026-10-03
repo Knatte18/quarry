@@ -109,44 +109,6 @@ func (r *Repo) unitSpellable(unit string) bool {
 	return err == nil
 }
 
-// dirPackage reads every .go file's package clause in the directory dirRel, whose entries have
-// already been ignore-filtered by walkDir — a gitignored .go file never votes in the tie-break and
-// never contributes a clause, and the same holds for dirDoc's candidates.
-//
-// Each file's own clause is read through the exported PackageClause, in units.go: the language and
-// strategy lookups, the UTF-8 check, and the parse all live there now, so this loop does nothing
-// but the extension guard ahead of its own os.ReadFile and the read itself. The directory's
-// dominant clause is then the exported UnitsForClauseMap's own vote over the clauses map this loop
-// built — see that function's doc comment for the vote and its tie-break — so dirPackage keeps
-// exactly one call site for a rule it no longer states itself.
-func (r *Repo) dirPackage(dirRel string, entries []os.DirEntry) (pkg string, clauses map[string]string) {
-	clauses = make(map[string]string)
-	dirPath := r.absDir(dirRel)
-
-	for _, entry := range entries {
-		base := entry.Name()
-		if _, ok := LanguageForExtension(filepath.Ext(base)); !ok {
-			continue
-		}
-		src, err := os.ReadFile(filepath.Join(dirPath, base))
-		if err != nil {
-			// A file this pass cannot read contributes no vote; fileEntry reports its Error on pass
-			// two.
-			continue
-		}
-		clause, ok := PackageClause(base, src)
-		if !ok {
-			// PackageClause's own doc comment enumerates every condition that reaches here: no
-			// registered strategy, invalid UTF-8, a parse error, or an empty clause.
-			continue
-		}
-		clauses[base] = clause
-	}
-
-	pkg, _ = UnitsForClauseMap(dirRel, clauses)
-	return pkg, clauses
-}
-
 // mostCommonClause returns the clause with the highest count in counts, the lexicographically
 // smallest clause breaking a tie.
 func mostCommonClause(counts map[string]int) string {
