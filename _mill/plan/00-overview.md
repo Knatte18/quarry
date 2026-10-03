@@ -22,12 +22,12 @@ batches:
     name: single-parse memo
     file: 01-single-parse-memo.md
     depends-on: []
-    verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/
+    verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/ ./internal/cli/ ./internal/mcpserver/ ./quarry/
   - number: 2
     name: parse-once tests and Loomyard measurement
     file: 02-parse-once-tests.md
     depends-on: [1]
-    verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/
+    verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/ ./internal/cli/ ./internal/mcpserver/ ./quarry/
 ```
 
 ## Shared Decisions
@@ -73,7 +73,8 @@ batches:
 ### Decision: names after the refactor
 
 - **Decision:** `dirPackage` is deleted; its vote role moves to `fileMemo.dirVote` and its clause-read role to `buildRecord`.
-  `fileEntry` keeps its name and becomes the walk consumer's record-to-`FileEntry` layer, so `text.go`'s and `delta.go`'s references to it stay pointed at the right function.
+  `fileEntry` keeps its name and becomes the walk consumer's record-to-`FileEntry` layer, since it still produces each walk file entry.
+  The header truncation and UTF-8 rejection move from it into `buildRecord`, so card 5 retargets `text.go`'s and `delta.go`'s references to `buildRecord`.
   `unitMemo.parses` is renamed `extractions`; `fileMemo.builds` is the only measure of parsing.
 - **Rationale:** a counter named `parses` that no longer counts parses misleads every reader of the parse-once tests.
 - **Applies to:** all batches
@@ -84,7 +85,7 @@ batches:
   Card 1 makes that clone exist and records the baseline pass.
   The clone is made with `git clone` from the prime, which reads the prime and writes nothing to it.
 - **Rationale:** without the variable the Loomyard goldens and round trip skip, and they are the discussion's main extraction guard through this refactor.
-  The whole engine package with the Loomyard suite runs in about 9 s.
+  `verify:` also runs `internal/cli`, `internal/mcpserver` and `quarry`, whose goldens pin engine answers from outside the package; the four packages with the Loomyard suite run in about 9 s.
 - **Applies to:** all batches
 
 ## All Files Touched

@@ -5,7 +5,7 @@ task: 'Resolve self-target path: per-call dirPackage memo (GH #34)'
 batch: parse-once tests and Loomyard measurement
 number: 2
 cards: 2
-verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/
+verify: LADDER_LOOMYARD_REPO=/home/knatte/Code/quarry/wts/resolve-self-dirpackage-memo/.scratch/loomyard-pin go test -count=1 ./internal/engine/ ./internal/cli/ ./internal/mcpserver/ ./quarry/
 depends-on: [1]
 ```
 
@@ -60,6 +60,8 @@ The measurement is a read-only, Commit: none card whose result goes to `.scratch
   3. `TestResolve_ClauselessFileKeepsPerConsumerRule`. Fixture `memo-clauseless`:
      - `cl/a.go`: `"package cl\n\nfunc A() {}\n"`
      - `cl/broken.go`: `"packag cl\n\nfunc Lost() {}\n"` — tree-sitter recovers `func Lost` but records no clause; the entry is lossy.
+       This was confirmed during planning against the current engine: a symbols-on TOC of `cl` lists `cl#Lost` for `broken.go`, and Resolve answers `cl#Lost` not_found with unit found.
+       The walk-side assertion below runs first and fails if recovery ever stops yielding `cl#Lost`, so the member-side not_found can never pass vacuously; if it fails, change the fixture until the walk lists a declaration from `broken.go`, and assert on that name instead.
 
      First, a fresh `r.TOC("cl", TOCOptions{Symbols: boolPtr(true)})`: the `broken.go` entry has Lossy true and a non-nil Symbols field containing ID `"cl#Lost"` (the walk consumer includes the clause-less file under unit `cl`).
      Then one `r.resolve` over `"cl/broken.go#"`, `"cl#Lost"`, `"cl#A"` with a constructed memo: `cl#Lost` is `StatusNotFound` with `Unit == StatusFound` (the member consumer excludes the clause-less file); `cl#A` is `StatusFound`; the `cl/broken.go#` listing equals the fresh `r.TOC("cl/broken.go", TOCOptions{Symbols: boolPtr(false)})`.
@@ -101,5 +103,5 @@ The measurement is a read-only, Commit: none card whose result goes to `.scratch
 
 ## Batch Tests
 
-`verify:` runs the whole `internal/engine` package with the pinned Loomyard clone, as batch 1 does: card 6's tests live in that package, and running them beside the existing suite confirms batch 1's refactor and the new assertions hold together.
+`verify:` runs the same four packages with the pinned Loomyard clone, as batch 1 does: card 6's tests live in that package, and running them beside the existing suite confirms batch 1's refactor and the new assertions hold together.
 Card 7's acceptance is checked by the card itself, since it needs two built binaries and an external checkout no `go test` run can own.
