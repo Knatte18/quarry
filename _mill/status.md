@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-approved
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
 plan: _mill/plan
@@ -33,6 +33,8 @@ approved-single-parse memo  '2026-10-03T08:46:44Z'
 approved-parse-once tests and Loomyard measurement  '2026-10-03T08:49:47Z'
 holistic-reviewing  '2026-10-03T08:50:00Z'
 holistic-fixing  '2026-10-03T08:51:15Z'
+nits-fixed-holistic  '2026-10-03T08:52:16Z'
+holistic-approved  '2026-10-03T08:52:21Z'
 ```
 
 ## Batches
