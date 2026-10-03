@@ -44,3 +44,9 @@ batches:
     state: pending
     verify_baseline_failures: []
 ```
+
+## Inferred-success log
+
+```text
+'2026-10-03T08:46:36Z'  single-parse memo  round 1
+```
