@@ -1,8 +1,9 @@
 // units.go declares the exported clause-and-unit seam package quarry needs to derive a delta
 // batch's units without reaching into this package's unexported memo and unitFor. Every rule
 // declared here is the same rule the engine's own extraction applies — the clause vote through
-// fileMemo.dirVote, the unit through unitFor — extracted rather than copied, so both sides of a comparison — a file read from disk and one read from a git
-// revision — call one implementation and never a second. A glyph unit is a directory-level fact no
+// fileMemo.dirVote, the unit through unitFor — extracted rather than copied, so both sides of a
+// comparison — a file read from disk and one read from a git revision — call one implementation
+// and never a second. A glyph unit is a directory-level fact no
 // single file's own content can establish: it depends on every file in the directory's clause, not
 // just one file's, which is why the per-file primitive below returns a clause and the
 // directory-level primitive built on it is the one that turns a whole directory's clauses into a
@@ -109,9 +110,9 @@ func PackageClause(base string, src []byte) (clause string, ok bool) {
 // ClauseMapForFiles reads each base name in bases from the directory dirRel under the repository
 // root and records the clause PackageClause returns for it when PackageClause reports ok. It
 // guards on extension, so a base name whose extension names no language is never opened — that
-// guard skips only files that could never record a clause — and it does not check UTF-8 validity itself: card 6
-// puts that check inside PackageClause, so this on-disk caller and the revision-side caller batch 6
-// adds both get it from the one place that check now lives.
+// guard skips only files that could never record a clause — and it does not check UTF-8 validity
+// itself: card 6 puts that check inside PackageClause, so this on-disk caller and the
+// revision-side caller batch 6 adds both get it from the one place that check now lives.
 //
 // It takes a caller-supplied file list rather than enumerating dirRel itself, and that is
 // deliberate: the caller chooses one enumeration rule and applies it to both sides of a comparison,
