@@ -50,7 +50,7 @@ type symbolKey struct {
 // neither a failure nor a lossy parse, since there was no parse to begin with.
 //
 // Bytes that are not valid UTF-8 are rejected before parsing, exactly as the rest of the engine
-// already rejects them (walk.go's fileEntry, units.go's PackageClause): the parse seam performs no
+// already rejects them (memo.go's buildRecord, units.go's PackageClause): the parse seam performs no
 // such check itself and would otherwise hand undecodable bytes to the grammar, yielding a partial
 // tree that would misreport this as merely lossy rather than as the extraction failure it is.
 //

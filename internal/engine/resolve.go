@@ -1,9 +1,10 @@
 // resolve.go implements the internal span lookup and the exported resolve verb built on it.
 // Repo.unitDirs maps a glyph unit back to the directory or directories that hold it,
-// Repo.symbolsOfUnit parses those directories' files once and returns every symbol they declare,
-// and Repo.SpansOf is the single-glyph convenience the round trip is written against — Resolve and
-// Expand are built on symbolsOfUnit through the per-call unitMemo instead, so each unit is parsed
-// once per call rather than once per glyph. SpansOf still returns an empty slice with no status
+// Repo.symbolsOfUnit reads those directories' files once, through the per-call record memo, and
+// returns every symbol they declare, and Repo.SpansOf is the single-glyph convenience the round
+// trip is written against — Resolve and Expand are built on symbolsOfUnit through the per-call
+// unitMemo instead, whose record memo is shared by their self and member targets, so each file is
+// read once per call rather than once per glyph. SpansOf still returns an empty slice with no status
 // when nothing matches; Repo.Resolve, above it in this file, holds the status vocabulary and
 // promotes unitDirs' collision flag into it.
 
@@ -14,15 +15,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
-
-	ts "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/Knatte18/quarry/glyph"
-	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
 // unitDirs maps a glyph unit back to the directory or directories that hold it, resolved
@@ -84,26 +80,28 @@ type unitDirsResult struct {
 }
 
 // unitMemo is the per-call memo Resolve and Expand build once and discard when their call returns:
-// it turns repeated lookups of the same unit across many targets into one parse and one unitDirs
-// call per unit, rather than one per target. unitMemo is a local of the exported entry point and
+// it turns repeated lookups of the same unit across many targets into one extraction and one
+// unitDirs call per unit, rather than one per target, and it shares one record per file across
+// every self and member target in the call. unitMemo is a local of the exported entry point and
 // dies with it — nothing is stored on Repo, because a memo that cannot outlive the call it was
-// built in cannot go stale, which is what keeps this inside the engine's no-cache rule while still
-// turning twenty lookups over five units into five parses instead of twenty. symbolsOf is the only
-// site in either verb that calls symbolsOfUnit; SpansOf is deliberately not used by either verb,
-// because it is the per-glyph wrapper and calling it per target would re-parse each unit once per
-// target.
+// built in cannot go stale, which is what keeps this inside the engine's no-cache rule. symbolsOf
+// is the only site in either verb that calls symbolsOfUnit; SpansOf is deliberately not used by
+// either verb, because it is the per-glyph wrapper and calling it per target would repeat each
+// unit's extraction once per target.
 type unitMemo struct {
 	repo *Repo
 	ig   *ignoreSet
+	// files holds the per-file records shared by every self and member target in the call.
+	files *fileMemo
 	// symbols memoises symbolsOfUnit's result per unit.
 	symbols map[string][]Symbol
 	// dirs memoises unitDirs' result per unit.
 	dirs map[string]unitDirsResult
-	// parses counts the symbolsOfUnit calls this memo has made. It is the seam that makes the
-	// "each unit is parsed once" grouping guarantee observable: read by tests and never by
-	// production code, since a map's entry count is true by construction and wall-clock is the
-	// very thing the guarantee's test must be independent of.
-	parses int
+	// extractions counts the unit extractions requested (symbolsOfUnit calls), not parses;
+	// files.builds is the only measure of parsing.
+	// It is the seam that makes the "each unit is extracted once" grouping guarantee observable:
+	// read by tests and never by production code.
+	extractions int
 }
 
 // newUnitMemo builds an empty unitMemo for r, with an ignore set carrying the repository root's own
@@ -118,20 +116,23 @@ func newUnitMemo(r *Repo) (*unitMemo, error) {
 	return &unitMemo{
 		repo:    r,
 		ig:      ig,
+		files:   newFileMemo(r, true),
 		symbols: make(map[string][]Symbol),
 		dirs:    make(map[string]unitDirsResult),
 	}, nil
 }
 
-// symbolsOf returns unit's symbols, parsing it on the first call and returning the memoised slice
-// on every later one. parses is incremented before the underlying call, not after a successful
-// return, so the counter means what its doc comment says: calls made, not calls that succeeded.
+// symbolsOf returns unit's symbols, extracting them on the first call and returning the memoised
+// slice on every later one. extractions is incremented before the underlying call, not after a
+// successful return, so the counter means what its doc comment says: calls made, not calls that
+// succeeded. The extraction builds into the memo's shared record memo, never a fresh one, so a
+// self target in the same call reuses those records.
 func (m *unitMemo) symbolsOf(unit string) ([]Symbol, error) {
 	if symbols, ok := m.symbols[unit]; ok {
 		return symbols, nil
 	}
-	m.parses++
-	symbols, err := m.repo.symbolsOfUnit(unit, m.ig)
+	m.extractions++
+	symbols, err := m.repo.symbolsOfUnit(unit, m.ig, m.files)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +285,7 @@ func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, er
 	}
 
 	if g.IsSelf() {
-		res, err := r.resolveSelfTarget(g.Unit)
+		res, err := r.resolveSelfTarget(g.Unit, m)
 		if err != nil {
 			return ResolveResult{}, err
 		}
@@ -328,13 +329,15 @@ func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, er
 }
 
 // resolveSelfTarget answers a self glyph — one whose member is empty, naming its unit's whole
-// directory or file rather than anything within it — by calling r.TOC with TOCOptions{Depth: 0,
-// Symbols: &symbolsOff} where symbolsOff is a local false. The argument is unit, the self glyph's
-// Unit half, never the glyph string with its trailing "#" still attached; resolveGlyphTarget is the
-// only caller and it overwrites the returned result's Target and ID itself. Reusing the directory
-// answer rather than restating the rule is what makes the explicitly-named-gitignored-target rule,
-// the never-follow-a-symlink rule and the empty-string-and-dot-mean-the-root rule hold here for
-// free and keeps them from drifting — they are TOC's rules, inherited rather than restated.
+// directory or file rather than anything within it — by calling r.toc, the memo-aware TOC, with
+// TOCOptions{Depth: 0, Symbols: &symbolsOff} where symbolsOff is a local false and m.files as the
+// record memo. The argument is unit, the self glyph's Unit half, never the glyph string with its
+// trailing "#" still attached; resolveGlyphTarget is the only caller and it overwrites the returned
+// result's Target and ID itself. Reusing the directory answer rather than restating the rule is
+// what makes the explicitly-named-gitignored-target rule, the never-follow-a-symlink rule and the
+// empty-string-and-dot-mean-the-root rule hold here for free and keeps them from drifting — they
+// are TOC's rules, inherited rather than restated. The parse cost per self target is a memo lookup
+// for every file already built in the call.
 //
 // Disposition, in this order: a nil error sets Status to StatusFound and Listing to the address of
 // the returned DirAnswer; errors.Is(err, ErrTargetNotFound) sets Status to StatusNotFound with
@@ -348,15 +351,13 @@ func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, er
 // documents the sentinel, and this verb's job is to translate whatever TOC can return.
 //
 // Symbols are switched off explicitly rather than left to the per-target default, which would turn
-// them on for a file target: a self glyph answers where a thing is, not what is inside it. A plan
-// card whose target is a Markdown page has no symbols to want, and paying a tree-sitter parse per
-// Go self target inside a call measured against a 150 ms budget would be a cost with no consumer. A
-// file target's answer is its enclosing directory's answer holding exactly that one file entry —
-// the shape TOC already produces — so the caller can read the package and language a bare file
-// entry would not carry.
-func (r *Repo) resolveSelfTarget(unit string) (ResolveResult, error) {
+// them on for a file target: a self glyph answers where a thing is, not what is inside it, so its
+// listing carries no symbols. A file target's answer is its enclosing directory's answer holding
+// exactly that one file entry — the shape TOC already produces — so the caller can read the
+// package and language a bare file entry would not carry.
+func (r *Repo) resolveSelfTarget(unit string, m *unitMemo) (ResolveResult, error) {
 	symbolsOff := false
-	dir, err := r.TOC(unit, TOCOptions{Depth: 0, Symbols: &symbolsOff})
+	dir, err := r.toc(unit, TOCOptions{Depth: 0, Symbols: &symbolsOff}, m.files)
 	switch {
 	case err == nil:
 		return ResolveResult{Target: unit, Status: StatusFound, Listing: &dir}, nil
@@ -381,10 +382,10 @@ func (r *Repo) resolveSelfTarget(unit string) (ResolveResult, error) {
 // because an engine failure makes the whole answer untrustworthy, unlike a malformed target, which
 // taints only itself.
 //
-// "Grouped by unit" is an execution property, not the output shape — the answer is flat, and each
-// distinct unit is parsed exactly once per call by the memo. The output is not grouped because a
-// per-unit group's natural key is "unit" holding a path, and docs/glyph.md §5 already spells "unit"
-// as a key holding "found" or "not_found".
+// "Grouped by unit" is an execution property, not the output shape — the answer is flat, each file
+// is parsed at most once per call and each distinct unit is extracted once by the memo. The output
+// is not grouped because a per-unit group's natural key is "unit" holding a path, and
+// docs/glyph.md §5 already spells "unit" as a key holding "found" or "not_found".
 //
 // Ordering: results come back in argument order, and within a result Symbols and Candidates are
 // ordered by file then by start line, file comparison being the raw repository-relative
@@ -402,7 +403,8 @@ func (r *Repo) Resolve(targets []string) ([]ResolveResult, error) {
 }
 
 // resolve is Resolve's unexported worker. It takes the memo, rather than building its own, so a
-// test can construct one, pass it in, and read parses afterwards; Resolve itself never exposes it.
+// test can construct one, pass it in, and read extractions and files.builds afterwards; Resolve
+// itself never exposes it.
 //
 // resolve allocates a result slice of exactly len(targets), and for each target in order calls
 // resolveGlyphTarget — every target, unconditionally, since the grammar is the only classifier and
@@ -470,13 +472,14 @@ func dirChainBelowRoot(dirRel string) []string {
 	return chain
 }
 
-// symbolsOfUnit is the unit-level extraction primitive: it parses each of unit's .go files exactly
-// once and returns every symbol in all of them, each with File set to the declaration's
-// repository-relative, forward-slash path, ordered by file then start line. It is the primitive and
-// SpansOf the thin wrapper, rather than the other way round, because a per-glyph lookup re-parses
-// the whole unit directory and nothing is cached: grouping by unit is what keeps a whole-repository
-// check in seconds rather than minutes, and Resolve needs the same grouping for the many glyphs
-// one call can name — the grouping is realised in unitMemo, above.
+// symbolsOfUnit is the unit-level extraction primitive: it reads each of unit's files' records once
+// per call through m, rather than parsing them itself, and returns every symbol in all of them,
+// each with File set to the declaration's repository-relative, forward-slash path, ordered by file
+// then start line. It is the primitive and SpansOf the thin wrapper, rather than the other way
+// round, because a per-glyph lookup repeats the whole unit directory's extraction and nothing is
+// cached beyond one call's memo: grouping by unit is what keeps a whole-repository check in seconds
+// rather than minutes, and Resolve needs the same grouping for the many glyphs one call can name —
+// the grouping is realised in unitMemo, above.
 //
 // symbolsOfUnit resolves its directories through unitDirs and, when both exist, returns the union.
 // In every directory the .go files are filtered through ig — the same ignore set the walk uses —
@@ -497,7 +500,7 @@ func dirChainBelowRoot(dirRel string) []string {
 // unspellable contributes nothing — exactly as it contributes no symbols to a walk answer, which is
 // what keeps the two readings equal. A parse the grammar reports an error on still contributes its
 // surviving symbols, for the same reason.
-func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet) ([]Symbol, error) {
+func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet, m *fileMemo) ([]Symbol, error) {
 	dirs, _ := r.unitDirs(unit)
 
 	symbols := make([]Symbol, 0)
@@ -517,7 +520,7 @@ func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet) ([]Symbol, error) {
 		var dirSymbols []Symbol
 		var dirErr error
 		if extendErr == nil {
-			dirSymbols, dirErr = r.symbolsOfDir(unit, dirRel, ig)
+			dirSymbols, dirErr = r.symbolsOfDir(unit, dirRel, ig, m)
 		}
 
 		// Trim exactly what was extended, in reverse, regardless of whether extending or reading this
@@ -548,10 +551,11 @@ func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet) ([]Symbol, error) {
 
 // symbolsOfDir returns every symbol in dirRel whose glyph unit (per unitFor) is exactly unit. It
 // reads dirRel once with os.ReadDir, drops every entry ig.match excludes and every directory and
-// symlink entry, then reuses dirPackage — the same per-directory clause vote the walk runs — to
+// symlink entry, then reuses the call's directory vote, built from the files' records in m, to
 // learn each file's own package clause before deciding, file by file, whether that file's unitFor
-// result is the unit being searched for.
-func (r *Repo) symbolsOfDir(unit, dirRel string, ig *ignoreSet) ([]Symbol, error) {
+// result is the unit being searched for. Matching files contribute their recorded symbols stamped
+// with unit and the file's path.
+func (r *Repo) symbolsOfDir(unit, dirRel string, ig *ignoreSet, m *fileMemo) ([]Symbol, error) {
 	osEntries, err := os.ReadDir(r.absDir(dirRel))
 	if err != nil {
 		return nil, fmt.Errorf("engine: read dir %q: %w", dirRel, err)
@@ -569,38 +573,27 @@ func (r *Repo) symbolsOfDir(unit, dirRel string, ig *ignoreSet) ([]Symbol, error
 		fileEntries = append(fileEntries, entry)
 	}
 
-	dirPkg, clauses := r.dirPackage(dirRel, fileEntries)
+	bases := make([]string, 0, len(fileEntries))
+	for _, entry := range fileEntries {
+		bases = append(bases, entry.Name())
+	}
+	recs := m.dirRecords(dirRel, bases, func(string) bool { return true })
+	v := m.dirVote(dirRel, recs, true)
 
 	var symbols []Symbol
-	for _, entry := range fileEntries {
-		base := entry.Name()
-		clause, ok := clauses[base]
-		if !ok {
-			// dirPackage never recorded a clause for this file: an unknown extension, an unreadable
-			// file, invalid UTF-8, an unparseable file, or an empty package clause. None of those
-			// contribute a vote to dirPackage's tie-break, and none of them contribute a symbol here
-			// either — the same rule the walk applies.
+	for _, base := range bases {
+		rec := recs[base]
+		if !rec.hasClause {
+			// The record holds no clause for this file: an unknown extension, an unreadable file,
+			// invalid UTF-8, an unparseable file, or an empty package clause. None of those
+			// contribute a vote to the directory's tie-break, and none of them contribute a symbol
+			// here either — the same rule the walk applies.
 			continue
 		}
-		if unitFor(dirRel, dirPkg, clause) != unit {
+		if unitFor(dirRel, v.pkg, rec.clause) != unit {
 			continue
 		}
-
-		lang, _ := LanguageForExtension(filepath.Ext(base))
-		strategy, _ := StrategyFor(lang)
-		src, err := os.ReadFile(filepath.Join(r.absDir(dirRel), base))
-		if err != nil || !utf8.Valid(src) {
-			continue
-		}
-
-		fileRel := joinRel(dirRel, base)
-		_ = treesitter.WithTree(lang, src, func(root *ts.Node, _ bool) error {
-			for _, sym := range strategy.Symbols(unit, root, src) {
-				sym.File = fileRel
-				symbols = append(symbols, sym)
-			}
-			return nil
-		})
+		symbols = append(symbols, stampSymbols(rec.symbols, unit, joinRel(dirRel, base))...)
 	}
 	return symbols, nil
 }
@@ -636,8 +629,8 @@ func sameOwner(a, b []string) bool {
 // here before any directory is ever read.
 //
 // It then builds a fresh ignoreSet for the repository root carrying the root's own patterns only —
-// newIgnoreSet(r.root) followed by one extend(".") — calls symbolsOfUnit, and filters the result by
-// owner chain and name.
+// newIgnoreSet(r.root) followed by one extend(".") — calls symbolsOfUnit with a throwaway record
+// memo, and filters the result by owner chain and name.
 //
 // A self glyph reaches this function's own inline owner-and-name filter exactly like any other
 // glyph, matching nothing — its Owner is nil and its Name is "", and no real declaration is ever
@@ -657,7 +650,7 @@ func (r *Repo) SpansOf(g glyph.Glyph) ([]Symbol, error) {
 		return nil, fmt.Errorf("engine: read .gitignore for %q: %w", ".", err)
 	}
 
-	symbols, err := r.symbolsOfUnit(g.Unit, ig)
+	symbols, err := r.symbolsOfUnit(g.Unit, ig, newFileMemo(r, true))
 	if err != nil {
 		return nil, err
 	}

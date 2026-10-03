@@ -1,6 +1,8 @@
 // roundtrip_test.go is this task's headline criterion made a test: every declaration Repo.TOC lists
 // has a glyph, and Repo.SpansOf's own primitive, symbolsOfUnit, returns exactly the span the walk
-// listed for it — zero misses, zero extras. TestRoundTrip_QuarryItself runs this over this
+// listed for it — zero misses, zero extras. The walk and the lookup run the same extraction code
+// over separately built records, so the round trip proves the two consumers' filter and stamping
+// layers agree rather than comparing two independent extractions. TestRoundTrip_QuarryItself runs this over this
 // repository's own tree and needs no environment, so it always runs; TestRoundTrip_Loomyard runs
 // the same assertion, factored into assertSymbolRoundTrip so neither case copies the other, over a
 // whole Loomyard checkout, gated by loomyard_test.go's environment helper and skipped under
@@ -135,12 +137,20 @@ func tupleSetDiff(want, got []spanTuple) (missing, extra []spanTuple) {
 // repository root with DepthAll and symbols on, collecting every listed symbol. It then groups the
 // listed glyphs by unit and calls symbolsOfUnit once per unit — never once per glyph — handing it a
 // fresh ignoreSet built the same way SpansOf builds its own: newIgnoreSet(root) plus one
-// extend("."), with symbolsOfUnit owning every step below the root. Grouping by unit is required,
-// not an optimisation: a per-glyph lookup re-parses the whole unit directory for every glyph in it,
-// nothing is cached (see the "nothing is cached" Shared Decision), and a whole-repository check done
-// that way would cost one parse pass per glyph rather than one per unit — a difference a small
+// extend("."), with symbolsOfUnit owning every step below the root, and one record memo shared by
+// every unit's call. Grouping by unit is required, not an optimisation: a per-glyph lookup repeats
+// the whole unit directory's extraction for every glyph in it, nothing is cached beyond one call's
+// memo (see the "nothing is cached" Shared Decision), and a whole-repository check done that way
+// would cost one extraction pass per glyph rather than one per unit — a difference a small
 // repository's own size keeps affordable but which a Loomyard-scale run would land inside minutes
 // and outside go test's default timeout.
+//
+// The walk (through exported TOC, with its own memo) and the member lookup now run the same
+// extraction code, buildRecord, over separately built records, so the round trip no longer compares
+// two independent extractions. It proves the two consumers' filter and stamping layers agree — every
+// walked symbol is found by the member path and vice versa — and that each ID round-trips through
+// glyph.Parse; extraction correctness stays guarded by the TOC goldens, the Loomyard goldens and the
+// strategy tests in golang_test.go.
 //
 // Per glyph — that is, per distinct id within a unit — it then asserts that the set of
 // (File, Start, SigEnd, End) tuples symbolsOfUnit returned for that id equals the set toc listed for
@@ -157,12 +167,13 @@ func assertSymbolRoundTrip(t *testing.T, r *Repo) []roundTripSymbol {
 		byUnit[sym.unit] = append(byUnit[sym.unit], sym)
 	}
 
+	files := newFileMemo(r, true)
 	for unit, walkSyms := range byUnit {
 		ig := newIgnoreSet(r.root)
 		if _, err := ig.extend("."); err != nil {
 			t.Fatalf("read .gitignore for %q: %v", ".", err)
 		}
-		lookupSyms, err := r.symbolsOfUnit(unit, ig)
+		lookupSyms, err := r.symbolsOfUnit(unit, ig, files)
 		if err != nil {
 			t.Fatalf("symbolsOfUnit(%q) failed: %v", unit, err)
 		}

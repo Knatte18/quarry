@@ -310,9 +310,9 @@ func TestExpand_MalformedTarget(t *testing.T) {
 
 // TestExpand_SelfGlyph asserts that expanding a self glyph naming an existing package directory
 // returns the zero ExpandAnswer and an error errors.As reaches as a *SelfGlyphError whose ID is the
-// argument with its trailing "#" intact, and that the gate ran before any unit work: parses is zero
-// and dirs is empty. Neither assertion alone is the claim — parses is incremented only in
-// symbolsOf, so on its own it proves no unit was parsed and says nothing about the directory
+// argument with its trailing "#" intact, and that the gate ran before any unit work: extractions is zero
+// and dirs is empty. Neither assertion alone is the claim — extractions is incremented only in
+// symbolsOf, so on its own it proves no unit was extracted and says nothing about the directory
 // lookup, which happens in dirsOf and is uncounted; the empty dirs map is what proves no
 // unit-directory lookup was made either.
 func TestExpand_SelfGlyph(t *testing.T) {
@@ -340,8 +340,8 @@ func TestExpand_SelfGlyph(t *testing.T) {
 		t.Errorf("expand(%q) = %+v; want the zero ExpandAnswer", target, got)
 	}
 
-	if m.parses != 0 {
-		t.Errorf("m.parses = %d; want 0 — no unit was parsed", m.parses)
+	if m.extractions != 0 {
+		t.Errorf("m.extractions = %d; want 0 — no unit was extracted", m.extractions)
 	}
 	if len(m.dirs) != 0 {
 		t.Errorf("m.dirs = %v; want empty — no unit-directory lookup was made", m.dirs)

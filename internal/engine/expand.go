@@ -78,7 +78,7 @@ func (r *Repo) Expand(target string) (ExpandAnswer, error) {
 }
 
 // expand is Expand's unexported worker. It takes the memo, rather than building its own, so a test
-// can construct one, pass it in, and read parses afterwards; Expand itself never exposes it.
+// can construct one, pass it in, and read extractions afterwards; Expand itself never exposes it.
 //
 // expand parses target with glyph.Parse(glyph.Go, target) and, on failure, returns the zero
 // ExpandAnswer and the parse error wrapped as "engine: expand <target>: <err>" with %w, so errors.As
@@ -93,7 +93,7 @@ func (r *Repo) Expand(target string) (ExpandAnswer, error) {
 // g.IsSelf(): a self glyph is answered by returning the zero ExpandAnswer and a *SelfGlyphError
 // carrying g.String(), before any unit work is done. A gate before resolution means no unit is
 // parsed and no unit-directory lookup is made for a question that has no answer, which is what
-// leaves the memo's parses counter at zero and its dirs map empty for this case.
+// leaves the memo's extractions counter at zero and its dirs map empty for this case.
 //
 // It sets id to the parsed glyph's String(), reads m.dirsOf(g.Unit) for the directory list and the
 // collision flag, reads m.symbolsOf(g.Unit) — an error from which is returned as this call's own
