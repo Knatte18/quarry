@@ -28,12 +28,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"unicode/utf8"
-
-	ts "github.com/tree-sitter/go-tree-sitter"
 
 	"github.com/Knatte18/quarry/glyph"
-	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
 // absDir returns the filesystem path for the repository-relative directory dirRel ("." for the
@@ -165,8 +161,8 @@ func mostCommonClause(counts map[string]int) string {
 	return best
 }
 
-// dirDoc selects the directory's package documentation from the PackageDoc strings pass two
-// (fileEntry) already produced, keyed by base name in docs. Candidates are the files whose clause
+// dirDoc selects the directory's package documentation from the package docs the file records
+// already hold, keyed by base name in docs. Candidates are the files whose clause
 // (from clauses) equals pkg, in sorted order with "doc.go" tried first; the first non-empty result
 // wins. dirDoc opens no file and parses nothing — it only selects among strings already computed.
 // No match returns "", which omitempty turns into an absent key rather than an empty one.
@@ -199,81 +195,59 @@ func (r *Repo) dirDoc(clauses map[string]string, docs map[string]string, pkg str
 	return ""
 }
 
-// fileEntry builds one FileEntry for base inside directory dirRel, returning it together with
-// this file's package-documentation string for dirDoc to select from.
+// fileEntry turns the file record rec of base inside directory dirRel into one FileEntry. It
+// reads and parses nothing: the record already holds everything.
 //
-// A file with a language (per LanguageForExtension) is read and parsed exactly once, inside one
-// treesitter.WithTree callback that serves every consumer: Header is FirstParagraph of the
-// strategy's Header, Test and Generated come from the strategy, Package is emitted only when
-// clause (this file's own clause, already known from pass one) differs from dirPkg, Language is
-// emitted only when the file's language differs from dirLang, and Symbols is set to a non-nil
-// pointer — to a possibly-empty slice — only when wantSymbols.
+// A parsed record gives Header, Test, Generated and Lossy as recorded; Package is emitted only
+// when the file's own clause differs from the directory vote's v.pkg, Language only when the
+// file's language differs from v.lang, and Symbols is set to a non-nil pointer — to a possibly-empty
+// slice stamped with the file's unit — only when wantSymbols.
 //
-// A file with no language gets Header from HeaderForFile and never gets Symbols, whatever
-// wantSymbols says. A read failure or invalid UTF-8 sets Error and leaves Header, Lossy and
-// Symbols unset; the file is still listed, never skipped. A parse that reports an error sets
-// Lossy. Error and Lossy are never both set.
+// A file with no language gets its recorded Header and never gets Symbols, whatever wantSymbols
+// says. A record carrying an error sets Error and leaves Header, Lossy and Symbols unset; the file
+// is still listed, never skipped. A parse that reports an error sets Lossy. Error and Lossy are
+// never both set.
 //
 // spellable is the caller's per-directory cache of unit -> unitSpellable(unit), populated lazily
 // here on first use of a given unit and reused for every later file sharing it — at most two
 // distinct units exist per directory (the directory's own, and its "_test" external-test
 // counterpart), so this keeps unitSpellable's glyph.Parse call to at most two per directory rather
 // than one per file. When wantSymbols is true but this file's own unit (derived by unitFor from
-// dirRel, dirPkg, and clause) is unspellable, Symbols is left nil regardless — the directory is
-// still listed, just without symbols, per unitSpellable's own doc comment.
-func (r *Repo) fileEntry(dirRel, base string, dirPkg, dirLang string, clause string, wantSymbols bool, spellable map[string]bool) (FileEntry, string) {
+// dirRel, v.pkg, and the file's clause) is unspellable, Symbols is left nil regardless — the
+// directory is still listed, just without symbols, per unitSpellable's own doc comment.
+func (r *Repo) fileEntry(dirRel, base string, rec *fileRecord, v dirVote, wantSymbols bool, spellable map[string]bool) FileEntry {
 	entry := FileEntry{Name: base}
-
-	fullPath := filepath.Join(r.absDir(dirRel), base)
-	src, err := os.ReadFile(fullPath)
-	if err != nil {
-		entry.Error = err.Error()
-		return entry, ""
+	if rec.err != "" {
+		entry.Error = rec.err
+		return entry
 	}
-	if !utf8.Valid(src) {
-		entry.Error = fmt.Sprintf("engine: %s: not valid UTF-8", joinRel(dirRel, base))
-		return entry, ""
+	entry.Header = rec.header
+	if !rec.parsed {
+		return entry
 	}
 
-	lang, hasLang := LanguageForExtension(filepath.Ext(base))
-	strategy, hasStrategy := StrategyFor(lang)
-	if !hasLang || !hasStrategy {
-		entry.Header = HeaderForFile(base, src)
-		return entry, ""
+	entry.Test = rec.test
+	entry.Generated = rec.generated
+	entry.Lossy = rec.lossy
+	if rec.clause != v.pkg {
+		entry.Package = rec.clause
 	}
-
-	var packageDoc string
-	err = treesitter.WithTree(lang, src, func(root *ts.Node, partial bool) error {
-		entry.Header = FirstParagraph(strategy.Header(root, src))
-		entry.Test = strategy.TestFile(base)
-		entry.Generated = strategy.Generated(root, src)
-		entry.Lossy = partial
-		if clause != dirPkg {
-			entry.Package = clause
-		}
-		if lang != dirLang {
-			entry.Language = lang
-		}
-		if wantSymbols {
-			unit := unitFor(dirRel, dirPkg, clause)
-			ok, cached := spellable[unit]
-			if !cached {
-				ok = r.unitSpellable(unit)
-				spellable[unit] = ok
-			}
-			if ok {
-				symbols := strategy.Symbols(unit, root, src)
-				entry.Symbols = &symbols
-			}
-		}
-		packageDoc = strategy.PackageDoc(root, src)
-		return nil
-	})
-	if err != nil {
-		entry.Error = err.Error()
-		return FileEntry{Name: base, Error: entry.Error}, ""
+	if rec.lang != v.lang {
+		entry.Language = rec.lang
 	}
-	return entry, packageDoc
+	if wantSymbols {
+		unit := unitFor(dirRel, v.pkg, rec.clause)
+		ok, cached := spellable[unit]
+		if !cached {
+			ok = r.unitSpellable(unit)
+			spellable[unit] = ok
+		}
+		if ok {
+			symbols := stampSymbols(rec.symbols, unit, "")
+			entry.Symbols = &symbols
+		}
+	}
+	return entry
 }
 
 // walkDir answers the directory at dirRel, recursively.
@@ -302,7 +276,7 @@ func (r *Repo) fileEntry(dirRel, base string, dirPkg, dirLang string, clause str
 // one — and, per the identityOnly rule above, never on an identity-only answer: the plan's own
 // example shows a depth-zero subdirectory carrying Dir, Package and Doc alone, so Language is set
 // only on the non-identityOnly path, after the early return below.
-func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool, identityOnly bool) (DirAnswer, error) {
+func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool, identityOnly bool, m *fileMemo) (DirAnswer, error) {
 	n, err := ig.extend(dirRel)
 	if err != nil {
 		return DirAnswer{}, fmt.Errorf("engine: read .gitignore for %q: %w", dirRel, err)
@@ -330,45 +304,42 @@ func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool
 		}
 	}
 
-	dirPkg, clauses := r.dirPackage(dirRel, fileEntries)
-	dirLang := ""
-	for base, clause := range clauses {
-		if clause == dirPkg {
-			if lang, ok := LanguageForExtension(filepath.Ext(base)); ok {
-				dirLang = lang
-				break
-			}
-		}
+	// An identity-only answer carries no files, so its records need no symbols.
+	want := wantSymbols && !identityOnly
+	bases := make([]string, 0, len(fileEntries))
+	for _, entry := range fileEntries {
+		bases = append(bases, entry.Name())
 	}
+	recs := m.dirRecords(dirRel, bases, func(string) bool { return want })
+	v := m.dirVote(dirRel, recs, true)
 
 	answer := DirAnswer{Dir: dirRel}
-	if dirPkg != "" {
-		answer.Package = dirPkg
+	if v.pkg != "" {
+		answer.Package = v.pkg
 	}
 
 	docs := make(map[string]string)
 	spellable := make(map[string]bool)
 	files := make([]FileEntry, 0, len(fileEntries)+len(symlinkEntries))
-	for _, entry := range fileEntries {
-		base := entry.Name()
-		fe, doc := r.fileEntry(dirRel, base, dirPkg, dirLang, clauses[base], wantSymbols, spellable)
-		files = append(files, fe)
-		if doc != "" {
-			docs[base] = doc
+	for _, base := range bases {
+		rec := recs[base]
+		if rec.packageDoc != "" {
+			docs[base] = rec.packageDoc
 		}
+		files = append(files, r.fileEntry(dirRel, base, rec, v, want, spellable))
 	}
 	for _, entry := range symlinkEntries {
 		files = append(files, FileEntry{Name: entry.Name()})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
-	answer.Doc = r.dirDoc(clauses, docs, dirPkg)
+	answer.Doc = r.dirDoc(v.clauses, docs, v.pkg)
 
 	if identityOnly {
 		return answer, nil
 	}
-	if dirPkg != "" {
-		answer.Language = dirLang
+	if v.pkg != "" {
+		answer.Language = v.lang
 	}
 	answer.Files = files
 
@@ -380,7 +351,7 @@ func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool
 		if !childIdentityOnly && depth != DepthAll {
 			childDepth = depth - 1
 		}
-		childAnswer, err := r.walkDir(childRel, ig, childDepth, wantSymbols, childIdentityOnly)
+		childAnswer, err := r.walkDir(childRel, ig, childDepth, wantSymbols, childIdentityOnly, m)
 		if err != nil {
 			return DirAnswer{}, err
 		}
