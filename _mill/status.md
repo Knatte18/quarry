@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
 plan: _mill/plan
@@ -28,4 +28,15 @@ plan-fix-r2  '2026-10-03T08:36:31Z'
 plan-review-r3  '2026-10-03T08:41:29Z'
 plan-fix-r3  '2026-10-03T08:41:29Z'
 planned  '2026-10-03T08:41:37Z'
+implementing  '2026-10-03T08:41:50Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: single-parse memo
+    state: pending
+  - name: parse-once tests and Loomyard measurement
+    state: pending
 ```
