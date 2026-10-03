@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
 plan: _mill/plan
@@ -36,6 +36,7 @@ holistic-fixing  '2026-10-03T08:51:15Z'
 nits-fixed-holistic  '2026-10-03T08:52:16Z'
 holistic-approved  '2026-10-03T08:52:21Z'
 done  '2026-10-03T08:52:41Z'
+pr-pending  '2026-10-03T08:53:06Z'
 ```
 
 ## Batches
