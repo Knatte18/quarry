@@ -47,8 +47,9 @@ batches:
 - **Decision:** `newFileMemo(r, allSymbols)`.
   With `allSymbols` true (Resolve, Expand, SpansOf), every record build extracts symbols.
   With `allSymbols` false (exported TOC), a record build extracts symbols only when the requesting consumer wants that file's symbols.
-  A request that wants symbols from a record built without them rebuilds the record and counts a second build.
-  This is unreachable today, because one exported TOC call requests each file at most once, and the counter makes any future regression visible to the parse-once tests rather than silently re-parsing.
+  Each record carries `withSymbols`, set from the build request whatever the outcome, so a non-language or failed file built with symbols requested is never rebuilt for them.
+  A request that wants symbols from a record built with `withSymbols` false rebuilds the record and counts a second build.
+  That cannot happen in an `allSymbols` memo, which builds every record with `withSymbols` true, nor in an exported TOC call, which requests each file at most once; the counter makes any future regression visible to the parse-once tests rather than silently re-parsing.
 - **Rationale:** the discussion's "Symbol extraction cost" rule, with a defined behaviour for the case it rules out.
 - **Applies to:** all batches
 

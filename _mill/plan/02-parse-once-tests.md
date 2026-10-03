@@ -47,11 +47,14 @@ The measurement is a read-only, Commit: none card whose result goes to `.scratch
      - `pkg/sub/deeper/d.go`: `"package deeper\n"`
      - `other/o.go`: `"package other\n\nfunc O() {}\n"`
      - `untouched/u.go`: `"package untouched\n"`
+     - `mem/m.go`: `"package mem\n\nfunc M() {}\n"`
+     - `mem/notes.txt`: `"member-only directory\n"`
 
-     Targets, in one `r.resolve` call: `"pkg/a.go#"`, `"pkg/b.go#"`, `"pkg/README.md#"`, `"pkg#"`, `"pkg#A"`, `"pkg#B"`, `"pkg_test#TestB"`, `"other/o.go#"`.
+     Targets, in one `r.resolve` call: `"pkg/a.go#"`, `"pkg/b.go#"`, `"pkg/README.md#"`, `"pkg#"`, `"pkg#A"`, `"pkg#B"`, `"pkg_test#TestB"`, `"other/o.go#"`, `"mem#M"`.
      Assert each result's `Status` is `StatusFound`.
-     Then `assertBuilds` with exactly the paths `pkg/a.go`, `pkg/b.go`, `pkg/b_test.go`, `pkg/README.md`, `pkg/sub/s.go`, `other/o.go` (the directory self target reaches `pkg/sub` for its identity and stops there).
+     Then `assertBuilds` with exactly the paths `pkg/a.go`, `pkg/b.go`, `pkg/b_test.go`, `pkg/README.md`, `pkg/sub/s.go`, `other/o.go`, `mem/m.go`, `mem/notes.txt` (the directory self target reaches `pkg/sub` for its identity and stops there).
      The doc comment explains the expected set: each self file target's directory, each member glyph's `unitDirs` directories, the directory self target's own directory and its direct subdirectories.
+     It also says why `mem` exists: no self target reaches it, so its two files appear in `m.files.builds` only if the member path builds into the call's shared memo; and `pkg/README.md` and `pkg/b_test.go` are first built by self targets and then requested with symbols by the member path, so a count of 1 for them pins that the member path reuses records the self path built.
   2. `TestResolve_MemoAnswersMatchFreshCalls`, on the same fixture (its own `openScratchRepo` name, `memo-equivalence`) and the same targets:
      - For every self target, the result's `*Listing` equals `r.TOC(unit, TOCOptions{Symbols: boolPtr(false)})` from a fresh call, where `unit` is the target with its trailing `#` removed.
      - For every member target, the result's Symbols field equals `r.SpansOf(g)` for the glyph parsed from the target.
