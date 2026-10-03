@@ -3,7 +3,7 @@
 ```yaml
 task: 'Resolve self-target path: per-call dirPackage memo (GH #34)'
 slug: resolve-self-dirpackage-memo
-approved: false
+approved: true
 started: 20261003-082232
 parent_branch: main
 root: ""
