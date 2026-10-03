@@ -29,7 +29,10 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 - The self-target path (file targets and directory targets) and the member path (`symbolsOfUnit` / `symbolsOfDir`) both read from that memo.
 - Expand gets the same guarantee as a side effect, since it reads symbols through `unitMemo.symbolsOf`.
 - A per-file parse counter seam and the tests that pin the guarantee.
-- Updating the "two parse passes" explanation in `walk.go`'s header comment to match.
+- Comment updates that keep the docs true after the refactor:
+  - `walk.go`'s header: replace the "two parse passes" explanation with single-parse extraction plus unit stamping after the vote.
+  - `fileTargetAnswer`'s doc comment in `toc.go`: it says "A gitignored file still does not vote in the package tie-break", but the code keeps an explicitly named gitignored target in the entries `dirPackage` votes over. Correct the comment to say the named target votes, matching the code and the two-level memo decision below.
+  - `unitMemo.parses`: once `symbolsOf` reads per-file records, this counter counts unit extractions requested, not parses. Restate its doc comment and `TestResolve_ParsesEachUnitOnce`'s comment that way, keeping the name or renaming it as the plan chooses. The new per-file counter is the only parse count.
 
 **Out:**
 
