@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: approved-parse-once tests and Loomyard measurement
+phase: holistic-reviewing
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
 plan: _mill/plan
@@ -31,6 +31,7 @@ planned  '2026-10-03T08:41:37Z'
 implementing  '2026-10-03T08:41:50Z'
 approved-single-parse memo  '2026-10-03T08:46:44Z'
 approved-parse-once tests and Loomyard measurement  '2026-10-03T08:49:47Z'
+holistic-reviewing  '2026-10-03T08:50:00Z'
 ```
 
 ## Batches
