@@ -630,8 +630,8 @@ func TestResolve_CandidatesOrdered(t *testing.T) {
 }
 
 // TestResolve_ParsesEachUnitOnce constructs a unitMemo directly and calls r.resolve with eight
-// targets spread over three distinct units, one of them named four times, asserting parses equals
-// the number of distinct units rather than the number of targets. Asserting the memo map's length
+// targets spread over three distinct units, one of them named four times, asserting the unit
+// extractions requested equal the number of distinct units rather than the number of targets. Asserting the memo map's length
 // instead would be true by construction and prove nothing.
 func TestResolve_ParsesEachUnitOnce(t *testing.T) {
 	r := openModuleRepo(t)
@@ -653,8 +653,8 @@ func TestResolve_ParsesEachUnitOnce(t *testing.T) {
 	if _, err := r.resolve(targets, m); err != nil {
 		t.Fatalf("resolve(%v) returned error: %v", targets, err)
 	}
-	if m.parses != 3 {
-		t.Errorf("parses = %d; want 3 — three distinct units across %d targets", m.parses, len(targets))
+	if m.extractions != 3 {
+		t.Errorf("extractions = %d; want 3 — three distinct units across %d targets", m.extractions, len(targets))
 	}
 }
 
