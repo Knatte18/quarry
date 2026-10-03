@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r1
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-10-03T07:55:15Z'
+discussion-fix-r1  '2026-10-03T08:08:18Z'
 ```
