@@ -57,6 +57,15 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 - Rationale: the unit is a directory-level fact, so it is not known until every clause in the directory is read. That is why `walk.go` needs two passes today. `goStrategy.Symbols` uses `unit` only to build `Glyph` and `ID` (see `goDeclSymbol` and its siblings in `golang.go`), so stamping afterwards gives byte-identical symbols. The unspellable-unit rule (`unitSpellable`) is applied at stamp time, exactly where `fileEntry` applies it now.
 - Rejected: changing the `Strategy` interface. `Symbols(unit, ...)` keeps its signature, and the memo passes a placeholder unit and restamps afterwards.
 
+### Clause-less files keep today's per-consumer rule
+
+- Decision: a file that parses but records no clause is one case: `PackageClause`/`dirPackage` return `ok == false` because `strategy.Package` gave `""`, as in `toc_test.go`'s `packag mypkg` fixture. Today the two consumers treat it differently, and the memo keeps both rules exactly as they are.
+  - **Walk consumer** (`fileEntry` via `walkDir` and `fileTargetAnswer`): includes the file. It receives `clauses[base] == ""`, `unitFor(dirRel, dirPkg, "")` maps it to `dirRel`, and it gets symbols stamped with that unit when symbols are wanted, plus its header and flags as usual.
+  - **Member consumer** (`symbolsOfDir`): excludes it. Its `clause, ok := clauses[base]; if !ok { continue }` guard stays, so a file with no recorded clause contributes no symbols to Resolve or Expand member results.
+- The per-file record therefore stores whether a clause was recorded (`ok`), not just the clause string, and each consumer applies its own filter before stamping. Stamping is never applied to a record the consumer's filter excludes.
+- Rationale: the acceptance criterion is about parse count, and v0.2.1 must not change any answer. Unifying the two rules would change member answers (Resolve/Expand) or walk answers (TOC goldens), and that is a behaviour decision outside this task.
+- Rejected: stamping every record through `unitFor` for both consumers. That adds clause-less files' symbols to member results.
+
 ### Two-level memo: files by path, votes by directory
 
 - Decision: the memo holds per-file records keyed by repository-relative file path, which is where the parse counter lives, and the directory vote (`dirPackage`'s result) keyed by `dirRel`. The vote is computed from the file records without parsing.
@@ -66,7 +75,7 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 ### Threading through TOC without changing its contract
 
 - Decision: unexported memo-aware variants of `TOC`, `fileTargetAnswer` and `walkDir` take the memo. Exported `TOC` builds its own fresh memo, so TOC also becomes single-parse and there is one extraction code path instead of two. `resolveSelfTarget` takes `unitMemo` and calls the memo-aware variant.
-- Rationale: this matches `unitMemo`'s existing shape (`resolve(targets, m)`). With one code path, no second extraction can drift from the first. The committed goldens, including Loomyard's, pin TOC's output byte for byte, which guards the refactor.
+- Rationale: this matches `unitMemo`'s existing shape (`resolve(targets, m)`). With one code path, no second extraction can drift from the first. The committed goldens, including Loomyard's, pin TOC's output byte for byte against expected files, which guards the extraction through the refactor. The symbol round trip narrows to a consumer-layer check; see Testing.
 - Rejected: plumbing the memo through `TOCOptions`, which changes the exported surface. Also rejected: a memo-only path beside the untouched `fileEntry`/`dirPackage` path, which leaves two implementations of the same extraction.
 - Symbol extraction cost: a record built for a TOC call extracts symbols only when that call wants them. A record built inside Resolve or Expand always extracts them, since a later member glyph in the same call may need them and a re-parse is not allowed.
 
@@ -77,8 +86,9 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 
 ### Test seam
 
-- Decision: the memo has a per-file parse counter, incremented before the parse, like `unitMemo.parses` (calls made, not calls that succeeded). Tests assert that the per-file parse count is at most 1 for every file and that the total equals the number of distinct files touched.
-- Rationale: wall-clock is the thing the guarantee's test must not depend on.
+- Decision: the memo counts **record builds** per repository-relative file path. A record build is the one read of a file plus whatever extraction its kind allows: one tree-sitter parse for a file with a registered strategy and valid UTF-8, `HeaderForFile` for a non-language file, nothing for an unreadable or invalid-UTF-8 file. The count is incremented before the build, like `unitMemo.parses` (builds started, not builds that succeeded).
+- "Files touched" means the distinct file paths for which some consumer requested a record during the call. Tests assert that every path's build count is at most 1 and that the total equals the number of files touched. Each record build performs at most one tree-sitter parse, so "at most one build per file" implies "at most one parse per file", which is the acceptance criterion.
+- Rationale: counting builds rather than parses gives one well-defined unit for every file kind, including files that are read but never parsed. Wall-clock is the thing the guarantee's test must not depend on.
 
 ## Technical context
 
@@ -89,7 +99,8 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 - `internal/engine/golang.go`: `goDeclSymbol` and its siblings build `glyph.Glyph{Unit: unit, ...}` and `ID: g.String()`. That is the only use of `unit`.
 - Ignore-set filtering: TOC builds a fresh `ignoreSet` per target and extends it along `ancestorChain`, and `symbolsOfUnit` extends the memo's set along `dirChainBelowRoot`. Both produce the same filter for a given directory. The memo must not change which files are filtered or vote.
 - Symlinks are never parsed and never vote; a symlink target is answered name-only.
-- Per-file error semantics must survive: `fileEntry` returns `Error` for a read failure, invalid UTF-8, or a `WithTree` error, and in each of those cases `dirPackage` records no clause.
+- Per-file error semantics must survive: `fileEntry` returns `Error` for a read failure, invalid UTF-8, or a `WithTree` error, and in each of those cases `dirPackage` records no clause. A fourth no-clause case is not an error: a file that parses but declares an empty clause. See the decision "Clause-less files keep today's per-consumer rule".
+- A file whose extension names no language, or names one with no registered strategy, is read but never parsed: `fileEntry` answers it with `HeaderForFile` and it never votes. Its record holds that header and no parse output.
 
 ## Constraints
 
@@ -100,8 +111,11 @@ Loomyard (ly:orch) ordered the fix and is waiting for v0.2.1.
 
 ## Testing
 
-- **TDD candidate, parse-once guarantee:** use `r.resolve(targets, m)` with a constructed memo. Name several self file targets in one directory, a directory self target for that same directory, member glyphs in that directory, and a target in a second directory. Assert at most one parse per file and a total equal to the distinct files touched.
+- **TDD candidate, parse-once guarantee:** use `r.resolve(targets, m)` with a constructed memo. Name several self file targets in one directory, a directory self target for that same directory, member glyphs in that directory, and a target in a second directory. The directory includes a non-Go file, so a read-only record build is covered too. Assert that every file path's record-build count is at most 1 and that the total equals the number of files touched, per the Test seam decision.
 - **Equivalence:** for every self target in such a call, the memoised `Listing` must equal `r.TOC(unit, TOCOptions{Symbols: &false})` from a fresh call. Member results must equal today's results.
+  These tests guard memo keying and sharing: answers must not depend on which target touched a directory first. Both sides run the same extraction code, so they do not check extraction itself.
+- **Clause-less file fixture:** an `openScratchRepo` subdirectory holding a normal Go file and a file that parses but has an empty clause (the `packag mypkg` shape from `toc_test.go`). Assert that the TOC/self-target listing gives the clause-less file its symbols (with a symbols-on TOC) and header, exactly as today. Assert that a member glyph naming a symbol declared only in the clause-less file is `not_found` (unit `found`), exactly as today. Run both in one Resolve call, and assert the clause-less file's build count is 1.
+- **Extraction-level coverage after the refactor:** `assertSymbolRoundTrip` (`roundtrip_test.go`) compares walk symbols with `symbolsOfUnit`. Once both read the same per-file records, it no longer compares two independent extractions. It still proves the two consumers' filter and stamping layers agree: every walked symbol is found by the member path and vice versa, and `glyph.Parse` round-trips each ID. Update its doc comment to say so. Extraction correctness, meaning the right symbols, headers, docs and flags for given source, stays guarded by tests independent of the memo: the committed TOC goldens and Loomyard goldens, which pin output byte for byte against expected files, and the strategy-level tests in `golang_test.go`. No new extraction-level test is required. The equivalence tests above do not replace that coverage.
 - **Gitignored explicit target:** an `openScratchRepo` fixture with a gitignored file named explicitly next to normal targets in the same directory. Its answer must equal its stand-alone answer, and the per-file parse count must stay at most 1.
 - **Existing suites unchanged:** TOC goldens, Loomyard goldens and round trip, `TestResolve_ParsesEachUnitOnce`, and `TestResolve_TwentyGlyphsUnder150ms`.
 - **Before/after measurement (manual, recorded in the handoff):** the Loomyard repro below.
