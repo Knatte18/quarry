@@ -1,10 +1,10 @@
 # Status
 
 ```yaml
-phase: discussed
+phase: planning
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
-plan: null
+plan: _mill/plan
 parent_branch: main
 task: 'Resolve self-target path: per-call dirPackage memo (GH #34)'
 task_description: |
@@ -20,4 +20,5 @@ discussion-gap-fix-r2  '2026-10-03T08:10:57Z'
 discussion-fix-r3  '2026-10-03T08:14:03Z'
 discussion-fix-r4  '2026-10-03T08:16:43Z'
 discussed  '2026-10-03T08:16:43Z'
+planning  '2026-10-03T08:25:27Z'
 ```
