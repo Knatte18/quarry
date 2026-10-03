@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-fix-r2
+phase: plan-review-r3
 slug: resolve-self-dirpackage-memo
 branch: resolve-self-dirpackage-memo
 plan: _mill/plan
@@ -25,4 +25,5 @@ plan-review-r1  '2026-10-03T08:31:41Z'
 plan-fix-r1  '2026-10-03T08:31:41Z'
 plan-review-r2  '2026-10-03T08:36:31Z'
 plan-fix-r2  '2026-10-03T08:36:31Z'
+plan-review-r3  '2026-10-03T08:41:29Z'
 ```
