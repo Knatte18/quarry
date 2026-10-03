@@ -36,7 +36,11 @@ implementing  '2026-10-03T08:41:50Z'
 ```yaml
 batches:
   - name: single-parse memo
-    state: pending
+    state: running
+    implementer_session: bfdf3e6a-89d3-47ef-a418-a5273f93fc7d
+    start_sha: c056d42def16c2f203f043c0efa5f62989e65b98
+    verify_baseline_failures: []
   - name: parse-once tests and Loomyard measurement
     state: pending
+    verify_baseline_failures: []
 ```
