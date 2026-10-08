@@ -252,9 +252,9 @@ func TestParseArgs_UsageErrors(t *testing.T) {
 		{"unknown-flag", []string{"toc", "--depht", "t"}, "unknown flag: --depht"},
 		{"missing-target", []string{"toc"}, "toc takes exactly one target, got 0"},
 		{"two-targets", []string{"toc", "a", "b"}, "toc takes exactly one target, got 2"},
-		{"missing-verb", []string{}, "no verb given; expected: toc, glyphs, resolve, expand, delta, or name"},
+		{"missing-verb", []string{}, "no verb given; expected: toc, glyphs, resolve, expand, delta, enclose, or name"},
 		{"unknown-verb", []string{"bogus", "t"}, "unknown verb: bogus"},
-		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc, glyphs, resolve, expand, delta, or name"},
+		{"first-arg-is-flag", []string{"--depth", "3", "t"}, "no verb given; expected: toc, glyphs, resolve, expand, delta, enclose, or name"},
 		{"depth-not-valid-for-resolve", []string{"resolve", "--depth", "3", "t"}, "--depth is not valid for resolve"},
 		{"depth-not-valid-for-resolve-bad-value", []string{"resolve", "--depth", "x", "t"}, "--depth is not valid for resolve"},
 		{"symbols-not-valid-for-resolve", []string{"resolve", "--symbols", "t"}, "--symbols is not valid for resolve"},
@@ -801,6 +801,86 @@ func TestParseArgs_DeltaFlagValidity(t *testing.T) {
 	}
 	for _, tt := range tocOnlyFlagCases {
 		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseArgs(tt.args)
+			ue, ok := err.(usageError)
+			if !ok {
+				t.Fatalf("parseArgs(%v) error type = %T; want usageError", tt.args, err)
+			}
+			if string(ue) != tt.want {
+				t.Errorf("parseArgs(%v) error = %q; want %q", tt.args, string(ue), tt.want)
+			}
+		})
+	}
+}
+
+// TestParseArgs_Enclose covers the enclose verb's accepted shapes (positional locations in order,
+// --stdin, both --rev spellings, --root) and its rejections (both or neither location source,
+// --text, an empty --rev, and --rev or --stdin on the other verbs).
+func TestParseArgs_Enclose(t *testing.T) {
+	t.Parallel()
+
+	accepted := []struct {
+		name        string
+		args        []string
+		wantTargets []string
+		wantRev     string
+		wantStdin   bool
+		wantRoot    string
+	}{
+		{"SeveralLocationsInOrder", []string{"enclose", "b.go:2", "a.go:1-3", "c.go:4:5"}, []string{"b.go:2", "a.go:1-3", "c.go:4:5"}, "", false, ""},
+		{"StdinAlone", []string{"enclose", "--stdin"}, nil, "", true, ""},
+		{"RevSpaceSeparated", []string{"enclose", "--rev", "HEAD~1", "a.go:1"}, []string{"a.go:1"}, "HEAD~1", false, ""},
+		{"RevEqualsForm", []string{"enclose", "--rev=HEAD~1", "a.go:1"}, []string{"a.go:1"}, "HEAD~1", false, ""},
+		{"Root", []string{"enclose", "--root", "/r", "a.go:1"}, []string{"a.go:1"}, "", false, "/r"},
+	}
+	for _, tt := range accepted {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseArgs(tt.args)
+			if err != nil {
+				t.Fatalf("parseArgs(%v) = _, %v; want nil error", tt.args, err)
+			}
+			if got.verb != "enclose" {
+				t.Errorf("parseArgs(%v).verb = %q; want %q", tt.args, got.verb, "enclose")
+			}
+			if !reflect.DeepEqual(got.targets, tt.wantTargets) {
+				t.Errorf("parseArgs(%v).targets = %v; want %v", tt.args, got.targets, tt.wantTargets)
+			}
+			if got.rev != tt.wantRev {
+				t.Errorf("parseArgs(%v).rev = %q; want %q", tt.args, got.rev, tt.wantRev)
+			}
+			if got.stdin != tt.wantStdin {
+				t.Errorf("parseArgs(%v).stdin = %v; want %v", tt.args, got.stdin, tt.wantStdin)
+			}
+			if got.root != tt.wantRoot {
+				t.Errorf("parseArgs(%v).root = %q; want %q", tt.args, got.root, tt.wantRoot)
+			}
+		})
+	}
+
+	rejected := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"LocationsAndStdin", []string{"enclose", "--stdin", "a.go:1"}, "enclose takes locations as arguments or --stdin, not both"},
+		{"NeitherLocationsNorStdin", []string{"enclose"}, "enclose requires at least one location or --stdin"},
+		{"Text", []string{"enclose", "--text", "a.go:1"}, "--text is not valid for enclose"},
+		{"EmptyRevSpaceSeparated", []string{"enclose", "--rev", "", "a.go:1"}, "--rev value must not be empty"},
+		{"EmptyRevEqualsForm", []string{"enclose", "--rev=", "a.go:1"}, "--rev value must not be empty"},
+		{"RevWithoutValue", []string{"enclose", "a.go:1", "--rev"}, "--rev requires a value"},
+		{"RevOnToc", []string{"toc", "--rev", "HEAD", "t"}, "--rev is not valid for toc"},
+		{"StdinOnToc", []string{"toc", "--stdin", "t"}, "--stdin is not valid for toc"},
+		{"RevOnResolve", []string{"resolve", "--rev", "HEAD", "t"}, "--rev is not valid for resolve"},
+		{"StdinOnResolve", []string{"resolve", "--stdin", "t"}, "--stdin is not valid for resolve"},
+		{"RevOnDelta", []string{"delta", "--from", "HEAD", "--rev", "HEAD", "t"}, "--rev is not valid for delta"},
+		{"StdinOnDelta", []string{"delta", "--from", "HEAD", "--stdin", "t"}, "--stdin is not valid for delta"},
+		{"RevOnGlyphs", []string{"glyphs", "--rev", "HEAD", "t"}, "--rev is not valid for glyphs"},
+		{"StdinOnGlyphs", []string{"glyphs", "--stdin", "t"}, "--stdin is not valid for glyphs"},
+	}
+	for _, tt := range rejected {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := parseArgs(tt.args)
 			ue, ok := err.(usageError)
 			if !ok {
