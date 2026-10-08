@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/quarry/quarry"
+	"github.com/Knatte18/quarry/internal/engine"
 )
 
 // repoRelPath converts target, as given by the caller, into a clean, forward-slash,
@@ -28,7 +28,7 @@ import (
 // cleaned relative form even when it begins with "..": it does not reject a target that leaves the
 // root. repoRelTarget, below, is the only caller, and it applies the escape rejection itself once
 // this arithmetic is done. repoRelPath returns an error only when filepath.Rel itself fails, and
-// that error is quarry.ErrTargetOutsideRepo.
+// that error is engine.ErrTargetOutsideRepo.
 func repoRelPath(root, base, target string) (string, error) {
 	var abs string
 	if filepath.IsAbs(target) {
@@ -39,7 +39,7 @@ func repoRelPath(root, base, target string) (string, error) {
 
 	rel, err := filepath.Rel(root, abs)
 	if err != nil {
-		return "", quarry.ErrTargetOutsideRepo
+		return "", engine.ErrTargetOutsideRepo
 	}
 
 	relSlash := filepath.ToSlash(rel)
@@ -54,10 +54,10 @@ func repoRelPath(root, base, target string) (string, error) {
 // "#". This is the path arithmetic a caller wants when a target that escapes the root, or that
 // collides with the glyph grammar's separator, must be refused here rather than reaching the
 // engine. The order matters: an escaping target still reports the escape, which is why the
-// separator check runs after the existing one and not before it. toc and delta are the only two
-// verbs that reach this function's exported form, and a "#" in a path segment is an explicit
-// error for both, so that the glyph grammar's rule against the separator holds everywhere a
-// target is taken, not only where a bare "#" would otherwise be read as a glyph.
+// separator check runs after the existing one and not before it. Every caller taking a path
+// through RepoRelTarget gets both the escape and the separator rejection, so that the glyph
+// grammar's rule against the separator holds everywhere a target is taken, not only where a
+// bare "#" would otherwise be read as a glyph.
 func repoRelTarget(root, base, target string) (string, error) {
 	rel, err := repoRelPath(root, base, target)
 	if err != nil {
@@ -65,22 +65,21 @@ func repoRelTarget(root, base, target string) (string, error) {
 	}
 
 	if rel == ".." || strings.HasPrefix(rel, "../") {
-		return "", quarry.ErrTargetOutsideRepo
+		return "", engine.ErrTargetOutsideRepo
 	}
 
 	for _, seg := range strings.Split(rel, "/") {
 		if strings.Contains(seg, "#") {
-			return "", quarry.ErrTargetHasSeparator
+			return "", engine.ErrTargetHasSeparator
 		}
 	}
 
 	return rel, nil
 }
 
-// RepoRelTarget exports repoRelTarget for callers outside this package: the CLI's toc and delta
-// verbs, and the MCP server's own target conversion, all of which must reject an escaping target,
-// or one carrying the glyph grammar's "#" separator in any path segment, here rather than letting
-// it reach the engine.
+// RepoRelTarget exports repoRelTarget for callers outside this package that take a repository
+// path from a user. They must reject an escaping target, or one carrying the glyph grammar's "#"
+// separator in any path segment, here rather than letting it reach the engine.
 func RepoRelTarget(root, base, target string) (string, error) {
 	return repoRelTarget(root, base, target)
 }
