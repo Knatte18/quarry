@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: discussing
+phase: discussion-fix-r5
 slug: enclose-locations
 branch: enclose-locations
 plan: null
@@ -15,4 +15,5 @@ task_description: |
 
 ```text
 discussing  '2026-10-08T05:59:07Z'
+discussion-fix-r5  '2026-10-08T06:22:23Z'
 ```
