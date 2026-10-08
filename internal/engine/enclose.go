@@ -4,6 +4,8 @@
 
 package engine
 
+import "sort"
+
 // EncloseResult is the answer to one Location passed to Enclose or EncloseFrom.
 // It is either an outcome (Status set) or a rejection (Reason and Error set), never both.
 type EncloseResult struct {
@@ -90,4 +92,76 @@ type RevisionFiles interface {
 	GoFiles(dirRel string) ([]string, error)
 	// Read returns one file's bytes at the revision.
 	Read(rel string) ([]byte, error)
+}
+
+// innermostSymbols returns the members of candidates that enclose the line range [start, end] innermost-first,
+// in source order.
+//
+// A candidate is kept when its [Start, End] span overlaps the range.
+// A kept symbol P has as children the other kept symbols whose span lies within P's span and is not identical to it.
+// P survives when some line in the overlap of the range and P's span is covered by none of P's children;
+// a P with no children always survives.
+// Survivors are sorted stably by Start then End, so input order breaks ties, and deduplicated by identity (same ID and Start).
+// The result is never nil.
+//
+// Nesting is decided by span containment only, never by Glyph.Owner, which gives these outcomes:
+// a line in an interface method returns the method alone;
+// a range over an interface's head lines plus one method returns the type, then the method;
+// a receiver method outside its type's span is never that type's child;
+// a one-line interface returns the type, then its method, because their identical spans do not nest.
+func innermostSymbols(candidates []Symbol, start, end int) []Symbol {
+	type identity struct {
+		id    string
+		start int
+	}
+	seen := make(map[identity]bool, len(candidates))
+	var kept []Symbol
+	for _, sym := range candidates {
+		key := identity{sym.ID, sym.Start}
+		if sym.Start > end || sym.End < start || seen[key] {
+			continue
+		}
+		seen[key] = true
+		kept = append(kept, sym)
+	}
+
+	survivors := make([]Symbol, 0, len(kept))
+	for _, parent := range kept {
+		var children []Symbol
+		for _, other := range kept {
+			within := other.Start >= parent.Start && other.End <= parent.End
+			identical := other.Start == parent.Start && other.End == parent.End
+			if within && !identical {
+				children = append(children, other)
+			}
+		}
+		if len(children) == 0 || touchesUncoveredLine(parent, children, start, end) {
+			survivors = append(survivors, parent)
+		}
+	}
+
+	sort.SliceStable(survivors, func(i, j int) bool {
+		if survivors[i].Start != survivors[j].Start {
+			return survivors[i].Start < survivors[j].Start
+		}
+		return survivors[i].End < survivors[j].End
+	})
+	return survivors
+}
+
+// touchesUncoveredLine reports whether some line in both [start, end] and parent's span lies outside every child's span.
+func touchesUncoveredLine(parent Symbol, children []Symbol, start, end int) bool {
+	for line := max(start, parent.Start); line <= min(end, parent.End); line++ {
+		covered := false
+		for _, child := range children {
+			if line >= child.Start && line <= child.End {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return true
+		}
+	}
+	return false
 }
