@@ -56,4 +56,5 @@ batches:
 ```text
 '2026-10-08T07:04:35Z'  engine-enclose  round 1
 '2026-10-08T07:07:42Z'  facade-enclose  round 1
+'2026-10-08T07:10:49Z'  cli-enclose  round 1
 ```
