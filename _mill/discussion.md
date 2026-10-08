@@ -89,21 +89,28 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
 
 ### Rejection vocabulary
 
-- Decision: the closed vocabulary is seven reasons, declared as engine constants with an `EncloseReasons` slice (the `NameReasons` pattern, aliased by the facade as the same slice):
-  `bad_location`, `bad_range`, `outside_root`, `unsupported_language`, `missing_file`, `unreadable`, `past_eof`.
-  Checked in that order, first match wins:
+- Decision: the closed vocabulary is eight reasons, declared as engine constants with an `EncloseReasons` slice (the `NameReasons` pattern, aliased by the facade as the same slice):
+  `bad_location`, `bad_range`, `outside_root`, `unaddressable`, `unsupported_language`, `missing_file`, `unreadable`, `past_eof`.
+  Checked in this order, first match wins:
   1. `bad_location` — the target is not `path:line`, `path:line-line` or `path:line:col` (non-numeric or overflowing line, empty path, missing line).
   2. `bad_range` — Start < 1, or Start > End.
   3. `outside_root` — the path normalises outside the repository root (including `..` escapes and absolute paths elsewhere).
-  3b. `bad_location` again — the normalised path is not spellable as a Go glyph (`repopath` reports `ErrTargetHasSeparator`, or `glyph.Self(glyph.Go, file)` fails on a backslash, whitespace or control character in a segment). This check needs the normalised path, hence its place after `outside_root`.
-  4. `unsupported_language` — the extension maps to no language or no registered strategy (`LanguageForExtension` + `StrategyFor`); checked before existence, so a missing `.md` is `unsupported_language`.
-  5. `missing_file` — no regular file at the path (working tree: `os.Lstat` not-exist, or a directory; revision: the base name is not among the directory's Go files at that revision). A bare `foo_test.go:42` lands here unless a root-level file of that name exists.
-  6. `unreadable` — the working-tree path is a symlink, or the file cannot be read, is not valid UTF-8, or tree-sitter fails outright (the record's `err`).
-  7. `past_eof` — End is greater than the file's line count.
-- Rationale: agreed decision 7 fixed five reasons but left two real inputs unanswered: an input string that is not a location at all (a stray line piped through `--stdin`), and a file that exists but cannot be read as source.
-  Neither may fail the whole call (requirement 1), and folding them into an existing reason would mislabel them (`missing_file` for a permission error tells the caller to fix the path).
-  Two added words keep the vocabulary closed and honest; the consumer reads the slice, not a hard-coded list.
-- Rejected: whole-call failure for a malformed spelling (one stray stdin line would kill a pack); mapping unreadable to `not_found + lossy` (a symlink or EACCES is not a partial parse).
+  4. `unaddressable` (path half) — the normalised path cannot be spelled as a Go glyph: `repopath` reports `ErrTargetHasSeparator`, or `glyph.Self(glyph.Go, file)` fails (a backslash, whitespace or control character in a segment).
+     Needs the normalised path, hence its place after `outside_root`.
+  5. `unsupported_language` — the extension maps to no language or no registered strategy (`LanguageForExtension` + `StrategyFor`); checked before existence, so a missing `.md` is `unsupported_language`.
+  6. `missing_file` — no regular file at the path (working tree: `os.Lstat` not-exist, a directory, or a `r.toc` not-found/vanished error; revision: the base name is not among the directory's Go files at that revision). A bare `foo_test.go:42` lands here unless a root-level file of that name exists.
+  7. `unreadable` — working tree: the path is a symlink, the file cannot be read, is not valid UTF-8, or tree-sitter fails outright (`FileEntry.Error`), or `r.toc` returns any other error for this item (a `.gitignore` read failure, an `os.ReadDir` failure).
+     Revision: the record's `err` (invalid UTF-8, a failed parse).
+  8. `unaddressable` (unit half) — the file's glyph unit, `unitFor(dir, v.pkg, rec.clause)`, fails `unitSpellable`.
+     Every file directly under the repository root hits this (`unitFor(".")` returns `""`), as does a directory segment the alphabet rejects.
+     Checked identically on both paths before any symbol is stamped, so neither path mints a unit `glyph.Parse` rejects and both answer the same file the same way.
+  9. `past_eof` — End is greater than the file's line count.
+  An `unaddressable` rejection carries `file`, `start` and `end` but no `unit` (no glyph can name the file's members, and the item is rejected rather than not_found).
+- Rationale: agreed decision 7 fixed five reasons but left three real inputs unanswered: an input string that is not a location at all (a stray line piped through `--stdin`), a file that exists but cannot be read as source, and a file whose members quarry's glyph contract cannot name (root-level files, unspellable segments).
+  None may fail the whole call (requirement 1), and folding them into an existing reason would mislabel them: `missing_file` for a permission error tells the caller to fix the path, and a silent `not_found` for a line inside a real root-level function tells the caller the line is outside every member.
+  `unaddressable` mirrors the walk's own rule (`unitSpellable`'s doc comment): emitting nothing is the honest answer to a name the contract cannot spell; here "nothing" must be a visible rejection, since Enclose is asked about one specific file.
+  Three added words keep the vocabulary closed and honest; the consumer reads the slice, not a hard-coded list.
+- Rejected: whole-call failure for a malformed spelling (one stray stdin line would kill a pack); mapping unreadable to `not_found + lossy` (a symlink or EACCES is not a partial parse); folding the unspellable unit into `bad_location` (the location is well formed, the limit is the glyph contract's).
 
 ### Line count
 
@@ -113,7 +120,7 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
 
 ### Location spelling
 
-- Decision: one target string is parsed from the right: `^(.+):(\d+)(?:-(\d+)|:(\d+))?$`, taking the shortest path that leaves a valid suffix.
+- Decision: one target string is parsed with the lazy pattern `^(.+?):(\d+)(?:-(\d+)|:(\d+))?$`, which takes the shortest path that leaves a valid suffix: `a.go:12:5` is path `a.go`, line 12, column 5 — never path `a.go:12`, line 5.
   `path:N` is Start = End = N; `path:N-M` is a range; `path:N:C` is line N with column C ignored.
   Line numbers parse with `strconv.Atoi`; overflow is `bad_location`.
   The parse is a pure, unexported facade function in `quarry/enclose.go`.
@@ -123,7 +130,7 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
 ### Path normalisation
 
 - Decision: the facade normalises each path with `repopath.RepoRelTarget(root, root, path)` — relative paths are repo-root-relative, absolute paths inside the root are accepted, `./` and redundant segments are cleaned.
-  `ErrTargetOutsideRepo` maps to `outside_root`; `ErrTargetHasSeparator` maps to `bad_location`.
+  `ErrTargetOutsideRepo` maps to `outside_root`; `ErrTargetHasSeparator` maps to `unaddressable`.
   A path normalising to `.` (the root itself) is `unsupported_language` by the extension check.
   `internal/repopath/target.go` switches its import from `quarry` to `internal/engine` for the two sentinels (the values are identical, so every `errors.Is` caller in the CLI and MCP server is unaffected), and its package doc adds the facade as a third caller.
 - Rationale: requirement 3 says reuse `internal/repopath`; today `repopath` imports `quarry`, so the facade importing it would cycle.
@@ -136,17 +143,24 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
   - `fileMemo` gains a byte-source function `read func(rel string) ([]byte, error)`; `newFileMemo` defaults it to reading under the root (today's `os.ReadFile(filepath.Join(r.absDir(dirRel), base))`), and `buildRecord` reads through it instead of calling `os.ReadFile`.
     Every existing caller is unchanged in behaviour.
   - The engine exports `Location{Target, File string; Start, End int; Reason, Error string}`: the facade passes one per input, either normalised (File/Start/End set) or pre-rejected (Reason/Error set).
-    The facade decides reasons 1–3 (`bad_location`, `bad_range`, `outside_root`); the engine passes pre-rejected locations through unchanged and decides reasons 4–7.
+    The facade decides checks 1–4 (`bad_location`, `bad_range`, `outside_root`, path-half `unaddressable`); the engine passes pre-rejected locations through unchanged and decides checks 5–9.
   - `(*engine.Repo).Enclose(locs []Location) ([]EncloseResult, error)` answers against the working tree;
     `(*engine.Repo).EncloseFrom(files RevisionFiles, locs []Location) ([]EncloseResult, error)` answers against a revision.
     `RevisionFiles` is an engine interface with two methods — `GoFiles(dirRel string) ([]string, error)` (immediate Go children, repo-relative) and `Read(rel string) ([]byte, error)` — so the engine stays ignorant of git.
   - Both build one memo with `allSymbols` true, so every file built for a directory vote already carries symbols and no file is rebuilt when a second location in the same directory needs its symbols.
   - Working tree, per distinct file: `os.Lstat` decides `missing_file`/`unreadable`(symlink); then the file's answer comes from the memo-aware `r.toc(file, TOCOptions{Symbols: &on}, m)` file-target path, which already owns the ignore chain, the explicitly-named-gitignored-target rule, the clause vote and unit stamping.
-    Its `FileEntry.Error` means `unreadable`; `FileEntry.Lossy` is the `lossy` flag; `FileEntry.Symbols` (stamped with the unit, `File` then set to the repo-relative path) is the candidate list; the line count is read from the memo record (a memo hit, not a rebuild).
+    Any error `r.toc` returns for one item becomes that item's rejection, never the call's: `ErrTargetNotFound` and the "no longer exists in directory" race map to `missing_file`, every other error (`.gitignore` read, `os.ReadDir`) to `unreadable`.
+    The working-tree `Enclose` therefore has no per-file whole-call error; its only whole-call failure is the engine's own setup (none today beyond what `newFileMemo` needs).
+    Its `FileEntry.Error` means `unreadable`; `FileEntry.Lossy` is the `lossy` flag.
+    The unit is computed from the memo's vote and record (`unitFor(dir, v.pkg, rec.clause)`) and gated by `unitSpellable` before anything else reads the symbols — an unspellable unit is `unaddressable`, never read as a nil `FileEntry.Symbols` meaning not_found.
+    For a spellable unit, `FileEntry.Symbols` (stamped with the unit, `File` then set to the repo-relative path) is the candidate list; the line count is read from the memo record (a memo hit, not a rebuild).
   - Revision, per distinct directory: `files.GoFiles(dir)` gives the vote set; a target base absent from it is `missing_file`.
-    Records are built through the memo with `read` = `files.Read`; the vote is `m.dirVote(dir, recs, true)` (the same `UnitsForClauseMap` vote `revisionClauseMap` reaches, and the record clause equals `PackageClause` by that function's own contract); each target's symbols are `stampSymbols(rec.symbols, unitFor(dir, v.pkg, rec.clause), file)`.
-    A `Read` error fails the whole call, matching `revisionClauseMap` (git listed the name, so a read failure means the call is broken).
-    No ignore set applies at a revision, matching `DeltaGit`; a symlink committed under a `.go` name yields link text, parses as garbage and answers like any other bytes (`DeltaGit` has the same behaviour).
+    Records are built through the memo with `read` = `files.Read`; the vote is `m.dirVote(dir, recs, true)` (the same `UnitsForClauseMap` vote `revisionClauseMap` reaches, and the record clause equals `PackageClause` by that function's own contract).
+    A record with `err` set is `unreadable`; otherwise the unit is `unitFor(dir, v.pkg, rec.clause)`, gated by `unitSpellable` exactly as on the working-tree path (`unaddressable` on failure), and only then are the symbols stamped: `stampSymbols(rec.symbols, unit, file)`.
+    A `GoFiles` or `Read` error fails the whole call, matching `revisionClauseMap` (git listed the name, so a read failure means the call is broken); with the unknown-rev check these are the only whole-call failures of the revision path.
+  - Known asymmetries between the two paths, both shared with `DeltaGit` and both rare, named in `EncloseAt`'s doc comment so the consumer can recognise them:
+    1. No ignore set applies at a revision: a tracked-and-gitignored `.go` file votes at the rev but not in the working tree, so if its deviating clause tips the vote, the unit minted at the rev differs from the working-tree unit and the glyph will not `Resolve` there.
+    2. A symlink committed under a `.go` name yields its link text at the rev, which parses as garbage and answers like any other bytes, while the same symlink in the working tree is `unreadable`.
   - Distinct files and directories are processed once per call; results are assembled positionally and checked by `verifyEncloseCoverage` (panics on a length or `Target` mismatch, `verifyResolveCoverage`'s pattern).
 - Rationale: requirement 9 (one parse per file per call, memo reads through a byte source, nothing outlives the call); reusing `toc` keeps working-tree glyphs identical to what `toc`/`glyphs` mint so they round-trip through `Resolve`.
 - Rejected: a Delta-style pure core where the facade reads all bytes (would duplicate the walk's ignore and vote rules for the working tree); calling `revisionClauseMap` (a second parse per file via `PackageClause`, breaking the one-build count).
@@ -156,7 +170,7 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
 - Decision: in a new `quarry/enclose.go`:
   - `func (r *Repo) Enclose(targets []string) ([]EncloseResult, error)` — working tree, equal to `EncloseAt("", targets)`.
   - `func (r *Repo) EncloseAt(rev string, targets []string) ([]EncloseResult, error)` — empty rev means working tree and needs no git; a non-empty rev opens `gitsrc.Open(r.root)`, calls `VerifyRevision(rev)` and returns its error unchanged (unknown rev, not a repository, root not top level fail the whole call), then passes a small unexported `gitRevisionFiles{gr, rev}` adapter (`GoFiles` → `DirFilesAtRevision`, `Read` → `ReadBlob`) to `EncloseFrom`.
-  - Aliases in `quarry/quarry.go`: `EncloseResult`, the seven reason constants, and `EncloseReasons` as the engine's own slice.
+  - Aliases in `quarry/quarry.go`: `EncloseResult`, the eight reason constants, and `EncloseReasons` as the engine's own slice.
   - `RenderEncloseJSON(results []EncloseResult) ([]byte, error)` in `quarry/render.go`, through the existing `renderJSON` (two-space indent, no HTML escaping, one trailing newline); a nil or empty slice renders `[]`.
   A nil `targets` yields an empty, non-nil slice.
 - Rationale: requirement 10 and the acceptance line "public facade method(s) plus a JSON renderer"; the git layer stays in the facade as with `DeltaGit`.
@@ -169,6 +183,9 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
     `--stdin` with empty input answers `[]` with exit 0.
   - `--rev` is valid for `enclose` only; `--stdin` for `enclose` only; `--text` is a usage error for `enclose` (no text view exists).
     `--root` works as for the other repository verbs.
+  - Relative location paths resolve against the repository root, not the working directory — unlike `toc` and `delta`, whose pipelines pass `base = cwd` to `repopath.RepoRelTarget`.
+    `runEnclose` must not copy that step: tool output is repo-relative, and the consumer joins bare names with the package path itself.
+    The usage text says so on the `enclose` line.
   - Output: `RenderEncloseJSON` of the whole batch on stdout.
   - Exit codes: 0 whenever the batch was answered, whatever the per-item statuses (a batch has no single negative answer, like `delta`); a whole-call failure goes through `fail` with the `codeForDeltaError` mapping (unknown revision, not a repository, root not top level → 2; anything else → 3).
   - `Run(args, stdout, stderr)` keeps its signature and delegates to a new unexported `run(args, stdin, stdout, stderr)` with `os.Stdin`; tests call `run` with a `strings.Reader`.
@@ -207,15 +224,15 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
 
 TDD candidates: the location-spelling parser, the innermost selection, the line-count function, and the rejection-order table — all pure.
 
-- **Facade parser (table test):** `path:N`, `path:N-M`, `path:N:C`, a path containing `:` (e.g. `C:\x\a.go:12`), empty path, missing line, non-numeric, overflow, `-` without an end.
-- **Engine, working tree (scratch tree fixture):** single line; multi-line range spanning two top-level members (found, two symbols, source order); a line in an interface method; a range over an interface head plus a method (both); a line inside a closure; a line inside a doc comment; a `const (` line (not_found + `unit`); an import block line (not_found + `unit` = `<file>#`); a lossy file (`lossy: true`, not rejected); a range ending past EOF; an empty file; a `_test.go` member (unit is the `_test` unit for an external test package); a gitignored file named explicitly; every rejection reason including `unreadable` (symlink, invalid UTF-8) and `bad_location`; a nil and an empty target slice; duplicate targets answered twice.
+- **Facade parser (table test):** `path:N`, `path:N-M`, `path:N:C` (explicitly `a.go:12:5` → `a.go`, 12, 12), a path containing `:` (e.g. `C:\x\a.go:12`), empty path, missing line, non-numeric, overflow, `-` without an end.
+- **Engine, working tree (scratch tree fixture):** single line; multi-line range spanning two top-level members (found, two symbols, source order); a line in an interface method; a range over an interface head plus a method (both); a line inside a closure; a line inside a doc comment; a `const (` line (not_found + `unit`); an import block line (not_found + `unit` = `<file>#`); a lossy file (`lossy: true`, not rejected); a range ending past EOF; an empty file; a `_test.go` member (unit is the `_test` unit for an external test package); a gitignored file named explicitly; every rejection reason including `unreadable` (symlink, invalid UTF-8) and `bad_location`; a root-level `.go` file (`unaddressable`, no `unit`, never not_found); a path segment with a space (`unaddressable`); an unreadable directory or `.gitignore` beside a good location in the same batch (the bad item is rejected, the good one answered, no whole-call error); a nil and an empty target slice; duplicate targets answered twice.
 - **Build count:** N locations in one file → `builds[file] == 1`; locations in two files of one directory → each built once; the same at a revision.
   Needs an unexported worker taking the memo (the `resolve`/`unitMemo` pattern) so the test can read `builds`.
 - **Coverage verifier:** panics on length mismatch and on a `Target` mismatch.
-- **Revision (git fixture repo, as `quarry/delta_test.go` builds one):** `--rev` mapping where the working tree has shifted the member's lines (rev answer has the old lines and the right glyph; working-tree answer differs); a file absent at the rev → `missing_file`; unknown rev → whole-call error matching `ErrUnknownRevision`; a directory whose dominant clause differs at the rev → unit from the rev's vote.
+- **Revision (git fixture repo, as `quarry/delta_test.go` builds one):** `--rev` mapping where the working tree has shifted the member's lines (rev answer has the old lines and the right glyph; working-tree answer differs); a file absent at the rev → `missing_file`; unknown rev → whole-call error matching `ErrUnknownRevision`; a directory whose dominant clause differs at the rev → unit from the rev's vote; a root-level `.go` file at the rev → `unaddressable`, matching the working-tree answer.
 - **Facade:** absolute path inside the root; path outside the root; `./a/../a/b.go` normalised; `EncloseReasons` is the engine's own slice; `Enclose` equals `EncloseAt("")`.
 - **repopath:** existing tests updated to the engine sentinels (or kept on `quarry` aliases — same values).
-- **CLI:** args form; `--stdin` (including blank lines and `\r\n`); both/neither is exit 2; `--text` with `enclose` is exit 2; `--rev` on another verb is exit 2; a bare `go test` file name → `missing_file` with exit 0; `path:line:col` input; unknown `--rev` → exit 2 with the error envelope; golden JSON under `internal/cli/testdata/enclose/` against a scratch fixture tree (the `name_golden_test.go` payload-only pattern), not the pinned Loomyard checkout.
+- **CLI:** args form; `--stdin` (including blank lines and `\r\n`); both/neither is exit 2; `--text` with `enclose` is exit 2; `--rev` on another verb is exit 2; a bare `go test` file name → `missing_file` with exit 0; `path:line:col` input; a run from a subdirectory with a repo-relative path (resolved against the root, not the cwd); unknown `--rev` → exit 2 with the error envelope; golden JSON under `internal/cli/testdata/enclose/` against a scratch fixture tree (the `name_golden_test.go` payload-only pattern), not the pinned Loomyard checkout.
 
 ## Q&A log
 
@@ -229,3 +246,5 @@ TDD candidates: the location-spelling parser, the innermost selection, the line-
 - **Q:** CLI exit code when some items are not_found or rejected? **A:** [auto-pick] 0 whenever the batch was answered; whole-call failures use the `delta` mapping. **Why:** a batch has no single negative answer; per-item status lives in the JSON.
 - **Q:** How does the CLI read stdin without churning every `Run` test call? **A:** [auto-pick] `Run` delegates to an unexported `run(args, stdin, stdout, stderr)`. **Why:** no signature change for `main.go` or existing tests.
 - **Q:** Support `--text` for `enclose`? **A:** [auto-pick] No; `--text` is a usage error for this verb. **Why:** the requirement asks for JSON only.
+- **Q:** (review r1) What answers a location in a repository-root file, whose unit `unitFor(".")` is the unspellable `""`? **A:** [auto-pick] A new rejection reason `unaddressable`, gated by `unitSpellable` identically on both paths before stamping; the path-unspellable case moves from `bad_location` to it. **Why:** a silent not_found would lie about a line inside a real function, and stamping would mint IDs `glyph.Parse` rejects.
+- **Q:** (review r1) Can an `r.toc` error for one file fail the working-tree call? **A:** [auto-pick] No — not-found/vanished maps to `missing_file`, every other `r.toc` error to `unreadable`. **Why:** requirement 1, one bad item never fails the call.
