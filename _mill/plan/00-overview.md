@@ -3,7 +3,7 @@
 ```yaml
 task: 'Enclose: path:line ranges -> enclosing member glyphs (batch, at revision, CLI verb)'
 slug: enclose-locations
-approved: false
+approved: true
 discussion_sha: 95c7ff4d97a44cec9b772c29785898a6503d0e81
 started: 20261008-063251
 parent_branch: main
