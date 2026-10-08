@@ -86,3 +86,44 @@ func TestEncloseResult_JSONKeyOrder(t *testing.T) {
 		last = idx
 	}
 }
+
+// TestInnermostSymbols covers the innermost rule over hand-built spans.
+func TestInnermostSymbols(t *testing.T) {
+	t.Parallel()
+	sym := func(id string, start, end int) Symbol { return Symbol{ID: id, Start: start, End: end} }
+	iface := sym("p#I", 10, 14)
+	ifaceMethodA := sym("p#I.A", 11, 11)
+	ifaceMethodB := sym("p#I.B", 13, 13)
+	tests := []struct {
+		name       string
+		candidates []Symbol
+		start, end int
+		want       []string
+	}{
+		{"OneLineInOneFunction", []Symbol{sym("p#F", 1, 5), sym("p#G", 7, 9)}, 3, 3, []string{"p#F"}},
+		{"RangeSpanningTwoMembers", []Symbol{sym("p#G", 7, 9), sym("p#F", 1, 5)}, 4, 8, []string{"p#F", "p#G"}},
+		{"InterfaceMethodLine", []Symbol{iface, ifaceMethodA, ifaceMethodB}, 13, 13, []string{"p#I.B"}},
+		{"InterfaceHeadPlusMethod", []Symbol{iface, ifaceMethodA, ifaceMethodB}, 10, 11, []string{"p#I", "p#I.A"}},
+		{"InterfaceLineBetweenMethods", []Symbol{iface, ifaceMethodA, ifaceMethodB}, 12, 12, []string{"p#I"}},
+		{"ReceiverMethodOutsideTypeSpan", []Symbol{sym("p#T", 1, 3), sym("p#T.M", 5, 8)}, 2, 6, []string{"p#T", "p#T.M"}},
+		{"OneLineInterface", []Symbol{sym("p#I", 4, 4), sym("p#I.M", 4, 4)}, 4, 4, []string{"p#I", "p#I.M"}},
+		{"TouchesNothing", []Symbol{sym("p#F", 1, 5)}, 6, 7, nil},
+		{"DuplicateReturnedOnce", []Symbol{sym("p#F", 1, 5), sym("p#F", 1, 5)}, 2, 2, []string{"p#F"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := innermostSymbols(tt.candidates, tt.start, tt.end)
+			if got == nil {
+				t.Fatalf("innermostSymbols(...) = nil; want a non-nil slice")
+			}
+			ids := make([]string, 0, len(got))
+			for _, s := range got {
+				ids = append(ids, s.ID)
+			}
+			if strings.Join(ids, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("innermostSymbols(..., %d, %d) = %v; want %v", tt.start, tt.end, ids, tt.want)
+			}
+		})
+	}
+}
