@@ -43,3 +43,9 @@ batches:
     state: pending
     verify_baseline_failures: []
 ```
+
+## Inferred-success log
+
+```text
+'2026-10-08T07:04:35Z'  engine-enclose  round 1
+```
