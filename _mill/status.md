@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planned
+phase: implementing
 slug: enclose-locations
 branch: enclose-locations
 plan: _mill/plan
@@ -24,4 +24,17 @@ plan-fix-r1  '2026-10-08T06:49:03Z'
 plan-review-r2  '2026-10-08T06:58:02Z'
 plan-fix-r2  '2026-10-08T06:58:57Z'
 planned  '2026-10-08T06:59:08Z'
+implementing  '2026-10-08T06:59:28Z'
+```
+
+## Batches
+
+```yaml
+batches:
+  - name: engine-enclose
+    state: pending
+  - name: facade-enclose
+    state: pending
+  - name: cli-enclose
+    state: pending
 ```
