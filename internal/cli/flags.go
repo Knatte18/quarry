@@ -71,11 +71,10 @@ var glyphsPreset = []string{"--view", "glyphs", "--depth", "all", "--symbols"}
 // with help set and a nil error, so help wins over every other complaint.
 //
 // The verb gate accepts exactly "toc", "glyphs", "resolve", "expand", "delta", "enclose" and
-// "name". --depth,
-// --symbols, --no-symbols and --view are valid for "toc" only; --from and --to are valid for
-// "delta" only; --rev and --stdin are valid for "enclose" only, --rev requiring a non-empty value;
-// --unit is valid for "name" only, and is required there: a "name" invocation with no
-// --unit is rejected with a usage error naming the missing flag rather than the verb. Every other
+// "name". --depth, --symbols, --no-symbols and --view are valid for "toc" only; --from and --to
+// are valid for "delta" only; --rev and --stdin are valid for "enclose" only, --rev requiring a
+// non-empty value; --unit is valid for "name" only, and is required there: a "name" invocation
+// with no --unit is rejected with a usage error naming the missing flag rather than the verb. Every other
 // verb rejects a flag outside its own scope with a usage error naming the flag and the verb,
 // checked at the point the flag is recognised so that rejection takes precedence over the flag's
 // own value validation. --view's own vocabulary is closed at exactly two values, "full" and
@@ -85,9 +84,8 @@ var glyphsPreset = []string{"--view", "glyphs", "--depth", "all", "--symbols"}
 // but "name", "enclose" included) only, since "name" reads nothing from the filesystem. Every verb
 // but "enclose" requires exactly one target; "enclose" takes either one or more positional
 // locations or --stdin, never both and never neither, and holds the locations in req.targets.
-// parseArgs classifies none of them further — whether "expand"'s target
-// contains a "#" is the grammar's question, not this parser's, so parseArgs stays pure over the
-// argument slice — no root discovery, no engine call — with nothing left in its own table test
+// parseArgs classifies none of them further — whether "expand"'s target contains a "#" is the
+// grammar's question, not this parser's, so parseArgs stays pure over the argument slice — no root discovery, no engine call — with nothing left in its own table test
 // that depended on rejecting a bare path here.
 //
 // "glyphs" is a frozen preset over "toc": once its own pre-rewrite validation (see the branch

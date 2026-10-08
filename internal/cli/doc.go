@@ -11,7 +11,7 @@
 //
 // Every verb has a pipeline of its own except "glyphs". "toc" takes a repository-relative or
 // cwd-relative path — a directory or a file. "glyphs" takes the same repository-relative or
-// cwd-relative path "toc" takes, but it is not a sixth pipeline: parseArgs rewrites it to a frozen
+// cwd-relative path "toc" takes, but it has no pipeline of its own: parseArgs rewrites it to a frozen
 // "toc" expansion (--view glyphs --depth all --symbols), so it reaches exactly the same parsing,
 // the same dispatch and the same renderers, and nothing below the parser knows the verb "glyphs"
 // ever existed. "resolve" takes a glyph only, including a self glyph naming a whole unit. "expand"

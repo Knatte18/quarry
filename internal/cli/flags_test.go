@@ -328,11 +328,11 @@ func TestParseArgs_SingleDashHole(t *testing.T) {
 	}
 }
 
-// TestParseArgs_FiveVerbGate pins that all six verbs are accepted, with no target-shape rejection
-// for the verbs that do not require one. The name is unchanged from when the gate accepted three,
-// then four, verbs; the table below is what now asserts six. Unlike the other five rows, whose
-// req.verb is the verb they were given, the "glyphs" row's req.verb is "toc" after the rewrite —
-// stated here so a reader comparing the rows does not mistake it for a bug.
+// TestParseArgs_FiveVerbGate pins that every verb in the table is accepted, with no target-shape
+// rejection for the verbs that do not require one. The name is historical; the table is the
+// authority on which verbs the gate covers. Unlike the other rows, whose req.verb is the verb they
+// were given, the "glyphs" row's req.verb is "toc" after the rewrite — stated here so a reader
+// comparing the rows does not mistake it for a bug.
 func TestParseArgs_FiveVerbGate(t *testing.T) {
 	tests := []struct {
 		name string
@@ -345,6 +345,7 @@ func TestParseArgs_FiveVerbGate(t *testing.T) {
 		{"expand", []string{"expand", "t#u"}, "expand"},
 		{"delta", []string{"delta", "--from", "HEAD", "t"}, "delta"},
 		{"name", []string{"name", "--unit", "u", "t"}, "name"},
+		{"enclose", []string{"enclose", "t:1"}, "enclose"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -372,10 +373,10 @@ func TestParseArgs_ExpandAcceptsHashBearingTarget(t *testing.T) {
 	}
 }
 
-// TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs pins that --text is accepted on every verb,
-// while --root is accepted on the five repository verbs only, unlike --depth, --symbols and
-// --no-symbols, which are toc only, --from and --to, which are delta only, and --unit, which name
-// alone requires.
+// TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs pins that --text is accepted on every verb
+// in the table below and rejected for enclose, while --root is accepted on the repository verbs
+// only, unlike --depth, --symbols and --no-symbols, which are toc only, --from and --to, which are
+// delta only, and --unit, which name alone requires.
 func TestParseArgs_TextOnEveryVerbRootOnRepositoryVerbs(t *testing.T) {
 	tests := []struct {
 		name string

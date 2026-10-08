@@ -103,6 +103,7 @@ batches:
 - `internal/repopath/doc.go`
 - `internal/repopath/target.go`
 - `internal/repopath/target_test.go`
+- `quarry/doc.go`
 - `quarry/enclose.go`
 - `quarry/enclose_test.go`
 - `quarry/quarry.go`

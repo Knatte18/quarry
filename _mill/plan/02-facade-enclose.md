@@ -47,6 +47,7 @@ It is one batch because the repopath change exists only to unblock the facade fi
   - `internal/engine/enclose.go`
   - `internal/engine/answer.go`
 - **Edits:**
+  - `quarry/doc.go`
   - `quarry/quarry.go`
   - `quarry/quarry_test.go`
   - `quarry/render.go`
