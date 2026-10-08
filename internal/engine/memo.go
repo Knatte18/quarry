@@ -5,6 +5,7 @@
 package engine
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,8 +20,10 @@ import (
 // Symbols carry the placeholder unit "" and no File;
 // consumers stamp a copy through stampSymbols, never the record itself.
 type fileRecord struct {
-	// err is the read, UTF-8 or parse failure text; every other field is then unset.
+	// err is the read, UTF-8 or parse failure text; every other field except lines is then unset.
 	err string
+	// lines is the file's line count, set on every record whose read succeeded.
+	lines int
 	// header is the file's final header text.
 	header string
 	// parsed reports that a registered strategy parsed the file without a treesitter.WithTree error.
@@ -63,6 +66,8 @@ type fileMemo struct {
 	// Each build performs at most one tree-sitter parse, so a count of at most 1 per file means at
 	// most one parse per file.
 	builds map[string]int
+	// read is the byte source every record build reads through, keyed by repository-relative file path.
+	read func(rel string) ([]byte, error)
 }
 
 // newFileMemo builds an empty fileMemo for r.
@@ -75,21 +80,39 @@ func newFileMemo(r *Repo, allSymbols bool) *fileMemo {
 		records:    make(map[string]*fileRecord),
 		votes:      make(map[string]dirVote),
 		builds:     make(map[string]int),
+		read: func(rel string) ([]byte, error) {
+			dir, base := splitDirBase(rel)
+			return os.ReadFile(filepath.Join(r.absDir(dir), base))
+		},
 	}
+}
+
+// lineCount returns the number of lines in src:
+// each newline ends one, and a non-empty final line without a newline counts as one more.
+// An empty src has zero lines.
+func lineCount(src []byte) int {
+	count := bytes.Count(src, []byte{'\n'})
+	if len(src) > 0 && src[len(src)-1] != '\n' {
+		count++
+	}
+	return count
 }
 
 // buildRecord reads and parses base inside dirRel once and returns everything extraction needs from it:
 // header, flags, package clause, package doc and, when withSymbols, symbols under the placeholder unit "".
-// A read failure, invalid UTF-8 or a failed parse yields a record holding only err;
-// a file with no language or strategy yields a record holding only its header.
-func (r *Repo) buildRecord(dirRel, base string, withSymbols bool) *fileRecord {
+// The bytes come from read, called with the file's repository-relative path.
+// A read failure, invalid UTF-8 or a failed parse yields a record holding only err
+// (and lines, when the bytes were read);
+// a file with no language or strategy yields a record holding only its header and lines.
+func (r *Repo) buildRecord(dirRel, base string, withSymbols bool, read func(rel string) ([]byte, error)) *fileRecord {
 	rec := &fileRecord{withSymbols: withSymbols}
 
-	src, err := os.ReadFile(filepath.Join(r.absDir(dirRel), base))
+	src, err := read(joinRel(dirRel, base))
 	if err != nil {
 		rec.err = err.Error()
 		return rec
 	}
+	rec.lines = lineCount(src)
 	if !utf8.Valid(src) {
 		rec.err = fmt.Sprintf("engine: %s: not valid UTF-8", joinRel(dirRel, base))
 		return rec
@@ -120,6 +143,7 @@ func (r *Repo) buildRecord(dirRel, base string, withSymbols bool) *fileRecord {
 		return rec
 	}
 
+	parsedRec.lines = rec.lines
 	parsedRec.withSymbols = withSymbols
 	parsedRec.parsed = true
 	parsedRec.lang = lang
@@ -138,7 +162,7 @@ func (m *fileMemo) record(dirRel, base string, wantSymbols bool) *fileRecord {
 		return rec
 	}
 	m.builds[path]++
-	rec := m.repo.buildRecord(dirRel, base, m.allSymbols || wantSymbols)
+	rec := m.repo.buildRecord(dirRel, base, m.allSymbols || wantSymbols, m.read)
 	m.records[path] = rec
 	return rec
 }
