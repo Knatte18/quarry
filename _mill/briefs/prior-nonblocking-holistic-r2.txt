@@ -1,0 +1,3 @@
+- A verb tally survives in cli/doc.go: "it is not a sixth pipeline" keeps the count that card 10 asked to remove.
+- flags_test.go comments and gate table not updated for enclose: stale counts in comments and a missing enclose row in the verb gate table.
+- Comment formatting residue from the edits: parseArgs and Open doc comments wrapped unevenly.
