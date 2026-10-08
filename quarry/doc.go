@@ -6,10 +6,13 @@
 // The engine's types, plus this package's own projected and convenience answer types, are what a
 // caller reaches through these queries: every type reached through TOC, Resolve, Expand, Delta,
 // Name and Enclose is an alias for an engine type, and those queries add no filtering, re-shaping or
-// defaulting of their own — which is why the aliases work at all. The queries are methods on Repo,
+// defaulting to the answer itself — which is why the aliases work at all. The queries are methods on Repo,
 // except Name, which is a package-level function because the maker performs no I/O and needs no
-// repository receiver — "queries" is the word that covers both shapes. TOC, Resolve, Expand, Delta
-// and Enclose delegate to the engine unchanged, and Name keeps that same posture. Glyphs is a method
+// repository receiver — "queries" is the word that covers both shapes. TOC, Resolve, Expand and
+// Delta delegate to the engine unchanged, and Name keeps that same posture. Enclose also hands its
+// answer type back from the engine, but first parses the location spelling, normalises paths and
+// applies the four file-free rejection checks, so it is another place this package adds behaviour
+// of its own. Glyphs is a method
 // for the same reason TOC is — it reads the repository — but it does not delegate to the engine
 // unchanged: it is TOC under frozen options followed by a pure projection, GlyphView, which is one
 // place this package adds behaviour of its own rather than only re-shaping. The git-backed
