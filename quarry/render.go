@@ -1,11 +1,9 @@
-// render.go declares the JSON renderers the facade exports: RenderJSON, RenderResolveJSON,
-// RenderExpandJSON, RenderDeltaJSON and RenderNameJSON, five of the six successful envelopes,
-// sharing one unexported encoder configuration in renderJSON, and RenderErrorJSON, the failure
-// envelope. The sixth successful envelope, RenderGlyphsJSON, shares that same renderJSON
-// configuration but is declared in quarry/view.go, alongside the glyphs view's own answer type and
-// shadow envelope, rather than here. All are package-level functions rather than methods, per the
-// overview's alias-types-carry-no-methods decision — DirAnswer, ResolveResult, ExpandAnswer and
-// NameResult are aliases for engine types, and GitDeltaAnswer is a facade type embedding one, and Go
+// render.go declares the JSON renderers the facade exports for the query answers, all sharing one
+// unexported encoder configuration in renderJSON, and RenderErrorJSON, the failure envelope.
+// RenderGlyphsJSON shares that same renderJSON configuration but is declared in quarry/view.go,
+// alongside the glyphs view's own answer type and shadow envelope, rather than here. All are
+// package-level functions rather than methods, per the overview's alias-types-carry-no-methods
+// decision — the answer types are aliases for engine types or facade types embedding one, and Go
 // forbids a method declared here from binding to any of them.
 
 package quarry
@@ -89,6 +87,16 @@ func RenderDeltaJSON(a GitDeltaAnswer) ([]byte, error) {
 // batch, so a slice renderer would have no caller on either side.
 func RenderNameJSON(r NameResult) ([]byte, error) {
 	return renderJSON(r)
+}
+
+// RenderEncloseJSON encodes results, one enclose answer per requested location, as a successful JSON
+// envelope: a JSON array with the same byte contract as RenderJSON. A nil results renders as an
+// empty array, so the output is "[]" and a newline.
+func RenderEncloseJSON(results []EncloseResult) ([]byte, error) {
+	if results == nil {
+		results = []EncloseResult{}
+	}
+	return renderJSON(results)
 }
 
 // RenderErrorJSON encodes msg as the compact failure envelope {"ok":false,"error":"<msg>"} followed

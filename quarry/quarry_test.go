@@ -39,6 +39,18 @@ func TestFacadeVocabulariesAreEngineValues(t *testing.T) {
 		}
 	})
 
+	t.Run("EncloseReasonsIsEngineEncloseReasons", func(t *testing.T) {
+		if len(EncloseReasons) != len(engine.EncloseReasons) {
+			t.Fatalf("len(EncloseReasons) = %d; want %d", len(EncloseReasons), len(engine.EncloseReasons))
+		}
+		if len(EncloseReasons) == 0 {
+			t.Fatal("EncloseReasons is empty; want a non-empty slice to compare addresses against")
+		}
+		if &EncloseReasons[0] != &engine.EncloseReasons[0] {
+			t.Error("&EncloseReasons[0] != &engine.EncloseReasons[0]; want the engine's own slice, not a copy")
+		}
+	})
+
 	t.Run("MethodsReachableThroughAliasedTypes", func(t *testing.T) {
 		// This is a compile-level assertion first: Status("found").Known() and
 		// ResolveResult{}.Rejected() only compile if the aliased types carry the engine's methods.

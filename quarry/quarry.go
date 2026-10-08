@@ -58,8 +58,8 @@ type ResolveResult = engine.ResolveResult
 // expand verb's answer shape nameable without an import of internal/engine.
 type ExpandAnswer = engine.ExpandAnswer
 
-// Status is an alias for engine.Status, the closed per-entry vocabulary both ResolveResult and
-// ExpandAnswer draw from, for the same reason DirAnswer is.
+// Status is an alias for engine.Status, the closed per-entry vocabulary the engine's per-target
+// result types draw from, for the same reason DirAnswer is.
 type Status = engine.Status
 
 // NotATypeError is an alias for engine.NotATypeError, not a re-declaration, so that
@@ -73,7 +73,7 @@ type NotATypeError = engine.NotATypeError
 // imports the engine — the same transitivity argument NotATypeError's own doc comment makes above.
 type SelfGlyphError = engine.SelfGlyphError
 
-// The four Status values a resolve or expand query ever emits, aliased from the engine so a caller
+// The four Status values the per-target queries ever emit, aliased from the engine so a caller
 // can name them without importing internal/engine.
 const (
 	// StatusFound marks exactly one matching declaration.
@@ -237,3 +237,34 @@ const (
 // vocabulary and the engine's own test are reading one slice, for the same reason the error-sentinel
 // vars above are the engine's own values.
 var NameReasons = engine.NameReasons
+
+// EncloseResult is an alias for engine.EncloseResult, not a defined type, for the same reason
+// Declaration is: it makes the enclose query's per-location answer nameable without importing
+// internal/engine.
+type EncloseResult = engine.EncloseResult
+
+// The eight rejection reasons of an enclose location, in the order the checks run, aliased from the
+// engine so a caller can name them without importing internal/engine.
+const (
+	// EncloseReasonBadLocation marks a target that is not path:line, path:line-line or path:line:col.
+	EncloseReasonBadLocation = engine.EncloseReasonBadLocation
+	// EncloseReasonBadRange marks a range whose start is below 1 or after its end.
+	EncloseReasonBadRange = engine.EncloseReasonBadRange
+	// EncloseReasonOutsideRoot marks a path that normalises outside the repository root.
+	EncloseReasonOutsideRoot = engine.EncloseReasonOutsideRoot
+	// EncloseReasonUnaddressable marks a file whose members no glyph can name.
+	EncloseReasonUnaddressable = engine.EncloseReasonUnaddressable
+	// EncloseReasonUnsupportedLanguage marks a file whose extension has no registered language strategy.
+	EncloseReasonUnsupportedLanguage = engine.EncloseReasonUnsupportedLanguage
+	// EncloseReasonMissingFile marks a path with no regular file behind it.
+	EncloseReasonMissingFile = engine.EncloseReasonMissingFile
+	// EncloseReasonUnreadable marks a file that exists but cannot be read as source.
+	EncloseReasonUnreadable = engine.EncloseReasonUnreadable
+	// EncloseReasonPastEOF marks a range ending after the file's last line.
+	EncloseReasonPastEOF = engine.EncloseReasonPastEOF
+)
+
+// EncloseReasons is the engine's own EncloseReasons value, not a copy, so a caller enumerating the
+// vocabulary and the engine's own test are reading one slice, for the same reason NameReasons is the
+// engine's own value.
+var EncloseReasons = engine.EncloseReasons
