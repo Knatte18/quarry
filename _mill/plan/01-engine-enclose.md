@@ -106,7 +106,6 @@ It is one batch because every card edits or reads the same handful of engine fil
 
 - **Context:**
   - `_mill/discussion.md`
-  - `internal/engine/toc.go`
   - `internal/engine/walk.go`
   - `internal/engine/memo.go`
   - `internal/engine/repo.go`
@@ -121,6 +120,7 @@ It is one batch because every card edits or reads the same handful of engine fil
   - `glyph/glyph.go`
 - **Edits:**
   - `internal/engine/enclose.go`
+  - `internal/engine/toc.go`
 - **Creates:**
   - `internal/engine/enclose_worktree_test.go`
 - **Deletes:** none
@@ -145,6 +145,8 @@ It is one batch because every card edits or reads the same handful of engine fil
     Every rejection after step 1 carries `Target`, `File`, `Start` and `End`; no rejection carries `Unit`.
     `Error` texts follow the overview's "rejection message texts" Shared Decision.
   - Keep the per-location answer assembly (steps 4–5 and the rejection shapes) in helpers the revision path in card 5 reuses, so the two paths answer a file outcome identically.
+  - In `internal/engine/toc.go`, rewrite `toc`'s doc comment sentence "Resolve's self path calls it with its own call-wide memo so a file already built earlier in the call is not parsed again" so it names the subsystem rather than one caller: the engine's multi-target verbs call it with their own call-wide memo so a file already built earlier in the call is not parsed again.
+    No code in `toc.go` changes.
   - `Enclose`'s doc comment states the positional contract, the one-build-per-file guarantee, that nothing outlives the call, and that the working-tree limits are documented on the facade's `Enclose`.
   - Tests in `enclose_worktree_test.go`, against scratch trees, covering every working-tree case the discussion's "Testing" section lists under "Engine, working tree" and "Build count" (working-tree half) and "Coverage verifier":
     single line; a range over two top-level members; an interface method line; an interface head plus a method; a closure line; a doc-comment line; a `const (` line (not_found with `unit`); an import-block line (not_found, `unit` equal to `<file>#`); a lossy file; a range ending past EOF; an empty file; a `_test.go` member of an external test package (the `_test` unit); an explicitly named gitignored file whose inclusion changes the directory's vote, located alone and after another location in the same directory (unit from that call's `DirAnswer.Package`); a one-line interface; `a.go/b.go:1` (`missing_file`); `unsupported_language`, `missing_file`, `unreadable` for a symlink and for invalid UTF-8, and `past_eof`; a pre-rejected `Location` passed through unchanged; a root-level `.go` file (unit-half `unaddressable`, no `unit`); an unreadable directory and an unreadable `.gitignore` beside a good location in the same batch (the bad item rejected, the good one answered, nil error); nil and empty input; duplicate locations answered twice;

@@ -58,6 +58,7 @@ It is one batch because the repopath change exists only to unblock the facade fi
 - **Requirements:**
   - In `quarry/quarry.go`, add `type EncloseResult = engine.EncloseResult`, a const block aliasing the eight `EncloseReason*` constants under the same names, and `var EncloseReasons = engine.EncloseReasons`, each documented in the file's existing alias style (the slice documented as the engine's own value, as `NameReasons` is).
     Rewrite the doc comment of the `Status` alias so it names the subsystem ("the engine's per-target result types") rather than "both ResolveResult and ExpandAnswer".
+    Rewrite the comment above the `StatusFound`… const block, "The four Status values a resolve or expand query ever emits", the same way: it names the per-target queries as a group, not resolve and expand.
   - In `quarry/render.go`, add `func RenderEncloseJSON(results []EncloseResult) ([]byte, error)`: a nil `results` is replaced by an empty slice so the output is `[]\n`, then it returns `renderJSON(results)`.
     Rewrite the file header comment so it no longer counts the renderers ("five of the six successful envelopes"): name the shared `renderJSON` configuration and where each renderer lives without a tally.
   - In `quarry/repo.go`, rewrite `Open`'s doc comment so the git exception names the methods that take a revision (the git-backed convenience methods, `DeltaGit` and `EncloseAt`) rather than `DeltaGit` alone.

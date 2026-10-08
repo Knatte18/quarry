@@ -1,0 +1,38 @@
+MILL_REVIEW_BEGIN
+# Review: Enclose: path:line ranges -> enclosing member glyphs (batch, at revision, CLI verb) — holistic
+
+```yaml
+verdict: REQUEST_CHANGES
+reviewer_model: opushigh
+reviewed_file: plan/
+date: 2026-10-08
+```
+
+## Findings
+
+### [BLOCKING:scope] Stale caller/tally doc comments not enumerated
+**Location:** Card 10 (also cards 4, 7, 9).
+**Issue:** The discussion's "Path normalisation" decision requires rewriting every caller-enumerating doc the new verb stales, but the plan names only the sites the discussion listed, and several more become false.
+In `internal/cli/doc.go`: "input is interpreted where the user is" (enclose paths are root-relative), "six verbs, though only five pipelines", and the closing paragraph's "toc and delta ... explicit error for both" / "the two that take a path" (enclose answers a `#` path as `unaddressable`).
+In `internal/cli/cli.go`, `Run`'s doc and the dispatch `default` comment say "four repository verbs".
+In `internal/engine/toc.go`, the `toc` doc names Resolve's self path as the memo-sharing caller.
+The `parseGlyphsArgs` doc lists its rejected flags, and card 9 adds `--rev`/`--stdin` to that list.
+`quarry/quarry.go` has "The four Status values a resolve or expand query ever emits".
+**Fix:** Name each of these comments in the owning card's Requirements (adding `internal/engine/toc.go` to card 4's Edits), with the instruction to name the subsystem, not the callers.
+
+### [BLOCKING:scope] Card 11 calls `run` without cli.go in Context
+**Location:** Batch 3 / Card 11.
+**Issue:** The Requirements say to run "one `run` invocation", but `run` is declared in `internal/cli/cli.go`, which is in neither card 11's Context nor its Edits.
+**Fix:** Add `internal/cli/cli.go` to Context, or specify the call through card 10's `runCLIStdin` helper in `enclose_test.go`.
+
+### [NIT:consistency] Usage root-relative note placement differs from discussion
+**Location:** Batch 3 / Card 10.
+**Issue:** The discussion's "CLI verb" decision says "The usage text says so on the `enclose` line", but card 10 puts the root-relative statement in a separate block.
+The overview's first Shared Decision resolves such disagreements in the discussion's favour.
+**Fix:** Put the root-relative note on the `enclose` usage line, or record the deviation explicitly.
+
+## Verdict
+
+REQUEST_CHANGES
+Two scope gaps: stale doc comments not enumerated, and card 11 missing `run`'s file in Context.
+MILL_REVIEW_END
