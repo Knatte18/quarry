@@ -32,7 +32,10 @@ func (e usageError) Error() string { return string(e) }
 // empty string already meaning the working tree, so a present-but-empty state would have no way to
 // reach it and no defined behaviour if it did. unit holds the --unit value exactly as given, empty
 // when the flag was absent. view holds the --view value exactly as given, empty when the flag was
-// absent, which means the same thing as "full".
+// absent, which means the same thing as "full". targets holds the enclose verb's locations in the
+// order given, and is nil for every other verb. rev holds the enclose verb's --rev value exactly as
+// given, empty when the flag was absent, which means the working tree. stdin records whether the
+// enclose verb's --stdin flag was given.
 type request struct {
 	verb    string
 	target  string
@@ -45,6 +48,9 @@ type request struct {
 	help    bool
 	from    string
 	to      string
+	targets []string
+	rev     string
+	stdin   bool
 }
 
 // glyphsPreset is the frozen expansion `quarry glyphs <target>` rewrites to: --view glyphs,
@@ -64,18 +70,22 @@ var glyphsPreset = []string{"--view", "glyphs", "--depth", "all", "--symbols"}
 // flag, missing verb, or unrecognised verb is rejected: when found, parseArgs returns a request
 // with help set and a nil error, so help wins over every other complaint.
 //
-// The verb gate accepts exactly "toc", "glyphs", "resolve", "expand", "delta" and "name". --depth,
+// The verb gate accepts exactly "toc", "glyphs", "resolve", "expand", "delta", "enclose" and
+// "name". --depth,
 // --symbols, --no-symbols and --view are valid for "toc" only; --from and --to are valid for
-// "delta" only; --unit is valid for "name" only, and is required there: a "name" invocation with no
+// "delta" only; --rev and --stdin are valid for "enclose" only, --rev requiring a non-empty value;
+// --unit is valid for "name" only, and is required there: a "name" invocation with no
 // --unit is rejected with a usage error naming the missing flag rather than the verb. Every other
 // verb rejects a flag outside its own scope with a usage error naming the flag and the verb,
 // checked at the point the flag is recognised so that rejection takes precedence over the flag's
 // own value validation. --view's own vocabulary is closed at exactly two values, "full" and
 // "glyphs"; an absent --view means "full", and any other value is a usage error rather than a
 // silent fallback to the complete answer, which is the whole point of the closed set. --text is
-// valid for every verb, while --root is valid for the five repository verbs (toc, glyphs, resolve,
-// expand and delta) only, since "name" reads nothing from the filesystem. Every verb requires
-// exactly one target; parseArgs classifies none of them further — whether "expand"'s target
+// valid for every verb but "enclose", while --root is valid for the repository verbs (every verb
+// but "name", "enclose" included) only, since "name" reads nothing from the filesystem. Every verb
+// but "enclose" requires exactly one target; "enclose" takes either one or more positional
+// locations or --stdin, never both and never neither, and holds the locations in req.targets.
+// parseArgs classifies none of them further — whether "expand"'s target
 // contains a "#" is the grammar's question, not this parser's, so parseArgs stays pure over the
 // argument slice — no root discovery, no engine call — with nothing left in its own table test
 // that depended on rejecting a bare path here.
@@ -106,15 +116,16 @@ func parseArgs(args []string) (request, error) {
 		}
 	}
 
+	const noVerbMessage = "no verb given; expected: toc, glyphs, resolve, expand, delta, enclose, or name"
 	if len(args) == 0 {
-		return request{}, usageError("no verb given; expected: toc, glyphs, resolve, expand, delta, or name")
+		return request{}, usageError(noVerbMessage)
 	}
 
 	verb := args[0]
 	if strings.HasPrefix(verb, "-") {
-		return request{}, usageError("no verb given; expected: toc, glyphs, resolve, expand, delta, or name")
+		return request{}, usageError(noVerbMessage)
 	}
-	if verb != "toc" && verb != "glyphs" && verb != "resolve" && verb != "expand" && verb != "delta" && verb != "name" {
+	if verb != "toc" && verb != "glyphs" && verb != "resolve" && verb != "expand" && verb != "delta" && verb != "enclose" && verb != "name" {
 		return request{}, usageError(fmt.Sprintf("unknown verb: %s", verb))
 	}
 
@@ -198,7 +209,27 @@ func parseArgs(args []string) (request, error) {
 			f := false
 			req.symbols = &f
 		case "--text":
+			if verb == "enclose" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
 			req.text = true
+		case "--rev":
+			if verb != "enclose" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
+			v, ok := nextValue()
+			if !ok {
+				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
+			}
+			if v == "" {
+				return request{}, usageError(fmt.Sprintf("%s value must not be empty", name))
+			}
+			req.rev = v
+		case "--stdin":
+			if verb != "enclose" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
+			req.stdin = true
 		case "--root":
 			if verb == "name" {
 				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
@@ -260,6 +291,17 @@ func parseArgs(args []string) (request, error) {
 		}
 	}
 
+	if verb == "enclose" {
+		if req.stdin && len(targets) > 0 {
+			return request{}, usageError("enclose takes locations as arguments or --stdin, not both")
+		}
+		if !req.stdin && len(targets) == 0 {
+			return request{}, usageError("enclose requires at least one location or --stdin")
+		}
+		req.targets = targets
+		return req, nil
+	}
+
 	if len(targets) != 1 {
 		return request{}, usageError(fmt.Sprintf("%s takes exactly one target, got %d", verb, len(targets)))
 	}
@@ -282,7 +324,7 @@ func parseArgs(args []string) (request, error) {
 //
 // The walk uses the same index-based loop shape and the same strings.Cut(tok, "=")-on-the-first-"="
 // splitting parseArgs's own main loop uses. A token not beginning with "-" is counted as a target.
-// --view, --depth, --symbols, --no-symbols and --unit are each rejected with the existing
+// --view, --depth, --symbols, --no-symbols, --unit, --rev and --stdin are each rejected with the existing
 // "%s is not valid for %s" format, naming "glyphs" rather than "toc", so
 // "quarry glyphs --depth 1 x" says "--depth is not valid for glyphs", never "toc". --text is
 // accepted and takes no value. --root is accepted and consumes its value the same way the main
@@ -325,7 +367,7 @@ func parseGlyphsArgs(rest []string) (request, error) {
 		}
 
 		switch name {
-		case "--view", "--depth", "--symbols", "--no-symbols", "--unit":
+		case "--view", "--depth", "--symbols", "--no-symbols", "--unit", "--rev", "--stdin":
 			return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, "glyphs"))
 		case "--text":
 			// Accepted, and takes no value.
