@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: planning
+phase: plan-review-r1
 slug: enclose-locations
 branch: enclose-locations
 plan: _mill/plan
@@ -19,4 +19,5 @@ discussion-fix-r5  '2026-10-08T06:22:23Z'
 discussion-fix-r6  '2026-10-08T06:27:04Z'
 discussed  '2026-10-08T06:27:04Z'
 planning  '2026-10-08T06:38:29Z'
+plan-review-r1  '2026-10-08T06:48:32Z'
 ```
