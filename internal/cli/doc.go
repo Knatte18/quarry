@@ -6,9 +6,10 @@
 //
 // This package is the only layer with a working directory — internal/engine deliberately
 // performs no git discovery and no cwd resolution — and the two path frames never mix: input is
-// interpreted where the user is, output is always repository-root relative with forward slashes.
+// interpreted where the user is, except for the paths in enclose locations, which are repository-root
+// relative; output is always repository-root relative with forward slashes.
 //
-// The command has six verbs, though only five pipelines. "toc" takes a repository-relative or
+// Every verb has a pipeline of its own except "glyphs". "toc" takes a repository-relative or
 // cwd-relative path — a directory or a file. "glyphs" takes the same repository-relative or
 // cwd-relative path "toc" takes, but it is not a sixth pipeline: parseArgs rewrites it to a frozen
 // "toc" expansion (--view glyphs --depth all --symbols), so it reaches exactly the same parsing,
@@ -16,16 +17,18 @@
 // ever existed. "resolve" takes a glyph only, including a self glyph naming a whole unit. "expand"
 // takes a glyph only. "delta" takes a path target and two revisions, and reports the symbol-table
 // difference between the two versions of that target the two revisions name. "name" takes a
-// declaration head, which is neither a path nor a glyph.
+// declaration head, which is neither a path nor a glyph. "enclose" takes path:line locations and
+// reports the members enclosing each, at a revision or in the working tree.
 //
 // A target is handed to the facade verbatim, with no path arithmetic and no stat ever applied to
 // it, whenever the verb does not take a path. This is because a glyph's unit is repository-relative
 // by the grammar's own definition — cwd arithmetic on it would corrupt it, the same way rebasing a
 // remote URL against a local directory would — and because a declaration head is neither a path nor
-// a glyph, so no path arithmetic applies to it either. "toc" and "delta" are the two verbs that
-// still take a path, and they are the two verbs this package still converts with
-// internal/repopath before the engine sees the target — still true, and now true for a second
-// spelling of "toc", since "glyphs" is rewritten to "toc" before parseArgs ever returns.
+// a glyph, so no path arithmetic applies to it either. The verbs that take a single path target
+// are the ones this package converts with internal/repopath before the engine sees the target,
+// including "glyphs", which is rewritten to "toc" before parseArgs ever returns. "enclose" takes
+// locations whose paths the facade resolves against the repository root, so this package applies
+// no cwd-relative conversion to them.
 //
 // The failure envelope's "ok" key, present only on the failure path and always false there, marks
 // that quarry could not answer the query at all — a usage error, an internal error, or a
@@ -44,6 +47,7 @@
 // exactly as it would any other malformed input. "toc" and "delta" take a path only, and a "#" in
 // any segment of that path is an explicit error for both — internal/repopath.RepoRelTarget returns
 // quarry.ErrTargetHasSeparator rather than reclassifying the target as a glyph. The grammar's
-// separator rule holds everywhere a target is taken: at the two verbs that read one as a glyph, and
-// at the two that take a path instead.
+// separator rule holds everywhere a target is taken: at the verbs that read one as a glyph, and at
+// the verbs that take a path instead. "enclose" answers a "#" in a path segment as an
+// "unaddressable" item, not as a usage error.
 package cli

@@ -25,6 +25,9 @@ usage:
   quarry resolve <glyph> [--text] [--root <path>]
   quarry expand <glyph> [--text] [--root <path>]
   quarry delta <target> --from <rev> [--to <rev>] [--text] [--root <path>]
+  quarry enclose (<location>... | --stdin) [--rev <rev>] [--root <path>]
+    a location is path:line, path:line-line or path:line:col; its path is relative to the
+    repository root, not the working directory
   quarry name <declaration> --unit <unit> [--text]
 
 flags:
@@ -35,7 +38,9 @@ flags:
   --no-symbols      toc only: leave every file entry's symbols unpopulated
   --from <rev>      delta only: the before-side revision (required)
   --to <rev>        delta only: the after-side revision (default: the working tree)
-  --text            emit the lossless text view instead of JSON
+  --rev <rev>       enclose only: answer at this revision instead of the working tree
+  --stdin           enclose only: read one location per line from standard input
+  --text            emit the lossless text view instead of JSON, not valid for enclose
   --root <path>     use <path> as the repository root instead of discovering one, not valid for name
   --unit <unit>     name only: the glyph unit the declaration will belong to
   -h, --help        print this text and exit 0

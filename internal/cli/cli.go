@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/internal/repopath"
@@ -210,7 +211,7 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 
 // Run is the whole of the quarry command below os.Exit. args is os.Args[1:]. It executes two
 // steps every verb shares, then either the name verb's own early return or two further steps
-// shared by the four repository verbs, then dispatches to that verb's own pipeline — the step
+// shared by the repository verbs, then dispatches to that verb's own pipeline — the step
 // that decides an exit code is the step that decides the message, so the two things are never
 // allowed to drift apart within any one pipeline. "glyphs" never reaches this switch: parseArgs has
 // already rewritten it to "toc" before Run ever sees the request, so req.verb is "toc" for both
@@ -226,7 +227,7 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 // perfectly computable — a failure with no relationship to the question asked. See runName's own
 // doc comment for its numbered pipeline.
 //
-// For the four repository verbs, Run continues:
+// For the repository verbs, Run continues:
 //
 //  3. Read the working directory. This is the one place in the package that does.
 //  4. Resolve the repository root by calling internal/repopath.ResolveRoot, --root or discovery,
@@ -235,10 +236,10 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     CLI's own usage sentence by rootUsageMessage, which keeps repopath's own namespaced sentinel
 //     text out of the CLI's contract.
 //
-// Run then switches on req.verb and calls one of runTOC, runResolve, runExpand, or runDelta —
+// Run then switches on req.verb and calls that verb's own runX pipeline —
 // name never reaches this switch, having already returned above. The default case returns
 // exitInternal with an internal-error message rather than falling through to a zero exit code;
-// it is unreachable for every word other than the four repository verbs, because parseArgs
+// it is unreachable for every word other than the repository verbs, because parseArgs
 // already rejects any other verb as a usage error before Run ever sees it.
 //
 // runTOC's own pipeline, continuing from step 4 above:
@@ -336,6 +337,23 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //  5. Render: quarry.RenderDeltaText under --text, quarry.RenderDeltaJSON otherwise. A render
 //     error, or a failed write of its bytes to stdout, is exit 3.
 //
+// runEnclose's own pipeline, continuing from step 4 above, takes the root and the standard input
+// but no base directory: location paths are repository-root relative, never working-directory
+// relative.
+//
+//  1. Collect the locations: req.targets, or, under --stdin, the whole of standard input split on
+//     newlines with each line trimmed and blank lines skipped. A read error is the internal code.
+//  2. Pass the locations to the facade verbatim: no path conversion and no stat, because the facade
+//     resolves each path against the root and answers a malformed one as that item's rejection.
+//  3. Open the repository, which fails as exit 3, then call the facade's EncloseAt method with
+//     req.rev. A whole-call error maps through codeForDeltaError, with quarry's own sentences for an
+//     unknown revision, a root that is not the repository top level and a root that is not a git
+//     repository, each with usage on stderr, spelled from the aliased typed errors as runDelta's are;
+//     anything else is the internal code carrying the wrapped message.
+//  4. Render with quarry.RenderEncloseJSON and write it to stdout; a render or write error is exit 3.
+//     Every per-item status, rejections included, is the success code, since a complete batch
+//     answer must not look like a failure to a shell gate.
+//
 // runName's own pipeline, taking no root and no base directory:
 //
 //  1. Call quarry.Name with a one-element slice holding quarry.Declaration{Unit: req.unit, Decl:
@@ -367,6 +385,12 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 // by internal/engine or another internal package, so quarry is still spelling the condition
 // itself rather than leaking one of the internal names this rule guards against.
 func Run(args []string, stdout, stderr io.Writer) int {
+	return run(args, os.Stdin, stdout, stderr)
+}
+
+// run is Run with standard input injected, so tests can feed the enclose verb's --stdin without
+// replacing the process's own.
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	req, err := parseArgs(args)
 	if err != nil {
 		var uerr usageError
@@ -417,8 +441,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runExpand(req, root, stdout, stderr)
 	case "delta":
 		return runDelta(req, root, base, stdout, stderr)
+	case "enclose":
+		return runEnclose(req, root, stdin, stdout, stderr)
 	default:
-		// Unreachable for every word other than the four repository verbs this switch holds
+		// Unreachable for every word other than the repository verbs this switch holds
 		// cases for: parseArgs already rejects any other verb as a usage error before Run ever
 		// sees it, and "name" never reaches this switch, having already returned above.
 		return fail(stdout, stderr, exitInternal, "internal error: unknown verb: "+req.verb, false)
@@ -634,6 +660,58 @@ func runDelta(req request, root, base string, stdout, stderr io.Writer) int {
 	}
 
 	out, err := quarry.RenderDeltaJSON(answer)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	if _, err := stdout.Write(out); err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+	return exitOK
+}
+
+// runEnclose is the enclose verb's own pipeline, continuing from Run's shared four steps. It takes
+// no base directory, because the facade resolves every location's path against the root. See Run's
+// doc comment for the numbered steps this function executes in fixed order.
+func runEnclose(req request, root string, stdin io.Reader, stdout, stderr io.Writer) int {
+	locations := req.targets
+	if req.stdin {
+		input, err := io.ReadAll(stdin)
+		if err != nil {
+			return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+		}
+		locations = nil
+		for _, line := range strings.Split(string(input), "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				locations = append(locations, line)
+			}
+		}
+	}
+
+	repo, err := quarry.Open(root)
+	if err != nil {
+		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
+	}
+
+	results, err := repo.EncloseAt(req.rev, locations)
+	if err != nil {
+		var revErr *quarry.UnknownRevisionError
+		if errors.As(err, &revErr) {
+			msg := "enclose: unknown revision " + revErr.Rev
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+		}
+		var topErr *quarry.RootNotTopLevelError
+		if errors.As(err, &topErr) {
+			msg := "enclose: root " + topErr.Root + " is not the repository top level (top level is " + topErr.TopLevel + ")"
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+		}
+		if errors.Is(err, quarry.ErrNotARepository) {
+			msg := "enclose: root is not a git repository: " + root
+			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+		}
+		return fail(stdout, stderr, codeForDeltaError(err), "internal error: "+err.Error(), false)
+	}
+
+	out, err := quarry.RenderEncloseJSON(results)
 	if err != nil {
 		return fail(stdout, stderr, exitInternal, "internal error: "+err.Error(), false)
 	}
