@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: implementing
+phase: approved-engine-enclose
 slug: enclose-locations
 branch: enclose-locations
 plan: _mill/plan
@@ -25,6 +25,7 @@ plan-review-r2  '2026-10-08T06:58:02Z'
 plan-fix-r2  '2026-10-08T06:58:57Z'
 planned  '2026-10-08T06:59:08Z'
 implementing  '2026-10-08T06:59:28Z'
+approved-engine-enclose  '2026-10-08T07:04:40Z'
 ```
 
 ## Batches
@@ -32,9 +33,10 @@ implementing  '2026-10-08T06:59:28Z'
 ```yaml
 batches:
   - name: engine-enclose
-    state: running
+    state: approved
     implementer_session: 1eebe090-6037-4d4d-8625-a8182850f50d
     start_sha: 5a351077292a5c52175baa2d6e46aa4d4817aaf6
+    commit_sha: 2b979a6364440ea82d20fa26260235d2fde5ab84
     verify_baseline_failures: []
   - name: facade-enclose
     state: pending
@@ -43,7 +45,6 @@ batches:
     state: pending
     verify_baseline_failures: []
 ```
-
 ## Inferred-success log
 
 ```text
