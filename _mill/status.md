@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: done
+phase: pr-pending
 slug: enclose-locations
 branch: enclose-locations
 plan: _mill/plan
@@ -35,6 +35,7 @@ holistic-fixing  '2026-10-08T07:16:42Z'
 nits-fixed-holistic  '2026-10-08T07:17:18Z'
 holistic-approved  '2026-10-08T07:17:21Z'
 done  '2026-10-08T07:17:38Z'
+pr-pending  '2026-10-08T07:17:57Z'
 ```
 
 ## Batches
