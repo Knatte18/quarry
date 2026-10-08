@@ -533,3 +533,49 @@ func TestRenderErrorJSON(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderEncloseJSON pins that a nil and an empty batch both render as an empty array and that a
+// one-result batch renders with two-space indent and the declared key order.
+func TestRenderEncloseJSON(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		results []EncloseResult
+	}{
+		{"Nil", nil},
+		{"Empty", []EncloseResult{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := RenderEncloseJSON(tt.results)
+			if err != nil {
+				t.Fatalf("RenderEncloseJSON() error = %v", err)
+			}
+			if string(got) != "[]\n" {
+				t.Errorf("RenderEncloseJSON() = %q; want %q", got, "[]\n")
+			}
+		})
+	}
+
+	t.Run("OneResult", func(t *testing.T) {
+		t.Parallel()
+		got, err := RenderEncloseJSON([]EncloseResult{{
+			Target:  "a.go:3",
+			File:    "a.go",
+			Start:   3,
+			End:     3,
+			Status:  StatusFound,
+			Symbols: []Symbol{{ID: "a.go#F", Kind: KindFunction, Start: 1, End: 5, Signature: "func F()"}},
+			Lossy:   true,
+		}})
+		if err != nil {
+			t.Fatalf("RenderEncloseJSON() error = %v", err)
+		}
+		s := string(got)
+		if !strings.HasPrefix(s, "[\n  {\n    \"target\": \"a.go:3\",\n") {
+			t.Errorf("RenderEncloseJSON() = %s; want two-space indent starting with the target key", s)
+		}
+		assertKeyOrder(t, s, []string{`"target"`, `"file"`, `"start"`, `"end"`, `"status"`, `"symbols"`, `"lossy"`})
+	})
+}

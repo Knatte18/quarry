@@ -44,8 +44,8 @@ func (r *Repo) TOC(target string, opts TOCOptions) (DirAnswer, error) {
 }
 
 // toc is TOC's memo-aware worker: it answers exactly as TOC does, reading and parsing each file
-// through m. Resolve's self path calls it with its own call-wide memo so a file already built
-// earlier in the call is not parsed again.
+// through m. The engine's multi-target verbs call it with their own call-wide memo so a file already
+// built earlier in the call is not parsed again.
 func (r *Repo) toc(target string, opts TOCOptions, m *fileMemo) (DirAnswer, error) {
 	rel, info, err := r.resolveTarget(target)
 	if err != nil {

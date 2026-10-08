@@ -28,10 +28,9 @@ const (
 	KindVar Kind = "var"
 )
 
-// Status is the closed per-entry vocabulary of docs/glyph.md §5, shared by ResolveResult's Status
-// and Unit keys and by ExpandAnswer's. The Unit key of both result types draws from this same type
-// but only ever carries StatusFound or StatusNotFound, so the package holds one vocabulary rather
-// than two overlapping ones.
+// Status is the closed per-entry vocabulary of docs/glyph.md §5, shared by the engine's per-target
+// result types. A result type's unit key drawn from it only ever carries StatusFound or
+// StatusNotFound, so the package holds one vocabulary rather than two overlapping ones.
 type Status string
 
 // The four Status values docs/glyph.md §5 defines. No other value is valid.

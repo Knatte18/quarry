@@ -1,0 +1,130 @@
+[
+  {
+    "target": "pkg/a.go:5",
+    "file": "pkg/a.go",
+    "start": 5,
+    "end": 5,
+    "status": "found",
+    "symbols": [
+      {
+        "id": "pkg#Make",
+        "kind": "function",
+        "file": "pkg/a.go",
+        "start": 3,
+        "sigend": 4,
+        "end": 6,
+        "signature": "func Make() Widget",
+        "doc": "Make builds a Widget."
+      }
+    ]
+  },
+  {
+    "target": "pkg/a.go:6-8",
+    "file": "pkg/a.go",
+    "start": 6,
+    "end": 8,
+    "status": "found",
+    "symbols": [
+      {
+        "id": "pkg#Make",
+        "kind": "function",
+        "file": "pkg/a.go",
+        "start": 3,
+        "sigend": 4,
+        "end": 6,
+        "signature": "func Make() Widget",
+        "doc": "Make builds a Widget."
+      },
+      {
+        "id": "pkg#Shape",
+        "kind": "type",
+        "file": "pkg/a.go",
+        "start": 8,
+        "sigend": 9,
+        "end": 12,
+        "signature": "type Shape interface",
+        "doc": "Shape is implemented by drawable things."
+      }
+    ]
+  },
+  {
+    "target": "pkg/a.go:9-11",
+    "file": "pkg/a.go",
+    "start": 9,
+    "end": 11,
+    "status": "found",
+    "symbols": [
+      {
+        "id": "pkg#Shape",
+        "kind": "type",
+        "file": "pkg/a.go",
+        "start": 8,
+        "sigend": 9,
+        "end": 12,
+        "signature": "type Shape interface",
+        "doc": "Shape is implemented by drawable things."
+      },
+      {
+        "id": "pkg#Shape.Area",
+        "kind": "method",
+        "file": "pkg/a.go",
+        "start": 10,
+        "end": 11,
+        "signature": "Area() float64",
+        "doc": "Area reports the covered area."
+      }
+    ]
+  },
+  {
+    "target": "pkg/a.go:19",
+    "file": "pkg/a.go",
+    "start": 19,
+    "end": 19,
+    "status": "not_found",
+    "unit": "pkg/a.go#"
+  },
+  {
+    "target": "pkg/a.go:99",
+    "file": "pkg/a.go",
+    "start": 99,
+    "end": 99,
+    "error": "range ends past end of file: end 99, file has 22 lines",
+    "reason": "past_eof"
+  },
+  {
+    "target": "pkg/missing.go:1",
+    "file": "pkg/missing.go",
+    "start": 1,
+    "end": 1,
+    "error": "file not found: pkg/missing.go",
+    "reason": "missing_file"
+  },
+  {
+    "target": "docs/notes.md:1",
+    "file": "docs/notes.md",
+    "start": 1,
+    "end": 1,
+    "error": "unsupported language: docs/notes.md",
+    "reason": "unsupported_language"
+  },
+  {
+    "target": "root.go:1",
+    "file": "root.go",
+    "start": 1,
+    "end": 1,
+    "error": "file's glyph unit cannot be spelled: root.go",
+    "reason": "unaddressable"
+  },
+  {
+    "target": "not a location",
+    "error": "not a location: want path:line, path:line-line or path:line:col: not a location",
+    "reason": "bad_location"
+  },
+  {
+    "target": "pkg/a.go:5-3",
+    "start": 5,
+    "end": 3,
+    "error": "bad range: start 5 must be at least 1 and not after end 3",
+    "reason": "bad_range"
+  }
+]
