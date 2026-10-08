@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: plan-review-r2
+phase: plan-fix-r2
 slug: enclose-locations
 branch: enclose-locations
 plan: _mill/plan
@@ -22,4 +22,5 @@ planning  '2026-10-08T06:38:29Z'
 plan-review-r1  '2026-10-08T06:48:32Z'
 plan-fix-r1  '2026-10-08T06:49:03Z'
 plan-review-r2  '2026-10-08T06:58:02Z'
+plan-fix-r2  '2026-10-08T06:58:57Z'
 ```

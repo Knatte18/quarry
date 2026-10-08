@@ -37,7 +37,7 @@ It is one batch because the parser, pipeline and usage text change together and 
     For `enclose`, the "exactly one target" check is replaced by: `--stdin` together with any positional location is `enclose takes locations as arguments or --stdin, not both`; neither is `enclose requires at least one location or --stdin`; otherwise `req.targets` holds the positional locations.
     Every other verb's parsing is unchanged.
   - In `parseGlyphsArgs`, reject `--rev` and `--stdin` with the existing `%s is not valid for %s` message naming `glyphs`, and add both flags to the list of rejected flags in `parseGlyphsArgs`'s doc comment.
-  - Update `parseArgs`'s doc comment to state the enclose verb's flags and its many-targets rule.
+  - Update `parseArgs`'s doc comment to state the enclose verb's flags and its many-targets rule, and rewrite its existing sentences the new verb makes false, naming verbs as a group rather than listing or counting them: "The verb gate accepts exactly ... delta and name" (the gate now also accepts enclose), "--text is valid for every verb" (not for enclose), "--root is valid for the five repository verbs (toc, glyphs, resolve, expand and delta)" (the repository verbs, enclose included) and "Every verb requires exactly one target" (every verb but enclose).
   - In `internal/cli/flags_test.go`, update the two expected "no verb given" strings in `TestParseArgs_UsageErrors`, and add a table test `TestParseArgs_Enclose` covering: several positional locations in order; `--stdin` alone; `--rev` in both spellings; `--root`; both positional and `--stdin`; neither; `--text`; an empty `--rev` (`--rev ""` and `--rev=`); `--rev` and `--stdin` on `toc`, `resolve`, `delta` and `glyphs`.
 - **Commit:** `feat(cli): parse the enclose verb`
 
@@ -71,7 +71,7 @@ It is one batch because the parser, pipeline and usage text change together and 
        A whole-call error maps exactly as `runDelta`'s does, through `codeForDeltaError`, with the sentences `enclose: unknown revision <rev>`, `enclose: root <root> is not the repository top level (top level is <toplevel>)` and `enclose: root is not a git repository: <root>` built from `quarry.UnknownRevisionError`, `quarry.RootNotTopLevelError` and `quarry.ErrNotARepository` with usage on stderr, and anything else `internal error: <err>`.
     4. Write `quarry.RenderEncloseJSON(results)` to stdout (a render or write error is exit 3) and return `exitOK` whatever the per-item statuses.
     Extend `Run`'s doc comment with `runEnclose`'s numbered pipeline in the style of the existing per-verb paragraphs.
-    Every "four repository verbs" phrase in `cli.go` (in `Run`'s doc comment and in the dispatch switch's `default` comment) is rewritten to name the repository verbs as a group ("the repository verbs") rather than count them.
+    Every "four repository verbs" phrase in `cli.go` (in `Run`'s doc comment and in the dispatch switch's `default` comment) is rewritten to name the repository verbs as a group ("the repository verbs") rather than count them, and `Run`'s doc sentence "calls one of runTOC, runResolve, runExpand, or runDelta" is rewritten to say it calls the verb's own `runX` pipeline, without listing them.
   - In `internal/cli/usage.go`, add the usage line `quarry enclose (<location>... | --stdin) [--rev <rev>] [--root <path>]`, followed on that same usage entry by the statement that location paths are relative to the repository root, not the working directory (an indented continuation line directly under the `enclose` line is acceptable if the line would otherwise be too long), flag lines `--rev <rev>` ("enclose only: answer at this revision instead of the working tree") and `--stdin` ("enclose only: read one location per line from standard input"), and a note on `--text` that it is not valid for enclose.
     The `enclose` entry also names the three location spellings `path:line`, `path:line-line` and `path:line:col`.
     Keep the text ASCII only.
@@ -105,6 +105,7 @@ It is one batch because the parser, pipeline and usage text change together and 
     The run must exit 0, and its stdout bytes are compared with `testdata/enclose/batch.json`.
   - Generate `testdata/enclose/batch.json` with `go test ./internal/cli/ -run TestEncloseGolden -update`, read it, and confirm by eye that every entry's keys, statuses, reasons and error texts match the discussion and the overview's "rejection message texts" Shared Decision before committing it.
     The golden carries no absolute path: every location in the list is repository-relative.
+  - Before committing, run `golangci-lint run` from the repository root and fix every finding in files this plan touched, so the discussion's lint constraint holds at the end of the last batch (the effective `pipeline.done_gate` runs the same command again before the task is marked done).
 - **Commit:** `test(cli): pin the enclose JSON golden`
 
 ## Batch Tests
