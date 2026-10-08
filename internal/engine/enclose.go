@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"syscall"
@@ -346,4 +347,102 @@ func (r *Repo) worktreeFileOutcome(file string, m *fileMemo) fileOutcome {
 		candidates[i] = sym
 	}
 	return fileOutcome{candidates: candidates, lines: rec.lines, lossy: entry.Lossy}
+}
+
+// EncloseFrom answers each location in locs against the revision files exposes, positionally,
+// exactly as Enclose answers against the working tree:
+// element i answers locs[i], and a nil or empty locs yields an empty, non-nil slice.
+// The revision has no ignore set and no symlinks: every Go file files lists votes on its directory's package.
+//
+// The only whole-call failures are a GoFiles or Read error, which return a nil slice and that error;
+// every per-location problem is that item's rejection.
+// Each file is read and parsed at most once per call, and nothing built here outlives the call.
+// The asymmetries between a revision answer and a working-tree answer are documented on the facade's EncloseAt.
+func (r *Repo) EncloseFrom(files RevisionFiles, locs []Location) ([]EncloseResult, error) {
+	return r.encloseFrom(files, locs, newFileMemo(r, true))
+}
+
+// revisionDir is one directory at the revision: the base names it lists, their records and their clause vote.
+type revisionDir struct {
+	listed map[string]bool
+	recs   map[string]*fileRecord
+	vote   dirVote
+}
+
+// encloseFrom is EncloseFrom's worker.
+// It takes the memo so a test can read its build counts.
+func (r *Repo) encloseFrom(files RevisionFiles, locs []Location, m *fileMemo) ([]EncloseResult, error) {
+	// buildRecord turns every read failure into a record error,
+	// so the first failure is captured here to reach the caller as a whole-call error.
+	var readErr error
+	m.read = func(rel string) ([]byte, error) {
+		src, err := files.Read(rel)
+		if err != nil && readErr == nil {
+			readErr = err
+		}
+		return src, err
+	}
+
+	var callErr error
+	dirs := make(map[string]revisionDir)
+	loadDir := func(dir string) (revisionDir, bool) {
+		if d, ok := dirs[dir]; ok {
+			return d, true
+		}
+		paths, err := files.GoFiles(dir)
+		if err != nil {
+			callErr = err
+			return revisionDir{}, false
+		}
+		bases := make([]string, len(paths))
+		listed := make(map[string]bool, len(paths))
+		for i, p := range paths {
+			bases[i] = path.Base(p)
+			listed[bases[i]] = true
+		}
+		recs := m.dirRecords(dir, bases, func(string) bool { return true })
+		if readErr != nil {
+			callErr = readErr
+			return revisionDir{}, false
+		}
+		d := revisionDir{listed: listed, recs: recs, vote: m.dirVote(dir, recs, true)}
+		dirs[dir] = d
+		return d, true
+	}
+
+	results := make([]EncloseResult, len(locs))
+	outcomes := make(map[string]fileOutcome)
+	for i, loc := range locs {
+		results[i] = encloseLocation(loc, outcomes, func(file string) fileOutcome {
+			dir, base := splitDirBase(file)
+			d, ok := loadDir(dir)
+			if !ok {
+				return fileOutcome{}
+			}
+			return r.revisionFileOutcome(file, dir, base, d)
+		})
+		if callErr != nil {
+			return nil, callErr
+		}
+	}
+	verifyEncloseCoverage(locs, results)
+	return results, nil
+}
+
+// revisionFileOutcome examines base inside the revision directory d:
+// a base the revision does not list is missing, a record error is unreadable,
+// and an unspellable unit is unaddressable before any symbol is stamped.
+func (r *Repo) revisionFileOutcome(file, dir, base string, d revisionDir) fileOutcome {
+	if !d.listed[base] {
+		return rejectedFile(EncloseReasonMissingFile, fmt.Sprintf("file not found: %s", file))
+	}
+	rec := d.recs[base]
+	if rec.err != "" {
+		return unreadableFile(file, rec.err)
+	}
+	unit := unitFor(dir, d.vote.pkg, rec.clause)
+	if !r.unitSpellable(unit) {
+		return unspellableUnitFile(file)
+	}
+	return fileOutcome{candidates: stampSymbols(rec.symbols, unit, file), lines: rec.lines, lossy: rec.lossy}
 }
