@@ -181,12 +181,15 @@ func TestRunEnclose_Revision(t *testing.T) {
 		f := newDeltaCLIFixture(t)
 		f.writeAndCommit("pkg/a.go", encloseGoSource, "base")
 
-		code, stdout, _ := runCLIStdin([]string{"enclose", "--root", f.root, "--rev", "no-such-rev", "pkg/a.go:5"}, "")
+		code, stdout, stderr := runCLIStdin([]string{"enclose", "--root", f.root, "--rev", "no-such-rev", "pkg/a.go:5"}, "")
 		if code != exitUsage {
 			t.Fatalf("code = %d; want %d", code, exitUsage)
 		}
 		if got, want := failureEnvelope(t, stdout), "enclose: unknown revision no-such-rev"; got != want {
 			t.Errorf("envelope error = %q; want %q", got, want)
+		}
+		if got, want := stderr, "enclose: unknown revision no-such-rev\n"; got != want {
+			t.Errorf("stderr = %q; want the error sentence alone, with no usage text", got)
 		}
 	})
 

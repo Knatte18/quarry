@@ -329,8 +329,10 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //     the aliased typed error's own fields through type extraction rather than by parsing any
 //     message, exactly as runExpand's own two sentences already are: the revision sentence names
 //     the revision exactly as given, and the top-level sentence names both the root and the
-//     top-level git reported. Any other failure is the internal code carrying the wrapped message
-//     whole behind the existing internal-error prefix.
+//     top-level git reported. The unresolvable revision keeps the usage exit code but writes no
+//     usage text, since the invocation was well formed and the revision merely failed to resolve.
+//     Any other failure is the internal code carrying the wrapped message whole behind the
+//     existing internal-error prefix.
 //  4. A computed delta is always the success code — including an empty delta and including a
 //     batch in which some entries carry an error disposition, since either of those returning a
 //     failure code would make a complete answer look like a failure to a shell gate.
@@ -348,8 +350,10 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //  3. Open the repository, which fails as exit 3, then call the facade's EncloseAt method with
 //     req.rev. A whole-call error maps through codeForDeltaError, with quarry's own sentences for an
 //     unknown revision, a root that is not the repository top level and a root that is not a git
-//     repository, each with usage on stderr, spelled from the aliased typed errors as runDelta's are;
-//     anything else is the internal code carrying the wrapped message.
+//     repository, spelled from the aliased typed errors as runDelta's are; the unknown revision
+//     keeps exit 2 but writes no usage text, since it is a runtime failure rather than a malformed
+//     invocation, and the other two carry usage on stderr; anything else is the internal code
+//     carrying the wrapped message.
 //  4. Render with quarry.RenderEncloseJSON and write it to stdout; a render or write error is exit 3.
 //     Every per-item status, rejections included, is the success code, since a complete batch
 //     answer must not look like a failure to a shell gate.
@@ -638,7 +642,7 @@ func runDelta(req request, root, base string, stdout, stderr io.Writer) int {
 		var revErr *quarry.UnknownRevisionError
 		if errors.As(err, &revErr) {
 			msg := "delta: unknown revision " + revErr.Rev
-			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+			return fail(stdout, stderr, codeForDeltaError(err), msg, false)
 		}
 		var topErr *quarry.RootNotTopLevelError
 		if errors.As(err, &topErr) {
@@ -697,7 +701,7 @@ func runEnclose(req request, root string, stdin io.Reader, stdout, stderr io.Wri
 		var revErr *quarry.UnknownRevisionError
 		if errors.As(err, &revErr) {
 			msg := "enclose: unknown revision " + revErr.Rev
-			return fail(stdout, stderr, codeForDeltaError(err), msg, true)
+			return fail(stdout, stderr, codeForDeltaError(err), msg, false)
 		}
 		var topErr *quarry.RootNotTopLevelError
 		if errors.As(err, &topErr) {
