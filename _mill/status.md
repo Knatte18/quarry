@@ -39,7 +39,9 @@ batches:
     commit_sha: 2b979a6364440ea82d20fa26260235d2fde5ab84
     verify_baseline_failures: []
   - name: facade-enclose
-    state: pending
+    state: running
+    implementer_session: 1a85888d-4133-4dfe-a244-65b5229ac9da
+    start_sha: b4470d58fd89d907570419cda6c1fd1a4cfc49ce
     verify_baseline_failures: []
   - name: cli-enclose
     state: pending
