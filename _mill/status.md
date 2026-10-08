@@ -32,9 +32,14 @@ implementing  '2026-10-08T06:59:28Z'
 ```yaml
 batches:
   - name: engine-enclose
-    state: pending
+    state: running
+    implementer_session: 1eebe090-6037-4d4d-8625-a8182850f50d
+    start_sha: 5a351077292a5c52175baa2d6e46aa4d4817aaf6
+    verify_baseline_failures: []
   - name: facade-enclose
     state: pending
+    verify_baseline_failures: []
   - name: cli-enclose
     state: pending
+    verify_baseline_failures: []
 ```
