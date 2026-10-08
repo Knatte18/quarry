@@ -46,7 +46,9 @@ batches:
     commit_sha: 33376e86355bcfe1b2c6d6c4e700765056a826ac
     verify_baseline_failures: []
   - name: cli-enclose
-    state: pending
+    state: running
+    implementer_session: 0c609161-d8cd-4597-b513-d779171be8cc
+    start_sha: 86d878ae382eb9ae98efef990bcd5e0bafefe514
     verify_baseline_failures: []
 ```
 ## Inferred-success log
