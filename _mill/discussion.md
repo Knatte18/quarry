@@ -106,7 +106,8 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
      Every file directly under the repository root hits this (`unitFor(".")` returns `""`), as does a directory segment the alphabet rejects.
      Checked identically on both paths before any symbol is stamped, so neither path mints a unit `glyph.Parse` rejects and both answer the same file the same way.
   9. `past_eof` — End is greater than the file's line count.
-  An `unaddressable` rejection carries `file`, `start` and `end` but no `unit` (no glyph can name the file's members, and the item is rejected rather than not_found).
+  An `unaddressable` rejection carries `start`, `end` and, when normalisation produced one, `file`, but never `unit` (no glyph can name the file's members, and the item is rejected rather than not_found).
+  The `ErrTargetHasSeparator` case has no normalised path (`RepoRelTarget` returns `""` with that error), so it omits `file`, per the "filled whenever determined" rule.
 - Rationale: agreed decision 7 fixed five reasons but left three real inputs unanswered: an input string that is not a location at all (a stray line piped through `--stdin`), a file that exists but cannot be read as source, and a file whose members quarry's glyph contract cannot name (root-level files, unspellable segments).
   None may fail the whole call (requirement 1), and folding them into an existing reason would mislabel them: `missing_file` for a permission error tells the caller to fix the path, and a silent `not_found` for a line inside a real root-level function tells the caller the line is outside every member.
   `unaddressable` mirrors the walk's own rule (`unitSpellable`'s doc comment): emitting nothing is the honest answer to a name the contract cannot spell; here "nothing" must be a visible rejection, since Enclose is asked about one specific file.
@@ -134,7 +135,9 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
   `ErrTargetOutsideRepo` maps to `outside_root`; `ErrTargetHasSeparator` maps to `unaddressable`.
   A path normalising to `.` (the root itself) is `unaddressable` by check 4: `glyph.Self(glyph.Go, ".")` rejects the dot segment, and check 4 runs before the extension check.
   `internal/repopath/target.go` switches its import from `quarry` to `internal/engine` for the two sentinels, including the doc comments that name `quarry.ErrTargetOutsideRepo`/`quarry.ErrTargetHasSeparator`; its internal test `target_test.go` switches with it (see Testing).
-  The values are identical, so every `errors.Is` caller in the CLI and MCP server is unaffected; the package doc adds the facade as a third caller.
+  The values are identical, so every `errors.Is` caller in the CLI and MCP server is unaffected.
+  Doc comments that enumerate callers are updated in the same edit: `repopath`'s package doc, `repoRelTarget`'s doc ("toc and delta are the only two verbs", "an explicit error for both") and `RepoRelTarget`'s caller list in `target.go`, and `quarry.Open`'s doc in `quarry/repo.go`, which names `DeltaGit` as the only git exception (`EncloseAt` is a second).
+  Rewrite them to name the subsystem rather than list every caller, so the next caller does not stale them again.
   After the change, nothing under `internal/repopath` — code or tests — imports `quarry`.
 - Rationale: requirement 3 says reuse `internal/repopath`; today `repopath` imports `quarry`, so the facade importing it would cycle.
   Comparison is lexical against the root as opened; symlinked aliases of the root are not resolved (same as `toc`).
@@ -168,7 +171,13 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
     1. No ignore set applies at a revision: a tracked-and-gitignored `.go` file votes at the rev but not in the working tree, so if its deviating clause tips the vote, the unit minted at the rev differs from the working-tree unit and the glyph will not `Resolve` there.
     2. A symlink committed under a `.go` name yields its link text at the rev, which parses as garbage and answers like any other bytes, while the same symlink in the working tree is `unreadable`.
   - Distinct files and directories are processed once per call; results are assembled positionally and checked by `verifyEncloseCoverage` (panics on a length or `Target` mismatch, `verifyResolveCoverage`'s pattern).
-- Rationale: requirement 9 (one parse per file per call, memo reads through a byte source, nothing outlives the call); reusing `toc` keeps working-tree glyphs identical to what `toc`/`glyphs` mint so they round-trip through `Resolve`.
+  - Known working-tree limits, named in `Enclose`'s doc comment beside the revision asymmetries: Enclose mints exactly the glyphs `toc`/`glyphs` mint for the file, and `Resolve` does not find three of those cases, so a `found` answer there will not `Resolve`:
+    1. An explicitly named gitignored file: `symbolsOfDir` drops ignored entries, and the unit may come from a vote that includes the file, which `Resolve` never computes.
+    2. A parsed file with no package clause: `fileEntry` stamps its symbols, `symbolsOfDir` skips `!rec.hasClause`.
+    3. A path through a symlinked directory: `toc` answers it, `unitDirs`' `dirExists` (`Lstat`) does not.
+    These are the existing `toc`/`glyphs` versus `Resolve` gaps, inherited rather than introduced; rejecting them would mean restating `Resolve`'s filters inside Enclose, a second implementation of one rule.
+    All three are rare in tool output (a compiler error in a gitignored file, a file with no clause, a symlinked package path).
+- Rationale: requirement 9 (one parse per file per call, memo reads through a byte source, nothing outlives the call); reusing `toc` keeps working-tree glyphs identical to what `toc`/`glyphs` mint, which `Resolve` finds in every case except the three limits above.
 - Rejected: a Delta-style pure core where the facade reads all bytes (would duplicate the walk's ignore and vote rules for the working tree); calling `revisionClauseMap` (a second parse per file via `PackageClause`, breaking the one-build count).
 
 ### Facade surface
@@ -186,6 +195,7 @@ The agreed decisions from the task (status set, innermost rule, doc lines, lossy
 - Decision: `quarry enclose [--rev <rev>] [--root <path>] (<location>... | --stdin)`.
   - Positional args are the targets, in order; `--stdin` reads one location per line from standard input (trailing `\r` and surrounding whitespace trimmed, blank lines skipped).
     Giving both, or neither, is a usage error (exit 2).
+    Stdin is read whole with `io.ReadAll` and split on `\n`, so there is no line-length limit (no `bufio.Scanner` buffer cap); a read error goes through `fail` as `exitInternal` (3) with an `internal error:` message, like every other I/O failure.
     `--stdin` with empty input answers `[]` with exit 0.
   - `--rev` is valid for `enclose` only; `--stdin` for `enclose` only; `--text` is a usage error for `enclose` (no text view exists).
     `--root` works as for the other repository verbs.
@@ -259,3 +269,5 @@ TDD candidates: the location-spelling parser, the innermost selection, the line-
 - **Q:** (review r2) The vanished-target race in `fileTargetAnswer` has no sentinel — wrap one or accept `unreadable`? **A:** [auto-pick] Accept `unreadable`; leave `toc.go` unchanged. **Why:** wrapping would also change `toc`'s CLI exit code for the race, and the race is rare.
 - **Q:** (review r3) What does an `os.Lstat` error other than not-exist answer? **A:** [auto-pick] ENOTDIR is `missing_file`; any other `Lstat` error is `unreadable`. **Why:** no per-file whole-call error on the working-tree path.
 - **Q:** (review r3) What does a location on a one-line interface (type and method share a span) return? **A:** [auto-pick] Both, type first. **Why:** follows from the containment rule; no special case.
+- **Q:** (review r4) Working-tree `found` answers `Resolve` cannot find (explicit gitignored file, no package clause, symlinked directory) — reject or document? **A:** [auto-pick] Document as named limits in `Enclose`'s doc comment. **Why:** they are the existing `toc`/`glyphs` versus `Resolve` gaps; rejecting would restate `Resolve`'s filters in a second place.
+- **Q:** (review r4) How does `--stdin` handle a read error or a very long line? **A:** [auto-pick] `io.ReadAll` (no line cap); a read error is exit 3 via `fail`. **Why:** matches every other I/O failure in the CLI.
