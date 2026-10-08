@@ -99,6 +99,7 @@ batches:
 - `internal/engine/enclose_worktree_test.go`
 - `internal/engine/memo.go`
 - `internal/engine/memo_test.go`
+- `internal/engine/toc.go`
 - `internal/repopath/doc.go`
 - `internal/repopath/target.go`
 - `internal/repopath/target_test.go`
