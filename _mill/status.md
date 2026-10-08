@@ -1,7 +1,7 @@
 # Status
 
 ```yaml
-phase: holistic-fixing
+phase: holistic-reviewing
 slug: enclose-locations
 branch: enclose-locations
 plan: _mill/plan
@@ -30,6 +30,7 @@ approved-facade-enclose  '2026-10-08T07:07:47Z'
 approved-cli-enclose  '2026-10-08T07:10:53Z'
 holistic-reviewing  '2026-10-08T07:10:59Z'
 holistic-fixing  '2026-10-08T07:13:43Z'
+holistic-reviewing  '2026-10-08T07:15:00Z'
 ```
 
 ## Batches
