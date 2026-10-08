@@ -17,7 +17,7 @@ import (
 
 // locationPattern matches path:line, path:line-line and path:line:col. Its lazy path group takes
 // the shortest path that leaves a valid suffix, so a:12:5 is path a, line 12, column 5.
-var locationPattern = regexp.MustCompile("^(.+?):(\\d+)(?:-(\\d+)|:(\\d+))?$")
+var locationPattern = regexp.MustCompile(`^(.+?):(\d+)(?:-(\d+)|:(\d+))?$`)
 
 // parseLocation splits target into its path and line range.
 // path:N gives start = end = N, path:N-M gives start N and end M,
