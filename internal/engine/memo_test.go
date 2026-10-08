@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"errors"
 	"reflect"
 	"sort"
 	"strings"
@@ -255,5 +256,69 @@ func TestResolve_GitignoredExplicitTargetVote(t *testing.T) {
 
 			assertBuilds(t, m.files.builds, []string{"g/.gitignore", "g/a.go", "g/secret.go"})
 		})
+	}
+}
+
+// TestLineCount pins the line-count rule: each newline ends a line and a final unterminated line counts.
+func TestLineCount(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"Empty", "", 0},
+		{"OneUnterminated", "a", 1},
+		{"OneTerminated", "a\n", 1},
+		{"TwoUnterminated", "a\nb", 2},
+		{"LoneNewline", "\n", 1},
+		{"TrailingBlankLine", "a\n\n", 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := lineCount([]byte(tt.src)); got != tt.want {
+				t.Errorf("lineCount(%q) = %d; want %d", tt.src, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMemoRecord_ReadsThroughByteSource replaces the memo's byte source with a map-backed fake and
+// asserts the record is built from the fake's bytes, once.
+func TestMemoRecord_ReadsThroughByteSource(t *testing.T) {
+	t.Parallel()
+	r := openScratchRepo(t, "memo-read-seam", map[string]string{"pkg/a.go": "package onDisk\n"})
+	m := newFileMemo(r, true)
+	fake := map[string]string{"pkg/a.go": "// Package fake is faked.\npackage fake\n\nfunc F() {}\n"}
+	m.read = func(rel string) ([]byte, error) { return []byte(fake[rel]), nil }
+
+	rec := m.record("pkg", "a.go", true)
+
+	if rec.err != "" {
+		t.Fatalf("record err = %q; want none", rec.err)
+	}
+	if rec.clause != "fake" {
+		t.Errorf("record clause = %q; want %q", rec.clause, "fake")
+	}
+	if rec.lines != 4 {
+		t.Errorf("record lines = %d; want 4", rec.lines)
+	}
+	if m.builds["pkg/a.go"] != 1 {
+		t.Errorf("builds[pkg/a.go] = %d; want 1", m.builds["pkg/a.go"])
+	}
+}
+
+// TestMemoRecord_ByteSourceErrorBecomesRecordErr asserts a failing byte source yields an error record.
+func TestMemoRecord_ByteSourceErrorBecomesRecordErr(t *testing.T) {
+	t.Parallel()
+	r := openScratchRepo(t, "memo-read-seam-error", map[string]string{"pkg/a.go": "package pkg\n"})
+	m := newFileMemo(r, true)
+	m.read = func(rel string) ([]byte, error) { return nil, errors.New("blob unavailable") }
+
+	rec := m.record("pkg", "a.go", true)
+
+	if !strings.Contains(rec.err, "blob unavailable") {
+		t.Errorf("record err = %q; want it to carry %q", rec.err, "blob unavailable")
 	}
 }

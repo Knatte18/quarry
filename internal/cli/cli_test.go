@@ -1361,8 +1361,8 @@ func TestRun_Delta(t *testing.T) {
 		if envErr != want {
 			t.Errorf("error = %q; want %q", envErr, want)
 		}
-		if !strings.Contains(stderr, usageText) {
-			t.Errorf("stderr = %q; want it to carry the usage text", stderr)
+		if got, want := stderr, "delta: unknown revision does-not-exist-rev\n"; got != want {
+			t.Errorf("stderr = %q; want the error sentence alone, with no usage text", got)
 		}
 		if strings.Contains(envErr, "gitsrc:") {
 			t.Errorf("error = %q; must not carry git's own message", envErr)
