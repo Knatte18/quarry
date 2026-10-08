@@ -1,1 +1,0 @@
-- quarry/doc.go left stale and absent from every batch: **Location:** `quarry/doc.go:7-33`
