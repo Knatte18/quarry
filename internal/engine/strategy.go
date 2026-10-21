@@ -24,9 +24,11 @@ type Strategy interface {
 	// established once by the walk over every file in a directory, not a file-level one a single
 	// file's own content could establish. Symbols never descends into a function or method body —
 	// only container nodes (types, namespaces, classes) are walked for nested declarations. SigEnd
-	// is set per the language-specific derivation, or left zero for a symbol with no body. Symbols
-	// returns an empty, non-nil slice when the file has no listable declaration.
-	Symbols(unit string, root *ts.Node, src []byte) []Symbol
+	// is set per the language-specific derivation, or left zero for a symbol with no body.
+	// Symbols returns an empty, non-nil slice when the file has no listable declaration.
+	// Its second result lists the declarations the strategy minted an id for but must leave out.
+	// A symbol whose minted id fails glyph.Parse under the strategy's own language is never in the symbol slice and always in the dropped list.
+	Symbols(unit string, root *ts.Node, src []byte) ([]Symbol, []DroppedSymbol)
 
 	// Header returns the untruncated, delimiter-stripped prose of the file's first non-directive
 	// comment block, or "" when the file has none. First-paragraph truncation is the entry point's
@@ -59,6 +61,16 @@ type Strategy interface {
 	// toolchain or framework convention. See Generated's doc comment for why this has one return
 	// value rather than the (isTest, known) pair a language with no reliable rule would need.
 	TestFile(base string) bool
+}
+
+// DroppedSymbol is a declaration a Strategy minted an id for and left out of its symbol list because the id does not parse.
+// Err is the glyph.Parse error that rejected ID.
+// DeclStart and DeclEnd are the declaration's byte offsets under Symbol's DeclStart and DeclEnd contract, which a strategy fills for every dropped id.
+type DroppedSymbol struct {
+	ID        string
+	Err       error
+	DeclStart int
+	DeclEnd   int
 }
 
 // strategies is the unexported package-level registry: canonical language name to its registered

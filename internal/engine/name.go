@@ -131,7 +131,8 @@ func nameExtract(strategy Strategy, unit string, src []byte) (syms []Symbol, par
 	err = treesitter.WithTree("go", src, func(root *ts.Node, isPartial bool) error {
 		partial = isPartial
 		if !partial {
-			syms = append(syms, strategy.Symbols(unit, root, src)...)
+			minted, _ := strategy.Symbols(unit, root, src)
+			syms = append(syms, minted...)
 		}
 		return nil
 	})

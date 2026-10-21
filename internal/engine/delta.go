@@ -72,7 +72,7 @@ func (r *Repo) extractSide(strategy Strategy, lang, path, unit string, src []byt
 		if !spellable {
 			return nil
 		}
-		symbols := strategy.Symbols(unit, root, src)
+		symbols, _ := strategy.Symbols(unit, root, src)
 		for i := range symbols {
 			symbols[i].File = path
 		}

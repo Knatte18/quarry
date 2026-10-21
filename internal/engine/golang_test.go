@@ -43,7 +43,7 @@ func extractGo(t *testing.T, src string) goExtraction {
 	var got goExtraction
 	b := []byte(src)
 	err := treesitter.WithTree("go", b, func(root *ts.Node, partial bool) error {
-		got.Symbols = strategy.Symbols(testUnit, root, b)
+		got.Symbols, _ = strategy.Symbols(testUnit, root, b)
 		got.Header = strategy.Header(root, b)
 		got.Package = strategy.Package(root, b)
 		got.Partial = partial

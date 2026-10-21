@@ -134,7 +134,7 @@ func (r *Repo) buildRecord(dirRel, base string, withSymbols bool, read func(rel 
 		parsedRec.clause = strategy.Package(root, src)
 		parsedRec.packageDoc = strategy.PackageDoc(root, src)
 		if withSymbols {
-			parsedRec.symbols = strategy.Symbols("", root, src)
+			parsedRec.symbols, _ = strategy.Symbols("", root, src)
 		}
 		return nil
 	})

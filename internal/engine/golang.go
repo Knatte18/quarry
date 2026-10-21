@@ -40,7 +40,8 @@ func goBlank(name string) bool {
 // order and handles five child kinds — function_declaration, method_declaration, type_declaration,
 // const_declaration, and var_declaration — ignoring every other child. It never descends into a
 // "block", so a type_declaration or func literal nested inside a function body is never listed.
-func (goStrategy) Symbols(unit string, root *ts.Node, src []byte) []Symbol {
+// Every id it mints parses, so the dropped list is always nil.
+func (goStrategy) Symbols(unit string, root *ts.Node, src []byte) ([]Symbol, []DroppedSymbol) {
 	symbols := make([]Symbol, 0)
 	for i := uint(0); i < root.ChildCount(); i++ {
 		child := root.Child(i)
@@ -61,7 +62,7 @@ func (goStrategy) Symbols(unit string, root *ts.Node, src []byte) []Symbol {
 			symbols = append(symbols, goVarSymbols(unit, child, src)...)
 		}
 	}
-	return symbols
+	return symbols, nil
 }
 
 // goFunctionSymbol builds the KindFunction Symbol for a function_declaration node, or reports ok
