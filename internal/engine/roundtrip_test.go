@@ -43,8 +43,10 @@ type spanTuple struct {
 // signature and unit alone and uses lossy to assert that no symbol harvested from a partially parsed
 // file is present, rather than letting one silently fail its zero-misses check. The two existing
 // round trips ignore all three fields.
+// lang is the symbol's language, which decides how the lookup side finds its unit.
 type roundTripSymbol struct {
 	id        string
+	lang      glyph.Language
 	unit      string
 	tuple     spanTuple
 	signature string
@@ -66,6 +68,7 @@ func collectWalkSymbols(d DirAnswer, out *[]roundTripSymbol) {
 		for _, sym := range *fe.Symbols {
 			*out = append(*out, roundTripSymbol{
 				id:   sym.ID,
+				lang: sym.Glyph.Lang,
 				unit: sym.Glyph.Unit,
 				tuple: spanTuple{
 					File:   file,
@@ -157,25 +160,46 @@ func tupleSetDiff(want, got []spanTuple) (missing, extra []spanTuple) {
 // it: zero misses, zero extras. It returns every symbol the walk collected, so a caller that needs
 // to check something further about each one (TestRoundTrip_Loomyard's glyph.Parse round trip) does
 // not have to re-walk the tree to get it.
+//
+// Units are grouped by language as well: a Go unit is looked up through symbolsOfUnit as above,
+// and a C# unit through one scanCSharp result shared by every C# unit, built on first need.
 func assertSymbolRoundTrip(t *testing.T, r *Repo) []roundTripSymbol {
 	t.Helper()
 
 	walked := harvestWalkSymbols(t, r)
 
-	byUnit := make(map[string][]roundTripSymbol)
+	type languageUnit struct {
+		lang glyph.Language
+		unit string
+	}
+	byUnit := make(map[languageUnit][]roundTripSymbol)
 	for _, sym := range walked {
-		byUnit[sym.unit] = append(byUnit[sym.unit], sym)
+		key := languageUnit{lang: sym.lang, unit: sym.unit}
+		byUnit[key] = append(byUnit[key], sym)
 	}
 
 	files := newFileMemo(r, true)
-	for unit, walkSyms := range byUnit {
+	var scan *csharpScan
+	for key, walkSyms := range byUnit {
+		unit := key.unit
 		ig := newIgnoreSet(r.root)
 		if _, err := ig.extend("."); err != nil {
 			t.Fatalf("read .gitignore for %q: %v", ".", err)
 		}
-		lookupSyms, err := r.symbolsOfUnit(unit, ig, files)
-		if err != nil {
-			t.Fatalf("symbolsOfUnit(%q) failed: %v", unit, err)
+		var lookupSyms []Symbol
+		if key.lang == glyph.CSharp {
+			if scan == nil {
+				var err error
+				if scan, err = r.scanCSharp(ig, files); err != nil {
+					t.Fatalf("scanCSharp failed: %v", err)
+				}
+			}
+			lookupSyms = scan.symbols[unit]
+		} else {
+			var err error
+			if lookupSyms, err = r.symbolsOfUnit(unit, ig, files); err != nil {
+				t.Fatalf("symbolsOfUnit(%q) failed: %v", unit, err)
+			}
 		}
 
 		wantByID := make(map[string][]spanTuple)
