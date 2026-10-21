@@ -2,7 +2,7 @@
 
 Quarry is being rewritten around one identifier — the glyph — and four
 queries: `toc`, `resolve`, `expand`, `name`. Extraction is tree-sitter only,
-and Go only.
+and covers Go and C#.
 
 The rewrite is specified in two documents:
 

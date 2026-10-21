@@ -8,6 +8,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/quarry/glyph"
@@ -51,7 +52,7 @@ func TestName_AcceptedKinds(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Name([]Declaration{{Unit: nameUnit, Decl: tt.decl}})
+			got := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: tt.decl}})
 			if len(got) != 1 {
 				t.Fatalf("Name(%q) returned %d results; want 1", tt.decl, len(got))
 			}
@@ -73,7 +74,7 @@ func TestName_AcceptedKinds(t *testing.T) {
 // iota enum is the most common grouped shape in the pinned Loomyard checkout, and a regression here
 // must be attributable to this one named test rather than to a whole-repository walk.
 func TestName_IotaContinuation(t *testing.T) {
-	got := Name([]Declaration{{Unit: nameUnit, Decl: "const B"}})
+	got := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: "const B"}})
 	if len(got) != 1 {
 		t.Fatalf("Name(\"const B\") returned %d results; want 1", len(got))
 	}
@@ -92,7 +93,7 @@ func TestName_IotaContinuation(t *testing.T) {
 // produces a glyph carrying that unit, never "q".
 func TestName_UnitIndependence(t *testing.T) {
 	const unit = "internal/reedengine"
-	got := Name([]Declaration{{Unit: unit, Decl: "func F() {}"}})
+	got := Name([]Declaration{{Lang: glyph.Go, Unit: unit, Decl: "func F() {}"}})
 	if len(got) != 1 {
 		t.Fatalf("Name(...) returned %d results; want 1", len(got))
 	}
@@ -109,7 +110,7 @@ func TestName_UnitIndependence(t *testing.T) {
 // nowhere still answers normally, since tree-sitter parses syntax only.
 func TestName_NonexistentReceiver(t *testing.T) {
 	const decl = "func (f *Focus) Reset() error"
-	got := Name([]Declaration{{Unit: nameUnit, Decl: decl}})
+	got := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: decl}})
 	if len(got) != 1 {
 		t.Fatalf("Name(%q) returned %d results; want 1", decl, len(got))
 	}
@@ -140,8 +141,8 @@ func TestName_CompletionRetry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			head := Name([]Declaration{{Unit: nameUnit, Decl: tt.head}})[0]
-			full := Name([]Declaration{{Unit: nameUnit, Decl: tt.full}})[0]
+			head := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: tt.head}})[0]
+			full := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: tt.full}})[0]
 			if head.Error != "" {
 				t.Fatalf("Name(%q)[0].Error = %q; want no error", tt.head, head.Error)
 			}
@@ -158,8 +159,8 @@ func TestName_CompletionRetry(t *testing.T) {
 	}
 
 	t.Run("PopulatedStructAgreesWithHead", func(t *testing.T) {
-		head := Name([]Declaration{{Unit: nameUnit, Decl: "type S struct"}})[0]
-		populated := Name([]Declaration{{Unit: nameUnit, Decl: "type S struct { F int }"}})[0]
+		head := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: "type S struct"}})[0]
+		populated := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: "type S struct { F int }"}})[0]
 		if head.Error != "" {
 			t.Fatalf("Name(\"type S struct\")[0].Error = %q; want no error", head.Error)
 		}
@@ -180,7 +181,7 @@ func TestName_CompletionRetry(t *testing.T) {
 // accepted-forms list would expect it to work.
 func TestName_PopulatedInterfaceRejected(t *testing.T) {
 	const decl = "type R interface { Read() error }"
-	got := Name([]Declaration{{Unit: nameUnit, Decl: decl}})[0]
+	got := Name([]Declaration{{Lang: glyph.Go, Unit: nameUnit, Decl: decl}})[0]
 	if got.Reason != NameReasonSeveralDeclarations {
 		t.Errorf("Name(%q)[0].Reason = %q; want %q", decl, got.Reason, NameReasonSeveralDeclarations)
 	}
@@ -191,13 +192,25 @@ func TestName_PopulatedInterfaceRejected(t *testing.T) {
 
 // TestName_Malformed covers a fragment that still fails to parse after the completion retry.
 func TestName_Malformed(t *testing.T) {
-	const decl = "const"
-	got := Name([]Declaration{{Unit: nameUnit, Decl: decl}})[0]
-	if got.Reason != NameReasonParse {
-		t.Errorf("Name(%q)[0].Reason = %q; want %q", decl, got.Reason, NameReasonParse)
+	tests := []struct {
+		name  string
+		lang  glyph.Language
+		owner string
+		decl  string
+	}{
+		{"Go", glyph.Go, "", "const"},
+		{"CSharp", glyph.CSharp, "Renderer", "public void Draw("},
 	}
-	if got.Error != "declaration does not parse" {
-		t.Errorf("Name(%q)[0].Error = %q; want %q", decl, got.Error, "declaration does not parse")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Name([]Declaration{{Lang: tt.lang, Unit: nameUnit, Owner: tt.owner, Decl: tt.decl}})[0]
+			if got.Reason != NameReasonParse {
+				t.Errorf("Name(%q)[0].Reason = %q; want %q", tt.decl, got.Reason, NameReasonParse)
+			}
+			if got.Error != "declaration does not parse" {
+				t.Errorf("Name(%q)[0].Error = %q; want %q", tt.decl, got.Error, "declaration does not parse")
+			}
+		})
 	}
 }
 
@@ -205,15 +218,18 @@ func TestName_Malformed(t *testing.T) {
 // blank-named function, and a comment-only fragment.
 func TestName_ZeroSymbols(t *testing.T) {
 	tests := []struct {
-		name string
-		decl string
+		name  string
+		lang  glyph.Language
+		owner string
+		decl  string
 	}{
-		{"BlankFunction", "func _() {}"},
-		{"CommentOnly", "// just a comment"},
+		{"BlankFunction", glyph.Go, "", "func _() {}"},
+		{"CommentOnly", glyph.Go, "", "// just a comment"},
+		{"CSharpCommentOnly", glyph.CSharp, "Renderer", "// just a comment"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Name([]Declaration{{Unit: nameUnit, Decl: tt.decl}})[0]
+			got := Name([]Declaration{{Lang: tt.lang, Unit: nameUnit, Owner: tt.owner, Decl: tt.decl}})[0]
 			if got.Reason != NameReasonNoDeclaration {
 				t.Errorf("Name(%q)[0].Reason = %q; want %q", tt.decl, got.Reason, NameReasonNoDeclaration)
 			}
@@ -229,16 +245,19 @@ func TestName_ZeroSymbols(t *testing.T) {
 // carries the actual count.
 func TestName_SeveralSymbols(t *testing.T) {
 	tests := []struct {
-		name string
-		decl string
-		want string
+		name  string
+		lang  glyph.Language
+		owner string
+		decl  string
+		want  string
 	}{
-		{"TwoNamesOneSpec", "const X, Y = 1, 2", "declaration declares 2 symbols; exactly one is required"},
-		{"TwoDeclarations", "func F() {}\nfunc G() {}", "declaration declares 2 symbols; exactly one is required"},
+		{"TwoNamesOneSpec", glyph.Go, "", "const X, Y = 1, 2", "declaration declares 2 symbols; exactly one is required"},
+		{"TwoDeclarations", glyph.Go, "", "func F() {}\nfunc G() {}", "declaration declares 2 symbols; exactly one is required"},
+		{"CSharpTwoMembers", glyph.CSharp, "Renderer", "public void A() {}\npublic void B()", "declaration declares 2 symbols; exactly one is required"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Name([]Declaration{{Unit: nameUnit, Decl: tt.decl}})[0]
+			got := Name([]Declaration{{Lang: tt.lang, Unit: nameUnit, Owner: tt.owner, Decl: tt.decl}})[0]
 			if got.Reason != NameReasonSeveralDeclarations {
 				t.Errorf("Name(%q)[0].Reason = %q; want %q", tt.decl, got.Reason, NameReasonSeveralDeclarations)
 			}
@@ -264,7 +283,7 @@ func TestName_BadUnit(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Name([]Declaration{{Unit: tt.unit, Decl: "func F() {}"}})[0]
+			got := Name([]Declaration{{Lang: glyph.Go, Unit: tt.unit, Decl: "func F() {}"}})[0]
 			if got.Reason != string(tt.want) {
 				t.Errorf("Name(unit=%q)[0].Reason = %q; want %q", tt.unit, got.Reason, string(tt.want))
 			}
@@ -275,14 +294,116 @@ func TestName_BadUnit(t *testing.T) {
 	}
 }
 
+// TestName_LanguageAndOwner covers the gate nameOne runs before any source is synthesised.
+// It rejects a language other than the supported ones, the zero value included, and a Go declaration that carries an owner.
+func TestName_LanguageAndOwner(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		decl       Declaration
+		wantReason string
+		wantError  string
+	}{
+		{
+			"ZeroLang",
+			Declaration{Unit: nameUnit, Decl: "func F() {}"},
+			string(glyph.ReasonUnsupportedLanguage),
+			`language is unset; set Lang to "go" or "csharp"`,
+		},
+		{
+			"UnknownLang",
+			Declaration{Lang: glyph.Language("python"), Unit: nameUnit, Decl: "func F() {}"},
+			string(glyph.ReasonUnsupportedLanguage),
+			`language "python" is not supported; set Lang to "go" or "csharp"`,
+		},
+		{
+			"GoWithOwner",
+			Declaration{Lang: glyph.Go, Unit: nameUnit, Owner: "Widget", Decl: "func F() {}"},
+			NameReasonOwnerNotAllowed,
+			`a Go declaration takes no owner: leave Owner empty, since a Go method carries its receiver in the head; for a C# declaration, set Lang to "csharp" (CLI --lang csharp)`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := Name([]Declaration{tt.decl})[0]
+			if got.ID != "" || got.Reason != tt.wantReason || got.Error != tt.wantError {
+				t.Errorf("Name(%+v) = %+v; want reason %q, error %q and no id", tt.decl, got, tt.wantReason, tt.wantError)
+			}
+		})
+	}
+}
+
+// TestName_CSharp covers the C# maker path.
+// It pins ids predicted inside synthesised shells and the completion retries.
+// It also pins the container gate, the minted-container check and the owner hint.
+func TestName_CSharp(t *testing.T) {
+	t.Parallel()
+	const ownerHint = "--owner"
+	tests := []struct {
+		name       string
+		unit       string
+		owner      string
+		decl       string
+		wantID     string
+		wantKind   Kind
+		wantReason string
+		wantHint   bool
+	}{
+		{"MethodInOwner", "Loomyard.Engine", "Renderer", "public void Draw(int x)", "Loomyard.Engine#Renderer.Draw(int)", KindMethod, "", false},
+		{"GenericOwnerArity", "Geo", "Box<>", "public void Put(int x)", "Geo#Box<>.Put(int)", KindMethod, "", false},
+		{"TwoParameterArity", "Geo", "Dict<,>", "public int count", "Geo#Dict<,>.count", KindField, "", false},
+		{"RecordType", "Geo", "", "public record Point(int X, int Y)", "Geo#Point", KindType, "", false},
+		{"FieldInOwner", "Geo", "Renderer", "public int count", "Geo#Renderer.count", KindField, "", false},
+		{"ExplicitInterfaceProperty", "Geo", "Renderer", "int IProvider<A>.Value { get; }", "Geo#Renderer.IProvider<A>.Value", KindProperty, "", false},
+		{"GlobalUnitHasNoNamespaceShell", "global", "Renderer", "public void Draw()", "global#Renderer.Draw()", KindMethod, "", false},
+		{"TypeHeadCompletedByBraces", "Geo", "", "public interface IShape", "Geo#IShape", KindType, "", false},
+		{"OwnerWithBrace", "Geo", "Ren{derer", "public void Draw()", "", "", NameReasonInvalidContainer, false},
+		{"OwnerWithTypeArguments", "Geo", "Box<int>", "public void Draw()", "", "", NameReasonInvalidContainer, false},
+		{"UnitNotCSharp", "a/b", "Renderer", "public void Draw()", "", "", NameReasonInvalidContainer, false},
+		{
+			"HeadOpensOwnNamespace", "Loomyard.Engine", "Renderer",
+			"} } namespace Other { class Renderer { public void Draw()",
+			"", "", NameReasonInvalidContainer, false,
+		},
+		{
+			"HeadOpensOwnType", "Loomyard.Engine", "Renderer",
+			"} class Other { public void Draw()",
+			"", "", NameReasonInvalidContainer, false,
+		},
+		{"DroppedIDReason", "Geo", "Renderer", "public void Café()", "", "", string(glyph.ReasonMemberNotIdentifier), false},
+		{"OwnerlessUsing", "Geo", "", "using System;", "", "", NameReasonNoDeclaration, true},
+		{"OwnerlessMember", "Geo", "", "public void Draw()", "", "", NameReasonNoDeclaration, true},
+		{"OwnerlessExplicitInterface", "Geo", "", "int IProvider<A>.Value { get; }", "", "", NameReasonNoDeclaration, true},
+		{"OwnerlessUnparseable", "Geo", "", "public void Draw(", "", "", NameReasonParse, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := Name([]Declaration{{Lang: glyph.CSharp, Unit: tt.unit, Owner: tt.owner, Decl: tt.decl}})[0]
+			if got.ID != tt.wantID || got.Kind != tt.wantKind || got.Reason != tt.wantReason {
+				t.Errorf("Name(%+v) = %+v; want id %q, kind %q, reason %q", tt, got, tt.wantID, tt.wantKind, tt.wantReason)
+			}
+			if tt.wantHint && !strings.Contains(got.Error, ownerHint) {
+				t.Errorf("Name(%+v).Error = %q; want it to name %s", tt, got.Error, ownerHint)
+			}
+			if tt.wantReason == "" && got.Error != "" {
+				t.Errorf("Name(%+v).Error = %q; want no error", tt, got.Error)
+			}
+		})
+	}
+}
+
 // TestName_ReasonCompleteness mirrors the glyph package's own completeness test: NameReasons
-// contains each of the four maker-owned reason constants exactly once and nothing else.
+// contains each maker-owned reason constant exactly once and nothing else.
 func TestName_ReasonCompleteness(t *testing.T) {
 	want := map[string]bool{
 		NameReasonParse:               true,
 		NameReasonNoDeclaration:       true,
 		NameReasonSeveralDeclarations: true,
 		NameReasonInternal:            true,
+		NameReasonOwnerNotAllowed:     true,
+		NameReasonInvalidContainer:    true,
 	}
 	if len(NameReasons) != len(want) {
 		t.Fatalf("len(NameReasons) = %d; want %d", len(NameReasons), len(want))
@@ -309,9 +430,9 @@ func TestName_ReasonCompleteness(t *testing.T) {
 // an empty, non-nil slice.
 func TestName_BatchSemantics(t *testing.T) {
 	decls := []Declaration{
-		{Unit: "u1", Decl: "func F() {}"},
-		{Unit: "u2", Decl: "const"},
-		{Unit: "u3", Decl: "type T int"},
+		{Lang: glyph.Go, Unit: "u1", Decl: "func F() {}"},
+		{Lang: glyph.Go, Unit: "u2", Decl: "const"},
+		{Lang: glyph.Go, Unit: "u3", Decl: "type T int"},
 	}
 	got := Name(decls)
 	if len(got) != len(decls) {
@@ -395,8 +516,8 @@ func assertPanicMessageName(t *testing.T, want string, fn func()) {
 // own Unit and Decl — does not panic.
 func TestVerifyNameCoverage_Passing(t *testing.T) {
 	decls := []Declaration{
-		{Unit: "u1", Decl: "func F() {}"},
-		{Unit: "u2", Decl: "type T int"},
+		{Lang: glyph.Go, Unit: "u1", Decl: "func F() {}"},
+		{Lang: glyph.Go, Unit: "u2", Decl: "type T int"},
 	}
 	results := []NameResult{
 		{Unit: "u1", Target: "func F() {}"},
@@ -414,8 +535,8 @@ func TestVerifyNameCoverage_ZeroLength(t *testing.T) {
 // exact arity message, naming the verb and the got/want lengths and no index.
 func TestVerifyNameCoverage_ShortSlice(t *testing.T) {
 	decls := []Declaration{
-		{Unit: "u1", Decl: "func F() {}"},
-		{Unit: "u2", Decl: "type T int"},
+		{Lang: glyph.Go, Unit: "u1", Decl: "func F() {}"},
+		{Lang: glyph.Go, Unit: "u2", Decl: "type T int"},
 	}
 	results := []NameResult{{Unit: "u1", Target: "func F() {}"}}
 	want := "engine: name returned 1 results for 2 declarations"
@@ -425,7 +546,7 @@ func TestVerifyNameCoverage_ShortSlice(t *testing.T) {
 // TestVerifyNameCoverage_LongSlice asserts a results slice longer than decls panics with the exact
 // arity message, naming the verb and the got/want lengths and no index.
 func TestVerifyNameCoverage_LongSlice(t *testing.T) {
-	decls := []Declaration{{Unit: "u1", Decl: "func F() {}"}}
+	decls := []Declaration{{Lang: glyph.Go, Unit: "u1", Decl: "func F() {}"}}
 	results := []NameResult{
 		{Unit: "u1", Target: "func F() {}"},
 		{Unit: "u2", Target: "type T int"},
@@ -438,8 +559,8 @@ func TestVerifyNameCoverage_LongSlice(t *testing.T) {
 // the exact echo message naming Unit, the index, and both quoted values.
 func TestVerifyNameCoverage_UnitMismatch(t *testing.T) {
 	decls := []Declaration{
-		{Unit: "u1", Decl: "func F() {}"},
-		{Unit: "u2", Decl: "type T int"},
+		{Lang: glyph.Go, Unit: "u1", Decl: "func F() {}"},
+		{Lang: glyph.Go, Unit: "u2", Decl: "type T int"},
 	}
 	results := []NameResult{
 		{Unit: "u1", Target: "func F() {}"},
@@ -453,8 +574,8 @@ func TestVerifyNameCoverage_UnitMismatch(t *testing.T) {
 // matching, panics with the exact echo message naming Target, the index, and both quoted values.
 func TestVerifyNameCoverage_TargetMismatch(t *testing.T) {
 	decls := []Declaration{
-		{Unit: "u1", Decl: "func F() {}"},
-		{Unit: "u2", Decl: "type T int"},
+		{Lang: glyph.Go, Unit: "u1", Decl: "func F() {}"},
+		{Lang: glyph.Go, Unit: "u2", Decl: "type T int"},
 	}
 	results := []NameResult{
 		{Unit: "u1", Target: "func F() {}"},
@@ -470,8 +591,8 @@ func TestVerifyNameCoverage_TargetMismatch(t *testing.T) {
 // two equally valid messages and the assertion would be non-deterministic.
 func TestVerifyNameCoverage_BothDivergeReportsUnitAlone(t *testing.T) {
 	decls := []Declaration{
-		{Unit: "u1", Decl: "func F() {}"},
-		{Unit: "u2", Decl: "type T int"},
+		{Lang: glyph.Go, Unit: "u1", Decl: "func F() {}"},
+		{Lang: glyph.Go, Unit: "u2", Decl: "type T int"},
 	}
 	results := []NameResult{
 		{Unit: "u1", Target: "func F() {}"},

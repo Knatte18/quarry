@@ -466,4 +466,44 @@ func TestDelta_CreatedDeletedModified(t *testing.T) {
 			t.Errorf("Deleted = %+v; want none — the supplied unit is unspellable", ans.Deleted)
 		}
 	})
+
+	t.Run("CSharp_CreatedDeletedModified", func(t *testing.T) {
+		before := "namespace N\n{\n    public class C\n    {\n        public int Keep() { return 1; }\n        public void Gone() { Console.Write(1); }\n    }\n}\n"
+		after := "namespace N\n{\n    public class C\n    {\n        public int Keep() { return 2; }\n        public void Fresh() { Console.Write(2); }\n    }\n}\n"
+		ans := mustDelta(t, []DeltaEntry{{Path: "a.cs", Before: []byte(before), After: []byte(after)}})
+		if !containsID(ans.Created, "N#C.Fresh()") || len(ans.Created) != 1 {
+			t.Errorf("Created = %+v; want only N#C.Fresh()", ans.Created)
+		}
+		if !containsID(ans.Deleted, "N#C.Gone()") || len(ans.Deleted) != 1 {
+			t.Errorf("Deleted = %+v; want only N#C.Gone()", ans.Deleted)
+		}
+		m := findModified(t, ans.Modified, "N#C.Keep()")
+		if !changedEquals(m, ChangedBody) {
+			t.Errorf("Changed = %v; want [body]", m.Changed)
+		}
+		if f := ans.Files[0]; f.LossyBefore || f.LossyAfter {
+			t.Errorf("Files[0] = %+v; want neither side lossy", f)
+		}
+	})
+
+	t.Run("CSharp_SuppliedUnitChangesNoID", func(t *testing.T) {
+		src := "namespace N\n{\n    public class C\n    {\n        public void M() { }\n    }\n}\n"
+		ans := mustDelta(t, []DeltaEntry{{
+			Path: "a.cs", After: []byte(src), AfterUnit: "not a spellable unit",
+		}})
+		if !containsID(ans.Created, "N#C.M()") {
+			t.Errorf("Created = %+v; want N#C.M() whatever AfterUnit the entry supplies", ans.Created)
+		}
+	})
+
+	t.Run("CSharp_DroppedDeclarationLeavesSideLossy", func(t *testing.T) {
+		src := "namespace N\n{\n    public class Café { }\n    public class Fine { }\n}\n"
+		ans := mustDelta(t, []DeltaEntry{{Path: "a.cs", After: []byte(src)}})
+		if !ans.Files[0].LossyAfter || ans.Files[0].LossyBefore {
+			t.Errorf("Files[0] = %+v; want only LossyAfter set", ans.Files[0])
+		}
+		if !containsID(ans.Created, "N#Fine") {
+			t.Errorf("Created = %+v; want N#Fine", ans.Created)
+		}
+	})
 }

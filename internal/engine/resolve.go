@@ -102,6 +102,10 @@ type unitMemo struct {
 	// It is the seam that makes the "each unit is extracted once" grouping guarantee observable:
 	// read by tests and never by production code.
 	extractions int
+	// scan is the call's C# scan, nil until a target parsing under glyph.CSharp first needs it.
+	scan *csharpScan
+	// scans counts the C# scans requested, a test seam like extractions: read by tests and never by production code.
+	scans int
 }
 
 // newUnitMemo builds an empty unitMemo for r, with an ignore set carrying the repository root's own
@@ -165,12 +169,14 @@ func (m *unitMemo) dirsOf(unit string) unitDirsResult {
 //     under a collision is ambiguous too, not multipart — the glyph does not unambiguously name one
 //     unit, and multipart would assert that it does.
 //  3. Exactly one match is StatusFound.
-//  4. An owner-less "init" name is StatusMultipart. This is the only Go glyph that names one symbol
-//     the language lets be declared in several places, and the discriminator is the glyph's own
-//     name rather than any property of the declarations — decidable without reading build tags,
-//     which the engine has no business interpreting. A build-tagged pair of init functions is still
-//     init and still multipart.
-//  5. Everything else is StatusAmbiguous.
+//  4. For a Go glyph, an owner-less "init" name is StatusMultipart. This is the only Go glyph that
+//     names one symbol the language lets be declared in several places, and the discriminator is the
+//     glyph's own name rather than any property of the declarations — decidable without reading
+//     build tags, which the engine has no business interpreting. A build-tagged pair of init
+//     functions is still init and still multipart.
+//  5. For a C# glyph, a set whose every match carries the partial modifier and has one kind is
+//     StatusMultipart: the parts of a partial type or method are one declaration in several places.
+//  6. Everything else is StatusAmbiguous.
 //
 // statusForMatches does not evaluate build constraints: doing so would make the answer depend on a
 // GOOS and GOARCH the engine does not know and the caller did not state, and reporting both
@@ -185,97 +191,88 @@ func statusForMatches(g glyph.Glyph, matches []Symbol, collision bool) Status {
 		return StatusAmbiguous
 	case len(matches) == 1:
 		return StatusFound
-	case len(g.Owner) == 0 && g.Name == "init":
+	case g.Lang == glyph.Go && len(g.Owner) == 0 && g.Name == "init":
+		return StatusMultipart
+	case g.Lang == glyph.CSharp && partsOfOneDeclaration(matches):
 		return StatusMultipart
 	default:
 		return StatusAmbiguous
 	}
 }
 
-// matchesFor returns every symbol in symbols whose owner chain and name equal g's, reusing
-// sameOwner and preserving symbols' own order — and therefore the file-then-line order
-// symbolsOfUnit established. It is the filter SpansOf performs inline, written once here so
-// Resolve and Expand share one copy.
-//
-// SpansOf keeps its own inline copy of that filter rather than calling matchesFor, and this task
-// changes no line of SpansOf's code — that duplication is deliberate rather than overlooked, for
-// two reasons. First, this task's scope permits exactly two edits to code T3 wrote for its own
-// purposes, both named and both elsewhere in this plan; a third, however behaviour-preserving,
-// would be a scope change this plan does not make. Second, SpansOf is what T3's round trip is
-// written against, so refactoring it would put a test this task must keep passing onto code this
-// task rewrote. Whether the two filters collapse into one is a question for whichever later task
-// next edits SpansOf for its own reasons.
+// partsOfOneDeclaration reports whether every symbol in matches carries the partial modifier and all share one kind.
+func partsOfOneDeclaration(matches []Symbol) bool {
+	for _, sym := range matches {
+		if !sym.Partial || sym.Kind != matches[0].Kind {
+			return false
+		}
+	}
+	return true
+}
+
+// matchesFor returns every symbol in symbols whose owner chain, name and parameter list equal g's.
+// It preserves symbols' own order, and therefore the file-then-line order symbolsOfUnit established.
+// Parameter lists compare element by element:
+// a nil list matches only a nil list, and an empty non-nil list matches only an empty non-nil list.
+// Go glyphs and Go symbols both carry a nil list, so Go matching reads owner chain and name alone.
 func matchesFor(symbols []Symbol, g glyph.Glyph) []Symbol {
 	matches := make([]Symbol, 0, len(symbols))
 	for _, sym := range symbols {
-		if sameOwner(sym.Glyph.Owner, g.Owner) && sym.Glyph.Name == g.Name {
+		if sameOwner(sym.Glyph.Owner, g.Owner) && sym.Glyph.Name == g.Name && sameParams(sym.Glyph.Params, g.Params) {
 			matches = append(matches, sym)
 		}
 	}
 	return matches
 }
 
+// sameParams reports whether a and b are the same parameter list: both nil, or both non-nil and equal element by element.
+func sameParams(a, b []string) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+	return sameOwner(a, b)
+}
+
 // resolveGlyphTarget answers one glyph target — every target, now that the engine no longer
 // classifies a target as a path before reaching here.
 //
-// It parses target with glyph.Parse(glyph.Go, target) — the alphabet is hardcoded; a multi-alphabet
-// dispatch is where a second language would enter, and nothing about the answer's key set depends
-// on it. On a parse failure it extracts the *glyph.ParseError with errors.As and returns a
-// ResolveResult whose Target is the argument, whose Error is the error's Error() text, whose Reason
-// is string(parseErr.Reason), and whose Status is left empty — with a nil error, so the call
-// continues and the other targets are still answered. The four statuses are resolution outcomes,
-// and a string that is not a glyph was never searched for; answering not_found would tell a
-// validator the name is free when the truth is that it is unspellable. A bare repository-relative
-// path with no "#" fails here too, with ReasonNoSeparator, and lands on this exact shape — that is
-// the whole of what replaces the deleted path branch. Should errors.As ever fail — glyph.Parse
-// returns nothing else, so it cannot — Reason is left empty rather than panicking on a nil pointer.
+// It parses target under glyph.Go and glyph.CSharp.
+// Each alphabet that accepts it answers on its own through resolveIn, and mergeResolve combines the answers into the one the target gets.
+// A call that offers no C# target never builds the C# scan.
 //
-// Immediately after a successful parse, before m.dirsOf is read, it branches on g.IsSelf(): a self
-// glyph is answered by resolveSelfTarget(g.Unit) instead of the member lookup below. The returned
-// result's Target is overwritten with the argument verbatim (resolveSelfTarget saw only g.Unit) and
-// its ID is set to g.String(). Unit is then set by the same rule the member branch uses below, but
-// only when the self answer's Status is StatusNotFound — matching where Unit is set for a member
-// glyph, and leaving it unset on the pre-resolution rejection resolveSelfTarget's own
-// ErrTargetOutsideRepo arm can still (unreachably) produce. Unit is not suppressed for the external
-// test unit case: internal/logger_test#Foo resolves through unitDirs' "_test" stripping to a real
-// directory while internal/logger_test# is a path that exists nowhere, so "status: not_found, unit:
-// found" is the only complete answer for that self glyph, and it is reached by this same rule.
+// When no alphabet accepts target, it returns a ResolveResult whose Target is the argument and whose Status is left empty.
+// Its Error is the error rejectionFor selects, and its Reason is that error's *glyph.ParseError reason.
+// Its own error is nil, so the call continues and the other targets are still answered.
+// The four statuses are resolution outcomes, and a string that is not a glyph was never searched for;
+// answering not_found would tell a validator the name is free when the truth is that it is unspellable.
+// A bare repository-relative path with no "#" lands on this shape too, with ReasonNoSeparator.
+// Should errors.As ever fail — glyph.Parse returns nothing else, so it cannot — Reason is left empty rather than panicking on a nil pointer.
 //
-// Otherwise — a member glyph — it sets Target to the argument and ID to the parsed glyph's
-// String(). It reads m.dirsOf(g.Unit) for the collision flag and the directory list, then
-// m.symbolsOf(g.Unit). An error from symbolsOf is returned as this function's error and fails the
-// whole call: an engine read failure is not an answer about a glyph, and a unit that failed to read
-// would otherwise answer not_found for every glyph in it, which a done-check reads as success. A
-// unit whose directory does not exist is not that case and never reaches it — unitDirs returns an
-// empty slice and symbolsOfUnit over zero directories returns an empty slice and a nil error.
-//
-// It filters with matchesFor, switches on statusForMatches(g, matches, res.collision), and
-// populates: StatusFound and StatusMultipart set Symbols to the matches; StatusAmbiguous sets
-// Candidates to the matches; StatusNotFound sets neither and sets Unit to StatusFound when the
-// memoised directory list is non-empty and to StatusNotFound when it is empty. Unit is set on
-// not_found and on nothing else — docs/glyph.md §5 attaches it to the miss, and a found that also
-// said so would be clutter.
-//
-// unit: found is directory existence and nothing more, so it is unitDirs' answer restated
-// nowhere: deriving it any other way would be a second unit-to-directory implementation in one
-// package, drifting on the corner case the literal-first rule was written for. The consequence: a
-// "_test" unit whose stripped directory exists but which holds no external test package at all
-// reports unit: found, because the directory is there, and a card creating that package's first
-// file is exactly the case that wants it. The third of this task's contract gaps, closed by
-// nobody: dirExists uses os.Lstat, which refuses a symlink only in the path's final component, so a
-// unit reached through an intermediate symlinked directory resolves here while the walk never
-// descends that directory and so never lists those declarations. The behaviour is inherited
-// unchanged and deliberately not narrowed — changing dirExists would be a change to the walk's
-// inverse, and whether a unit may be reached through a link at all is a statement docs/glyph.md does
-// not make.
-//
-// The identifier-contract gap over the external test unit versus a same-named real directory is
-// recorded on unitDirs' own doc comment, almost verbatim, and is not restated here. This function
-// adds only what is new: this verb promotes the reported collision to ambiguous, which is the half
-// of the gap unitDirs could not state because the status type did not exist when it was written.
+// An error from resolveIn is returned as this function's error and fails the whole call:
+// an engine read failure is not an answer about a glyph,
+// and a unit that failed to read would otherwise answer not_found for every glyph in it, which a done-check reads as success.
 func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, error) {
-	g, err := glyph.Parse(glyph.Go, target)
-	if err != nil {
+	var answers []alphabetAnswer
+	var goErr, csharpErr error
+	for _, lang := range []glyph.Language{glyph.Go, glyph.CSharp} {
+		g, err := glyph.Parse(lang, target)
+		if err != nil {
+			if lang == glyph.Go {
+				goErr = err
+			} else {
+				csharpErr = err
+			}
+			continue
+		}
+		answer, err := r.resolveIn(g, target, m)
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		answers = append(answers, answer)
+	}
+
+	if len(answers) == 0 {
+		err := rejectionFor(goErr, csharpErr)
 		reason := ""
 		var parseErr *glyph.ParseError
 		if errors.As(err, &parseErr) {
@@ -283,49 +280,158 @@ func (r *Repo) resolveGlyphTarget(target string, m *unitMemo) (ResolveResult, er
 		}
 		return ResolveResult{Target: target, Error: err.Error(), Reason: reason}, nil
 	}
+	return mergeResolve(target, answers), nil
+}
 
-	if g.IsSelf() {
-		res, err := r.resolveSelfTarget(g.Unit, m)
-		if err != nil {
-			return ResolveResult{}, err
-		}
-		res.Target = target
-		res.ID = g.String()
-		if res.Status == StatusNotFound {
-			dirsRes := m.dirsOf(g.Unit)
-			if len(dirsRes.dirs) > 0 {
-				res.Unit = StatusFound
-			} else {
-				res.Unit = StatusNotFound
-			}
-		}
-		return res, nil
+// rejectionFor returns the parse error to report for a target that neither alphabet accepts, unchanged so errors.As still reaches its *glyph.ParseError.
+// It is C#'s error when the target's unit half is a valid C# unit and its member holds a character outside the Go member alphabet ("(", "[", "<", "~", "@" or a space).
+// The target then reads as a C# glyph spelled wrongly.
+// Otherwise it is Go's error.
+func rejectionFor(goErr, csharpErr error) error {
+	var parseErr *glyph.ParseError
+	if !errors.As(csharpErr, &parseErr) {
+		return goErr
 	}
+	unit, member, _ := strings.Cut(parseErr.Input, "#")
+	if _, err := glyph.Parse(glyph.CSharp, unit+"#"); err == nil && strings.ContainsAny(member, "([<~@ ") {
+		return csharpErr
+	}
+	return goErr
+}
 
+// alphabetAnswer is one alphabet's answer to a target it accepts.
+type alphabetAnswer struct {
+	lang glyph.Language
+	// self reports that the target is a self glyph.
+	self bool
+	// res carries Target, ID, Status and the matches, and no Unit: mergeResolve decides it.
+	res ResolveResult
+	// unitFound reports that the alphabet's unit exists: a Go directory, or a declared C# namespace.
+	unitFound bool
+}
+
+// resolveIn answers g, the parse of target under one alphabet.
+// Go answers through the unit's directories, C# through the call's namespace scan.
+// A self glyph is answered by resolveSelfTarget for Go and csharpSelfTarget for C#.
+// A member glyph is answered by matching the unit's symbols with matchesFor and statusForMatches.
+// A Go unit whose "_test" suffix strips to a real directory that holds no external test package still reports its unit found.
+// The directory is there, and a card creating that package's first file is exactly the case that wants it.
+// dirExists uses os.Lstat, which refuses a symlink only in the path's final component;
+// a unit reached through an intermediate symlinked directory resolves while the walk never lists its declarations.
+// That behaviour is inherited unchanged.
+func (r *Repo) resolveIn(g glyph.Glyph, target string, m *unitMemo) (alphabetAnswer, error) {
+	answer := alphabetAnswer{lang: g.Lang, self: g.IsSelf()}
 	res := ResolveResult{Target: target, ID: g.String()}
 
-	dirsRes := m.dirsOf(g.Unit)
-	symbols, err := m.symbolsOf(g.Unit)
-	if err != nil {
-		return ResolveResult{}, err
+	var dirsRes unitDirsResult
+	var scan *csharpScan
+	var err error
+	if g.Lang == glyph.CSharp {
+		if scan, err = m.csharp(); err != nil {
+			return alphabetAnswer{}, err
+		}
+		answer.unitFound = scan.declares(g.Unit)
+	} else {
+		dirsRes = m.dirsOf(g.Unit)
+		answer.unitFound = len(dirsRes.dirs) > 0
 	}
 
+	if answer.self {
+		var self ResolveResult
+		if g.Lang == glyph.CSharp {
+			self, err = r.csharpSelfTarget(g.Unit, m)
+		} else {
+			self, err = r.resolveSelfTarget(g.Unit, m)
+		}
+		if err != nil {
+			return alphabetAnswer{}, err
+		}
+		self.Target = target
+		self.ID = res.ID
+		answer.res = self
+		return answer, nil
+	}
+
+	var symbols []Symbol
+	if g.Lang == glyph.CSharp {
+		symbols = scan.symbols[g.Unit]
+	} else if symbols, err = m.symbolsOf(g.Unit); err != nil {
+		return alphabetAnswer{}, err
+	}
 	matches := matchesFor(symbols, g)
-	status := statusForMatches(g, matches, dirsRes.collision)
-	res.Status = status
-	switch status {
+	res.Status = statusForMatches(g, matches, dirsRes.collision)
+	switch res.Status {
 	case StatusFound, StatusMultipart:
 		res.Symbols = matches
 	case StatusAmbiguous:
 		res.Candidates = matches
-	case StatusNotFound:
-		if len(dirsRes.dirs) > 0 {
-			res.Unit = StatusFound
-		} else {
-			res.Unit = StatusNotFound
+	}
+	answer.res = res
+	return answer, nil
+}
+
+// mergeResolve combines the answers of the alphabets that accepted target into its one answer.
+// Unit is set on a not_found answer and on nothing else:
+// found when an accepting alphabet found its unit, not_found otherwise.
+//
+//   - One alphabet matches: its answer stands.
+//   - Two match a member glyph: ambiguous, with the candidates of both, each carrying its language.
+//   - Two match a self glyph: ambiguous, with no candidates and Languages naming both.
+//   - None matches: not_found.
+func mergeResolve(target string, answers []alphabetAnswer) ResolveResult {
+	var matched []alphabetAnswer
+	unitFound := false
+	for _, answer := range answers {
+		unitFound = unitFound || answer.unitFound
+		if answer.res.Status != "" && answer.res.Status != StatusNotFound {
+			matched = append(matched, answer)
 		}
 	}
-	return res, nil
+
+	var res ResolveResult
+	switch len(matched) {
+	case 0:
+		res = answers[0].res
+		for _, answer := range answers {
+			if answer.res.Status != "" {
+				res = answer.res
+				break
+			}
+		}
+		if res.Status == StatusNotFound {
+			res.Unit = StatusNotFound
+			if unitFound {
+				res.Unit = StatusFound
+			}
+		}
+	case 1:
+		res = matched[0].res
+	default:
+		res = ResolveResult{Target: target, ID: matched[0].res.ID, Status: StatusAmbiguous}
+		for _, answer := range matched {
+			if answer.self {
+				res.Languages = append(res.Languages, string(answer.lang))
+				continue
+			}
+			candidates := answer.res.Symbols
+			if len(candidates) == 0 {
+				candidates = answer.res.Candidates
+			}
+			for _, sym := range candidates {
+				sym.Language = string(answer.lang)
+				res.Candidates = append(res.Candidates, sym)
+			}
+		}
+		sort.Strings(res.Languages)
+		sort.SliceStable(res.Candidates, func(i, j int) bool {
+			if res.Candidates[i].File != res.Candidates[j].File {
+				return res.Candidates[i].File < res.Candidates[j].File
+			}
+			return res.Candidates[i].Start < res.Candidates[j].Start
+		})
+	}
+	res.Target = target
+	return res
 }
 
 // resolveSelfTarget answers a self glyph — one whose member is empty, naming its unit's whole
@@ -549,7 +655,8 @@ func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet, m *fileMemo) ([]Symbol,
 	return symbols, nil
 }
 
-// symbolsOfDir returns every symbol in dirRel whose glyph unit (per unitFor) is exactly unit. It
+// symbolsOfDir is the Go alphabet's unit collection: it admits Go records only.
+// It returns every symbol in dirRel whose glyph unit (per unitFor) is exactly unit. It
 // reads dirRel once with os.ReadDir, drops every entry ig.match excludes and every directory and
 // symlink entry, then reuses the call's directory vote, built from the files' records in m, to
 // learn each file's own package clause before deciding, file by file, whether that file's unitFor
@@ -590,6 +697,9 @@ func (r *Repo) symbolsOfDir(unit, dirRel string, ig *ignoreSet, m *fileMemo) ([]
 			// here either — the same rule the walk applies.
 			continue
 		}
+		if rec.lang != "go" {
+			continue
+		}
 		if unitFor(dirRel, v.pkg, rec.clause) != unit {
 			continue
 		}
@@ -616,9 +726,9 @@ func sameOwner(a, b []string) bool {
 
 // SpansOf returns every declaration g names: an empty slice, never nil, when nothing matches, and a
 // nil error alongside it — there is no status vocabulary here, unlike Resolve's
-// found/multipart/ambiguous/not_found. It returns ErrLanguageUnsupported, wrapped, when g.Lang is
-// not glyph.Go, so the error names the real cause rather than surfacing as a directory that happens
-// to not exist.
+// found/multipart/ambiguous/not_found.
+// It returns ErrLanguageUnsupported, wrapped, when g.Lang is neither glyph.Go nor glyph.CSharp,
+// so the error names the real cause rather than surfacing as a directory that happens to not exist.
 //
 // SpansOf then validates g by round-tripping it through glyph.Parse(g.Lang, g.String()), returning
 // the resulting parse error wrapped on failure. A Glyph is a plain struct any caller can build by
@@ -629,8 +739,9 @@ func sameOwner(a, b []string) bool {
 // here before any directory is ever read.
 //
 // It then builds a fresh ignoreSet for the repository root carrying the root's own patterns only —
-// newIgnoreSet(r.root) followed by one extend(".") — calls symbolsOfUnit with a throwaway record
-// memo, and filters the result by owner chain and name.
+// newIgnoreSet(r.root) followed by one extend(".") — and extracts the unit's symbols with a throwaway record memo.
+// A Go glyph goes through symbolsOfUnit, a C# glyph through a fresh C# scan.
+// The result is filtered with matchesFor, the filter Resolve applies.
 //
 // A self glyph reaches this function's own inline owner-and-name filter exactly like any other
 // glyph, matching nothing — its Owner is nil and its Name is "", and no real declaration is ever
@@ -638,7 +749,7 @@ func sameOwner(a, b []string) bool {
 // SpansOf has no status vocabulary, and "nothing matches" is exactly what an empty slice with a nil
 // error means here; a self glyph needs no branch of its own.
 func (r *Repo) SpansOf(g glyph.Glyph) ([]Symbol, error) {
-	if g.Lang != glyph.Go {
+	if g.Lang != glyph.Go && g.Lang != glyph.CSharp {
 		return nil, fmt.Errorf("engine: spans of %q: %w", g.String(), ErrLanguageUnsupported)
 	}
 	if _, err := glyph.Parse(g.Lang, g.String()); err != nil {
@@ -650,16 +761,17 @@ func (r *Repo) SpansOf(g glyph.Glyph) ([]Symbol, error) {
 		return nil, fmt.Errorf("engine: read .gitignore for %q: %w", ".", err)
 	}
 
+	if g.Lang == glyph.CSharp {
+		scan, err := r.scanCSharp(ig, newFileMemo(r, true))
+		if err != nil {
+			return nil, err
+		}
+		return matchesFor(scan.symbols[g.Unit], g), nil
+	}
+
 	symbols, err := r.symbolsOfUnit(g.Unit, ig, newFileMemo(r, true))
 	if err != nil {
 		return nil, err
 	}
-
-	matches := make([]Symbol, 0, len(symbols))
-	for _, sym := range symbols {
-		if sameOwner(sym.Glyph.Owner, g.Owner) && sym.Glyph.Name == g.Name {
-			matches = append(matches, sym)
-		}
-	}
-	return matches, nil
+	return matchesFor(symbols, g), nil
 }

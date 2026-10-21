@@ -113,11 +113,16 @@ func TestRunName_MultiLineHead(t *testing.T) {
 // TestUsageText_NameVerb pins that usageText carries the name verb's usage line, the --unit flags
 // row, and the --root not-valid-for-name marker, and remains ASCII only.
 func TestUsageText_NameVerb(t *testing.T) {
-	if !strings.Contains(usageText, "quarry name <declaration> --unit <unit> [--text]") {
+	if !strings.Contains(usageText, "quarry name <declaration> --unit <unit> [--lang go|csharp] [--owner <chain>] [--text]") {
 		t.Errorf("usageText = %q; want the name usage line", usageText)
 	}
 	if !strings.Contains(usageText, "--unit <unit>") {
 		t.Errorf("usageText = %q; want a --unit flags row", usageText)
+	}
+	for _, row := range []string{"--lang <name>     name only:", "--owner <chain>   name only:"} {
+		if !strings.Contains(usageText, row) {
+			t.Errorf("usageText = %q; want the flags row %q", usageText, row)
+		}
 	}
 	if !strings.Contains(usageText, "not valid for name") {
 		t.Errorf("usageText = %q; want the --root not-valid-for-name marker", usageText)

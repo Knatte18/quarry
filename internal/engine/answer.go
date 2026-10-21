@@ -12,9 +12,10 @@ package engine
 import "github.com/Knatte18/quarry/glyph"
 
 // Kind is the closed vocabulary a Symbol's Kind field is drawn from.
+// The values below are the whole set; Go emits only the first five.
 type Kind string
 
-// The five Kind values toc file ever emits. No other value is valid.
+// The Kind values toc file ever emits. No other value is valid.
 const (
 	// KindFunction marks a free function: a func with no receiver.
 	KindFunction Kind = "function"
@@ -26,6 +27,18 @@ const (
 	KindConst Kind = "const"
 	// KindVar marks a package-level var declaration.
 	KindVar Kind = "var"
+	// KindConstructor marks a C# instance, static or primary constructor.
+	KindConstructor Kind = "constructor"
+	// KindProperty marks a C# property or a record's positional parameter.
+	KindProperty Kind = "property"
+	// KindField marks a C# field that is not a const.
+	KindField Kind = "field"
+	// KindEvent marks a C# event or event field.
+	KindEvent Kind = "event"
+	// KindIndexer marks a C# indexer.
+	KindIndexer Kind = "indexer"
+	// KindOperator marks a C# operator or conversion operator.
+	KindOperator Kind = "operator"
 )
 
 // Status is the closed per-entry vocabulary of docs/glyph.md §5, shared by the engine's per-target
@@ -70,8 +83,7 @@ func (s Status) Known() bool {
 	}
 }
 
-// Symbol is one listable declaration extracted from a file: a function, method, type, const, or
-// var, in source order.
+// Symbol is one listable declaration extracted from a file, in source order.
 //
 // Symbol carries its own Glyph rather than the bare Name/Owner pair V1 used, because a caller
 // reading Glyph.Name and Glyph.Owner and a caller reading the emitted ID string were two parallel
@@ -132,6 +144,11 @@ type Symbol struct {
 	DeclStart int `json:"-"`
 	BodyStart int `json:"-"`
 	DeclEnd   int `json:"-"`
+	// Partial is true for a C# type or method carrying the partial modifier.
+	// It is JSON-hidden and read by the resolve verb's multipart rule.
+	Partial bool `json:"-"`
+	// Language names the alphabet a candidate was found in, set only on a candidate of a glyph that two alphabets both match.
+	Language string `json:"language,omitempty"`
 }
 
 // DirAnswer is the recursive answer to a table-of-contents query, per the rewrite plan's §4: one
@@ -141,11 +158,13 @@ type Symbol struct {
 type DirAnswer struct {
 	// Dir is the repository-relative path with forward slashes, "." for the repository root.
 	Dir string `json:"dir"`
-	// Package is the directory's package name, present only when the directory has one — a
-	// directory with no .go file, or one whose files agree on no single clause under the tie-break
-	// rule, has none.
+	// Package is the directory's package name, present only when the directory has one.
+	// It comes from the language with the most files in the directory, the smaller language name breaking a tie.
+	// For Go it is the dominant package clause under the tie-break rule;
+	// for C# it is the first namespace most of the directory's C# files declare, the smallest name breaking a tie.
+	// A directory with no file of that language that declares one has none.
 	Package string `json:"package,omitempty"`
-	// Language is the language of the directory's package, present only when Package is present.
+	// Language is the language that supplied Package, present only when Package is present.
 	Language string `json:"language,omitempty"`
 	// Doc is the directory's package documentation, selected from the files sharing Package. Empty
 	// when no such file carries one.
@@ -167,9 +186,8 @@ type FileEntry struct {
 	Header string `json:"header,omitempty"`
 	// Test is true when this file is a test file by its language's toolchain convention. It is a
 	// plain bool, not a pointer: the pointer in V1 existed to say "this language has no rule", a
-	// state that cannot arise while Go is the only language, and the plan forbids emitting
-	// "test: false" either way, so both the false value and the no-rule value collapse to the same
-	// omitted key.
+	// state that cannot arise because every registered language has a test rule.
+	// One of those rules always answers false, and the plan forbids emitting "test: false", so the false value is the omitted key.
 	Test bool `json:"test,omitempty"`
 	// Generated mirrors Test's plain-bool discipline for the same reason: true only when the file
 	// matches its language's generated-file banner convention, omitted otherwise.
@@ -227,11 +245,7 @@ type ResolveResult struct {
 	Symbols []Symbol `json:"symbols,omitempty"`
 	// Candidates carries the matches for ambiguous. The separate key is the signal that nothing was
 	// chosen.
-	//
-	// Contract gap: docs/glyph.md §5 says candidates in a multi-language repository are marked by
-	// language, while Symbol's key set has no language key. With Go the only alphabet the case is
-	// unreachable, so no key is added here — a second language's task adds the marker against a real
-	// case.
+	// When two alphabets both match the glyph, each candidate carries the language it was found in.
 	Candidates []Symbol `json:"candidates,omitempty"`
 	// Listing is the directory-or-file listing a found self glyph resolved to: a directory's own
 	// DirAnswer when the self glyph names a directory, and the enclosing directory's DirAnswer
@@ -241,6 +255,12 @@ type ResolveResult struct {
 	// problem. It is a pointer so an absent answer is dropped by omitempty; a non-pointer struct
 	// would always marshal.
 	Listing *DirAnswer `json:"listing,omitempty"`
+	// Listings is what a found C# self glyph resolves to: one directory answer per directory holding a file with a symbol in the namespace, in path order.
+	// Each answer lists only those files and has no subdirectories.
+	// It is a pointer so a declared namespace with no such file still encodes as an empty list.
+	Listings *[]DirAnswer `json:"listings,omitempty"`
+	// Languages names, in name order, the alphabets that both match a self glyph, set only on an ambiguous answer to it.
+	Languages []string `json:"languages,omitempty"`
 	// Error carries a pre-resolution rejection of the target string itself — a glyph.Parse rejection
 	// — and never an engine read failure. Status is empty whenever Error is set.
 	Error string `json:"error,omitempty"`
@@ -261,15 +281,13 @@ type ResolveResult struct {
 func (r ResolveResult) Rejected() bool { return r.Status == "" }
 
 // ExpandAnswer is the answer to one glyph passed to Expand: the target type's head plus every
-// member whose owner chain begins with it. Status is found, not_found or ambiguous, and never
-// multipart, because the kind gate sends every match set holding no type to NotATypeError — where a
-// several-declaration init glyph lands, however many declarations it has — and docs/rewrite-plan.md's
-// section 5, The queries, rule that a Go type never splits, only init does, closes the remaining
-// type-only cases. A language with partial types adds its row then, not now.
+// member whose owner chain begins with it. Status is found, not_found, ambiguous or multipart.
+// Multipart occurs only for a C# type declared partial in several places, answered with Parts in place of Head.
+// A match set holding no type is a NotATypeError instead, wherever the several-declaration Go init glyph lands.
 type ExpandAnswer struct {
 	// ID is the parsed glyph's Glyph.String() form, the same wire form Symbol.ID carries.
 	ID string `json:"id"`
-	// Status is the resolution outcome: found, not_found, or ambiguous.
+	// Status is the resolution outcome: found, not_found, ambiguous, or multipart.
 	Status Status `json:"status"`
 	// Unit is set only on a not_found, and carries only StatusFound or StatusNotFound, exactly as
 	// ResolveResult.Unit does.
@@ -277,13 +295,14 @@ type ExpandAnswer struct {
 	// Head is the type's own symbol entry, with Start and End substituted from HeadStart and
 	// HeadEnd, present only for found. It is a pointer so an absent answer is dropped by omitempty; a
 	// non-pointer struct would always marshal.
-	//
-	// Contract gap: substituting HeadStart/HeadEnd for Start/End means the type's full declaration
-	// span is not recoverable from an ExpandAnswer for a language whose head is a strict subset of
-	// its declaration. With Go the only alphabet the case is unreachable today.
+	// A C# type's head is its declaration through its base list, a strict subset of its span.
+	// Resolve answers the full span.
 	Head *Symbol `json:"head,omitempty"`
-	// Members is every symbol whose owner chain begins with the target type, sorted by file and
-	// line, present only for found.
+	// Parts is the head of every part of a partial C# type, each with Start and End substituted as Head's are, present only for multipart.
+	Parts []Symbol `json:"parts,omitempty"`
+	// Members is every symbol whose owner chain begins with the target's owner chain followed by its name.
+	// It is sorted by file and line, present only for found and multipart.
+	// Under multipart it holds the members of all parts.
 	Members []Symbol `json:"members,omitempty"`
 	// Candidates carries the matches for ambiguous, exactly as ResolveResult.Candidates does.
 	Candidates []Symbol `json:"candidates,omitempty"`

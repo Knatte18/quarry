@@ -12,7 +12,7 @@ package glyph
 // answer: Go's unit is a repository-relative path — the package directory for a package unit, the
 // file for a file unit — so Go returns it unchanged with ok true (docs/glyph.md §3). A Python
 // dotted module path would decide true only after its own conversion; a C# namespace is not a path
-// at all and would decide false. Go is the only Language this package implements today.
+// at all, so C# decides false.
 //
 // The path is returned exactly as the unit is spelled: repository-relative, forward slashes, no
 // filepath.Join and no OS-specific separators. Callers own disk semantics.
@@ -20,6 +20,8 @@ func (g Glyph) UnitPath() (path string, ok bool) {
 	switch g.Lang {
 	case Go:
 		return g.Unit, true
+	case CSharp:
+		return "", false
 	default:
 		return "", false
 	}

@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/quarry/glyph"
 )
 
 // namingCounts is the small local shape TestRoundTrip_LoomyardNaming pins against a counts golden,
@@ -120,7 +122,7 @@ func TestRoundTrip_LoomyardNaming(t *testing.T) {
 	// shape is that a caller hands it a whole harvest at once.
 	inContractDecls := make([]Declaration, len(inContract))
 	for i, sym := range inContract {
-		inContractDecls[i] = Declaration{Unit: sym.unit, Decl: sym.signature}
+		inContractDecls[i] = Declaration{Lang: glyph.Go, Unit: sym.unit, Decl: sym.signature}
 	}
 	inContractResults := Name(inContractDecls)
 	for i, sym := range inContract {
@@ -140,7 +142,7 @@ func TestRoundTrip_LoomyardNaming(t *testing.T) {
 
 	excludedDecls := make([]Declaration, len(excluded))
 	for i, sym := range excluded {
-		excludedDecls[i] = Declaration{Unit: sym.unit, Decl: sym.signature}
+		excludedDecls[i] = Declaration{Lang: glyph.Go, Unit: sym.unit, Decl: sym.signature}
 	}
 	excludedResults := Name(excludedDecls)
 	for i, sym := range excluded {

@@ -8,11 +8,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/Knatte18/quarry/internal/repopath"
 )
+
+// packageDir returns the directory of the package under test, which go test sets as the working
+// directory. Unlike runtime.Caller, it stays absolute when the test binary is built with -trimpath.
+func packageDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("packageDir: %v", err)
+	}
+	return dir
+}
 
 // writeScratchTree creates a fresh directory tree under .scratch/mcpserver-tests/<name>/, writes
 // each entry in files (key = a forward-slash relative path, value = its contents; parent
@@ -30,12 +40,7 @@ import (
 func writeScratchTree(t *testing.T, name string, files map[string]string) string {
 	t.Helper()
 
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("writeScratchTree: runtime.Caller(0) failed to resolve this file's path")
-	}
-	// thisFile is .../internal/mcpserver/root_test.go; the module root is three directories up.
-	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	moduleRoot := filepath.Dir(filepath.Dir(packageDir(t)))
 
 	root := filepath.Join(moduleRoot, ".scratch", "mcpserver-tests", name)
 	if err := os.RemoveAll(root); err != nil {

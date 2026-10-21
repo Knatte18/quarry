@@ -5,7 +5,9 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/Knatte18/quarry/glyph"
 )
@@ -48,8 +50,8 @@ func (e *NotATypeError) Error() string {
 // reason NotATypeError is: a caller mapping engine failures to a status word and an exit code
 // needs the glyph's identity carried with the error, without parsing a message.
 //
-// SelfGlyphError is a typed error rather than a sixth Kind value: Kind is documented as the closed
-// vocabulary a Symbol's kind is drawn from and the five values toc emits, a self glyph is not a
+// SelfGlyphError is a typed error rather than another Kind value: Kind is documented as the closed
+// vocabulary a Symbol's kind is drawn from and the values toc emits, a self glyph is not a
 // symbol, and widening a symbol vocabulary to describe a non-symbol would falsify that comment.
 //
 // It is also not answered as not_found: a self glyph matches no symbol, so the answer would fall
@@ -77,131 +79,179 @@ func (r *Repo) Expand(target string) (ExpandAnswer, error) {
 	return r.expand(target, m)
 }
 
-// expand is Expand's unexported worker. It takes the memo, rather than building its own, so a test
-// can construct one, pass it in, and read extractions afterwards; Expand itself never exposes it.
+// expandOutcome is what one alphabet made of a target: its answer or typed failure, and its raw match set.
+type expandOutcome struct {
+	lang    glyph.Language
+	answer  ExpandAnswer
+	matches []Symbol
+	err     error
+}
+
+// contributes reports whether the outcome is anything but not_found, a NotATypeError included.
+func (o expandOutcome) contributes() bool {
+	return o.err != nil || o.answer.Status != StatusNotFound
+}
+
+// expand is Expand's unexported worker.
+// It takes the memo, rather than building its own, so a test can construct one, pass it in, and read extractions afterwards.
 //
-// expand parses target with glyph.Parse(glyph.Go, target) and, on failure, returns the zero
-// ExpandAnswer and the parse error wrapped as "engine: expand <target>: <err>" with %w, so errors.As
-// still reaches the *glyph.ParseError. This includes a target with no "#", which the grammar already
-// rejects as its no-separator reason: expand writes no separator check of its own, because every
-// alphabet question is one glyph.Parse call and a hand-rolled check would return a different error
-// type for one of the grammar's rejection reasons than for all the others. Unlike Resolve, expand
-// answers one target, so there is no other answer to protect and no reason to move the failure into
-// the payload.
+// It parses target under glyph.Go and glyph.CSharp.
+// A target no alphabet accepts returns the zero ExpandAnswer and the parse error rejectionFor selects.
+// The error is wrapped as "engine: expand <target>: <err>" with %w, so errors.As still reaches the *glyph.ParseError.
+// This includes a target with no "#", which the grammar already rejects as its no-separator reason:
+// every alphabet question is one glyph.Parse call, and a hand-rolled check would return a different error type for one rejection reason than for the rest.
+// Unlike Resolve, expand answers one target, so there is no other answer to protect and no reason to move the failure into the payload.
 //
-// Immediately after a successful parse, before m.dirsOf and m.symbolsOf are called, it checks
-// g.IsSelf(): a self glyph is answered by returning the zero ExpandAnswer and a *SelfGlyphError
-// carrying g.String(), before any unit work is done. A gate before resolution means no unit is
-// parsed and no unit-directory lookup is made for a question that has no answer, which is what
-// leaves the memo's extractions counter at zero and its dirs map empty for this case.
+// A self glyph returns the zero ExpandAnswer and a *SelfGlyphError once, before any alphabet answers,
+// so no unit is parsed and no scan is built for a question that has no answer.
 //
-// It sets id to the parsed glyph's String(), reads m.dirsOf(g.Unit) for the directory list and the
-// collision flag, reads m.symbolsOf(g.Unit) — an error from which is returned as this call's own
-// error — and filters with matchesFor.
+// Each accepting alphabet answers through expandIn, and the answers merge:
 //
-// It then calls statusForMatches(g, matches, dirs.collision), the one place a match set becomes a
-// status, so expand can never disagree with Resolve about what a glyph resolves to, and adds a kind
-// gate between that function's zero-and-collision rows and its remaining ones, mapping the four
-// returned values onto ExpandAnswer in exactly this order:
+//   - One alphabet whose answer is not not_found, a NotATypeError included: its answer or error stands.
+//   - Two such alphabets: ambiguous, with both raw match sets as candidates, each carrying its language.
+//   - None: not_found, with Unit found when either alphabet found its unit.
 //
-//  1. StatusNotFound: Status is StatusNotFound, Unit is StatusFound when the memoised directory list
-//     is non-empty and StatusNotFound when it is empty, and the answer carries no head, members or
-//     candidates. This is statusForMatches' own first row, evaluated before its collision row, which
-//     is why a collision with no match in either directory answers not_found with unit: found here
-//     exactly as it does in Resolve.
-//  2. StatusAmbiguous and the collision flag is set: Status is StatusAmbiguous, Candidates is the
-//     match set, and there is no head and no members. Checked before the kind gate, so a single type
-//     match under a collision answers ambiguous here exactly as it does in Resolve, and
-//     *NotATypeError is never returned under a collision — the glyph does not unambiguously name
-//     anything, so naming a kind would be a claim the answer cannot support.
-//  3. The kind gate, applied to whatever statusForMatches returned other than the two rows above —
-//     StatusFound, StatusMultipart, or a non-collision StatusAmbiguous. When no match in the set is
-//     KindType, whatever the count, expand returns the zero ExpandAnswer and a *NotATypeError
-//     carrying the glyph's string form and the kind of the first match in file-then-line order.
-//     Keying the gate on no match being a type rather than on the match count is what gives the
-//     several-declaration init glyph a defined answer: statusForMatches calls that set
-//     StatusMultipart, a status ExpandAnswer does not admit, and the gate catches it because init's
-//     kind is function. It also catches a single non-type match, which statusForMatches calls
-//     StatusFound.
-//  4. The set holds at least one type and statusForMatches did not return StatusFound: Status is
-//     StatusAmbiguous and Candidates is the match set. This covers both several type declarations
-//     under one glyph — docs/glyph.md §5's build-tag duplicates, the only way a Go type multiplies,
-//     since docs/rewrite-plan.md says a Go type never splits and only init does — and a mixed set
-//     naming a type and something else, where choosing between them would be a silent pick.
-//  5. StatusFound and the single match is a type: Status is StatusFound, with the head and members
-//     below.
-//
-// The head is the matched type's own Symbol, copied by value, with two substitutions and nothing
-// else: Start becomes the symbol's HeadStart and End becomes its HeadEnd. Every other field — the
-// id, kind, file, sigend, signature and doc — is the symbol's own, because one symbol entry is what
-// the three verbs that return symbols — toc, resolve and expand — all return for a symbol, and
-// expand emits no shape of its own. Assign its address to
-// Head. If the matched KindType symbol has HeadStart == 0, expand returns the zero ExpandAnswer and a
-// plain fmt.Errorf naming the glyph's string form and stating that a type symbol carries no head
-// span: that is an invariant violation in the walk, and a silent fallback to Start and End would hide
-// it behind an answer that happens to be right for Go.
-//
-// Contract gap, closed by nobody: substituting Start and End with the head span means the type's
-// full declaration span is not recoverable from an ExpandAnswer for a language whose head is a
-// strict subset — while docs/rewrite-plan.md's section 5, The queries, says the whole class is the
-// type symbol's own start-end and "is available, never the default". For Go the two spans are
-// identical, so nothing is lost and the gap is unreachable; the first language whose head is a
-// strict subset has to decide whether expand carries both spans, and that decision belongs to that
-// language's task, against a repository that needs it. docs/rewrite-plan.md's "the class span minus
-// its member spans" — its phrase, in section 5, The queries, not docs/glyph.md's — describes what
-// a reader ends up reading, not arithmetic this verb performs: for a Go struct the subtraction is
-// empty, and for an interface the answer already carries every member's start and end, so a consumer
-// wanting only the non-member lines has what it needs and the engine emits one contiguous head entry
-// rather than a discontiguous span type the closed symbol shape does not have.
-//
-// The span is read from the head fields rather than re-derived because, for Go, the two pairs are
-// identical, so nothing observable changes today; the head field is what a language whose head is a
-// strict subset of its declaration would read instead of re-deriving the rule here.
-//
-// The members are every symbol in the unit's symbol slice — not the match set — with
-// len(s.Glyph.Owner) > 0 && s.Glyph.Owner[0] == g.Name. The type symbol itself has no owner and is
-// excluded by that filter, so it is never both head and member. The slice symbolsOf returns is
-// already ordered by file then start line and the filter preserves it, so no second sort is needed
-// and none is written. Members is left nil when the filter selects nothing, so omitempty drops the
-// key: a type with no members is found with a head and nothing else, not an error and not a
-// not_found — the type exists and consists of its head.
-//
-// Matching on the first owner element rather than the whole chain is the general form: in Go the
-// chain is at most one element because the grammar rejects a deeper member outright, so the two are
-// the same today and the general form is what a nested-type language needs. An interface method is a
-// member by this same rule with no special case, since the walk gives a method element the
-// interface's own type name as its owner, and it sorts into place inside the head range by file and
-// line. Only the glyph's own unit is searched: the external test unit is a different unit and cannot
-// declare methods on this unit's types.
+// An error from expandIn other than a NotATypeError is returned as this call's own error.
 func (r *Repo) expand(target string, m *unitMemo) (ExpandAnswer, error) {
-	g, err := glyph.Parse(glyph.Go, target)
-	if err != nil {
-		return ExpandAnswer{}, fmt.Errorf("engine: expand %s: %w", target, err)
+	var parsed []glyph.Glyph
+	var goErr, csharpErr error
+	for _, lang := range []glyph.Language{glyph.Go, glyph.CSharp} {
+		g, err := glyph.Parse(lang, target)
+		switch {
+		case err == nil:
+			parsed = append(parsed, g)
+		case lang == glyph.Go:
+			goErr = err
+		default:
+			csharpErr = err
+		}
 	}
+	if len(parsed) == 0 {
+		return ExpandAnswer{}, fmt.Errorf("engine: expand %s: %w", target, rejectionFor(goErr, csharpErr))
+	}
+	if parsed[0].IsSelf() {
+		return ExpandAnswer{}, &SelfGlyphError{ID: parsed[0].String()}
+	}
+
+	var outcomes []expandOutcome
+	for _, g := range parsed {
+		answer, matches, err := r.expandIn(g, m)
+		var notAType *NotATypeError
+		if err != nil && !errors.As(err, &notAType) {
+			return ExpandAnswer{}, err
+		}
+		outcomes = append(outcomes, expandOutcome{lang: g.Lang, answer: answer, matches: matches, err: err})
+	}
+
+	var standing []expandOutcome
+	for _, outcome := range outcomes {
+		if outcome.contributes() {
+			standing = append(standing, outcome)
+		}
+	}
+	switch len(standing) {
+	case 0:
+		merged := outcomes[0].answer
+		for _, outcome := range outcomes {
+			if outcome.answer.Unit == StatusFound {
+				merged.Unit = StatusFound
+			}
+		}
+		return merged, nil
+	case 1:
+		return standing[0].answer, standing[0].err
+	}
+
+	merged := ExpandAnswer{ID: standing[0].answer.ID, Status: StatusAmbiguous}
+	if merged.ID == "" {
+		merged.ID = parsed[0].String()
+	}
+	for _, outcome := range standing {
+		for _, sym := range outcome.matches {
+			sym.Language = string(outcome.lang)
+			merged.Candidates = append(merged.Candidates, sym)
+		}
+	}
+	sort.SliceStable(merged.Candidates, func(i, j int) bool {
+		if merged.Candidates[i].File != merged.Candidates[j].File {
+			return merged.Candidates[i].File < merged.Candidates[j].File
+		}
+		return merged.Candidates[i].Start < merged.Candidates[j].Start
+	})
+	return merged, nil
+}
+
+// expandIn answers g, the parse of the target under one alphabet, and returns the alphabet's raw match set beside the answer.
+// A Go unit is read through its directories and a C# unit through the call's namespace scan.
+// The match set is returned even alongside a *NotATypeError, so a caller merging alphabets can offer it as candidates.
+//
+// The matches are g's owner chain, name and parameters read through matchesFor.
+// statusForMatches decides the status, so expand can never disagree with Resolve about what a glyph resolves to.
+// A kind gate sits between that function's zero-and-collision rows and its remaining ones, mapping the result onto ExpandAnswer in this order:
+//
+//  1. StatusNotFound: Status is StatusNotFound and Unit is StatusFound when the unit exists, StatusNotFound otherwise.
+//     It is evaluated before the collision row, so a collision with no match answers not_found with unit found exactly as Resolve does.
+//  2. StatusAmbiguous under a unit collision: Candidates is the match set, with no head and no members.
+//     It is checked before the kind gate, so a *NotATypeError is never returned under a collision.
+//  3. The kind gate: when no match is KindType, whatever the count, it returns the zero ExpandAnswer and a *NotATypeError
+//     carrying the glyph's string form and the kind of the first match in file-then-line order.
+//     This gives the several-declaration Go "init" glyph a defined answer, and a single non-type match too.
+//  4. StatusMultipart with a type among the matches, which only a C# glyph can produce: Status is StatusMultipart,
+//     Parts holds every part's head, and Members holds the members of all parts. There is no Head.
+//  5. Any other status than StatusFound with a type in the set: Status is StatusAmbiguous and Candidates is the match set.
+//     This covers build-tag duplicates and a mixed set naming a type and something else, where choosing would be a silent pick.
+//  6. StatusFound with a type: Status is StatusFound, with the head and members below.
+//
+// A head is the matched type's own Symbol, copied by value, with Start and End substituted from HeadStart and HeadEnd.
+// Every other field is the symbol's own, because one symbol entry is what toc, resolve and expand all return for a symbol.
+// A type whose HeadStart is 0 is an invariant violation in the walk, reported as a plain error naming the glyph;
+// a silent fallback to Start and End would hide it behind an answer that happens to be right for Go.
+//
+// A C# type's head is its declaration through its base list, a strict subset of its span,
+// so the span of the whole declaration is recoverable only from resolve.
+//
+// The members are every symbol of the unit, not the match set, whose owner chain starts with g's owner chain followed by g's name.
+// The type itself has a shorter chain and is never its own member.
+// For Go the owner chain of a type is empty, so the rule selects the symbols whose first owner is the type's name.
+// For a nested C# type it selects the nested type's members and never those of a top-level type of the same name,
+// and it includes an explicit interface implementation whose minted chain passes through the target's chain.
+// The unit's symbols are ordered by file then start line and the filter preserves that order.
+// Members is nil when nothing matches, so a type with no members is found with a head and nothing else.
+// Only the glyph's own unit is searched: the Go external test unit is a different unit and cannot declare members of this unit's types.
+func (r *Repo) expandIn(g glyph.Glyph, m *unitMemo) (ExpandAnswer, []Symbol, error) {
 	id := g.String()
 
-	if g.IsSelf() {
-		return ExpandAnswer{}, &SelfGlyphError{ID: id}
-	}
-
-	dirsRes := m.dirsOf(g.Unit)
-	symbols, err := m.symbolsOf(g.Unit)
-	if err != nil {
-		return ExpandAnswer{}, err
+	var symbols []Symbol
+	var collision, unitFound bool
+	if g.Lang == glyph.CSharp {
+		scan, err := m.csharp()
+		if err != nil {
+			return ExpandAnswer{}, nil, err
+		}
+		symbols = scan.symbols[g.Unit]
+		unitFound = scan.declares(g.Unit)
+	} else {
+		dirsRes := m.dirsOf(g.Unit)
+		collision = dirsRes.collision
+		unitFound = len(dirsRes.dirs) > 0
+		var err error
+		if symbols, err = m.symbolsOf(g.Unit); err != nil {
+			return ExpandAnswer{}, nil, err
+		}
 	}
 
 	matches := matchesFor(symbols, g)
-	status := statusForMatches(g, matches, dirsRes.collision)
+	status := statusForMatches(g, matches, collision)
 
 	if status == StatusNotFound {
 		unit := StatusNotFound
-		if len(dirsRes.dirs) > 0 {
+		if unitFound {
 			unit = StatusFound
 		}
-		return ExpandAnswer{ID: id, Status: StatusNotFound, Unit: unit}, nil
+		return ExpandAnswer{ID: id, Status: StatusNotFound, Unit: unit}, matches, nil
 	}
-	if status == StatusAmbiguous && dirsRes.collision {
-		return ExpandAnswer{ID: id, Status: StatusAmbiguous, Candidates: matches}, nil
+	if status == StatusAmbiguous && collision {
+		return ExpandAnswer{ID: id, Status: StatusAmbiguous, Candidates: matches}, matches, nil
 	}
 
 	hasType := false
@@ -212,26 +262,46 @@ func (r *Repo) expand(target string, m *unitMemo) (ExpandAnswer, error) {
 		}
 	}
 	if !hasType {
-		return ExpandAnswer{}, &NotATypeError{ID: id, Kind: matches[0].Kind}
+		return ExpandAnswer{}, matches, &NotATypeError{ID: id, Kind: matches[0].Kind}
 	}
-	if status != StatusFound {
-		return ExpandAnswer{ID: id, Status: StatusAmbiguous, Candidates: matches}, nil
+	if status != StatusFound && status != StatusMultipart {
+		return ExpandAnswer{ID: id, Status: StatusAmbiguous, Candidates: matches}, matches, nil
 	}
 
-	typeSym := matches[0]
-	if typeSym.HeadStart == 0 {
-		return ExpandAnswer{}, fmt.Errorf("engine: expand %s: type symbol carries no head span", id)
+	heads := make([]Symbol, 0, len(matches))
+	for _, match := range matches {
+		if match.HeadStart == 0 {
+			return ExpandAnswer{}, matches, fmt.Errorf("engine: expand %s: type symbol carries no head span", id)
+		}
+		head := match
+		head.Start = match.HeadStart
+		head.End = match.HeadEnd
+		heads = append(heads, head)
 	}
-	head := typeSym
-	head.Start = typeSym.HeadStart
-	head.End = typeSym.HeadEnd
 
+	chain := append(append([]string(nil), g.Owner...), g.Name)
 	var members []Symbol
 	for _, sym := range symbols {
-		if len(sym.Glyph.Owner) > 0 && sym.Glyph.Owner[0] == g.Name {
+		if ownerStartsWith(sym.Glyph.Owner, chain) {
 			members = append(members, sym)
 		}
 	}
 
-	return ExpandAnswer{ID: id, Status: StatusFound, Head: &head, Members: members}, nil
+	if status == StatusMultipart {
+		return ExpandAnswer{ID: id, Status: StatusMultipart, Parts: heads, Members: members}, matches, nil
+	}
+	return ExpandAnswer{ID: id, Status: StatusFound, Head: &heads[0], Members: members}, matches, nil
+}
+
+// ownerStartsWith reports whether owner begins with every element of prefix, in order.
+func ownerStartsWith(owner, prefix []string) bool {
+	if len(owner) < len(prefix) {
+		return false
+	}
+	for i, name := range prefix {
+		if owner[i] != name {
+			return false
+		}
+	}
+	return true
 }

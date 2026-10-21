@@ -7,7 +7,6 @@ package engine
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -16,12 +15,7 @@ import (
 // .scratch/ copy.
 func repoModuleRoot(t *testing.T) string {
 	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine this test file's own source location")
-	}
-	// This file sits at internal/engine/walk_test.go; the module root is two directories up.
-	return filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	return filepath.Dir(filepath.Dir(packageDir(t)))
 }
 
 // openModuleRepo opens this module's own root as a Repo.

@@ -8,7 +8,6 @@ package engine
 
 import (
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -18,13 +17,7 @@ import (
 // ordering loosely enough to survive an ordinary edit to that file — a test that has to be updated
 // every time an unrelated comment is reflowed is a test that gets deleted.
 func TestRepoTOC_RepositoryFile_TreesitterPackage(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine this test file's own source location")
-	}
-	// This file sits at internal/engine/toc_integration_test.go, so the module root is three
-	// levels up.
-	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	moduleRoot := filepath.Dir(filepath.Dir(packageDir(t)))
 	targetRel := filepath.ToSlash(filepath.Join("internal", "engine", "treesitter", "treesitter.go"))
 
 	r, err := Open(moduleRoot)

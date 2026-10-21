@@ -161,7 +161,7 @@ func writeSymbolLines(b *strings.Builder, fe FileEntry) {
 // leading "<File>:" only when sym.File is non-empty, then "<Start>-<End>", then " (sig
 // <Start>-<SigEnd>)" only when SigEnd != 0 — the engine's documented marker for a symbol with no
 // body, such as a Go type alias, never line zero, since every real line number is 1-based — then
-// " <ID>: " + normalizeProse(Signature). When Doc is non-empty, a following line of exactly four
+// " <ID>" with " [language <Language>]" after it only when Language is non-empty, then ": " + normalizeProse(Signature). When Doc is non-empty, a following line of exactly four
 // spaces then normalizeProse(Doc); when it is empty, no line at all.
 //
 // The file prefix is invisible to the existing table-of-contents view: inside a toc answer the
@@ -186,6 +186,11 @@ func writeSymbolLine(b *strings.Builder, sym Symbol) {
 	}
 	b.WriteString(" ")
 	b.WriteString(sym.ID)
+	if sym.Language != "" {
+		b.WriteString(" [language ")
+		b.WriteString(sym.Language)
+		b.WriteString("]")
+	}
 	b.WriteString(": ")
 	b.WriteString(normalizeProse(sym.Signature))
 	b.WriteString("\n")
@@ -473,7 +478,7 @@ func writeCandidateEntry(b *strings.Builder, e RenameCandidateEntry) {
 // cannot fail and returns no error, and the returned string has no trailing whitespace on any line
 // and ends with exactly one "\n".
 //
-// RenderResolveText has four branches, checked in this order:
+// RenderResolveText has five branches, checked in this order:
 //
 //  1. r.Rejected() — the engine's own name for a pre-resolution rejection carried by the error
 //     field, so the renderer and the engine read one spelling rather than two. One line: the target
@@ -493,15 +498,19 @@ func writeCandidateEntry(b *strings.Builder, e RenameCandidateEntry) {
 //     directory form uses), but only when r.Status == StatusFound — that guard is written
 //     explicitly, since a hand-built not_found value carrying a non-nil Listing would otherwise
 //     print a directory block under a negative status, a shape the engine itself never produces.
-//  3. r.ID != "" — a glyph target with no listing: a member glyph, or a self glyph whose status is
+//  3. r.Listings != nil — a found C# self glyph. Line 1 is the same as branch 2's, and the directory
+//     blocks of every listing follow in order, joined with a newline as branch 2 joins them, only
+//     when r.Status == StatusFound. A declared namespace with no listing prints line 1 alone.
+//  4. r.ID != "" — a glyph target with no listing: a member glyph, or a self glyph whose status is
 //     not_found, which always carries a nil Listing. On StatusNotFound, one line: the identifier,
 //     " not_found", then " (unit found)" or " (unit not_found)" only when the unit field is
 //     non-empty — the engine always sets it here, so the guard exists only to keep an external
 //     caller's empty-unit value from emitting a dangling space; for a not_found self glyph the unit
 //     field is always set, so the suffix is always present. On any other status, one line — the
-//     identifier, a space, the status word — followed by one symbol line per entry, in order: the
-//     symbols slice for found and multipart, the candidates slice for ambiguous.
-//  4. otherwise — the guard for an externally constructed value with neither an ID nor a listing;
+//     identifier, a space, the status word, and " (languages <name>, <name>)" when r.Languages is
+//     non-empty — followed by one symbol line per entry, in order: the symbols slice for found and
+//     multipart, the candidates slice for ambiguous.
+//  5. otherwise — the guard for an externally constructed value with neither an ID nor a listing;
 //     the engine itself can no longer produce this shape, since every target it resolves is a glyph
 //     and every non-rejection result carries an ID. One line: r.Target, a space, the status word.
 //
@@ -535,6 +544,22 @@ func RenderResolveText(r ResolveResult) string {
 		if r.Status == StatusFound {
 			b.WriteString(strings.Join(dirBlocks(*r.Listing), "\n"))
 		}
+	case r.Listings != nil:
+		line1 := r.ID
+		if line1 == "" {
+			line1 = r.Target
+		}
+		b.WriteString(line1)
+		b.WriteString(" ")
+		b.WriteString(string(r.Status))
+		b.WriteString("\n")
+		if r.Status == StatusFound {
+			var blocks []string
+			for _, listing := range *r.Listings {
+				blocks = append(blocks, dirBlocks(listing)...)
+			}
+			b.WriteString(strings.Join(blocks, "\n"))
+		}
 	case r.ID != "":
 		if r.Status == StatusNotFound {
 			b.WriteString(r.ID)
@@ -550,6 +575,11 @@ func RenderResolveText(r ResolveResult) string {
 		b.WriteString(r.ID)
 		b.WriteString(" ")
 		b.WriteString(string(r.Status))
+		if len(r.Languages) > 0 {
+			b.WriteString(" (languages ")
+			b.WriteString(strings.Join(r.Languages, ", "))
+			b.WriteString(")")
+		}
 		b.WriteString("\n")
 		entries := r.Symbols
 		if r.Status == StatusAmbiguous {
@@ -573,7 +603,7 @@ func RenderResolveText(r ResolveResult) string {
 // takes the error path and produces no payload, exactly as the existing rule that there is no text
 // rendering of a failure already covers.
 //
-// RenderExpandText has four branches:
+// RenderExpandText has five branches:
 //
 //  1. StatusNotFound — one line: the identifier, a space, "not_found", a space, and "(unit found)"
 //     or "(unit not_found)"; nothing follows.
@@ -583,10 +613,12 @@ func RenderResolveText(r ResolveResult) string {
 //     alone, with no head line and no members. Otherwise the head's own symbol line follows, then,
 //     only when Members is non-empty, one blank line — the same block separator dirBlocks already
 //     uses, so no new marker is invented — followed by one symbol line per member in order.
-//  3. StatusAmbiguous — one line: the identifier, a space, "ambiguous"; then one symbol line per
+//  3. StatusMultipart — one line: the identifier, a space, "multipart"; then one symbol line per part in order,
+//     and, only when Members is non-empty, one blank line followed by one symbol line per member.
+//  4. StatusAmbiguous — one line: the identifier, a space, "ambiguous"; then one symbol line per
 //     candidate in order, with no blank line.
-//  4. otherwise — a fall-through for any other status value, including the empty status of a zero
-//     answer and the multipart status this answer type does not admit. One line: the identifier,
+//  5. otherwise — a fall-through for any other status value, including the empty status of a zero
+//     answer. One line: the identifier,
 //     then a space and the status word only when the status is non-empty — the guard that keeps a
 //     zero ExpandAnswer's empty identifier and empty status from leaving a dangling space, under the
 //     same no-trailing-whitespace invariant the other branches' guards serve. This branch is
@@ -611,6 +643,18 @@ func RenderExpandText(a ExpandAnswer) string {
 			break
 		}
 		writeSymbolLine(&b, *a.Head)
+		if len(a.Members) > 0 {
+			b.WriteString("\n")
+			for _, m := range a.Members {
+				writeSymbolLine(&b, m)
+			}
+		}
+	case StatusMultipart:
+		b.WriteString(a.ID)
+		b.WriteString(" multipart\n")
+		for _, part := range a.Parts {
+			writeSymbolLine(&b, part)
+		}
 		if len(a.Members) > 0 {
 			b.WriteString("\n")
 			for _, m := range a.Members {

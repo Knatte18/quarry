@@ -6,6 +6,7 @@ package quarry
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 
@@ -44,6 +45,8 @@ func parseLocation(target string) (path string, start, end int, ok bool) {
 
 // locationFor turns one target spelling into an engine.Location, applying the four checks that need
 // no file access in order: bad_location, bad_range, outside_root and the path half of unaddressable.
+// The path half applies to Go files only: a path of any other language is never rejected unaddressable here,
+// and a path of no registered language reaches the engine's unsupported_language rejection.
 // A target that fails one carries the rejection and whatever was determined before it.
 func (r *Repo) locationFor(target string) engine.Location {
 	path, start, end, ok := parseLocation(target)
@@ -83,7 +86,8 @@ func (r *Repo) locationFor(target string) engine.Location {
 			Error:  "path outside repository: " + path,
 		}
 	}
-	if _, err := glyph.Self(glyph.Go, rel); err != nil {
+	lang, _ := engine.LanguageForExtension(filepath.Ext(rel))
+	if _, err := glyph.Self(glyph.Go, rel); err != nil && lang == string(glyph.Go) {
 		return engine.Location{
 			Target: target,
 			File:   rel,
@@ -101,6 +105,10 @@ func (r *Repo) locationFor(target string) engine.Location {
 // A relative path is repository-root-relative, never cwd-relative; an absolute path inside the root is accepted.
 // A malformed or unanswerable target is that item's rejection and never fails the call.
 //
+// A .cs file is answered like a Go file with its own C# glyphs, and its path is never rejected unaddressable.
+// Its not_found answer carries the file's path self glyph in unit when that path can be spelled.
+// It omits unit when the path cannot, such as a path through a directory with a space.
+//
 // Enclose mints the glyphs a table-of-contents query mints for the file,
 // and Resolve does not find three of those cases, so a found answer there will not Resolve:
 // an explicitly named gitignored file, a file with no package clause,
@@ -112,6 +120,7 @@ func (r *Repo) Enclose(targets []string) ([]EncloseResult, error) {
 // EncloseAt answers each target exactly as Enclose does, but against the files committed at rev
 // when rev is non-empty; an empty rev answers against the working tree with no git involved.
 // All targets of one call are answered against the same single revision.
+// A .cs file at the revision is answered with its own C# glyphs, and its path is never rejected unaddressable.
 //
 // A revision that does not exist, a root that is not a git repository or not its top level,
 // and a failure reading a file from git fail the whole call, with the git layer's error returned
@@ -149,9 +158,13 @@ type gitRevisionFiles struct {
 	rev string
 }
 
-// GoFiles returns the Go files directly under dirRel at the revision.
+// GoFiles returns the files of every implemented language directly under dirRel at the revision.
 func (g gitRevisionFiles) GoFiles(dirRel string) ([]string, error) {
-	return g.gr.DirFilesAtRevision(g.rev, dirRel)
+	var exts []string
+	for _, lang := range engine.Implemented() {
+		exts = append(exts, engine.ExtensionsForLanguage(lang)...)
+	}
+	return g.gr.DirFilesAtRevision(g.rev, dirRel, exts)
 }
 
 // Read returns the file's bytes at the revision.

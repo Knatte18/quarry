@@ -11,9 +11,19 @@ package repopath
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
+
+// packageDir returns the directory of the package under test, which go test sets as the working
+// directory. Unlike runtime.Caller, it stays absolute when the test binary is built with -trimpath.
+func packageDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("packageDir: %v", err)
+	}
+	return dir
+}
 
 // writeScratchTree creates a fresh directory tree under .scratch/repopath-tests/<name>/, writes
 // each entry in files (key = a forward-slash relative path, value = its contents; parent
@@ -26,20 +36,12 @@ import (
 // It never calls t.TempDir(): the system temp directory is banned for this repository's tests,
 // and .scratch/ is the sanctioned location instead. This is a deliberate per-package copy of
 // internal/cli/scratchtree_test.go's helper of the same name, because Go test helpers are not
-// importable across packages. internal/repopath/ sits two directories below the module root — the
-// same depth as internal/cli/ — so the runtime.Caller(0) walk here takes the same three
-// filepath.Dir steps that file uses; quarry/'s own copy sits one directory down and needs only
-// two.
+// importable across packages. internal/repopath/ sits two directories below the module root, so the
+// walk up from the package directory takes two filepath.Dir steps.
 func writeScratchTree(t *testing.T, name string, files map[string]string) string {
 	t.Helper()
 
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("writeScratchTree: runtime.Caller(0) failed to resolve this file's path")
-	}
-	// thisFile is .../internal/repopath/scratchtree_test.go; the module root is three directories
-	// up.
-	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	moduleRoot := filepath.Dir(filepath.Dir(packageDir(t)))
 
 	root := filepath.Join(moduleRoot, ".scratch", "repopath-tests", name)
 	if err := os.RemoveAll(root); err != nil {

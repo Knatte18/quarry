@@ -98,7 +98,7 @@ type Location struct {
 
 // RevisionFiles is the engine's git-ignorant view of one revision's files.
 type RevisionFiles interface {
-	// GoFiles returns the Go files that are immediate children of dirRel at the revision,
+	// GoFiles returns the files of every registered language that are immediate children of dirRel at the revision,
 	// as repository-relative paths; dirRel "." is the repository root.
 	GoFiles(dirRel string) ([]string, error)
 	// Read returns one file's bytes at the revision.
@@ -279,7 +279,9 @@ func encloseLocation(loc Location, outcomes map[string]fileOutcome, fileOutcomeO
 }
 
 // answerFromOutcome turns a file's outcome into the answer for one location inside it:
-// the file's rejection, past_eof, found with the innermost members, or not_found with the file's self glyph.
+// the file's rejection, past_eof, found with the innermost members, or not_found with the file's path self glyph.
+// A Go file whose path cannot be spelled is rejected unaddressable.
+// A file of any other language with such a path answers not_found with no unit.
 func answerFromOutcome(loc Location, outcome fileOutcome) EncloseResult {
 	if outcome.reason != "" {
 		return encloseRejection(loc, outcome.reason, outcome.message)
@@ -294,21 +296,26 @@ func answerFromOutcome(loc Location, outcome fileOutcome) EncloseResult {
 		res.Symbols = symbols
 		return res
 	}
+	res.Status = StatusNotFound
 	self, err := glyph.Self(glyph.Go, loc.File)
-	if err != nil {
+	if err == nil {
+		res.Unit = self.String()
+		return res
+	}
+	if lang, _ := LanguageForExtension(filepath.Ext(loc.File)); lang == string(glyph.Go) {
 		return encloseRejection(loc, EncloseReasonUnaddressable,
 			fmt.Sprintf("path cannot be spelled as a glyph unit: %s", loc.File))
 	}
-	res.Status = StatusNotFound
-	res.Unit = self.String()
 	return res
 }
 
 // worktreeFileOutcome examines file under the repository root:
 // the filesystem decides missing and symlink files first,
-// then the memo-aware table-of-contents path supplies the file's symbols, unit and lossy flag.
-// The unit comes from the DirAnswer that same call returned, never from the memo's votes,
+// then the memo-aware table-of-contents path supplies the file's symbols and lossy flag.
+// The symbols come from the entry that same call returned, never from the memo's votes,
 // because an explicitly named gitignored file votes outside the memo.
+// A Go file whose entry carries no symbol list has an unspellable unit;
+// every other language's entry carries its strategy-minted symbols.
 func (r *Repo) worktreeFileOutcome(file string, m *fileMemo) fileOutcome {
 	missing := rejectedFile(EncloseReasonMissingFile, fmt.Sprintf("file not found: %s", file))
 	info, err := os.Lstat(filepath.Join(r.root, filepath.FromSlash(file)))
@@ -337,8 +344,7 @@ func (r *Repo) worktreeFileOutcome(file string, m *fileMemo) fileOutcome {
 	}
 
 	rec := m.records[file]
-	dir, _ := splitDirBase(file)
-	if !r.unitSpellable(unitFor(dir, answer.Package, rec.clause)) {
+	if entry.Symbols == nil {
 		return unspellableUnitFile(file)
 	}
 	candidates := make([]Symbol, len(*entry.Symbols))
@@ -352,7 +358,7 @@ func (r *Repo) worktreeFileOutcome(file string, m *fileMemo) fileOutcome {
 // EncloseFrom answers each location in locs against the revision files exposes, positionally,
 // exactly as Enclose answers against the working tree:
 // element i answers locs[i], and a nil or empty locs yields an empty, non-nil slice.
-// The revision has no ignore set and no symlinks: every Go file files lists votes on its directory's package.
+// The revision has no ignore set and no symlinks: every file files lists is read, and the Go files vote on their directory's package.
 //
 // The only whole-call failures are a GoFiles or Read error, which return a nil slice and that error;
 // every per-location problem is that item's rejection.
@@ -431,7 +437,8 @@ func (r *Repo) encloseFrom(files RevisionFiles, locs []Location, m *fileMemo) ([
 
 // revisionFileOutcome examines base inside the revision directory d:
 // a base the revision does not list is missing, a record error is unreadable,
-// and an unspellable unit is unaddressable before any symbol is stamped.
+// and an unspellable Go unit is unaddressable before any symbol is stamped.
+// A record of another language keeps the units its strategy minted and is never gated on the Go unit.
 func (r *Repo) revisionFileOutcome(file, dir, base string, d revisionDir) fileOutcome {
 	if !d.listed[base] {
 		return rejectedFile(EncloseReasonMissingFile, fmt.Sprintf("file not found: %s", file))
@@ -440,9 +447,12 @@ func (r *Repo) revisionFileOutcome(file, dir, base string, d revisionDir) fileOu
 	if rec.err != "" {
 		return unreadableFile(file, rec.err)
 	}
-	unit := unitFor(dir, d.vote.pkg, rec.clause)
-	if !r.unitSpellable(unit) {
-		return unspellableUnitFile(file)
+	unit := ""
+	if rec.lang == string(glyph.Go) {
+		unit = unitFor(dir, d.vote.pkg, rec.clause)
+		if !r.unitSpellable(unit) {
+			return unspellableUnitFile(file)
+		}
 	}
 	return fileOutcome{candidates: stampSymbols(rec.symbols, unit, file), lines: rec.lines, lossy: rec.lossy}
 }

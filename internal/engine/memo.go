@@ -13,11 +13,12 @@ import (
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
 // fileRecord is everything one read and parse of a file yields.
-// Symbols carry the placeholder unit "" and no File;
+// Go symbols carry the placeholder unit "" and no File, and a language that spells units by declaration mints its own units;
 // consumers stamp a copy through stampSymbols, never the record itself.
 type fileRecord struct {
 	// err is the read, UTF-8 or parse failure text; every other field except lines is then unset.
@@ -30,13 +31,16 @@ type fileRecord struct {
 	parsed bool
 	// lang is the file's language, set only when parsed.
 	lang string
-	// test, generated and lossy are the strategy's flags and the parse's partial-tree flag.
+	// test and generated are the strategy's flags.
+	// lossy is the parse's partial-tree flag, also set when the strategy dropped an id it could not spell.
 	test, generated, lossy bool
 	// clause is the file's package clause; hasClause reports it is non-empty.
 	clause    string
 	hasClause bool
 	// packageDoc is the file's package documentation.
 	packageDoc string
+	// namespaces are the namespaces the file declares and every prefix of them, set only for a language whose strategy implements namespaceDeclarer.
+	namespaces []string
 	// symbols are the file's symbols, extracted only when withSymbols.
 	symbols []Symbol
 	// withSymbols records whether symbols were requested when the record was built, whatever the
@@ -44,11 +48,15 @@ type fileRecord struct {
 	withSymbols bool
 }
 
-// dirVote is a directory's clause vote: its dominant clause, the language of that clause's files,
-// and the base-name-to-clause map of every file whose record has a clause.
+// dirVote is a directory's clause vote.
+// pkg is the Go vote, the dominant clause among the Go records, and clauses is the base-name-to-clause map of every Go record that has one;
+// the unit derivations, the directory's package documentation and the Go unit collection read these.
+// answerPkg and answerLang are the directory answer's package and language, taken from the language with the most files;
+// answerLang is empty whenever answerPkg is.
 type dirVote struct {
-	pkg, lang string
-	clauses   map[string]string
+	pkg                   string
+	clauses               map[string]string
+	answerPkg, answerLang string
 }
 
 // fileMemo memoises one fileRecord per file and one dirVote per directory for the length of one
@@ -99,8 +107,9 @@ func lineCount(src []byte) int {
 }
 
 // buildRecord reads and parses base inside dirRel once and returns everything extraction needs from it:
-// header, flags, package clause, package doc and, when withSymbols, symbols under the placeholder unit "".
+// header, flags, package clause, package doc, declared namespaces and, when withSymbols, symbols (Go symbols under the placeholder unit "").
 // The bytes come from read, called with the file's repository-relative path.
+// A strategy that dropped an id it could not spell makes the record lossy, whether or not symbols were requested.
 // A read failure, invalid UTF-8 or a failed parse yields a record holding only err
 // (and lines, when the bytes were read);
 // a file with no language or strategy yields a record holding only its header and lines.
@@ -130,11 +139,15 @@ func (r *Repo) buildRecord(dirRel, base string, withSymbols bool, read func(rel 
 		parsedRec.header = FirstParagraph(strategy.Header(root, src))
 		parsedRec.test = strategy.TestFile(base)
 		parsedRec.generated = strategy.Generated(root, src)
-		parsedRec.lossy = partial
 		parsedRec.clause = strategy.Package(root, src)
 		parsedRec.packageDoc = strategy.PackageDoc(root, src)
+		if declarer, ok := strategy.(namespaceDeclarer); ok {
+			parsedRec.namespaces = declarer.Namespaces(root, src)
+		}
+		symbols, dropped := strategy.Symbols("", root, src)
+		parsedRec.lossy = partial || len(dropped) > 0
 		if withSymbols {
-			parsedRec.symbols = strategy.Symbols("", root, src)
+			parsedRec.symbols = symbols
 		}
 		return nil
 	})
@@ -181,6 +194,11 @@ func (m *fileMemo) dirRecords(dirRel string, bases []string, wantSymbols func(ba
 // The vote reads records and never parses.
 // memoise is false only for a vote set extended by an explicitly named, gitignored target,
 // which must not leak into the directory's plain vote.
+//
+// The Go vote counts the clauses of Go records only.
+// The answer's language is the one with the most files in recs, every file whose extension maps to a language counting, parsed or not,
+// and the smaller language name breaks a tie.
+// The answer's package is the Go vote when that language is Go, and otherwise the clause most of that language's files declare, the smallest breaking a tie.
 func (m *fileMemo) dirVote(dirRel string, recs map[string]*fileRecord, memoise bool) dirVote {
 	if memoise {
 		if v, ok := m.votes[dirRel]; ok {
@@ -189,39 +207,64 @@ func (m *fileMemo) dirVote(dirRel string, recs map[string]*fileRecord, memoise b
 	}
 
 	clauses := make(map[string]string, len(recs))
+	otherClauseCounts := make(map[string]map[string]int)
+	fileCounts := make(map[string]int)
 	for base, rec := range recs {
-		if rec.hasClause {
-			clauses[base] = rec.clause
+		if lang, ok := LanguageForExtension(filepath.Ext(base)); ok {
+			fileCounts[lang]++
 		}
+		if !rec.hasClause {
+			continue
+		}
+		if rec.lang == "go" {
+			clauses[base] = rec.clause
+			continue
+		}
+		if otherClauseCounts[rec.lang] == nil {
+			otherClauseCounts[rec.lang] = make(map[string]int)
+		}
+		otherClauseCounts[rec.lang][rec.clause]++
 	}
 	pkg, _ := UnitsForClauseMap(dirRel, clauses)
-	lang := ""
-	for base, clause := range clauses {
-		if clause == pkg {
-			if l, ok := LanguageForExtension(filepath.Ext(base)); ok {
-				lang = l
-				break
-			}
+
+	majority := ""
+	for lang, count := range fileCounts {
+		if majority == "" || count > fileCounts[majority] || (count == fileCounts[majority] && lang < majority) {
+			majority = lang
 		}
 	}
+	answerPkg := ""
+	switch {
+	case majority == "go":
+		answerPkg = pkg
+	case majority != "" && len(otherClauseCounts[majority]) > 0:
+		answerPkg = mostCommonClause(otherClauseCounts[majority])
+	}
+	answerLang := ""
+	if answerPkg != "" {
+		answerLang = majority
+	}
 
-	v := dirVote{pkg: pkg, lang: lang, clauses: clauses}
+	v := dirVote{pkg: pkg, clauses: clauses, answerPkg: answerPkg, answerLang: answerLang}
 	if memoise {
 		m.votes[dirRel] = v
 	}
 	return v
 }
 
-// stampSymbols returns a new slice holding a copy of each symbol in syms with its unit set to unit,
-// its ID recomputed from the glyph and its File set to file.
-// The extraction strategy uses its unit argument only to build Glyph and ID,
+// stampSymbols returns a new slice holding a copy of each symbol in syms with its File set to file.
+// A Go symbol also has its unit set to unit and its ID recomputed from the glyph:
+// the Go strategy uses its unit argument only to build Glyph and ID,
 // so stamping after the directory's vote yields symbols identical to extracting with the unit.
+// A symbol of any other language keeps the unit and ID its strategy minted.
 // The returned slice is never nil, so an empty list still encodes as [].
 func stampSymbols(syms []Symbol, unit, file string) []Symbol {
 	stamped := make([]Symbol, 0, len(syms))
 	for _, sym := range syms {
-		sym.Glyph.Unit = unit
-		sym.ID = sym.Glyph.String()
+		if sym.Glyph.Lang == glyph.Go {
+			sym.Glyph.Unit = unit
+			sym.ID = sym.Glyph.String()
+		}
 		sym.File = file
 		stamped = append(stamped, sym)
 	}

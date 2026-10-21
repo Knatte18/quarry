@@ -54,6 +54,19 @@ func TestGlyph_String(t *testing.T) {
 			},
 			want: "internal/logger#Outer.Inner.handle",
 		},
+		{
+			name: "C# indexer prints its Params in square brackets",
+			g: Glyph{
+				Lang: CSharp, Unit: "Ns",
+				Owner: []string{"Renderer"}, Name: "this", Params: []string{"int", "string"},
+			},
+			want: "Ns#Renderer.this[int,string]",
+		},
+		{
+			name: "Go name this keeps parentheses",
+			g:    Glyph{Lang: Go, Unit: "internal/x", Name: "this", Params: []string{}},
+			want: "internal/x#this()",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,19 +116,20 @@ func TestGlyph_String_DoesNotMutateOwner(t *testing.T) {
 	}
 }
 
-// TestRoundTrip_ParseThenString asserts that, for every input in the Go accept table and every
-// self-form input in selfAccept, Parse then String returns exactly the original input. This is
-// total over goAccept: the Go alphabet accepts only the canonical spelling, so no case is carved
-// out.
+// roundTripAccept is every accept table whose rows carry their own Lang: Go's and C#'s.
+var roundTripAccept = append(append([]acceptCase{}, goAccept...), csharpAccept...)
+
+// TestRoundTrip_ParseThenString asserts that, for every input in roundTripAccept, parsed under its own Lang, and every self-form input in selfAccept, Parse then String returns exactly the original input.
+// This is total over roundTripAccept: each alphabet accepts only the canonical spelling, so no case is carved out.
 func TestRoundTrip_ParseThenString(t *testing.T) {
-	for _, tt := range goAccept {
+	for _, tt := range roundTripAccept {
 		t.Run(tt.name+"/"+tt.section, func(t *testing.T) {
-			g, err := Parse(Go, tt.input)
+			g, err := Parse(tt.want.Lang, tt.input)
 			if err != nil {
-				t.Fatalf("Parse(Go, %q) error = %v; want nil", tt.input, err)
+				t.Fatalf("Parse(%v, %q) error = %v; want nil", tt.want.Lang, tt.input, err)
 			}
 			if got := g.String(); got != tt.input {
-				t.Errorf("Parse(Go, %q).String() = %q; want %q", tt.input, got, tt.input)
+				t.Errorf("Parse(%v, %q).String() = %q; want %q", tt.want.Lang, tt.input, got, tt.input)
 			}
 		})
 	}
@@ -132,19 +146,19 @@ func TestRoundTrip_ParseThenString(t *testing.T) {
 	}
 }
 
-// TestRoundTrip_StringThenParse asserts that, for every input in the Go accept table, parsing the
-// printed form of the parsed Glyph yields a Glyph equal to the first. This is total over goAccept,
-// like TestRoundTrip_ParseThenString above.
+// TestRoundTrip_StringThenParse asserts that, for every input in roundTripAccept, parsing the
+// printed form of the parsed Glyph under the same Lang yields a Glyph equal to the first. This is
+// total over roundTripAccept, like TestRoundTrip_ParseThenString above.
 func TestRoundTrip_StringThenParse(t *testing.T) {
-	for _, tt := range goAccept {
+	for _, tt := range roundTripAccept {
 		t.Run(tt.name+"/"+tt.section, func(t *testing.T) {
-			first, err := Parse(Go, tt.input)
+			first, err := Parse(tt.want.Lang, tt.input)
 			if err != nil {
-				t.Fatalf("Parse(Go, %q) error = %v; want nil", tt.input, err)
+				t.Fatalf("Parse(%v, %q) error = %v; want nil", tt.want.Lang, tt.input, err)
 			}
-			second, err := Parse(Go, first.String())
+			second, err := Parse(tt.want.Lang, first.String())
 			if err != nil {
-				t.Fatalf("Parse(Go, %q) (printed form) error = %v; want nil", first.String(), err)
+				t.Fatalf("Parse(%v, %q) (printed form) error = %v; want nil", tt.want.Lang, first.String(), err)
 			}
 			if !reflect.DeepEqual(first, second) {
 				t.Errorf("round trip through String() = %+v; want %+v", second, first)

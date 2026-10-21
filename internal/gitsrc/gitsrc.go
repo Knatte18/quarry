@@ -220,8 +220,9 @@ func (r *Repo) ReadBlob(rev, path string) ([]byte, error) {
 	return runGit(r.root, "show", rev+":"+path)
 }
 
-// DirFilesAtRevision returns the Go source files that are dir's immediate children at rev --
+// DirFilesAtRevision returns the files ending in one of exts that are dir's immediate children at rev --
 // repository-relative and never a subdirectory's files. dir == "" or "." means the repository root.
+// Each extension carries its leading dot, as in ".go".
 //
 // This is one half of a symmetry pair with DirFilesInWorkingTree: both return the directory's
 // immediate children only, because that is the set the clause vote runs over -- the walk reads one
@@ -237,12 +238,12 @@ func (r *Repo) ReadBlob(rev, path string) ([]byte, error) {
 // applies the engine's own ignore set: a file that is both tracked and matched by a gitignore
 // pattern is listed here, on the revision side, exactly as it is on the working-tree side, so the
 // symmetry the two sides promise holds for it -- listed on both sides, never on one alone.
-func (r *Repo) DirFilesAtRevision(rev, dir string) ([]string, error) {
+func (r *Repo) DirFilesAtRevision(rev, dir string, exts []string) ([]string, error) {
 	out, err := runGit(r.root, "ls-tree", "-z", "--name-only", rev, "--", revisionDirPathspec(dir))
 	if err != nil {
 		return nil, err
 	}
-	return filterGoFiles(splitNullDelimited(out)), nil
+	return filterExtensions(splitNullDelimited(out), exts), nil
 }
 
 // revisionDirPathspec turns dir into the pathspec ls-tree needs to list dir's immediate children
@@ -255,9 +256,9 @@ func revisionDirPathspec(dir string) string {
 	return strings.TrimSuffix(dir, "/") + "/"
 }
 
-// DirFilesInWorkingTree returns the Go source files that are dir's immediate children on the
+// DirFilesInWorkingTree returns the files ending in one of exts that are dir's immediate children on the
 // working-tree side -- repository-relative and never a subdirectory's files. dir == "" or "." means
-// the repository root.
+// the repository root. Each extension carries its leading dot, as in ".go".
 //
 // This is the working-tree half of the symmetry pair DirFilesAtRevision documents. The two
 // underlying git commands are unequal: the revision-side listing is non-recursive already, but the
@@ -276,7 +277,7 @@ func revisionDirPathspec(dir string) string {
 // that is both tracked and gitignored is listed on both sides or on neither, while an ignored
 // *untracked* file is listed on neither, since it can only ever exist on this, the working-tree,
 // side.
-func (r *Repo) DirFilesInWorkingTree(dir string) ([]string, error) {
+func (r *Repo) DirFilesInWorkingTree(dir string, exts []string) ([]string, error) {
 	pathspec := "."
 	if dir != "" && dir != "." {
 		pathspec = strings.TrimSuffix(dir, "/")
@@ -285,7 +286,7 @@ func (r *Repo) DirFilesInWorkingTree(dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filterGoFiles(immediateChildren(dir, splitNullDelimited(out))), nil
+	return filterExtensions(immediateChildren(dir, splitNullDelimited(out)), exts), nil
 }
 
 // immediateChildren keeps only the paths in paths that are dir's immediate children, dropping any
@@ -312,15 +313,18 @@ func immediateChildren(dir string, paths []string) []string {
 	return children
 }
 
-// filterGoFiles keeps only the paths in paths ending in ".go".
-func filterGoFiles(paths []string) []string {
-	var goFiles []string
+// filterExtensions keeps only the paths in paths ending in one of exts.
+func filterExtensions(paths, exts []string) []string {
+	var kept []string
 	for _, p := range paths {
-		if strings.HasSuffix(p, ".go") {
-			goFiles = append(goFiles, p)
+		for _, ext := range exts {
+			if strings.HasSuffix(p, ext) {
+				kept = append(kept, p)
+				break
+			}
 		}
 	}
-	return goFiles
+	return kept
 }
 
 // runGit runs one git invocation against root, passed explicitly via git's own "-C" flag rather

@@ -45,7 +45,8 @@ func TestParseLocation(t *testing.T) {
 
 func TestEnclose_FileFreeRejections(t *testing.T) {
 	root := writeScratchTree(t, "enclose-rejections", map[string]string{
-		"a/b.go": "package a\n\nfunc F() {}\n",
+		"a/b.go":   "package a\n\nfunc F() {}\n",
+		"a b/c.cs": "namespace Ns;\n\npublic class C { }\n",
 	})
 	r := openDeltaRepo(t, root)
 	outside := filepath.Join(filepath.Dir(root), "elsewhere", "x.go") + ":1"
@@ -63,7 +64,7 @@ func TestEnclose_FileFreeRejections(t *testing.T) {
 		{"ReversedRange", "a/b.go:5-2", EncloseReasonBadRange, "", "bad range: start 5 must be at least 1 and not after end 2"},
 		{"EscapingRelative", "../x.go:1", EncloseReasonOutsideRoot, "", "path outside repository: ../x.go"},
 		{"AbsoluteOutside", outside, EncloseReasonOutsideRoot, "", "path outside repository: " + filepath.ToSlash(outside[:len(outside)-2])},
-		{"RootItself", ".:1", EncloseReasonUnaddressable, ".", "path cannot be spelled as a glyph unit: ."},
+		{"RootItself", ".:1", EncloseReasonUnsupportedLanguage, ".", "unsupported language: ."},
 		{"SpaceInSegment", "a b/c.go:1", EncloseReasonUnaddressable, "a b/c.go", "path cannot be spelled as a glyph unit: a b/c.go"},
 		{"HashInSegment", "a#b/c.go:1", EncloseReasonUnaddressable, "", "path cannot be spelled as a glyph unit: a#b/c.go"},
 	}
@@ -85,6 +86,16 @@ func TestEnclose_FileFreeRejections(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("CSharpPathWithSpacePassesThePreCheck", func(t *testing.T) {
+		got, err := r.Enclose([]string{"a b/c.cs:3"})
+		if err != nil {
+			t.Fatalf("Enclose(%q) error = %v", "a b/c.cs:3", err)
+		}
+		if got[0].Status != StatusFound || len(got[0].Symbols) != 1 || got[0].Symbols[0].ID != "Ns#C" {
+			t.Errorf("Enclose(%q) = %+v; want found Ns#C", "a b/c.cs:3", got[0])
+		}
+	})
 }
 
 func TestEnclose_NormalisesPaths(t *testing.T) {
@@ -152,6 +163,21 @@ func TestEncloseAt_Revision(t *testing.T) {
 		}
 		if now[0].Status != StatusNotFound {
 			t.Errorf("Enclose(a.go:3) = %+v; want not_found in the moved working tree", now[0])
+		}
+	})
+
+	t.Run("CSharpFileAnswersAtTheRevision", func(t *testing.T) {
+		f := newDeltaFixture(t)
+		f.writeAndCommit("pkg/C.cs", "namespace Ns;\n\npublic class C { }\n", "base")
+		f.write("pkg/C.cs", "namespace Ns;\n\n\n\npublic class C { }\n")
+		r := openDeltaRepo(t, f.root)
+
+		got, err := r.EncloseAt("HEAD", []string{"pkg/C.cs:3"})
+		if err != nil {
+			t.Fatalf("EncloseAt(HEAD) error = %v", err)
+		}
+		if got[0].Status != StatusFound || len(got[0].Symbols) != 1 || got[0].Symbols[0].ID != "Ns#C" {
+			t.Errorf("EncloseAt(HEAD, C.cs:3) = %+v; want found Ns#C", got[0])
 		}
 	})
 
