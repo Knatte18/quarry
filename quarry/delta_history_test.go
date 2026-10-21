@@ -20,7 +20,6 @@ package quarry
 import (
 	"errors"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -37,11 +36,7 @@ const (
 // package.
 func realHistoryRepoRoot(t *testing.T) string {
 	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("realHistoryRepoRoot: runtime.Caller(0) failed to resolve this file's path")
-	}
-	return filepath.Dir(filepath.Dir(thisFile))
+	return filepath.Dir(packageDir(t))
 }
 
 // deltaGitRealHistoryOrSkip opens root and runs DeltaGit(realHistoryFrom, realHistoryTo, target)

@@ -18,7 +18,6 @@ package engine
 
 import (
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/Knatte18/quarry/glyph"
@@ -233,14 +232,9 @@ func assertSymbolRoundTrip(t *testing.T, r *Repo) []roundTripSymbol {
 
 // TestRoundTrip_QuarryItself is this task's headline criterion, run over this repository, with no
 // environment needed so it always runs on every machine and in CI. It resolves the module root from
-// runtime.Caller(0) and opens it before handing off to assertSymbolRoundTrip.
+// the package directory and opens it before handing off to assertSymbolRoundTrip.
 func TestRoundTrip_QuarryItself(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine this test file's own source location")
-	}
-	// This file sits at internal/engine/roundtrip_test.go, so the module root is two directories up.
-	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
+	moduleRoot := filepath.Dir(filepath.Dir(packageDir(t)))
 
 	r, err := Open(moduleRoot)
 	if err != nil {
