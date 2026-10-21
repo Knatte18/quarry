@@ -147,6 +147,8 @@ type Symbol struct {
 	// Partial is true for a C# type or method carrying the partial modifier.
 	// It is JSON-hidden and read by the resolve verb's multipart rule.
 	Partial bool `json:"-"`
+	// Language names the alphabet a candidate was found in, set only on a candidate of a glyph that two alphabets both match.
+	Language string `json:"language,omitempty"`
 }
 
 // DirAnswer is the recursive answer to a table-of-contents query, per the rewrite plan's §4: one
@@ -243,11 +245,7 @@ type ResolveResult struct {
 	Symbols []Symbol `json:"symbols,omitempty"`
 	// Candidates carries the matches for ambiguous. The separate key is the signal that nothing was
 	// chosen.
-	//
-	// Contract gap: docs/glyph.md §5 says candidates in a multi-language repository are marked by
-	// language, while Symbol's key set has no language key. With Go the only alphabet the case is
-	// unreachable, so no key is added here — a second language's task adds the marker against a real
-	// case.
+	// When two alphabets both match the glyph, each candidate carries the language it was found in.
 	Candidates []Symbol `json:"candidates,omitempty"`
 	// Listing is the directory-or-file listing a found self glyph resolved to: a directory's own
 	// DirAnswer when the self glyph names a directory, and the enclosing directory's DirAnswer
@@ -257,6 +255,12 @@ type ResolveResult struct {
 	// problem. It is a pointer so an absent answer is dropped by omitempty; a non-pointer struct
 	// would always marshal.
 	Listing *DirAnswer `json:"listing,omitempty"`
+	// Listings is what a found C# self glyph resolves to: one directory answer per directory holding a file with a symbol in the namespace, in path order.
+	// Each answer lists only those files and has no subdirectories.
+	// It is a pointer so a declared namespace with no such file still encodes as an empty list.
+	Listings *[]DirAnswer `json:"listings,omitempty"`
+	// Languages names, in name order, the alphabets that both match a self glyph, set only on an ambiguous answer to it.
+	Languages []string `json:"languages,omitempty"`
 	// Error carries a pre-resolution rejection of the target string itself — a glyph.Parse rejection
 	// — and never an engine read failure. Status is empty whenever Error is set.
 	Error string `json:"error,omitempty"`

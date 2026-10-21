@@ -610,6 +610,56 @@ func (csharpStrategy) Package(root *ts.Node, src []byte) string {
 	return name
 }
 
+// Namespaces implements namespaceDeclarer by returning every namespace the file declares and every prefix of it, each once.
+// `namespace A.B;` and `namespace A { namespace B {} }` both report "A.B" and "A".
+func (csharpStrategy) Namespaces(root *ts.Node, src []byte) []string {
+	var names []string
+	seen := make(map[string]struct{})
+	declare := func(namespace string) {
+		for namespace != "" {
+			if _, dup := seen[namespace]; dup {
+				return
+			}
+			seen[namespace] = struct{}{}
+			names = append(names, namespace)
+			cut := strings.LastIndex(namespace, ".")
+			if cut < 0 {
+				return
+			}
+			namespace = namespace[:cut]
+		}
+	}
+
+	var walk func(parent *ts.Node, namespace string) string
+	walk = func(parent *ts.Node, namespace string) string {
+		for i := uint(0); i < parent.ChildCount(); i++ {
+			child := parent.Child(i)
+			switch child.Kind() {
+			case "file_scoped_namespace_declaration":
+				if name := csharpNamespaceName(child.ChildByFieldName("name"), src); name != "" {
+					namespace = joinCSharpNamespace(namespace, name)
+					declare(namespace)
+				}
+			case "namespace_declaration":
+				name := csharpNamespaceName(child.ChildByFieldName("name"), src)
+				if name == "" {
+					continue
+				}
+				inner := joinCSharpNamespace(namespace, name)
+				declare(inner)
+				if body := child.ChildByFieldName("body"); body != nil {
+					walk(body, inner)
+				}
+			case "preproc_if", "preproc_elif", "preproc_else":
+				namespace = walk(child, namespace)
+			}
+		}
+		return namespace
+	}
+	walk(root, "")
+	return names
+}
+
 // PackageDoc implements Strategy by returning "": a namespace carries no documentation of its own.
 func (csharpStrategy) PackageDoc(root *ts.Node, src []byte) string {
 	return ""

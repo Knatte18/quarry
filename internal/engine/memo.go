@@ -39,6 +39,8 @@ type fileRecord struct {
 	hasClause bool
 	// packageDoc is the file's package documentation.
 	packageDoc string
+	// namespaces are the namespaces the file declares and every prefix of them, set only for a language whose strategy implements namespaceDeclarer.
+	namespaces []string
 	// symbols are the file's symbols, extracted only when withSymbols.
 	symbols []Symbol
 	// withSymbols records whether symbols were requested when the record was built, whatever the
@@ -105,7 +107,7 @@ func lineCount(src []byte) int {
 }
 
 // buildRecord reads and parses base inside dirRel once and returns everything extraction needs from it:
-// header, flags, package clause, package doc and, when withSymbols, symbols (Go symbols under the placeholder unit "").
+// header, flags, package clause, package doc, declared namespaces and, when withSymbols, symbols (Go symbols under the placeholder unit "").
 // The bytes come from read, called with the file's repository-relative path.
 // A strategy that dropped an id it could not spell makes the record lossy, whether or not symbols were requested.
 // A read failure, invalid UTF-8 or a failed parse yields a record holding only err
@@ -139,6 +141,9 @@ func (r *Repo) buildRecord(dirRel, base string, withSymbols bool, read func(rel 
 		parsedRec.generated = strategy.Generated(root, src)
 		parsedRec.clause = strategy.Package(root, src)
 		parsedRec.packageDoc = strategy.PackageDoc(root, src)
+		if declarer, ok := strategy.(namespaceDeclarer); ok {
+			parsedRec.namespaces = declarer.Namespaces(root, src)
+		}
 		symbols, dropped := strategy.Symbols("", root, src)
 		parsedRec.lossy = partial || len(dropped) > 0
 		if withSymbols {
