@@ -4,5 +4,5 @@
 //
 // Parse is the syntactic check: it reads no source and accepts exactly the alphabet of the
 // language it is given. String is a total pure printer: it never validates the Glyph it is given
-// and never returns an error. Go is the only Language this package implements today.
+// and never returns an error. Go and C# are the Languages this package implements.
 package glyph

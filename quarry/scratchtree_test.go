@@ -7,9 +7,19 @@ package quarry
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
+
+// packageDir returns the directory of the package under test, which go test sets as the working
+// directory. Unlike runtime.Caller, it stays absolute when the test binary is built with -trimpath.
+func packageDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("packageDir: %v", err)
+	}
+	return dir
+}
 
 // writeScratchTree creates a fresh directory tree under .scratch/quarry-tests/<name>/, writes each
 // entry in files (key = a forward-slash relative path, value = its contents; parent directories are
@@ -25,16 +35,8 @@ import (
 func writeScratchTree(t *testing.T, name string, files map[string]string) string {
 	t.Helper()
 
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("writeScratchTree: runtime.Caller(0) failed to resolve this file's path")
-	}
-	// thisFile is .../quarry/scratchtree_test.go; quarry/ sits one directory below the module root,
-	// so the module root is two directories up (file to quarry/ to module root) — one fewer step
-	// than internal/engine/scratchtree_test.go's three, which that file needs because it sits two
-	// directories down. Copying three steps here would resolve the module root to the repository's
-	// parent and silently write the fixture tree outside the repository.
-	moduleRoot := filepath.Dir(filepath.Dir(thisFile))
+	// quarry/ sits one directory below the module root.
+	moduleRoot := filepath.Dir(packageDir(t))
 
 	root := filepath.Join(moduleRoot, ".scratch", "quarry-tests", name)
 	if err := os.RemoveAll(root); err != nil {

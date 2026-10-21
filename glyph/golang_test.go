@@ -224,13 +224,15 @@ func TestParse_GoReject(t *testing.T) {
 	}
 }
 
-// TestReasons_Completeness ranges over Reasons and fails for any element that no row of goReject or
-// parseReject names. This guarantees that adding a seventeenth Reason constant and listing it in
-// Reasons fails until a reject case exists; it does not guarantee that a constant added without
-// being listed in Reasons is ever caught — that is caught by review, not by this test.
+// TestReasons_Completeness ranges over Reasons and fails for any element that no row of goReject, csharpReject or parseReject names.
+// This guarantees that adding a Reason constant and listing it in Reasons fails until a reject case exists.
+// It does not guarantee that a constant added without being listed in Reasons is ever caught; that is caught by review, not by this test.
 func TestReasons_Completeness(t *testing.T) {
 	covered := make(map[Reason]bool, len(Reasons))
 	for _, tt := range goReject {
+		covered[tt.reason] = true
+	}
+	for _, tt := range csharpReject {
 		covered[tt.reason] = true
 	}
 	for _, tt := range parseReject {
@@ -238,7 +240,7 @@ func TestReasons_Completeness(t *testing.T) {
 	}
 	for _, r := range Reasons {
 		if !covered[r] {
-			t.Errorf("Reason %v has no row in goReject or parseReject", r)
+			t.Errorf("Reason %v has no row in goReject, csharpReject or parseReject", r)
 		}
 	}
 }

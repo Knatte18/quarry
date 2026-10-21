@@ -221,10 +221,6 @@ var parseReject = []rejectCase{
 		reason: ReasonUnsupportedLanguage, detail: "python",
 	},
 	{
-		name: "unsupported language: csharp", lang: Language("csharp"), input: "internal/logger#run",
-		reason: ReasonUnsupportedLanguage, detail: "csharp",
-	},
-	{
 		name: "unsupported language: empty", lang: Language(""), input: "internal/logger#run",
 		reason: ReasonUnsupportedLanguage, detail: "",
 	},

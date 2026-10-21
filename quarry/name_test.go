@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/quarry/glyph"
 )
 
 // TestName_Delegation covers that Name returns what the engine returns, positionally, over a batch
@@ -15,8 +17,8 @@ import (
 // and each entry's unit and target are echoed byte-identically.
 func TestName_Delegation(t *testing.T) {
 	decls := []Declaration{
-		{Unit: "pkg", Decl: "func Sym()"},
-		{Unit: "pkg", Decl: "const ( X = 1\nY = 2 )"},
+		{Lang: glyph.Go, Unit: "pkg", Decl: "func Sym()"},
+		{Lang: glyph.Go, Unit: "pkg", Decl: "const ( X = 1\nY = 2 )"},
 	}
 	got := Name(decls)
 	if len(got) != len(decls) {

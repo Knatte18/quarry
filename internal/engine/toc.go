@@ -164,9 +164,9 @@ func (r *Repo) fileTargetAnswer(dirRel, targetBase string, ig *ignoreSet, wantSy
 	v := m.dirVote(dirRel, recs, !targetIgnored)
 
 	answer := DirAnswer{Dir: dirRel}
-	if v.pkg != "" {
-		answer.Package = v.pkg
-		answer.Language = v.lang
+	if v.answerPkg != "" {
+		answer.Package = v.answerPkg
+		answer.Language = v.answerLang
 	}
 
 	docs := make(map[string]string)

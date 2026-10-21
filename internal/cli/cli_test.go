@@ -1166,6 +1166,7 @@ func TestCodeForExpandAnswer(t *testing.T) {
 		want int
 	}{
 		{"found", quarry.ExpandAnswer{Status: quarry.StatusFound}, exitOK},
+		{"multipart", quarry.ExpandAnswer{Status: quarry.StatusMultipart}, exitOK},
 		{"not-found", quarry.ExpandAnswer{Status: quarry.StatusNotFound}, exitNegative},
 		{"ambiguous", quarry.ExpandAnswer{Status: quarry.StatusAmbiguous}, exitNegative},
 	}

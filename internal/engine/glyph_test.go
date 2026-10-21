@@ -6,7 +6,6 @@ package engine
 import (
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"testing"
 
 	"github.com/Knatte18/quarry/glyph"
@@ -282,11 +281,7 @@ func TestGlyph_UnspellableUnit_BadRuneDirectory(t *testing.T) {
 // testdata/units/ itself as its own repository root and querying ".", where the unit genuinely is
 // empty.
 func TestGlyph_UnspellableUnit_RepositoryRoot(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("could not determine this test file's own source location")
-	}
-	unitsRoot := filepath.Join(filepath.Dir(thisFile), "testdata", "units")
+	unitsRoot := filepath.Join(packageDir(t), "testdata", "units")
 
 	r, err := Open(unitsRoot)
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 	"sort"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
+	tscsharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
 	tsgo "github.com/tree-sitter/tree-sitter-go/bindings/go"
 
 	// Blank-imported so cgoguard is a build-graph dependency of every package that links
@@ -28,7 +29,8 @@ import (
 // module exports. NewLanguage is called lazily, once per WithTree call, rather than once at
 // package init.
 var grammars = map[string]func() *ts.Language{
-	"go": func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
+	"go":     func() *ts.Language { return ts.NewLanguage(tsgo.Language()) },
+	"csharp": func() *ts.Language { return ts.NewLanguage(tscsharp.Language()) },
 }
 
 // onRelease is an unexported test seam: nil in production, and invoked from WithTree after both

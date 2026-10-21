@@ -366,6 +366,37 @@ func TestRenderResolveText(t *testing.T) {
 			"pkg# not_found (unit found)\n",
 		},
 		{
+			"SelfFoundListings",
+			ResolveResult{Target: "A.B#", ID: "A.B#", Status: StatusFound, Listings: &[]DirAnswer{
+				{Dir: "one", Files: []FileEntry{{Name: "X.cs"}}},
+				{Dir: "two", Files: []FileEntry{{Name: "Y.cs"}, {Name: "Z.cs"}}},
+			}},
+			"A.B# found\none, 1 file\nX.cs\n\ntwo, 2 files\nY.cs\nZ.cs\n",
+		},
+		{
+			"SelfFoundEmptyListings",
+			ResolveResult{Target: "A#", ID: "A#", Status: StatusFound, Listings: &[]DirAnswer{}},
+			"A# found\n",
+		},
+		{
+			"ListingsBranchGuard_NotFoundWithListingsEmitsLine1Only",
+			ResolveResult{Target: "A#", ID: "A#", Status: StatusNotFound, Listings: &[]DirAnswer{{Dir: "one", Files: []FileEntry{{Name: "X.cs"}}}}},
+			"A# not_found\n",
+		},
+		{
+			"SelfAmbiguousLanguages",
+			ResolveResult{Target: "Norce.Models#", ID: "Norce.Models#", Status: StatusAmbiguous, Languages: []string{"csharp", "go"}},
+			"Norce.Models# ambiguous (languages csharp, go)\n",
+		},
+		{
+			"GlyphAmbiguousCandidateLanguages",
+			ResolveResult{Target: "pkg#Fn", ID: "pkg#Fn", Status: StatusAmbiguous, Candidates: []Symbol{
+				{ID: "pkg#Fn", Start: 1, End: 5, Signature: "func Fn()", Language: "go"},
+				{ID: "pkg#Fn", Start: 7, End: 7, Signature: "class Fn", Language: "csharp"},
+			}},
+			"pkg#Fn ambiguous\n1-5 pkg#Fn [language go]: func Fn()\n7-7 pkg#Fn [language csharp]: class Fn\n",
+		},
+		{
 			// A self glyph whose unit directory does not exist either — the path's own unit does not
 			// exist.
 			"SelfNotFoundUnitNotFound",
@@ -420,6 +451,7 @@ func TestRenderResolveText(t *testing.T) {
 func TestRenderExpandText(t *testing.T) {
 	head := Symbol{ID: "pkg#Thing", Start: 1, End: 3, Signature: "type Thing struct{}"}
 	member := Symbol{ID: "pkg#Thing.Method", Start: 5, End: 5, Signature: "func (t Thing) Method()"}
+	partTwo := Symbol{ID: "Ns#Thing", Start: 9, End: 10, Signature: "partial class Thing"}
 
 	tests := []struct {
 		name string
@@ -455,6 +487,16 @@ func TestRenderExpandText(t *testing.T) {
 			"Ambiguous",
 			ExpandAnswer{ID: "pkg#Thing", Status: StatusAmbiguous, Candidates: []Symbol{head, member}},
 			"pkg#Thing ambiguous\n1-3 pkg#Thing: type Thing struct{}\n5-5 pkg#Thing.Method: func (t Thing) Method()\n",
+		},
+		{
+			"Multipart",
+			ExpandAnswer{ID: "Ns#Thing", Status: StatusMultipart, Parts: []Symbol{head, partTwo}, Members: []Symbol{member}},
+			"Ns#Thing multipart\n1-3 pkg#Thing: type Thing struct{}\n9-10 Ns#Thing: partial class Thing\n\n5-5 pkg#Thing.Method: func (t Thing) Method()\n",
+		},
+		{
+			"MultipartNoMembers",
+			ExpandAnswer{ID: "Ns#Thing", Status: StatusMultipart, Parts: []Symbol{head, partTwo}},
+			"Ns#Thing multipart\n1-3 pkg#Thing: type Thing struct{}\n9-10 Ns#Thing: partial class Thing\n",
 		},
 		{
 			"ZeroValue_TotalityGuard",

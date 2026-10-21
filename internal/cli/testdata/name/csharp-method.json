@@ -1,0 +1,6 @@
+{
+  "unit": "Loomyard.Engine",
+  "target": "public void Draw(int x)",
+  "id": "Loomyard.Engine#Renderer.Draw(int)",
+  "kind": "method"
+}

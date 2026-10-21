@@ -27,7 +27,7 @@ func symbolsAndStreams(t *testing.T, src string) ([]Symbol, []symbolStreams) {
 	var streams []symbolStreams
 	b := []byte(src)
 	err := treesitter.WithTree("go", b, func(root *ts.Node, partial bool) error {
-		symbols = strategy.Symbols(testUnit, root, b)
+		symbols, _ = strategy.Symbols(testUnit, root, b)
 		streams = tokenStreamsForSymbols(root, b, symbols)
 		return nil
 	})

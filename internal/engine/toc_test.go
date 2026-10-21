@@ -502,7 +502,7 @@ func TestRepoTOC_UnreadableFileIsListedWithErrorOthersUnaffected(t *testing.T) {
 // with a concrete Strategy, in sorted order — a guard against a strategy silently failing to
 // register itself, or a stray extra one leaking in from a test.
 func TestImplemented_MatchesRegisteredStrategies(t *testing.T) {
-	want := []string{"go"}
+	want := []string{"csharp", "go"}
 	got := Implemented()
 	if len(got) != len(want) {
 		t.Fatalf("Implemented() = %v; want %v", got, want)

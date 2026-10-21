@@ -16,7 +16,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/Knatte18/quarry/quarry"
@@ -24,16 +23,12 @@ import (
 )
 
 // fixtureRepoRoot returns the absolute path to this package's committed fixture repository under
-// testdata/repo, resolved from runtime.Caller(0) so it does not depend on the working directory the
-// test binary happens to run from. It fails the test if the directory is missing.
+// testdata/repo, resolved from the package directory. It fails the test if the directory is
+// missing.
 func fixtureRepoRoot(t *testing.T) string {
 	t.Helper()
 
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("fixtureRepoRoot: runtime.Caller(0) failed to resolve this file's path")
-	}
-	root := filepath.Join(filepath.Dir(thisFile), "testdata", "repo")
+	root := filepath.Join(packageDir(t), "testdata", "repo")
 	info, err := os.Stat(root)
 	if err != nil || !info.IsDir() {
 		t.Fatalf("fixtureRepoRoot: %q is not an existing directory: %v", root, err)

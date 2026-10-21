@@ -276,6 +276,9 @@ func TestParseArgs_UsageErrors(t *testing.T) {
 		{"depth-not-valid-for-name", []string{"name", "--unit", "u", "--depth", "3", "t"}, "--depth is not valid for name"},
 		{"symbols-not-valid-for-name", []string{"name", "--unit", "u", "--symbols", "t"}, "--symbols is not valid for name"},
 		{"no-symbols-not-valid-for-name", []string{"name", "--unit", "u", "--no-symbols", "t"}, "--no-symbols is not valid for name"},
+		{"lang-bad-value", []string{"name", "--unit", "u", "--lang", "python", "t"}, `--lang must be "go" or "csharp", got "python"`},
+		{"lang-not-valid-for-resolve", []string{"resolve", "--lang", "csharp", "t"}, "--lang is not valid for resolve"},
+		{"owner-not-valid-for-resolve", []string{"resolve", "--owner", "Box", "t"}, "--owner is not valid for resolve"},
 		{"unit-no-value", []string{"name", "--unit"}, "--unit requires a value"},
 		{"name-missing-unit", []string{"name", "t"}, "--unit is required for name"},
 		{"name-missing-target", []string{"name", "--unit", "u"}, "name takes exactly one target, got 0"},
@@ -411,9 +414,13 @@ func TestParseArgs_NameUnitAndTarget(t *testing.T) {
 		args       []string
 		wantUnit   string
 		wantTarget string
+		wantLang   string
+		wantOwner  string
 	}{
-		{"space-separated", []string{"name", "--unit", "pkg", "func F() error"}, "pkg", "func F() error"},
-		{"equals-form", []string{"name", "--unit=pkg", "func F() error"}, "pkg", "func F() error"},
+		{"space-separated", []string{"name", "--unit", "pkg", "func F() error"}, "pkg", "func F() error", "", ""},
+		{"equals-form", []string{"name", "--unit=pkg", "func F() error"}, "pkg", "func F() error", "", ""},
+		{"lang-and-owner", []string{"name", "--unit", "pkg", "--lang", "csharp", "--owner", "Outer.Box<>", "int x"}, "pkg", "int x", "csharp", "Outer.Box<>"},
+		{"lang-and-owner-equals-form", []string{"name", "--unit=pkg", "--lang=go", "--owner=Box", "int x"}, "pkg", "int x", "go", "Box"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -426,6 +433,12 @@ func TestParseArgs_NameUnitAndTarget(t *testing.T) {
 			}
 			if got.target != tt.wantTarget {
 				t.Errorf("parseArgs(%v).target = %q; want %q", tt.args, got.target, tt.wantTarget)
+			}
+			if got.lang != tt.wantLang {
+				t.Errorf("parseArgs(%v).lang = %q; want %q", tt.args, got.lang, tt.wantLang)
+			}
+			if got.owner != tt.wantOwner {
+				t.Errorf("parseArgs(%v).owner = %q; want %q", tt.args, got.owner, tt.wantOwner)
 			}
 		})
 	}
@@ -516,6 +529,8 @@ func TestParseArgs_Glyphs(t *testing.T) {
 		{"symbols", []string{"glyphs", "--symbols", "x"}, "--symbols is not valid for glyphs"},
 		{"no-symbols", []string{"glyphs", "--no-symbols", "x"}, "--no-symbols is not valid for glyphs"},
 		{"unit", []string{"glyphs", "--unit", "u", "x"}, "--unit is not valid for glyphs"},
+		{"lang", []string{"glyphs", "--lang", "csharp", "x"}, "--lang is not valid for glyphs"},
+		{"owner", []string{"glyphs", "--owner", "Box", "x"}, "--owner is not valid for glyphs"},
 	}
 	for _, tt := range rejectedFlags {
 		t.Run("rejects-"+tt.name, func(t *testing.T) {

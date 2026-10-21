@@ -300,6 +300,11 @@ func TestStatusForMatches(t *testing.T) {
 	initGlyph := glyph.Glyph{Lang: glyph.Go, Name: "init"}
 	fooGlyph := glyph.Glyph{Lang: glyph.Go, Name: "Foo"}
 	methodGlyph := glyph.Glyph{Lang: glyph.Go, Owner: []string{"Widget"}, Name: "Method"}
+	csharpType := glyph.Glyph{Lang: glyph.CSharp, Unit: "Ns", Name: "Renderer"}
+	csharpInit := glyph.Glyph{Lang: glyph.CSharp, Unit: "Ns", Name: "init"}
+	partialType := Symbol{Kind: KindType, Partial: true}
+	partialMethod := Symbol{Kind: KindMethod, Partial: true}
+	plainType := Symbol{Kind: KindType}
 
 	tests := []struct {
 		name      string
@@ -317,6 +322,11 @@ func TestStatusForMatches(t *testing.T) {
 		{"TwoNonInitPackageLevel", fooGlyph, make([]Symbol, 2), false, StatusAmbiguous},
 		{"TwoMatchesCollision", fooGlyph, make([]Symbol, 2), true, StatusAmbiguous},
 		{"TwoMatchesOwnedName", methodGlyph, make([]Symbol, 2), false, StatusAmbiguous},
+		{"CSharpPartialSameKind", csharpType, []Symbol{partialType, partialType}, false, StatusMultipart},
+		{"CSharpPartialMixedKind", csharpType, []Symbol{partialType, partialMethod}, false, StatusAmbiguous},
+		{"CSharpNonPartial", csharpType, []Symbol{plainType, plainType}, false, StatusAmbiguous},
+		{"CSharpPartialAndNonPartial", csharpType, []Symbol{partialType, plainType}, false, StatusAmbiguous},
+		{"CSharpInitIsNotMultipart", csharpInit, make([]Symbol, 3), false, StatusAmbiguous},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -951,6 +961,9 @@ func TestResolve_MalformedGlyphEntries(t *testing.T) {
 		{"UnitBadRune", "internal/engine/testdata/tree pkg#X", glyph.ReasonUnitBadRune},
 		{"UnitDotSegment", "a/./b#X", glyph.ReasonUnitDotSegment},
 		{"MemberKeyword", "internal/engine/testdata/tree/pkg#func", glyph.ReasonMemberKeyword},
+		{"CSharpNonCanonicalType", "Foo.Bar#Draw(Int32)", glyph.ReasonNonCanonicalType},
+		{"CSharpNeedlessEscape", "Foo.Bar#@Draw", glyph.ReasonNeedlessEscape},
+		{"GoUnitKeepsGoReason", "a/b#Draw(int)", glyph.ReasonMemberParens},
 	}
 
 	r := openModuleRepo(t)

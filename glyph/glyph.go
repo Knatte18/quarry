@@ -10,8 +10,11 @@ import "strings"
 // than a silent Go.
 type Language string
 
-// Go is the only Language this package defines today.
+// Go is the Language of the Go alphabet: units are package directories and members are at most a type and a name.
 const Go Language = "go"
+
+// CSharp is the Language of the C# alphabet: units are namespaces, and members carry owner chains, arity suffixes and parameter lists.
+const CSharp Language = "csharp"
 
 // Glyph is the parsed form of a glyph string: a symbol's unit and member, split into their
 // components. A Glyph built by hand rather than by Parse or Self is the builder's responsibility —
@@ -27,8 +30,9 @@ type Glyph struct {
 	Owner []string
 	// Name is the symbol's own name.
 	Name string
-	// Params is nil for Go always. Its nil-versus-non-nil state, not its length, is what decides
-	// whether String prints parentheses: a non-nil empty slice prints "()".
+	// Params is nil for Go always, and for a C# member written without a parameter list.
+	// Its nil-versus-non-nil state, not its length, is what decides whether String prints parentheses.
+	// A non-nil empty slice prints "()".
 	Params []string
 }
 
@@ -45,6 +49,7 @@ func (g Glyph) IsSelf() bool {
 // String is a total pure printer: it never returns an error, never panics, and never validates. It
 // prints Unit, "#", the Owner chain and Name joined by ".", and Params in parentheses when Params
 // is non-nil — including when Params is a non-nil empty slice, which prints "()".
+// A C# indexer, whose Name is "this", prints its Params in square brackets instead.
 func (g Glyph) String() string {
 	// Build parts with a fresh allocation rather than append(g.Owner, g.Name): the latter can write
 	// into the caller's backing array and corrupt a Glyph the caller still holds.
@@ -54,7 +59,11 @@ func (g Glyph) String() string {
 
 	params := ""
 	if g.Params != nil {
-		params = "(" + strings.Join(g.Params, ",") + ")"
+		open, closer := "(", ")"
+		if g.Lang == CSharp && g.Name == "this" {
+			open, closer = "[", "]"
+		}
+		params = open + strings.Join(g.Params, ",") + closer
 	}
 
 	return g.Unit + "#" + strings.Join(parts, ".") + params

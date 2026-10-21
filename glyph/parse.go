@@ -12,7 +12,7 @@ import (
 // returns the zero Glyph and a *ParseError describing why. Parse reads no source: it is a
 // syntactic check only.
 func Parse(lang Language, s string) (Glyph, error) {
-	if lang != Go {
+	if lang != Go && lang != CSharp {
 		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonUnsupportedLanguage, Detail: string(lang)}
 	}
 
@@ -32,9 +32,11 @@ func Parse(lang Language, s string) (Glyph, error) {
 	switch lang {
 	case Go:
 		return parseGo(s, unit, member)
+	case CSharp:
+		return parseCSharp(s, unit, member)
 	default:
-		// Unreachable: the lang != Go check above has already rejected every non-Go value. This arm
-		// exists only to satisfy Go's terminating-statement rule for the switch.
+		// Unreachable: the check above has already rejected every language but Go and CSharp.
+		// This arm exists only to satisfy Go's terminating-statement rule for the switch.
 		return Glyph{}, &ParseError{Lang: lang, Input: s, Reason: ReasonUnsupportedLanguage, Detail: string(lang)}
 	}
 }

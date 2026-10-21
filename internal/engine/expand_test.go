@@ -285,6 +285,7 @@ func TestExpand_MalformedTarget(t *testing.T) {
 	}{
 		{"RejectedByGrammar", "internal/engine/testdata/tree/pkg#A.B.C", glyph.ReasonMemberTooDeep},
 		{"NoSeparator", "internal/engine/testdata/tree/pkg", glyph.ReasonNoSeparator},
+		{"CSharpNonCanonicalType", "Foo.Bar#Draw(Int32)", glyph.ReasonNonCanonicalType},
 	}
 
 	r := openModuleRepo(t)
@@ -345,6 +346,11 @@ func TestExpand_SelfGlyph(t *testing.T) {
 	}
 	if len(m.dirs) != 0 {
 		t.Errorf("m.dirs = %v; want empty — no unit-directory lookup was made", m.dirs)
+	}
+
+	csharpTarget := "Loomyard.Engine#"
+	if _, err := r.Expand(csharpTarget); !errors.As(err, &selfErr) || selfErr.ID != csharpTarget {
+		t.Errorf("Expand(%q) error = %v; want a *SelfGlyphError with ID %q", csharpTarget, err, csharpTarget)
 	}
 }
 

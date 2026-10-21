@@ -28,7 +28,7 @@ usage:
   quarry enclose (<location>... | --stdin) [--rev <rev>] [--root <path>]
     a location is path:line, path:line-line or path:line:col; its path is relative to the
     repository root, not the working directory
-  quarry name <declaration> --unit <unit> [--text]
+  quarry name <declaration> --unit <unit> [--lang go|csharp] [--owner <chain>] [--text]
 
 flags:
   --view <name>     toc only: "full" (default), the complete answer, or "glyphs", the flat
@@ -43,6 +43,8 @@ flags:
   --text            emit the lossless text view instead of JSON, not valid for enclose
   --root <path>     use <path> as the repository root instead of discovering one, not valid for name
   --unit <unit>     name only: the glyph unit the declaration will belong to
+  --lang <name>     name only: "go" (default) or "csharp", the language the declaration is written in
+  --owner <chain>   name only: the dotted owner chain of a C# member, such as Outer.Box<>
   -h, --help        print this text and exit 0
 
   quarry glyphs <target> is quarry toc --view glyphs --depth all --symbols <target>. The expansion

@@ -20,13 +20,16 @@ type Strategy interface {
 	// Symbols returns every listable declaration under root, in source order ascending by Start.
 	// unit is the glyph unit every symbol in this file belongs to — the Go package directory, or its
 	// "_test"-suffixed external-test counterpart — and the strategy builds each symbol's Glyph and
-	// ID from it. A strategy never derives the unit itself: the unit is a directory-level fact,
-	// established once by the walk over every file in a directory, not a file-level one a single
-	// file's own content could establish. Symbols never descends into a function or method body —
+	// ID from it.
+	// The unit argument is Go's directory-level fact, established once by the walk over every file in a directory.
+	// A strategy whose language spells units by declaration ignores it and mints its own from the declarations in the file.
+	// Symbols never descends into a function or method body —
 	// only container nodes (types, namespaces, classes) are walked for nested declarations. SigEnd
-	// is set per the language-specific derivation, or left zero for a symbol with no body. Symbols
-	// returns an empty, non-nil slice when the file has no listable declaration.
-	Symbols(unit string, root *ts.Node, src []byte) []Symbol
+	// is set per the language-specific derivation, or left zero for a symbol with no body.
+	// Symbols returns an empty, non-nil slice when the file has no listable declaration.
+	// Its second result lists the declarations the strategy minted an id for but must leave out.
+	// A symbol whose minted id fails glyph.Parse under the strategy's own language is never in the symbol slice and always in the dropped list.
+	Symbols(unit string, root *ts.Node, src []byte) ([]Symbol, []DroppedSymbol)
 
 	// Header returns the untruncated, delimiter-stripped prose of the file's first non-directive
 	// comment block, or "" when the file has none. First-paragraph truncation is the entry point's
@@ -49,16 +52,25 @@ type Strategy interface {
 	PackageDoc(root *ts.Node, src []byte) string
 
 	// Generated reports whether the file's leading comment matches this language's generated-file
-	// banner convention. With Go the only language and its own generated-file rule always known,
-	// there is no caller left for a "rule not known for this language" signal; a second language
-	// with no reliable rule reintroduces that signal and its return value together, rather than
-	// carrying an always-true known flag no one reads.
+	// banner convention.
+	// Every registered language's generated-file rule is always known, so there is no caller left for a "rule not known for this language" signal.
+	// A language with no reliable rule reintroduces that signal and its return value together, rather than carrying an always-true known flag no one reads.
 	Generated(root *ts.Node, src []byte) bool
 
 	// TestFile reports whether base (a file's base name) names a test file by this language's
 	// toolchain or framework convention. See Generated's doc comment for why this has one return
 	// value rather than the (isTest, known) pair a language with no reliable rule would need.
 	TestFile(base string) bool
+}
+
+// DroppedSymbol is a declaration a Strategy minted an id for and left out of its symbol list because the id does not parse.
+// Err is the glyph.Parse error that rejected ID.
+// DeclStart and DeclEnd are the declaration's byte offsets under Symbol's DeclStart and DeclEnd contract, which a strategy fills for every dropped id.
+type DroppedSymbol struct {
+	ID        string
+	Err       error
+	DeclStart int
+	DeclEnd   int
 }
 
 // strategies is the unexported package-level registry: canonical language name to its registered
@@ -98,7 +110,7 @@ func Implemented() []string {
 // Register's duplicate-registration panic must register a fake language to trigger it, and that fake
 // would otherwise leak into every later test in this package's binary — including
 // TestImplemented_MatchesRegisteredStrategies, which asserts Implemented()
-// is exactly go and runs after classify_test.go in file order. A test using this seam
+// is exactly the real strategies and runs after classify_test.go in file order. A test using this seam
 // must take a copy of the current map, install it via swapRegistry, register its fake language into
 // the copy, and restore the original with t.Cleanup — otherwise the fake registration survives past
 // that test and fails TestImplemented_MatchesRegisteredStrategies instead, the hardest kind of

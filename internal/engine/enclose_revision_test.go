@@ -5,8 +5,8 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 )
 
@@ -25,7 +25,7 @@ func (f fakeRevision) GoFiles(dirRel string) ([]string, error) {
 	var out []string
 	for rel := range f.files {
 		dir, _ := splitDirBase(rel)
-		if dir == dirRel && strings.HasSuffix(rel, ".go") {
+		if _, registered := LanguageForExtension(filepath.Ext(rel)); dir == dirRel && registered {
 			out = append(out, rel)
 		}
 	}
@@ -57,9 +57,10 @@ func TestEncloseFrom_AnswersFromTheRevision(t *testing.T) {
 	rev := fakeRevision{files: map[string]string{
 		"pkg/a.go": "package pkg\n\nfunc Old() {}\n",
 		"pkg/b.go": "package pkg\n\nfunc B() {}\n",
+		"pkg/C.cs": "namespace Ns;\n\npublic class C\n{\n}\n",
 	}}
 
-	got, err := r.EncloseFrom(rev, []Location{loc("pkg/a.go", 3, 3)})
+	got, err := r.EncloseFrom(rev, []Location{loc("pkg/a.go", 3, 3), loc("pkg/C.cs", 4, 4), loc("pkg/C.cs", 2, 2)})
 	if err != nil {
 		t.Fatalf("EncloseFrom: %v", err)
 	}
@@ -69,6 +70,13 @@ func TestEncloseFrom_AnswersFromTheRevision(t *testing.T) {
 	}
 	if got[0].Symbols[0].File != "pkg/a.go" {
 		t.Errorf("symbol File = %q; want pkg/a.go", got[0].Symbols[0].File)
+	}
+	assertFound(t, got[1], "Ns#C")
+	if got[1].Symbols[0].File != "pkg/C.cs" {
+		t.Errorf("symbol File = %q; want pkg/C.cs", got[1].Symbols[0].File)
+	}
+	if got[2].Status != StatusNotFound || got[2].Unit != "pkg/C.cs#" {
+		t.Errorf("result = %+v; want not_found with unit pkg/C.cs#", got[2])
 	}
 }
 

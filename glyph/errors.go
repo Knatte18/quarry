@@ -9,7 +9,7 @@ import "fmt"
 // constant block below is ever produced.
 type Reason string
 
-// The sixteen Reason values a ParseError ever carries. No seventeenth constant.
+// The Reason values a ParseError ever carries. No constant outside this block is produced.
 const (
 	// ReasonUnsupportedLanguage fires when Parse is called with a Language it does not implement.
 	ReasonUnsupportedLanguage Reason = "unsupported_language"
@@ -49,12 +49,26 @@ const (
 	// ReasonMemberBadRune fires when the member contains a rune the language's alphabet does not
 	// allow.
 	ReasonMemberBadRune Reason = "member_bad_rune"
+	// ReasonUnitNotIdentifier fires when a "."-separated segment of a C# unit is not an identifier.
+	ReasonUnitNotIdentifier Reason = "unit_not_identifier"
+	// ReasonNeedlessEscape fires when a C# identifier carries a "@" in front of a name that is not a reserved keyword.
+	ReasonNeedlessEscape Reason = "needless_escape"
+	// ReasonNonCanonicalType fires when a C# type or parameter is not in its canonical spelling.
+	// The Detail is the canonical spelling.
+	ReasonNonCanonicalType Reason = "non_canonical_type"
+	// ReasonUnbalancedBrackets fires when a C# member's "<>", "()" or "[]" do not close in order.
+	ReasonUnbalancedBrackets Reason = "unbalanced_brackets"
+	// ReasonIndexerBrackets fires when a C# indexer lacks its bracketed list, or square brackets follow any other name.
+	ReasonIndexerBrackets Reason = "indexer_brackets"
+	// ReasonMissingParens fires when a C# finalizer, static constructor or operator has no parameter list.
+	ReasonMissingParens Reason = "missing_parens"
+	// ReasonUnknownOperator fires when the token after "operator" is not an overloadable C# operator.
+	ReasonUnknownOperator Reason = "unknown_operator"
 )
 
-// Reasons lists all sixteen Reason values, in the same order as the constant block above. Go
-// cannot reflect over package-level constants, so this slice is the only way a test or an
-// exhaustive caller can enumerate the vocabulary. Adding a constant means adding it here in the
-// same edit.
+// Reasons lists every Reason value, in the same order as the constant block above.
+// Go cannot reflect over package-level constants, so this slice is the only way a test or an exhaustive caller can enumerate the vocabulary.
+// Adding a constant means adding it here in the same edit.
 var Reasons = []Reason{
 	ReasonUnsupportedLanguage,
 	ReasonInvalidUTF8,
@@ -72,6 +86,13 @@ var Reasons = []Reason{
 	ReasonMemberParens,
 	ReasonMemberPointer,
 	ReasonMemberBadRune,
+	ReasonUnitNotIdentifier,
+	ReasonNeedlessEscape,
+	ReasonNonCanonicalType,
+	ReasonUnbalancedBrackets,
+	ReasonIndexerBrackets,
+	ReasonMissingParens,
+	ReasonUnknownOperator,
 }
 
 // reasonText gives each Reason a short phrase naming what was wrong. Every phrase differs from
@@ -93,6 +114,13 @@ var reasonText = map[Reason]string{
 	ReasonMemberParens:         "member carries parentheses this language's alphabet does not use",
 	ReasonMemberPointer:        "member encodes a receiver's pointer-ness, which is not part of a glyph",
 	ReasonMemberBadRune:        "member contains a rune the language's alphabet does not allow",
+	ReasonUnitNotIdentifier:    "unit segment is not a valid identifier",
+	ReasonNeedlessEscape:       "identifier carries a \"@\" it does not need",
+	ReasonNonCanonicalType:     "type is not in its canonical spelling",
+	ReasonUnbalancedBrackets:   "member has brackets that do not close in order",
+	ReasonIndexerBrackets:      "an indexer is spelled this[...] and no other name takes square brackets",
+	ReasonMissingParens:        "this member needs a parameter list in parentheses",
+	ReasonUnknownOperator:      "the token after \"operator\" is not an overloadable operator",
 }
 
 // ParseError reports why Parse rejected an input. Callers use errors.As and switch on Reason.

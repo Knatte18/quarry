@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -37,6 +38,9 @@ func changesByPath(changes []Change) map[string]string {
 }
 
 // containsPath reports whether path appears anywhere in paths.
+// goExtensions is the extension set the directory listings take when only Go files are wanted.
+var goExtensions = []string{".go"}
+
 func containsPath(paths []string, path string) bool {
 	for _, p := range paths {
 		if p == path {
@@ -233,11 +237,11 @@ func TestDirFilesSymmetry(t *testing.T) {
 		f.writeGitignore("pkg/tracked.go")
 
 		repo := openFixture(t, f)
-		atRev, err := repo.DirFilesAtRevision(before, "pkg")
+		atRev, err := repo.DirFilesAtRevision(before, "pkg", goExtensions)
 		if err != nil {
 			t.Fatalf("DirFilesAtRevision(%q, %q) = _, %v", before, "pkg", err)
 		}
-		wt, err := repo.DirFilesInWorkingTree("pkg")
+		wt, err := repo.DirFilesInWorkingTree("pkg", goExtensions)
 		if err != nil {
 			t.Fatalf("DirFilesInWorkingTree(%q) = _, %v", "pkg", err)
 		}
@@ -257,11 +261,11 @@ func TestDirFilesSymmetry(t *testing.T) {
 		before := f.commit("init")
 
 		repo := openFixture(t, f)
-		atRev, err := repo.DirFilesAtRevision(before, "pkg")
+		atRev, err := repo.DirFilesAtRevision(before, "pkg", goExtensions)
 		if err != nil {
 			t.Fatalf("DirFilesAtRevision(%q, %q) = _, %v", before, "pkg", err)
 		}
-		wt, err := repo.DirFilesInWorkingTree("pkg")
+		wt, err := repo.DirFilesInWorkingTree("pkg", goExtensions)
 		if err != nil {
 			t.Fatalf("DirFilesInWorkingTree(%q) = _, %v", "pkg", err)
 		}
@@ -283,13 +287,50 @@ func TestDirFilesSymmetry(t *testing.T) {
 		f.remove("pkg/a.go", false)
 
 		repo := openFixture(t, f)
-		wt, err := repo.DirFilesInWorkingTree("pkg")
+		wt, err := repo.DirFilesInWorkingTree("pkg", goExtensions)
 		if err != nil {
 			t.Fatalf("DirFilesInWorkingTree(%q) = _, %v", "pkg", err)
 		}
 
 		if !containsPath(wt, "pkg/a.go") {
 			t.Errorf("DirFilesInWorkingTree(%q) = %v; want it to still contain %q, removed from disk but not from the index", "pkg", wt, "pkg/a.go")
+		}
+	})
+
+	t.Run("ExtensionSetDecidesWhichFilesBothSidesList", func(t *testing.T) {
+		f := newFixtureRepo(t)
+		f.write("pkg/a.go", "package pkg\n")
+		f.write("pkg/B.cs", "namespace Pkg;\n")
+		before := f.commit("init")
+
+		repo := openFixture(t, f)
+		tests := []struct {
+			name string
+			exts []string
+			want []string
+		}{
+			{"GoAndCSharp", []string{".go", ".cs"}, []string{"pkg/B.cs", "pkg/a.go"}},
+			{"GoOnly", goExtensions, []string{"pkg/a.go"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				atRev, err := repo.DirFilesAtRevision(before, "pkg", tt.exts)
+				if err != nil {
+					t.Fatalf("DirFilesAtRevision(%q, %q, %v) = _, %v", before, "pkg", tt.exts, err)
+				}
+				wt, err := repo.DirFilesInWorkingTree("pkg", tt.exts)
+				if err != nil {
+					t.Fatalf("DirFilesInWorkingTree(%q, %v) = _, %v", "pkg", tt.exts, err)
+				}
+				sort.Strings(atRev)
+				sort.Strings(wt)
+				if diff := cmp.Diff(tt.want, atRev); diff != "" {
+					t.Errorf("DirFilesAtRevision(%q, %q, %v) mismatch (-want +got):\n%s", before, "pkg", tt.exts, diff)
+				}
+				if diff := cmp.Diff(tt.want, wt); diff != "" {
+					t.Errorf("DirFilesInWorkingTree(%q, %v) mismatch (-want +got):\n%s", "pkg", tt.exts, diff)
+				}
+			})
 		}
 	})
 }
@@ -330,7 +371,7 @@ func TestNonASCIIPathRoundTrips(t *testing.T) {
 		t.Errorf("ReadBlob(%q, %q) = %q; want %q", before, trackedPath, blob, trackedContent)
 	}
 
-	atRev, err := repo.DirFilesAtRevision(before, ".")
+	atRev, err := repo.DirFilesAtRevision(before, ".", goExtensions)
 	if err != nil {
 		t.Fatalf("DirFilesAtRevision(%q, %q) = _, %v", before, ".", err)
 	}
@@ -338,7 +379,7 @@ func TestNonASCIIPathRoundTrips(t *testing.T) {
 		t.Errorf("DirFilesAtRevision(%q, %q) = %v; want it to contain %q", before, ".", atRev, trackedPath)
 	}
 
-	wt, err := repo.DirFilesInWorkingTree(".")
+	wt, err := repo.DirFilesInWorkingTree(".", goExtensions)
 	if err != nil {
 		t.Fatalf("DirFilesInWorkingTree(%q) = _, %v", ".", err)
 	}

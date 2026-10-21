@@ -36,16 +36,34 @@ var encloseA = strings.Join([]string{
 	"",
 }, "\n")
 
+// encloseRootCS is a C# file whose class holds a nested class and its method; the comments mark the lines the tests locate.
+var encloseRootCS = strings.Join([]string{
+	"namespace Ns;",           // 1
+	"",                        // 2
+	"public class Outer",      // 3
+	"{",                       // 4
+	"    public class Inner",  // 5
+	"    {",                   // 6
+	"        public void M()", // 7
+	"        {",               // 8
+	"        }",               // 9
+	"    }",                   // 10
+	"}",                       // 11
+	"",
+}, "\n")
+
 // encloseFixture is the tree most worktree tests run over.
 func encloseFixture() map[string]string {
 	return map[string]string{
-		"enc/a.go":      encloseA,
-		"enc/imp.go":    "package enc\n\nimport (\n\t\"fmt\"\n)\n\nfunc H() { fmt.Println() }\n",
-		"enc/x_test.go": "package enc_test\n\nfunc TestX() {}\n",
-		"enc/lossy.go":  "package enc\n\nfunc Broken(\n\nfunc Recovered() {}\n",
-		"enc/empty.go":  "",
-		"enc/README.md": "# enc\n",
-		"root.go":       "package root\n\nfunc R() {}\n",
+		"Root.cs":              encloseRootCS,
+		"with space/Spaced.cs": "namespace Ns;\n\npublic class Spaced { }\n",
+		"enc/a.go":             encloseA,
+		"enc/imp.go":           "package enc\n\nimport (\n\t\"fmt\"\n)\n\nfunc H() { fmt.Println() }\n",
+		"enc/x_test.go":        "package enc_test\n\nfunc TestX() {}\n",
+		"enc/lossy.go":         "package enc\n\nfunc Broken(\n\nfunc Recovered() {}\n",
+		"enc/empty.go":         "",
+		"enc/README.md":        "# enc\n",
+		"root.go":              "package root\n\nfunc R() {}\n",
 	}
 }
 
@@ -105,24 +123,31 @@ func TestEnclose_MemberSelection(t *testing.T) {
 	r := openScratchRepo(t, "enclose-members", encloseFixture())
 	tests := []struct {
 		name       string
+		file       string
 		start, end int
 		want       []string
 	}{
-		{"SingleLine", 8, 8, []string{"enc#F"}},
-		{"ClosureLine", 6, 6, []string{"enc#F"}},
-		{"DocCommentLine", 3, 3, []string{"enc#F"}},
-		{"TwoTopLevelMembers", 9, 11, []string{"enc#F", "enc#I"}},
-		{"InterfaceMethodLine", 14, 14, []string{"enc#I.B"}},
-		{"InterfaceMethodDocLine", 12, 12, []string{"enc#I.A"}},
-		{"InterfaceHeadPlusMethod", 11, 13, []string{"enc#I", "enc#I.A"}},
-		{"ConstSpecLine", 18, 18, []string{"enc#X"}},
-		{"OneLineInterface", 21, 21, []string{"enc#J", "enc#J.M"}},
+		{"SingleLine", "", 8, 8, []string{"enc#F"}},
+		{"ClosureLine", "", 6, 6, []string{"enc#F"}},
+		{"DocCommentLine", "", 3, 3, []string{"enc#F"}},
+		{"TwoTopLevelMembers", "", 9, 11, []string{"enc#F", "enc#I"}},
+		{"InterfaceMethodLine", "", 14, 14, []string{"enc#I.B"}},
+		{"InterfaceMethodDocLine", "", 12, 12, []string{"enc#I.A"}},
+		{"InterfaceHeadPlusMethod", "", 11, 13, []string{"enc#I", "enc#I.A"}},
+		{"ConstSpecLine", "", 18, 18, []string{"enc#X"}},
+		{"OneLineInterface", "", 21, 21, []string{"enc#J", "enc#J.M"}},
+		{"CSharpNestedMethodLine", "Root.cs", 8, 8, []string{"Ns#Outer.Inner.M()"}},
+		{"CSharpOuterClassHead", "Root.cs", 4, 4, []string{"Ns#Outer"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := encloseOne(t, r, loc("enc/a.go", tt.start, tt.end))
+			file := tt.file
+			if file == "" {
+				file = "enc/a.go"
+			}
+			res := encloseOne(t, r, loc(file, tt.start, tt.end))
 			assertFound(t, res, tt.want...)
-			if res.File != "enc/a.go" || res.Start != tt.start || res.End != tt.end {
+			if res.File != file || res.Start != tt.start || res.End != tt.end {
 				t.Errorf("result = %+v; want file and range echoed", res)
 			}
 		})
@@ -140,6 +165,8 @@ func TestEnclose_NotFoundCarriesSelfGlyph(t *testing.T) {
 		{"ConstGroupHead", "enc/a.go", 17, 17, "enc/a.go#"},
 		{"ConstGroupClose", "enc/a.go", 19, 19, "enc/a.go#"},
 		{"ImportBlock", "enc/imp.go", 4, 4, "enc/imp.go#"},
+		{"CSharpOutsideEveryMember", "Root.cs", 1, 1, "Root.cs#"},
+		{"CSharpUnspellablePathOmitsUnit", "with space/Spaced.cs", 2, 2, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

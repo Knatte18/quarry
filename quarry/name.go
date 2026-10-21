@@ -7,6 +7,7 @@ import "github.com/Knatte18/quarry/internal/engine"
 // Name predicts the id and kind for every declaration in decls, positionally, delegating to
 // engine.Name and returning its result unchanged: no filtering, no re-shaping, no defaulting,
 // matching the delegation posture every other query in this package already keeps.
+// Each declaration is parsed in its own language, named by its Lang field.
 //
 // Name is a package-level function rather than a Repo method because the maker performs no I/O, and
 // a receiver would claim a repository dependency the query does not have — a caller holding only a

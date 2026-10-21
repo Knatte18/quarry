@@ -319,6 +319,7 @@ func TestDeltaGit_WorkingTreeSide(t *testing.T) {
 	// satisfy the exact-tier rename classifier's structural-plus-token conditions, misreporting this
 	// unrelated delete-plus-add as a rename.
 	f.write("sub/b.go", "package sub\n\nfunc B() {\n\treturn\n}\n")
+	f.write("csharp/Calc.cs", "namespace Calc\n{\n    public class Adder\n    {\n        public int Add(int a, int b) { return a + b; }\n    }\n}\n")
 	f.commit("base")
 	f.write(".gitignore", "keep/tracked_ignored.go\nignoreddir/*\n")
 	from := f.commit("add gitignore")
@@ -334,6 +335,8 @@ func TestDeltaGit_WorkingTreeSide(t *testing.T) {
 	// sub/a.go also changes, so "sub" enters the directory clause vote alongside the now-missing
 	// b.go. AA's body is deliberately distinct from B's (see the comment above sub/b.go's write).
 	f.write("sub/a.go", "package sub\n\nfunc A() {}\n\nfunc AA() {\n\tvar x = 2\n\t_ = x\n}\n")
+	// A committed C# file whose method body changes in the working tree is reported as that symbol modified.
+	f.write("csharp/Calc.cs", "namespace Calc\n{\n    public class Adder\n    {\n        public int Add(int a, int b) { return b + a; }\n    }\n}\n")
 
 	r := openDeltaRepo(t, f.root)
 	answer, err := r.DeltaGit(from, "", ".")
@@ -382,6 +385,16 @@ func TestDeltaGit_WorkingTreeSide(t *testing.T) {
 	}
 	if !hasSymbolID(answer.Created, "sub#AA") {
 		t.Errorf("Created = %+v; want it to contain %q", answer.Created, "sub#AA")
+	}
+
+	modifiedAdd := false
+	for _, m := range answer.Modified {
+		if m.ID == "Calc#Adder.Add(int,int)" {
+			modifiedAdd = true
+		}
+	}
+	if !modifiedAdd {
+		t.Errorf("Modified = %+v; want it to contain %q", answer.Modified, "Calc#Adder.Add(int,int)")
 	}
 }
 

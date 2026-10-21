@@ -155,10 +155,12 @@ func (r *Repo) dirDoc(clauses map[string]string, docs map[string]string, pkg str
 // fileEntry turns the file record rec of base inside directory dirRel into one FileEntry. It
 // reads and parses nothing: the record already holds everything.
 //
-// A parsed record gives Header, Test, Generated and Lossy as recorded; Package is emitted only
-// when the file's own clause differs from the directory vote's v.pkg, Language only when the
-// file's language differs from v.lang, and Symbols is set to a non-nil pointer — to a possibly-empty
-// slice stamped with the file's unit — only when wantSymbols.
+// A parsed record gives Header, Test, Generated and Lossy as recorded.
+// Package is emitted only when the file's own clause differs from the directory vote's v.answerPkg.
+// Language is emitted only when the file's language differs from v.answerLang.
+// Symbols is set to a non-nil pointer, to a possibly-empty slice, only when wantSymbols.
+// A Go file's symbols are stamped with the file's unit, and a Go file whose unit is unspellable gets no Symbols.
+// A file of any other language lists its symbols as its strategy minted them, with no directory unit and no spellability gate.
 //
 // A file with no language gets its recorded Header and never gets Symbols, whatever wantSymbols
 // says. A record carrying an error sets Error and leaves Header, Lossy and Symbols unset; the file
@@ -186,13 +188,16 @@ func (r *Repo) fileEntry(dirRel, base string, rec *fileRecord, v dirVote, wantSy
 	entry.Test = rec.test
 	entry.Generated = rec.generated
 	entry.Lossy = rec.lossy
-	if rec.clause != v.pkg {
+	if rec.clause != v.answerPkg {
 		entry.Package = rec.clause
 	}
-	if rec.lang != v.lang {
+	if rec.lang != v.answerLang {
 		entry.Language = rec.lang
 	}
-	if wantSymbols {
+	if wantSymbols && rec.lang != "go" {
+		symbols := stampSymbols(rec.symbols, "", "")
+		entry.Symbols = &symbols
+	} else if wantSymbols {
 		unit := unitFor(dirRel, v.pkg, rec.clause)
 		ok, cached := spellable[unit]
 		if !cached {
@@ -271,8 +276,8 @@ func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool
 	v := m.dirVote(dirRel, recs, true)
 
 	answer := DirAnswer{Dir: dirRel}
-	if v.pkg != "" {
-		answer.Package = v.pkg
+	if v.answerPkg != "" {
+		answer.Package = v.answerPkg
 	}
 
 	docs := make(map[string]string)
@@ -295,8 +300,8 @@ func (r *Repo) walkDir(dirRel string, ig *ignoreSet, depth int, wantSymbols bool
 	if identityOnly {
 		return answer, nil
 	}
-	if v.pkg != "" {
-		answer.Language = v.lang
+	if v.answerPkg != "" {
+		answer.Language = v.answerLang
 	}
 	answer.Files = files
 

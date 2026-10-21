@@ -45,7 +45,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -61,18 +60,13 @@ const forbiddenEngineImport = "github.com/Knatte18/quarry/internal/engine"
 const forbiddenGitsrcImport = "github.com/Knatte18/quarry/internal/gitsrc"
 
 // checkedDirs returns the three directories this file's checks may walk: this package's own
-// directory, cmd/quarry-mcp's, and internal/cli's, located from runtime.Caller(0) rather than from
-// the working directory, so this test does not depend on where it is run from. Each check below
+// directory, cmd/quarry-mcp's, and internal/cli's, located from the package directory. Each check below
 // builds its own subset of these three at its own call site; checkedDirs itself does not decide
 // which check sees which directory.
 func checkedDirs(t *testing.T) (mcpserverDir, quarryMCPDir, cliDir string) {
 	t.Helper()
 
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("checkedDirs: runtime.Caller(0) failed to resolve this file's path")
-	}
-	mcpserverDir = filepath.Dir(thisFile)
+	mcpserverDir = packageDir(t)
 	// mcpserverDir is .../internal/mcpserver; the module root is two directories up.
 	moduleRoot := filepath.Dir(filepath.Dir(mcpserverDir))
 	quarryMCPDir = filepath.Join(moduleRoot, "cmd", "quarry-mcp")

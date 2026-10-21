@@ -203,6 +203,39 @@ func TestDelta_ExactTier(t *testing.T) {
 			t.Errorf("Renamed = %+v; want the two unrelated interfaces never asserted as a rename", ans.Renamed)
 		}
 	})
+
+	t.Run("CSharp_MethodRename_Asserted", func(t *testing.T) {
+		before := "namespace N\n{\n    public class C\n    {\n        public void Old() { Old(); }\n    }\n}\n"
+		after := "namespace N\n{\n    public class C\n    {\n        public void New() { New(); }\n    }\n}\n"
+		ans := mustDelta(t, []DeltaEntry{{Path: "a.cs", Before: []byte(before), After: []byte(after)}})
+		if !renamedContains(ans.Renamed, "N#C.Old()", "N#C.New()") {
+			t.Errorf("Renamed = %+v; want N#C.Old() -> N#C.New() asserted", ans.Renamed)
+		}
+		if containsID(ans.Created, "N#C.New()") || containsID(ans.Deleted, "N#C.Old()") {
+			t.Errorf("Created=%+v Deleted=%+v; want both constituents absent", ans.Created, ans.Deleted)
+		}
+	})
+
+	t.Run("CSharp_GenericMethodRename_SubstitutesArityStrippedName", func(t *testing.T) {
+		before := "namespace N\n{\n    public class C\n    {\n        public void Draw<T>(T item) { Draw(item); }\n    }\n}\n"
+		after := "namespace N\n{\n    public class C\n    {\n        public void Render<T>(T item) { Render(item); }\n    }\n}\n"
+		ans := mustDelta(t, []DeltaEntry{{Path: "a.cs", Before: []byte(before), After: []byte(after)}})
+		if !renamedContains(ans.Renamed, "N#C.Draw<>(T)", "N#C.Render<>(T)") {
+			t.Errorf("Renamed = %+v; want N#C.Draw<>(T) -> N#C.Render<>(T) asserted", ans.Renamed)
+		}
+	})
+
+	t.Run("CSharp_ConversionOperator_DeletedAndCreatedNeverRenamed", func(t *testing.T) {
+		before := "namespace N\n{\n    public struct Box\n    {\n        public static implicit operator A(Box box) { return default; }\n    }\n}\n"
+		after := "namespace N\n{\n    public struct Box\n    {\n        public static implicit operator B(Box box) { return default; }\n    }\n}\n"
+		ans := mustDelta(t, []DeltaEntry{{Path: "a.cs", Before: []byte(before), After: []byte(after)}})
+		if len(ans.Renamed) != 0 {
+			t.Errorf("Renamed = %+v; want none — a conversion operator is never an exact-tier candidate", ans.Renamed)
+		}
+		if !containsID(ans.Deleted, "N#Box.implicit operator A(Box)") || !containsID(ans.Created, "N#Box.implicit operator B(Box)") {
+			t.Errorf("Deleted=%+v Created=%+v; want the old conversion deleted and the new one created", ans.Deleted, ans.Created)
+		}
+	})
 }
 
 // uid2 builds the expected package-level glyph id for name under an arbitrary unit, for the one
@@ -330,5 +363,16 @@ func TestDelta_EvidenceTier(t *testing.T) {
 				t.Errorf("RenameCandidates contains %q; want none — a multi-occurrence key is never a candidate", uid("init"))
 			}
 		}
+	})
+
+	t.Run("CSharp_ChangedParameters_CandidateNeverRenamed", func(t *testing.T) {
+		before := "namespace N\n{\n    public class C\n    {\n        public void Draw(int x) { Console.Write(x); }\n    }\n}\n"
+		after := "namespace N\n{\n    public class C\n    {\n        public void Draw(long x) { Console.Write(x); }\n    }\n}\n"
+		ans := mustDelta(t, []DeltaEntry{{Path: "a.cs", Before: []byte(before), After: []byte(after)}})
+		if len(ans.Renamed) != 0 {
+			t.Errorf("Renamed = %+v; want none — a parameter change is a new glyph, not a rename", ans.Renamed)
+		}
+		entry := findCandidateEntry(t, ans.RenameCandidates, "N#C.Draw(int)")
+		findCandidate(t, entry.Candidates, "N#C.Draw(long)")
 	})
 }

@@ -51,6 +51,10 @@ type request struct {
 	targets []string
 	rev     string
 	stdin   bool
+	// lang holds the name verb's --lang value exactly as given, empty when the flag was absent, which means "go".
+	lang string
+	// owner holds the name verb's --owner value exactly as given, empty when the flag was absent.
+	owner string
 }
 
 // glyphsPreset is the frozen expansion `quarry glyphs <target>` rewrites to: --view glyphs,
@@ -74,7 +78,9 @@ var glyphsPreset = []string{"--view", "glyphs", "--depth", "all", "--symbols"}
 // "name". --depth, --symbols, --no-symbols and --view are valid for "toc" only; --from and --to
 // are valid for "delta" only; --rev and --stdin are valid for "enclose" only, --rev requiring a
 // non-empty value; --unit is valid for "name" only, and is required there: a "name" invocation
-// with no --unit is rejected with a usage error naming the missing flag rather than the verb. Every other
+// with no --unit is rejected with a usage error naming the missing flag rather than the verb.
+// --lang and --owner are valid for "name" only, and --lang accepts "go" or "csharp" and rejects any other value.
+// Every other
 // verb rejects a flag outside its own scope with a usage error naming the flag and the verb,
 // checked at the point the flag is recognised so that rejection takes precedence over the flag's
 // own value validation. --view's own vocabulary is closed at exactly two values, "full" and
@@ -270,6 +276,27 @@ func parseArgs(args []string) (request, error) {
 				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
 			}
 			req.unit = v
+		case "--lang":
+			if verb != "name" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
+			v, ok := nextValue()
+			if !ok {
+				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
+			}
+			if v != "go" && v != "csharp" {
+				return request{}, usageError(fmt.Sprintf("--lang must be \"go\" or \"csharp\", got %q", v))
+			}
+			req.lang = v
+		case "--owner":
+			if verb != "name" {
+				return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, verb))
+			}
+			v, ok := nextValue()
+			if !ok {
+				return request{}, usageError(fmt.Sprintf("%s requires a value", name))
+			}
+			req.owner = v
 		default:
 			return request{}, usageError(fmt.Sprintf("unknown flag: %s", tok))
 		}
@@ -322,7 +349,7 @@ func parseArgs(args []string) (request, error) {
 //
 // The walk uses the same index-based loop shape and the same strings.Cut(tok, "=")-on-the-first-"="
 // splitting parseArgs's own main loop uses. A token not beginning with "-" is counted as a target.
-// --view, --depth, --symbols, --no-symbols, --unit, --rev and --stdin are each rejected with the existing
+// --view, --depth, --symbols, --no-symbols, --unit, --lang, --owner, --rev and --stdin are each rejected with the existing
 // "%s is not valid for %s" format, naming "glyphs" rather than "toc", so
 // "quarry glyphs --depth 1 x" says "--depth is not valid for glyphs", never "toc". --text is
 // accepted and takes no value. --root is accepted and consumes its value the same way the main
@@ -365,7 +392,7 @@ func parseGlyphsArgs(rest []string) (request, error) {
 		}
 
 		switch name {
-		case "--view", "--depth", "--symbols", "--no-symbols", "--unit", "--rev", "--stdin":
+		case "--view", "--depth", "--symbols", "--no-symbols", "--unit", "--lang", "--owner", "--rev", "--stdin":
 			return request{}, usageError(fmt.Sprintf("%s is not valid for %s", name, "glyphs"))
 		case "--text":
 			// Accepted, and takes no value.
