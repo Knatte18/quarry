@@ -63,10 +63,14 @@ condition, a measured win for the agent-tool surface, closed 2026-09-05 — see 
 roots above.) Its open decision (gopls vs `go/packages` in-process) is decided at unpark,
 not before.
 
-**4. More languages.** Python, then C#, per `docs/glyph.md` — one language per task, when
-wanted: its alphabet in `glyph/`, an extractor written fresh against the contract, its
-`expand` head, its package-doc source. Done when the T3-style round trip over a real
-repository in that language reaches 100 %.
+**4. More languages.** One language per task, when wanted, per `docs/glyph.md`: its alphabet in
+`glyph/`, an extractor written fresh against the contract, its `expand` head, its package-doc
+source. Done when the T3-style round trip over a real repository in that language reaches
+100 %.
+
+C# is implemented, and the round trip over the committed fixture tree passes. Its done stays tied
+to the environment-gated run over a real checkout, `QUARRY_CSHARP_REPO`, reaching 100 %; that run
+is the operator's step before the version tag. Python is next.
 
 ## Small and independent, any time
 

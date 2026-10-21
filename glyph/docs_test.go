@@ -175,11 +175,111 @@ var docsAccept = []acceptCase{
 		},
 	},
 
+	// §2 — the C# unit: a reserved keyword segment keeps its escape.
+	// A .cs file is addressed by the path self glyph the Go unit alphabet spells.
+	{
+		name: "§2 C# unit segment that is a reserved keyword", section: "2",
+		input: "Loomyard.@class#",
+		want:  Glyph{Lang: CSharp, Unit: "Loomyard.@class"},
+	},
+	{
+		name: "§2 path self glyph of a .cs file", section: "2",
+		input: "Norce.Models/Foo.cs#",
+		want:  Glyph{Lang: Go, Unit: "Norce.Models/Foo.cs"},
+	},
+
+	// §3 — the C# member spellings: the static constructor, the conversion and checked operators.
+	// Also the escape only on a reserved keyword, canonical parameter modifiers and the explicit interface qualifier.
+	{
+		name: "§3 C# static constructor", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.static Renderer()",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "static Renderer", Params: []string{},
+		},
+	},
+	{
+		name: "§3 C# conversion operator", section: "3",
+		input: "Loomyard.Engine.Layout#Box.implicit operator int(Box)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Box"}, Name: "implicit operator int", Params: []string{"Box"},
+		},
+	},
+	{
+		name: "§3 C# conversion operator to a qualified type", section: "3",
+		input: "Loomyard.Engine.Layout#Box.implicit operator System.Text.Rune(Box)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Box"}, Name: "implicit operator System.Text.Rune", Params: []string{"Box"},
+		},
+	},
+	{
+		name: "§3 C# checked operator", section: "3",
+		input: "Loomyard.Engine.Layout#Box.operator checked +(Box,Box)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Box"}, Name: "operator checked +", Params: []string{"Box", "Box"},
+		},
+	},
+	{
+		name: "§3 C# escape on a reserved keyword", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.@class",
+		want:  Glyph{Lang: CSharp, Unit: "Loomyard.Engine.Layout", Owner: []string{"Renderer"}, Name: "@class"},
+	},
+	{
+		name: "§3 C# parameter modifiers", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.Draw(scoped ref Span<int>)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "Draw", Params: []string{"scoped ref Span<int>"},
+		},
+	},
+	{
+		name: "§3 C# params array", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.Draw(params string[])",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "Draw", Params: []string{"params string[]"},
+		},
+	},
+	{
+		name: "§3 C# explicit interface implementation with a type argument", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.IProvider<A>.Value",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer", "IProvider<A>"}, Name: "Value",
+		},
+	},
+	{
+		name: "§3 C# explicit interface implementation of a qualified interface", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.System.IDisposable.Dispose()",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer", "System", "IDisposable"}, Name: "Dispose", Params: []string{},
+		},
+	},
+
 	// §5 — resolution: a self glyph is well-formed input, exactly like a member glyph.
 	{
 		name: "§5 a self glyph is well-formed input", section: "5",
 		input: "internal/reedengine/render#",
 		want:  Glyph{Lang: Go, Unit: "internal/reedengine/render"},
+	},
+	{
+		name: "§5 a glyph without parentheses carries no parameter list", section: "5",
+		input: "Loomyard.Engine.Layout#Renderer.Draw",
+		want:  Glyph{Lang: CSharp, Unit: "Loomyard.Engine.Layout", Owner: []string{"Renderer"}, Name: "Draw"},
+	},
+	{
+		name: "§5 a namespace-named directory's self glyph under the Go alphabet", section: "5",
+		input: "Norce.Models#",
+		want:  Glyph{Lang: Go, Unit: "Norce.Models"},
+	},
+	{
+		name: "§5 the same string's self glyph under the C# alphabet", section: "5",
+		input: "Norce.Models#",
+		want:  Glyph{Lang: CSharp, Unit: "Norce.Models"},
 	},
 }
 
@@ -203,9 +303,9 @@ func TestDocsAccept(t *testing.T) {
 	}
 }
 
-// docsReject is every reject-case example from docs/glyph.md §5: the bare-path pre-resolution
-// rejection, a "#" inside a path segment, and the two ways the repository root itself cannot be
-// addressed by resolve.
+// docsReject is every reject-case example from docs/glyph.md §2, §3 and §5.
+// Those are the bare-path pre-resolution rejection, a "#" inside a path segment, the two ways the repository root itself cannot be addressed by resolve,
+// and the C# spellings the alphabet turns away with their fix.
 var docsReject = []rejectCase{
 	{
 		name: "§5 a bare path is rejected pre-resolution", section: "5",
@@ -226,6 +326,21 @@ var docsReject = []rejectCase{
 		name: "§5 the repository root, a dot segment", section: "5",
 		lang: Go, input: ".#",
 		reason: ReasonUnitDotSegment, detail: ".",
+	},
+	{
+		name: "§3 a C# type outside the canonical spelling", section: "3",
+		lang: CSharp, input: "Loomyard.Engine.Layout#Renderer.Draw(Int32)",
+		reason: ReasonNonCanonicalType, detail: "int",
+	},
+	{
+		name: "§3 a C# parameter that still carries its name", section: "3",
+		lang: CSharp, input: "Loomyard.Engine.Layout#Renderer.Draw(int a)",
+		reason: ReasonNonCanonicalType, detail: "int",
+	},
+	{
+		name: "§2 a C# unit segment with a needless escape", section: "2",
+		lang: CSharp, input: "@Foo#",
+		reason: ReasonNeedlessEscape, detail: "Foo",
 	},
 }
 

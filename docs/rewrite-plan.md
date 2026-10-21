@@ -13,7 +13,7 @@ this file's git history.
 One identifier — the glyph, `unit#member` — and five queries over one tree-sitter parse:
 `toc` (what is here), `resolve` (where is this, right now), `expand` (what does this type
 consist of), `delta` (what changed between two versions), `name` (what will this declaration
-become). Go only. No daemon, no index, no cache: every answer reads the source as it is at that
+become). Go and C#. No daemon, no index, no cache: every answer reads the source as it is at that
 moment. Quarry reads; it never edits.
 
 Surfaces, in order of importance: the `glyph` package (importable without the engine, Loomyard's
@@ -143,8 +143,8 @@ deleted and modified symbol. A rename is reported two ways, never one: the exact
 pair only when the deleted and created symbols' bodies and signatures agree token-for-token
 modulo the renamed identifier and the match is unique on both sides, removing the pair from
 created and deleted; the evidence tier reports every other structurally-plausible pair — same
-unit, same owner, same kind, different name — as a candidate carrying its mechanical signals,
-deciding nothing. No threshold, no score cut-off and no similarity value gates any outcome
+unit, same owner, same kind, and a different name or, for C#, the same name with different
+parameters — as a candidate carrying its mechanical signals, deciding nothing. No threshold, no score cut-off and no similarity value gates any outcome
 anywhere in `delta`.
 
 **`name <unit> <declaration>`** — predicts the id and kind a declaration head will get once it
@@ -173,16 +173,15 @@ optimising yet.
 
 ## 6. Languages
 
-**Go. Only Go.** Python and C# are specified in `docs/glyph.md` so the form is known to hold;
-their extractors are written fresh against the contract when a language is wanted (the V1 ones
-on `v1-final` are reference, not a starting point). Each extractor delivers, per symbol: kind,
+**Go and C#.** Python is specified in `docs/glyph.md` so the form is known to hold; its
+extractor is written fresh against the contract when the language is wanted (the V1 ones on
+`v1-final` are reference, not a starting point). Each extractor delivers, per symbol: kind,
 name, owner chain, signature, doc, start/sigend/end, and the unit. Known gaps for whoever picks
-them up:
+up Python:
 
 | language | gap | needed for |
 |---|---|---|
 | Python | nested classes dropped; class-level attributes not symbols | glyph uniqueness, `expand` |
-| C# | `partial` not recognised; fields/properties not members; overloads share a glyph | multipart, `expand`, ambiguity |
 | all (V1) | package doc not extracted | `doc` on the directory answer |
 
 ## 7. How Loomyard uses it
@@ -226,7 +225,7 @@ paths, and the committed artifacts fully summarise the tree).
 - Positions as input: no `file:line:col` form exists on any surface.
 - Fuzzy matching of any kind. Unknown is `not_found`; several is `ambiguous`.
 - A daemon, an index, or a cache in phase 1.
-- Languages beyond Go until a language is wanted.
+- Languages beyond Go and C# until a language is wanted.
 - Renaming or editing source. Quarry reads.
 - Compact-by-default. Views are options; extraction is complete.
 
