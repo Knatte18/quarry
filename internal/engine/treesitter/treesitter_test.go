@@ -22,6 +22,7 @@ func TestWithTree_ParsesEachWiredLanguage(t *testing.T) {
 		wantKind string
 	}{
 		{"Go", "go", "package main\n", "source_file"},
+		{"CSharp", "csharp", "namespace N { class C {} }\n", "compilation_unit"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
