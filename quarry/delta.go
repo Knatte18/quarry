@@ -267,7 +267,7 @@ func (r *Repo) fillDeltaUnits(gr *gitsrc.Repo, from, to string, entries []DeltaE
 // does. A blob read failure here is a call failure, not a skip: DirFilesAtRevision only ever lists a
 // name git itself resolves to a blob at rev, so a read failure means the call itself is broken.
 func (r *Repo) revisionClauseMap(gr *gitsrc.Repo, rev, dir string) (map[string]string, error) {
-	files, err := gr.DirFilesAtRevision(rev, dir)
+	files, err := gr.DirFilesAtRevision(rev, dir, []string{".go"})
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (r *Repo) revisionClauseMap(gr *gitsrc.Repo, rev, dir string) (map[string]s
 // file list to the engine's on-disk clause-map method, which reads from disk and skips any name it
 // cannot read -- an unstaged deletion is exactly such a name and must never fail the call.
 func (r *Repo) workingTreeClauseMap(gr *gitsrc.Repo, dir string) (map[string]string, error) {
-	files, err := gr.DirFilesInWorkingTree(dir)
+	files, err := gr.DirFilesInWorkingTree(dir, []string{".go"})
 	if err != nil {
 		return nil, err
 	}
