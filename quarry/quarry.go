@@ -245,6 +245,9 @@ const (
 	NameReasonInternal = engine.NameReasonInternal
 	// NameReasonOwnerNotAllowed marks a Go declaration that carries an owner.
 	NameReasonOwnerNotAllowed = engine.NameReasonOwnerNotAllowed
+	// NameReasonInvalidContainer marks a C# declaration whose unit or owner is not a valid container.
+	// It also marks a head that mints an id outside the requested one.
+	NameReasonInvalidContainer = engine.NameReasonInvalidContainer
 )
 
 // NameReasons is the engine's own NameReasons value, not a copy, so a caller enumerating the

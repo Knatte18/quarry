@@ -10,6 +10,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
@@ -68,6 +69,9 @@ const (
 	NameReasonInternal = "internal"
 	// NameReasonOwnerNotAllowed marks a Go declaration that carries an owner.
 	NameReasonOwnerNotAllowed = "owner_not_allowed"
+	// NameReasonInvalidContainer marks a C# declaration whose unit or owner is not a valid container.
+	// It also marks a head that mints an id outside the requested one.
+	NameReasonInvalidContainer = "invalid_container"
 )
 
 // NameReasons lists all maker-owned reason values, in the same order as the constant block
@@ -80,6 +84,7 @@ var NameReasons = []string{
 	NameReasonSeveralDeclarations,
 	NameReasonInternal,
 	NameReasonOwnerNotAllowed,
+	NameReasonInvalidContainer,
 }
 
 // Name predicts the id and kind for every declaration in decls, positionally: the returned slice
@@ -132,31 +137,30 @@ func nameFailure(d Declaration, reason, errMsg string) NameResult {
 	return NameResult{Unit: d.Unit, Target: d.Decl, Reason: reason, Error: errMsg}
 }
 
-// nameExtract wraps d's synthetic src in treesitter.WithTree("go", ...), records the partial flag,
-// and — only when partial is false — appends strategy.Symbols(unit, root, src) to a slice it copies
-// out. The callback never retains root; Symbol is a value struct of strings and ints, so copying
-// the slice out is safe. A non-nil error from WithTree is returned unchanged.
-func nameExtract(strategy Strategy, unit string, src []byte) (syms []Symbol, partial bool, err error) {
-	err = treesitter.WithTree("go", src, func(root *ts.Node, isPartial bool) error {
+// nameExtract wraps d's synthetic src in treesitter.WithTree(lang, ...) and records the partial flag.
+// Only when partial is false, it copies out what strategy.Symbols(unit, root, src) returns.
+// That is the symbols and the ids the strategy dropped.
+// The callback never retains root; Symbol is a value struct of strings and ints, so copying the slice out is safe.
+// A non-nil error from WithTree is returned unchanged.
+func nameExtract(strategy Strategy, lang, unit string, src []byte) (syms []Symbol, dropped []DroppedSymbol, partial bool, err error) {
+	err = treesitter.WithTree(lang, src, func(root *ts.Node, isPartial bool) error {
 		partial = isPartial
 		if !partial {
-			minted, _ := strategy.Symbols(unit, root, src)
+			minted, droppedIDs := strategy.Symbols(unit, root, src)
 			syms = append(syms, minted...)
+			dropped = append(dropped, droppedIDs...)
 		}
 		return nil
 	})
-	return syms, partial, err
+	return syms, dropped, partial, err
 }
 
 // nameLanguageFailure builds the unsupported_language failure for d.
 // Its error names the language given, or that none was, and the values the maker accepts.
 func nameLanguageFailure(d Declaration) NameResult {
 	reason := string(glyph.ReasonUnsupportedLanguage)
-	switch d.Lang {
-	case "":
+	if d.Lang == "" {
 		return nameFailure(d, reason, `language is unset; set Lang to "go" or "csharp"`)
-	case glyph.CSharp:
-		return nameFailure(d, reason, `language "csharp" is not implemented by the maker yet; set Lang to "go"`)
 	}
 	return nameFailure(d, reason, fmt.Sprintf(`language %q is not supported; set Lang to "go" or "csharp"`, string(d.Lang)))
 }
@@ -169,6 +173,9 @@ func nameLanguageFailure(d Declaration) NameResult {
 // A language other than glyph.Go, the zero value included, is never defaulted.
 // A Go declaration with an owner is rejected, since a Go method carries its receiver in the head.
 func nameOne(d Declaration) NameResult {
+	if d.Lang == glyph.CSharp {
+		return nameCSharp(d)
+	}
 	if d.Lang != glyph.Go {
 		return nameLanguageFailure(d)
 	}
@@ -184,14 +191,14 @@ func nameOne(d Declaration) NameResult {
 	}
 
 	src := []byte("package q\n\n" + d.Decl + "\n")
-	syms, partial, err := nameExtract(strategy, d.Unit, src)
+	syms, _, partial, err := nameExtract(strategy, "go", d.Unit, src)
 	if err != nil {
 		return nameFailure(d, NameReasonInternal, "internal error: "+err.Error())
 	}
 
 	if partial {
 		retrySrc := []byte("package q\n\n" + d.Decl + " {}" + "\n")
-		syms, partial, err = nameExtract(strategy, d.Unit, retrySrc)
+		syms, _, partial, err = nameExtract(strategy, "go", d.Unit, retrySrc)
 		if err != nil {
 			return nameFailure(d, NameReasonInternal, "internal error: "+err.Error())
 		}
@@ -226,4 +233,217 @@ func nameOne(d Declaration) NameResult {
 	}
 
 	return NameResult{Unit: d.Unit, Target: d.Decl, ID: sym.ID, Kind: sym.Kind}
+}
+
+// nameCSharp predicts the id and kind for one C# Declaration.
+// It validates the unit and owner chain and synthesises namespace and class shells around the head.
+// It then extracts with the C# strategy and answers the one symbol the head declares.
+// A head that does not parse whole is completed with ";" and then with " {}" before it is called unparseable.
+// The minted id must sit in the requested unit and owner chain, so a head cannot mint outside its container.
+func nameCSharp(d Declaration) NameResult {
+	owner, err := nameCSharpContainer(d)
+	if err != nil {
+		return nameFailure(d, NameReasonInvalidContainer, err.Error())
+	}
+
+	strategy, ok := StrategyFor("csharp")
+	if !ok {
+		err := fmt.Errorf("engine: no Strategy registered for language %q", "csharp")
+		return nameFailure(d, NameReasonInternal, "internal error: "+err.Error())
+	}
+
+	var syms []Symbol
+	var dropped []DroppedSymbol
+	var headStart, headEnd, completedEnd int
+	partial := true
+	for _, completion := range []string{"", ";", " {}"} {
+		var src []byte
+		src, headStart, headEnd = csharpShellSource(d.Unit, owner, d.Decl, completion)
+		completedEnd = headEnd + len(completion)
+		syms, dropped, partial, err = nameExtract(strategy, "csharp", d.Unit, src)
+		if err != nil {
+			return nameFailure(d, NameReasonInternal, "internal error: "+err.Error())
+		}
+		if !partial {
+			break
+		}
+	}
+	if partial {
+		return nameFailure(d, NameReasonParse, nameOwnerHint(d, "declaration does not parse"))
+	}
+
+	for _, drop := range dropped {
+		if drop.DeclStart < headStart || drop.DeclStart >= headEnd {
+			continue
+		}
+		reason := ""
+		var parseErr *glyph.ParseError
+		if errors.As(drop.Err, &parseErr) {
+			reason = string(parseErr.Reason)
+		}
+		return nameFailure(d, reason, drop.Err.Error())
+	}
+
+	var kept []Symbol
+	for _, sym := range syms {
+		if sym.DeclStart >= headStart && sym.DeclStart < headEnd && sym.DeclEnd <= completedEnd {
+			kept = append(kept, sym)
+		}
+	}
+	if len(kept) == 0 {
+		return nameFailure(d, NameReasonNoDeclaration, nameOwnerHint(d, "declaration declares no symbol"))
+	}
+	sym, ok := outermostSymbol(kept)
+	if !ok {
+		return nameFailure(d, NameReasonSeveralDeclarations,
+			fmt.Sprintf("declaration declares %d symbols; exactly one is required", len(kept)))
+	}
+
+	if err := checkMintedContainer(d, owner, sym); err != nil {
+		return nameFailure(d, NameReasonInvalidContainer, err.Error())
+	}
+
+	parsed, err := glyph.Parse(glyph.CSharp, sym.ID)
+	if err != nil {
+		reason := ""
+		var parseErr *glyph.ParseError
+		if errors.As(err, &parseErr) {
+			reason = string(parseErr.Reason)
+		}
+		return nameFailure(d, reason, err.Error())
+	}
+	if roundTripped := parsed.String(); roundTripped != sym.ID {
+		internalErr := fmt.Errorf("engine: id round trip mismatch: %q parsed and printed back as %q", sym.ID, roundTripped)
+		return nameFailure(d, NameReasonInternal, "internal error: "+internalErr.Error())
+	}
+	return NameResult{Unit: d.Unit, Target: d.Decl, ID: sym.ID, Kind: sym.Kind}
+}
+
+// nameOwnerHint appends to message that a C# member head needs an owner, when d carries none.
+func nameOwnerHint(d Declaration, message string) string {
+	if d.Owner != "" {
+		return message
+	}
+	return message + "; a C# member head needs Owner (CLI --owner)"
+}
+
+// nameCSharpContainer validates d's unit and owner chain and returns the owner's components.
+// Each component must be a C# identifier with an optional arity suffix and no type arguments.
+// That keeps braces, spaces and type arguments out of the synthesised shells' names.
+func nameCSharpContainer(d Declaration) ([]string, error) {
+	if _, err := glyph.Parse(glyph.CSharp, d.Unit+"#"); err != nil {
+		return nil, fmt.Errorf("unit %q is not a C# unit: %w", d.Unit, err)
+	}
+	if d.Owner == "" {
+		return nil, nil
+	}
+	components := splitOutsideAngles(d.Owner)
+	for _, component := range components {
+		_, suffix, generic := strings.Cut(component, "<")
+		if generic && strings.Trim(strings.TrimSuffix(suffix, ">"), ",") != "" {
+			return nil, fmt.Errorf("owner component %q carries type arguments; use an arity suffix such as Box<> or Dict<,>", component)
+		}
+		parsed, err := glyph.Parse(glyph.CSharp, "global#"+component+".m")
+		if err != nil || len(parsed.Owner) != 1 || parsed.Owner[0] != component {
+			return nil, fmt.Errorf("owner component %q is not a C# identifier with an optional arity suffix", component)
+		}
+	}
+	return components, nil
+}
+
+// splitOutsideAngles splits s on "." outside "<>".
+func splitOutsideAngles(s string) []string {
+	var parts []string
+	depth, start := 0, 0
+	for i, r := range s {
+		switch r {
+		case '<':
+			depth++
+		case '>':
+			depth--
+		case '.':
+			if depth == 0 {
+				parts = append(parts, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(parts, s[start:])
+}
+
+// outermostSymbol returns the symbol whose span strictly contains every other symbol's span.
+// It reports false when no symbol does, which includes two symbols sharing one span.
+func outermostSymbol(symbols []Symbol) (Symbol, bool) {
+	for i, candidate := range symbols {
+		contains := true
+		for j, other := range symbols {
+			if i == j {
+				continue
+			}
+			inside := candidate.DeclStart <= other.DeclStart && other.DeclEnd <= candidate.DeclEnd
+			sameSpan := candidate.DeclStart == other.DeclStart && candidate.DeclEnd == other.DeclEnd
+			if !inside || sameSpan {
+				contains = false
+				break
+			}
+		}
+		if contains {
+			return candidate, true
+		}
+	}
+	return Symbol{}, false
+}
+
+// checkMintedContainer reports an error when sym's unit is not d's unit.
+// It also reports one when sym's owner chain is not owner followed by the explicit-interface qualifier the head itself spells.
+func checkMintedContainer(d Declaration, owner []string, sym Symbol) error {
+	mismatch := fmt.Errorf("declaration mints %s outside the requested container %s#%s",
+		sym.ID, d.Unit, strings.Join(owner, "."))
+	if sym.Glyph.Unit != d.Unit || len(sym.Glyph.Owner) < len(owner) {
+		return mismatch
+	}
+	for i, component := range owner {
+		if sym.Glyph.Owner[i] != component {
+			return mismatch
+		}
+	}
+	if extra := sym.Glyph.Owner[len(owner):]; len(extra) > 0 {
+		if sym.Kind == KindType || !strings.Contains(d.Decl, strings.Join(extra, ".")+".") {
+			return mismatch
+		}
+	}
+	return nil
+}
+
+// csharpShellSource builds the source the maker parses a C# head inside:
+// a namespace shell from unit (none for "global") and one class shell per owner component.
+// The head and then the completion are spliced into the innermost body.
+// An arity suffix on an owner component becomes a declared type-parameter list.
+// It returns the head's byte range in src, completion excluded.
+func csharpShellSource(unit string, owner []string, head, completion string) (src []byte, headStart, headEnd int) {
+	var b strings.Builder
+	closers := 0
+	if unit != "global" {
+		b.WriteString("namespace " + unit + " {\n")
+		closers++
+	}
+	for _, component := range owner {
+		name, suffix, generic := strings.Cut(component, "<")
+		b.WriteString("class " + name)
+		if generic {
+			parameters := make([]string, strings.Count(suffix, ",")+1)
+			for i := range parameters {
+				parameters[i] = fmt.Sprintf("T%d", i+1)
+			}
+			b.WriteString("<" + strings.Join(parameters, ",") + ">")
+		}
+		b.WriteString(" {\n")
+		closers++
+	}
+	headStart = b.Len()
+	b.WriteString(head)
+	headEnd = b.Len()
+	b.WriteString(completion + "\n")
+	b.WriteString(strings.Repeat("}\n", closers))
+	return []byte(b.String()), headStart, headEnd
 }
