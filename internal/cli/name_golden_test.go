@@ -24,8 +24,23 @@ import (
 type nameGoldenCase struct {
 	name     string
 	unit     string
+	lang     string
+	owner    string
 	decl     string
 	exitCode int
+}
+
+// args returns the name invocation's arguments for tc, with the declaration last and any extra tokens after it.
+func (tc nameGoldenCase) args(extra ...string) []string {
+	args := []string{"name", "--unit", tc.unit}
+	if tc.lang != "" {
+		args = append(args, "--lang", tc.lang)
+	}
+	if tc.owner != "" {
+		args = append(args, "--owner", tc.owner)
+	}
+	args = append(args, tc.decl)
+	return append(args, extra...)
 }
 
 // nameGoldenCases is testdata/name/'s own table. Every case runs both under JSON and under --text,
@@ -67,6 +82,14 @@ var nameGoldenCases = []nameGoldenCase{
 		decl:     "func A() {}\nfunc B() {}",
 		exitCode: exitNegative,
 	},
+	{
+		name:     "csharp-method",
+		unit:     "Loomyard.Engine",
+		lang:     "csharp",
+		owner:    "Renderer",
+		decl:     "public void Draw(int x)",
+		exitCode: exitOK,
+	},
 }
 
 // TestNameGoldens runs every case in nameGoldenCases under both views and compares the resulting
@@ -74,15 +97,15 @@ var nameGoldenCases = []nameGoldenCase{
 func TestNameGoldens(t *testing.T) {
 	for _, tc := range nameGoldenCases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, stdout, _ := runCLI([]string{"name", "--unit", tc.unit, tc.decl})
+			code, stdout, _ := runCLI(tc.args())
 			if code != tc.exitCode {
-				t.Fatalf("Run(name --unit %s %q) code = %d; want %d", tc.unit, tc.decl, code, tc.exitCode)
+				t.Fatalf("Run(%v) code = %d; want %d", tc.args(), code, tc.exitCode)
 			}
 			compareNameGolden(t, tc.name+".json", stdout)
 
-			code, stdout, _ = runCLI([]string{"name", "--unit", tc.unit, tc.decl, "--text"})
+			code, stdout, _ = runCLI(tc.args("--text"))
 			if code != tc.exitCode {
-				t.Fatalf("Run(name --unit %s %q --text) code = %d; want %d", tc.unit, tc.decl, code, tc.exitCode)
+				t.Fatalf("Run(%v) code = %d; want %d", tc.args("--text"), code, tc.exitCode)
 			}
 			compareNameGolden(t, tc.name+".txt", stdout)
 		})

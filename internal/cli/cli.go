@@ -360,8 +360,8 @@ func rootUsageMessage(err error, flagRoot, cwd string) (string, bool) {
 //
 // runName's own pipeline, taking no root and no base directory:
 //
-//  1. Call quarry.Name with a one-element slice holding quarry.Declaration{Lang: glyph.Go, Unit:
-//     req.unit, Decl: req.target}, and take the single result unconditionally — Name's own verifyNameCoverage
+//  1. Call quarry.Name with a one-element slice holding quarry.Declaration{Lang: glyph.Go (glyph.CSharp
+//     under --lang csharp), Unit: req.unit, Owner: req.owner, Decl: req.target}, and take the single result unconditionally — Name's own verifyNameCoverage
 //     panics on an arity violation before any slice is returned, exactly as runResolve's own step 3
 //     records for verifyResolveCoverage.
 //  2. Check result.Reason == quarry.NameReasonInternal before rendering anything: the maker's
@@ -735,7 +735,11 @@ func runEnclose(req request, root string, stdin io.Reader, stdout, stderr io.Wri
 // check would then have to retract it, emitting a success payload followed by an error envelope on
 // the same stdout.
 func runName(req request, stdout, stderr io.Writer) int {
-	results := quarry.Name([]quarry.Declaration{{Lang: glyph.Go, Unit: req.unit, Decl: req.target}})
+	lang := glyph.Go
+	if req.lang == "csharp" {
+		lang = glyph.CSharp
+	}
+	results := quarry.Name([]quarry.Declaration{{Lang: lang, Unit: req.unit, Owner: req.owner, Decl: req.target}})
 	result := results[0]
 
 	if result.Reason == quarry.NameReasonInternal {
