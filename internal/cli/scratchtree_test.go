@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-// packageDir returns the directory of the package under test, which go test sets as the working
-// directory. Unlike runtime.Caller, it stays absolute when the test binary is built with -trimpath.
+// packageDir returns the directory of the package under test, which go test sets as the working directory.
+// Unlike runtime.Caller, it stays absolute when the test binary is built with -trimpath.
 func packageDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -32,9 +32,10 @@ func packageDir(t *testing.T) string {
 // It never calls t.TempDir(): the system temp directory is banned for this repository's tests,
 // and .scratch/ is the sanctioned location instead. This is a deliberate per-package copy of
 // internal/engine/scratchtree_test.go's helper of the same name, because Go test helpers are not
-// importable across packages. internal/cli/ sits two directories below the module root — the same
-// depth as internal/engine/ — so the module root is two filepath.Dir steps above the package
-// directory; quarry/'s own copy sits one directory down and needs only one.
+// importable across packages.
+// internal/cli/ sits two directories below the module root, the same depth as internal/engine/,
+// so the module root is two filepath.Dir steps above the package directory;
+// quarry/'s own copy sits one directory down and needs only one.
 func writeScratchTree(t *testing.T, name string, files map[string]string) string {
 	t.Helper()
 
