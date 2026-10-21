@@ -309,8 +309,7 @@ func assertGlyphsTextInvariant(t *testing.T, got string) {
 	}
 }
 
-// TestRenderGlyphsText_LineGrammar covers the "<File>:<Start>-<End> <Kind> <ID>" line for each of
-// the five kinds.
+// TestRenderGlyphsText_LineGrammar covers the "<File>:<Start>-<End> <Kind> <ID>" line for each Go kind.
 func TestRenderGlyphsText_LineGrammar(t *testing.T) {
 	tests := []struct {
 		name string

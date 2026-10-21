@@ -12,9 +12,10 @@ package engine
 import "github.com/Knatte18/quarry/glyph"
 
 // Kind is the closed vocabulary a Symbol's Kind field is drawn from.
+// The values below are the whole set; Go emits only the first five.
 type Kind string
 
-// The five Kind values toc file ever emits. No other value is valid.
+// The Kind values toc file ever emits. No other value is valid.
 const (
 	// KindFunction marks a free function: a func with no receiver.
 	KindFunction Kind = "function"
@@ -26,6 +27,18 @@ const (
 	KindConst Kind = "const"
 	// KindVar marks a package-level var declaration.
 	KindVar Kind = "var"
+	// KindConstructor marks a C# instance, static or primary constructor.
+	KindConstructor Kind = "constructor"
+	// KindProperty marks a C# property or a record's positional parameter.
+	KindProperty Kind = "property"
+	// KindField marks a C# field that is not a const.
+	KindField Kind = "field"
+	// KindEvent marks a C# event or event field.
+	KindEvent Kind = "event"
+	// KindIndexer marks a C# indexer.
+	KindIndexer Kind = "indexer"
+	// KindOperator marks a C# operator or conversion operator.
+	KindOperator Kind = "operator"
 )
 
 // Status is the closed per-entry vocabulary of docs/glyph.md §5, shared by the engine's per-target
@@ -70,8 +83,7 @@ func (s Status) Known() bool {
 	}
 }
 
-// Symbol is one listable declaration extracted from a file: a function, method, type, const, or
-// var, in source order.
+// Symbol is one listable declaration extracted from a file, in source order.
 //
 // Symbol carries its own Glyph rather than the bare Name/Owner pair V1 used, because a caller
 // reading Glyph.Name and Glyph.Owner and a caller reading the emitted ID string were two parallel
@@ -132,6 +144,9 @@ type Symbol struct {
 	DeclStart int `json:"-"`
 	BodyStart int `json:"-"`
 	DeclEnd   int `json:"-"`
+	// Partial is true for a C# type or method carrying the partial modifier.
+	// It is JSON-hidden and read by the resolve verb's multipart rule.
+	Partial bool `json:"-"`
 }
 
 // DirAnswer is the recursive answer to a table-of-contents query, per the rewrite plan's §4: one
@@ -167,9 +182,8 @@ type FileEntry struct {
 	Header string `json:"header,omitempty"`
 	// Test is true when this file is a test file by its language's toolchain convention. It is a
 	// plain bool, not a pointer: the pointer in V1 existed to say "this language has no rule", a
-	// state that cannot arise while Go is the only language, and the plan forbids emitting
-	// "test: false" either way, so both the false value and the no-rule value collapse to the same
-	// omitted key.
+	// state that cannot arise because every registered language has a test rule.
+	// One of those rules always answers false, and the plan forbids emitting "test: false", so the false value is the omitted key.
 	Test bool `json:"test,omitempty"`
 	// Generated mirrors Test's plain-bool discipline for the same reason: true only when the file
 	// matches its language's generated-file banner convention, omitted otherwise.

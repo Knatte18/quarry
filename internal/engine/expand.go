@@ -48,8 +48,8 @@ func (e *NotATypeError) Error() string {
 // reason NotATypeError is: a caller mapping engine failures to a status word and an exit code
 // needs the glyph's identity carried with the error, without parsing a message.
 //
-// SelfGlyphError is a typed error rather than a sixth Kind value: Kind is documented as the closed
-// vocabulary a Symbol's kind is drawn from and the five values toc emits, a self glyph is not a
+// SelfGlyphError is a typed error rather than another Kind value: Kind is documented as the closed
+// vocabulary a Symbol's kind is drawn from and the values toc emits, a self glyph is not a
 // symbol, and widening a symbol vocabulary to describe a non-symbol would falsify that comment.
 //
 // It is also not answered as not_found: a self glyph matches no symbol, so the answer would fall

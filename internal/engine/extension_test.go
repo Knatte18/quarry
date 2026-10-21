@@ -16,6 +16,9 @@ func TestLanguageForExtension(t *testing.T) {
 		wantOK bool
 	}{
 		{name: "go", ext: ".go", want: "go", wantOK: true},
+		{name: "csharp", ext: ".cs", want: "csharp", wantOK: true},
+		{name: "csharp uppercase", ext: ".CS", want: "csharp", wantOK: true},
+		{name: "csharp project file is not source", ext: ".csproj", want: "", wantOK: false},
 		{name: "unknown", ext: ".java", want: "", wantOK: false},
 		{name: "dotless", ext: "go", want: "go", wantOK: true},
 		{name: "uppercase", ext: ".GO", want: "go", wantOK: true},
@@ -31,7 +34,7 @@ func TestLanguageForExtension(t *testing.T) {
 }
 
 func TestExtensionLanguages(t *testing.T) {
-	want := []string{"go"}
+	want := []string{"csharp", "go"}
 	got := ExtensionLanguages()
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ExtensionLanguages() = %v; want %v", got, want)
@@ -45,6 +48,7 @@ func TestExtensionsForLanguage(t *testing.T) {
 		want []string
 	}{
 		{name: "go has one extension", lang: "go", want: []string{".go"}},
+		{name: "csharp has one extension", lang: "csharp", want: []string{".cs"}},
 		{name: "unknown language returns nil", lang: "cobol", want: nil},
 	}
 	for _, tt := range tests {

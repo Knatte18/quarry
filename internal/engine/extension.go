@@ -15,6 +15,7 @@ import (
 // name it resolves to.
 var extensionLanguages = map[string]string{
 	".go": "go",
+	".cs": "csharp",
 }
 
 // LanguageForExtension maps a file extension to its canonical language name. ext is lowercased

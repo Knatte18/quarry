@@ -30,7 +30,7 @@ type Kind = engine.Kind
 // build the options Repo.TOC accepts without an import of internal/engine.
 type TOCOptions = engine.TOCOptions
 
-// The five Kind values a toc query ever emits, aliased from the engine so a caller can name them
+// The Kind values a toc query ever emits, aliased from the engine so a caller can name them
 // without importing internal/engine.
 const (
 	// KindFunction marks a free function: a func with no receiver.
@@ -43,6 +43,18 @@ const (
 	KindConst = engine.KindConst
 	// KindVar marks a package-level var declaration.
 	KindVar = engine.KindVar
+	// KindConstructor marks a C# instance, static or primary constructor.
+	KindConstructor = engine.KindConstructor
+	// KindProperty marks a C# property or a record's positional parameter.
+	KindProperty = engine.KindProperty
+	// KindField marks a C# field that is not a const.
+	KindField = engine.KindField
+	// KindEvent marks a C# event or event field.
+	KindEvent = engine.KindEvent
+	// KindIndexer marks a C# indexer.
+	KindIndexer = engine.KindIndexer
+	// KindOperator marks a C# operator or conversion operator.
+	KindOperator = engine.KindOperator
 )
 
 // DepthAll requests a TOC query recurse to the bottom of the tree, aliased from the engine so a
