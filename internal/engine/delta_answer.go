@@ -52,8 +52,9 @@ type DeltaEntry struct {
 	// follows.
 	After []byte `json:"-"`
 	// BeforeUnit is the file's glyph unit on the before side.
+	// A .cs entry ignores it: each C# symbol's unit is the namespace its declaration sits in.
 	BeforeUnit string `json:"-"`
-	// AfterUnit is the file's glyph unit on the after side.
+	// AfterUnit is the file's glyph unit on the after side, ignored for a .cs entry like BeforeUnit.
 	AfterUnit string `json:"-"`
 	// Refusal, when non-empty, means the layer that assembled the batch already decided this entry
 	// cannot be extracted: the core skips it entirely and emits DispositionError with Refusal as the

@@ -14,12 +14,14 @@ package engine
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
 	ts "github.com/tree-sitter/go-tree-sitter"
 
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
@@ -54,10 +56,13 @@ type symbolKey struct {
 // such check itself and would otherwise hand undecodable bytes to the grammar, yielding a partial
 // tree that would misreport this as merely lossy rather than as the extraction failure it is.
 //
-// A unit this side's entry supplies that glyph.Parse cannot spell contributes no occurrences from
-// this side — unitSpellable's own rule, applied here exactly as the walk applies it — but the parse
-// still runs and its partial flag is still reported: spellability governs whether a symbol is
-// listed, not whether the file's own parse succeeded.
+// For a Go file, a unit this side's entry supplies that glyph.Parse cannot spell contributes no occurrences from this side.
+// That is unitSpellable's own rule, applied here exactly as the walk applies it.
+// The parse still runs and its partial flag is still reported:
+// spellability governs whether a symbol is listed, not whether the file's own parse succeeded.
+//
+// A C# file ignores the supplied unit: each symbol carries the namespace its strategy minted.
+// A declaration whose id the strategy dropped as unspellable leaves the side lossy, since the symbol table is then known to be incomplete.
 func (r *Repo) extractSide(strategy Strategy, lang, path, unit string, src []byte, sideLabel string) (occs []occurrence, lossy bool, failMsg string) {
 	if src == nil {
 		return nil, false, ""
@@ -66,20 +71,23 @@ func (r *Repo) extractSide(strategy Strategy, lang, path, unit string, src []byt
 		return nil, false, fmt.Sprintf("%s: %s side is not valid UTF-8", path, sideLabel)
 	}
 
-	spellable := r.unitSpellable(unit)
+	spellable := lang != "go" || r.unitSpellable(unit)
 	err := treesitter.WithTree(lang, src, func(root *ts.Node, partial bool) error {
 		lossy = partial
 		if !spellable {
 			return nil
 		}
-		symbols, _ := strategy.Symbols(unit, root, src)
+		symbols, dropped := strategy.Symbols(unit, root, src)
+		if len(dropped) > 0 {
+			lossy = true
+		}
 		for i := range symbols {
 			symbols[i].File = path
 		}
 		streams := tokenStreamsForSymbols(root, src, symbols)
 		occs = make([]occurrence, len(symbols))
 		for i := range symbols {
-			occs[i] = occurrence{sym: symbols[i], streams: streams[i], lossy: partial}
+			occs[i] = occurrence{sym: symbols[i], streams: streams[i], lossy: lossy}
 		}
 		return nil
 	})
@@ -362,15 +370,39 @@ func singleOccurrenceOnly(table, other map[symbolKey][]occurrence) []sideSymbol 
 	return out
 }
 
-// renameStructural13 reports whether d and c satisfy the first three conditions shared by both
-// rename tiers: the same glyph unit (the before side's unit for d, the after side's for c), the
-// same owner chain and kind, and a different name.
+// renameStructural13 reports whether d and c are structurally a rename.
+// That takes the same glyph unit (the before side's unit for d, the after side's for c), the same owner chain and kind, and either a different name or, for C# symbols only, the same name with different parameters.
+// A parameter change is a new glyph, so that same-name pair is a candidate.
+// Its signature token streams differ beyond the name, so it never satisfies the exact tier and reaches the evidence tier alone.
 func renameStructural13(d, c sideSymbol) bool {
 	dg, cg := d.occ.sym.Glyph, c.occ.sym.Glyph
-	return dg.Unit == cg.Unit &&
-		sameOwner(dg.Owner, cg.Owner) &&
-		d.occ.sym.Kind == c.occ.sym.Kind &&
-		dg.Name != cg.Name
+	if dg.Lang != cg.Lang ||
+		dg.Unit != cg.Unit ||
+		!sameOwner(dg.Owner, cg.Owner) ||
+		d.occ.sym.Kind != c.occ.sym.Kind {
+		return false
+	}
+	if dg.Name != cg.Name {
+		return true
+	}
+	return dg.Lang == glyph.CSharp && !slices.Equal(dg.Params, cg.Params)
+}
+
+// exactRenameName returns the name the exact tier substitutes for sym when comparing token streams, and whether sym can be an exact-tier rename endpoint at all.
+// A Go name is its own substitution name.
+// A C# name loses its arity suffix, so Draw<> substitutes as Draw, the identifier the grammar's tokens carry.
+// A C# operator, conversion operator, indexer, finalizer or static constructor is not named by any identifier token, so it reports false.
+func exactRenameName(sym Symbol) (name string, ok bool) {
+	name = sym.Glyph.Name
+	if sym.Glyph.Lang != glyph.CSharp {
+		return name, true
+	}
+	if sym.Kind == KindOperator || sym.Kind == KindIndexer ||
+		strings.HasPrefix(name, "~") || strings.HasPrefix(name, "static ") {
+		return name, false
+	}
+	name, _, _ = strings.Cut(name, "<")
+	return name, true
 }
 
 // renameExactBodyAndSignature reports whether d and c additionally satisfy exact-tier conditions 4
@@ -378,7 +410,8 @@ func renameStructural13(d, c sideSymbol) bool {
 // signature token streams, under the same node-based substitution rule — never a textual
 // substitution over either's verbatim text.
 func renameExactBodyAndSignature(d, c sideSymbol) bool {
-	dName, cName := d.occ.sym.Glyph.Name, c.occ.sym.Glyph.Name
+	dName, _ := exactRenameName(d.occ.sym)
+	cName, _ := exactRenameName(c.occ.sym)
 	return identicalModuloName(d.occ.streams.body, c.occ.streams.body, dName, cName) &&
 		identicalModuloName(d.occ.streams.signature, c.occ.streams.signature, dName, cName)
 }
@@ -416,7 +449,13 @@ func classifyExactTier(singleDeleted, singleCreated []sideSymbol) (renamed []Ren
 
 	var examPairs []renamePair
 	for _, d := range singleDeleted {
+		if _, ok := exactRenameName(d.occ.sym); !ok {
+			continue
+		}
 		for _, c := range singleCreated {
+			if _, ok := exactRenameName(c.occ.sym); !ok {
+				continue
+			}
 			if renameStructural13(d, c) && renameExactBodyAndSignature(d, c) {
 				examPairs = append(examPairs, renamePair{d: d, c: c})
 			}
@@ -451,7 +490,8 @@ func classifyExactTier(singleDeleted, singleCreated []sideSymbol) (renamed []Ren
 // node-based rule the exact tier uses — never over the verbatim Signature or Doc text — and no
 // composite score is computed anywhere.
 func renameCandidateFor(d, c sideSymbol) RenameCandidate {
-	dName, cName := d.occ.sym.Glyph.Name, c.occ.sym.Glyph.Name
+	dName, _ := exactRenameName(d.occ.sym)
+	cName, _ := exactRenameName(c.occ.sym)
 	return RenameCandidate{
 		ID:   c.occ.sym.ID,
 		Kind: c.occ.sym.Kind,
@@ -466,9 +506,7 @@ func renameCandidateFor(d, c sideSymbol) RenameCandidate {
 	}
 }
 
-// classifyEvidenceTier reports every (deleted, created) pair satisfying the first three exact-tier
-// conditions — same unit, same owner chain, same kind, different name — that is not part of an
-// asserted exact pair (assertedDeleted/assertedCreated, as classifyExactTier returns them).
+// classifyEvidenceTier reports every (deleted, created) pair with the same unit, owner chain and kind and either a different name or, for C#, the same name with different parameters, that is not part of an asserted exact pair (assertedDeleted/assertedCreated, as classifyExactTier returns them).
 //
 // There is no similarity threshold anywhere: structural facts alone gate the candidate set. Neither
 // the deleted symbol nor any candidate created symbol is removed from its array — the candidate

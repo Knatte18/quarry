@@ -38,6 +38,8 @@ type GitDeltaAnswer struct {
 // Delta compares two versions of a batch of files, exactly as the engine's own Delta does: it
 // returns the engine's own answer and the engine's own error unchanged — no filtering, no
 // re-shaping, no defaulting, exactly as the existing three query methods on this facade do.
+// An entry's BeforeUnit and AfterUnit are read for .go paths only;
+// a .cs entry's symbols carry the namespaces their declarations sit in.
 func (r *Repo) Delta(entries []DeltaEntry) (DeltaAnswer, error) {
 	return r.engine.Delta(entries)
 }
