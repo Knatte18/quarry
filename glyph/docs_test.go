@@ -12,10 +12,9 @@ import (
 )
 
 // docsAccept is every accept-case example from docs/glyph.md §1, §2, §3 and §5 that Parse can be
-// asked to check today — every Go-alphabet row. The §2 per-language self-form rows for Python and
-// C# are documentation only: there is no extractor to test either alphabet against, so they are
-// carried as commented-out placeholders below the table, naming the task that will enable them,
-// rather than silently omitted.
+// asked to check today — every Go-alphabet and C#-alphabet row.
+// The §2 Python self-form row is documentation only, since no Python alphabet is implemented.
+// It is carried as a commented-out placeholder inside the table rather than silently omitted.
 var docsAccept = []acceptCase{
 	// §1 — the form and the unit: the example table's whole-glyph rows, including the two self-form
 	// rows this task adds.
@@ -68,19 +67,112 @@ var docsAccept = []acceptCase{
 		input: "internal/logger_test#",
 		want:  Glyph{Lang: Go, Unit: "internal/logger_test"},
 	},
-	// §2, Python and C# self form (documentation only — no extractor to test either alphabet
-	// against yet; docs/rewrite-plan.md §9 is the task that enables them):
+	{
+		name: "§2 C# self form, namespace", section: "2",
+		input: "Loomyard.Engine.Layout#",
+		want:  Glyph{Lang: CSharp, Unit: "Loomyard.Engine.Layout"},
+	},
+	// The Python self form is documentation only: no Python alphabet is implemented.
 	// {name: "§2 Python self form, module", section: "2", input: "loomyard.engine.layout#",
 	//	want: Glyph{Lang: Python, Unit: "loomyard.engine.layout"}},
-	// {name: "§2 C# self form, namespace", section: "2", input: "Loomyard.Engine.Layout#",
-	//	want: Glyph{Lang: CSharp, Unit: "Loomyard.Engine.Layout"}},
 
-	// §3 — the member, per language: an empty member is the self form in every alphabet; only Go
-	// is testable here, for the same reason as §2's placeholders above.
+	// §1 — the C# example rows.
+	{
+		name: "§1 C# overload", section: "1",
+		input: "Loomyard.Engine.Layout#Renderer.Draw(int)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "Draw", Params: []string{"int"},
+		},
+	},
+	{
+		name: "§1 C# property", section: "1",
+		input: "Loomyard.Engine.Layout#Renderer.Title",
+		want:  Glyph{Lang: CSharp, Unit: "Loomyard.Engine.Layout", Owner: []string{"Renderer"}, Name: "Title"},
+	},
+
+	// §3 — the member, per language: an empty member is the self form in every alphabet.
 	{
 		name: "§3 empty member is the self form (Go)", section: "3",
 		input: "internal/reedengine/render#",
 		want:  Glyph{Lang: Go, Unit: "internal/reedengine/render"},
+	},
+	{
+		name: "§3 empty member is the self form (C#)", section: "3",
+		input: "global#",
+		want:  Glyph{Lang: CSharp, Unit: "global"},
+	},
+	{
+		name: "§3 C# two parameters", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.Draw(int,string)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "Draw", Params: []string{"int", "string"},
+		},
+	},
+	{
+		name: "§3 C# no parameters", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.Draw()",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "Draw", Params: []string{},
+		},
+	},
+	{
+		name: "§3 C# constructor", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.Renderer(Box)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "Renderer", Params: []string{"Box"},
+		},
+	},
+	{
+		name: "§3 C# parameter modifier", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.Draw(out Box)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "Draw", Params: []string{"out Box"},
+		},
+	},
+	{
+		name: "§3 C# open generic types", section: "3",
+		input: "Loomyard.Engine.Layout#Dictionary<,>.Add<>(T)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Dictionary<,>"}, Name: "Add<>", Params: []string{"T"},
+		},
+	},
+	{
+		name: "§3 C# indexer", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.this[int]",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "this", Params: []string{"int"},
+		},
+	},
+	{
+		name: "§3 C# operator", section: "3",
+		input: "Loomyard.Engine.Layout#Box.operator +(Box,Box)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Box"}, Name: "operator +", Params: []string{"Box", "Box"},
+		},
+	},
+	{
+		name: "§3 C# finalizer", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.~Renderer()",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer"}, Name: "~Renderer", Params: []string{},
+		},
+	},
+	{
+		name: "§3 C# explicit interface implementation", section: "3",
+		input: "Loomyard.Engine.Layout#Renderer.ILayout.Draw(int)",
+		want: Glyph{
+			Lang: CSharp, Unit: "Loomyard.Engine.Layout",
+			Owner: []string{"Renderer", "ILayout"}, Name: "Draw", Params: []string{"int"},
+		},
 	},
 
 	// §5 — resolution: a self glyph is well-formed input, exactly like a member glyph.
@@ -97,15 +189,15 @@ var docsAccept = []acceptCase{
 func TestDocsAccept(t *testing.T) {
 	for _, tt := range docsAccept {
 		t.Run(tt.name+"/"+tt.section, func(t *testing.T) {
-			got, err := Parse(Go, tt.input)
+			got, err := Parse(tt.want.Lang, tt.input)
 			if err != nil {
-				t.Fatalf("Parse(Go, %q) error = %v; want nil", tt.input, err)
+				t.Fatalf("Parse(%v, %q) error = %v; want nil", tt.want.Lang, tt.input, err)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Parse(Go, %q) = %+v; want %+v", tt.input, got, tt.want)
+				t.Errorf("Parse(%v, %q) = %+v; want %+v", tt.want.Lang, tt.input, got, tt.want)
 			}
 			if tt.want.Name == "" && !got.IsSelf() {
-				t.Errorf("Parse(Go, %q).IsSelf() = false; want true", tt.input)
+				t.Errorf("Parse(%v, %q).IsSelf() = false; want true", tt.want.Lang, tt.input)
 			}
 		})
 	}

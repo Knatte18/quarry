@@ -34,6 +34,18 @@ var unitPathCases = []struct {
 		wantOK:   true,
 	},
 	{
+		name:     "C# member glyph is not a path",
+		glyph:    Glyph{Lang: CSharp, Unit: "Ns", Owner: []string{"Foo"}, Name: "Bar"},
+		wantPath: "",
+		wantOK:   false,
+	},
+	{
+		name:     "C# self glyph is not a path",
+		glyph:    Glyph{Lang: CSharp, Unit: "Ns"},
+		wantPath: "",
+		wantOK:   false,
+	},
+	{
 		name:     "zero Glyph has no known alphabet",
 		glyph:    Glyph{},
 		wantPath: "",
