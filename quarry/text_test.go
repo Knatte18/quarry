@@ -451,6 +451,7 @@ func TestRenderResolveText(t *testing.T) {
 func TestRenderExpandText(t *testing.T) {
 	head := Symbol{ID: "pkg#Thing", Start: 1, End: 3, Signature: "type Thing struct{}"}
 	member := Symbol{ID: "pkg#Thing.Method", Start: 5, End: 5, Signature: "func (t Thing) Method()"}
+	partTwo := Symbol{ID: "Ns#Thing", Start: 9, End: 10, Signature: "partial class Thing"}
 
 	tests := []struct {
 		name string
@@ -486,6 +487,16 @@ func TestRenderExpandText(t *testing.T) {
 			"Ambiguous",
 			ExpandAnswer{ID: "pkg#Thing", Status: StatusAmbiguous, Candidates: []Symbol{head, member}},
 			"pkg#Thing ambiguous\n1-3 pkg#Thing: type Thing struct{}\n5-5 pkg#Thing.Method: func (t Thing) Method()\n",
+		},
+		{
+			"Multipart",
+			ExpandAnswer{ID: "Ns#Thing", Status: StatusMultipart, Parts: []Symbol{head, partTwo}, Members: []Symbol{member}},
+			"Ns#Thing multipart\n1-3 pkg#Thing: type Thing struct{}\n9-10 Ns#Thing: partial class Thing\n\n5-5 pkg#Thing.Method: func (t Thing) Method()\n",
+		},
+		{
+			"MultipartNoMembers",
+			ExpandAnswer{ID: "Ns#Thing", Status: StatusMultipart, Parts: []Symbol{head, partTwo}},
+			"Ns#Thing multipart\n1-3 pkg#Thing: type Thing struct{}\n9-10 Ns#Thing: partial class Thing\n",
 		},
 		{
 			"ZeroValue_TotalityGuard",

@@ -603,7 +603,7 @@ func RenderResolveText(r ResolveResult) string {
 // takes the error path and produces no payload, exactly as the existing rule that there is no text
 // rendering of a failure already covers.
 //
-// RenderExpandText has four branches:
+// RenderExpandText has five branches:
 //
 //  1. StatusNotFound — one line: the identifier, a space, "not_found", a space, and "(unit found)"
 //     or "(unit not_found)"; nothing follows.
@@ -613,10 +613,12 @@ func RenderResolveText(r ResolveResult) string {
 //     alone, with no head line and no members. Otherwise the head's own symbol line follows, then,
 //     only when Members is non-empty, one blank line — the same block separator dirBlocks already
 //     uses, so no new marker is invented — followed by one symbol line per member in order.
-//  3. StatusAmbiguous — one line: the identifier, a space, "ambiguous"; then one symbol line per
+//  3. StatusMultipart — one line: the identifier, a space, "multipart"; then one symbol line per part in order,
+//     and, only when Members is non-empty, one blank line followed by one symbol line per member.
+//  4. StatusAmbiguous — one line: the identifier, a space, "ambiguous"; then one symbol line per
 //     candidate in order, with no blank line.
-//  4. otherwise — a fall-through for any other status value, including the empty status of a zero
-//     answer and the multipart status this answer type does not admit. One line: the identifier,
+//  5. otherwise — a fall-through for any other status value, including the empty status of a zero
+//     answer. One line: the identifier,
 //     then a space and the status word only when the status is non-empty — the guard that keeps a
 //     zero ExpandAnswer's empty identifier and empty status from leaving a dangling space, under the
 //     same no-trailing-whitespace invariant the other branches' guards serve. This branch is
@@ -641,6 +643,18 @@ func RenderExpandText(a ExpandAnswer) string {
 			break
 		}
 		writeSymbolLine(&b, *a.Head)
+		if len(a.Members) > 0 {
+			b.WriteString("\n")
+			for _, m := range a.Members {
+				writeSymbolLine(&b, m)
+			}
+		}
+	case StatusMultipart:
+		b.WriteString(a.ID)
+		b.WriteString(" multipart\n")
+		for _, part := range a.Parts {
+			writeSymbolLine(&b, part)
+		}
 		if len(a.Members) > 0 {
 			b.WriteString("\n")
 			for _, m := range a.Members {

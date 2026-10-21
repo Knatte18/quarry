@@ -281,15 +281,13 @@ type ResolveResult struct {
 func (r ResolveResult) Rejected() bool { return r.Status == "" }
 
 // ExpandAnswer is the answer to one glyph passed to Expand: the target type's head plus every
-// member whose owner chain begins with it. Status is found, not_found or ambiguous, and never
-// multipart, because the kind gate sends every match set holding no type to NotATypeError — where a
-// several-declaration init glyph lands, however many declarations it has — and docs/rewrite-plan.md's
-// section 5, The queries, rule that a Go type never splits, only init does, closes the remaining
-// type-only cases. A language with partial types adds its row then, not now.
+// member whose owner chain begins with it. Status is found, not_found, ambiguous or multipart.
+// Multipart occurs only for a C# type declared partial in several places, answered with Parts in place of Head.
+// A match set holding no type is a NotATypeError instead, wherever the several-declaration Go init glyph lands.
 type ExpandAnswer struct {
 	// ID is the parsed glyph's Glyph.String() form, the same wire form Symbol.ID carries.
 	ID string `json:"id"`
-	// Status is the resolution outcome: found, not_found, or ambiguous.
+	// Status is the resolution outcome: found, not_found, ambiguous, or multipart.
 	Status Status `json:"status"`
 	// Unit is set only on a not_found, and carries only StatusFound or StatusNotFound, exactly as
 	// ResolveResult.Unit does.
@@ -297,13 +295,14 @@ type ExpandAnswer struct {
 	// Head is the type's own symbol entry, with Start and End substituted from HeadStart and
 	// HeadEnd, present only for found. It is a pointer so an absent answer is dropped by omitempty; a
 	// non-pointer struct would always marshal.
-	//
-	// Contract gap: substituting HeadStart/HeadEnd for Start/End means the type's full declaration
-	// span is not recoverable from an ExpandAnswer for a language whose head is a strict subset of
-	// its declaration. With Go the only alphabet the case is unreachable today.
+	// A C# type's head is its declaration through its base list, a strict subset of its span.
+	// Resolve answers the full span.
 	Head *Symbol `json:"head,omitempty"`
-	// Members is every symbol whose owner chain begins with the target type, sorted by file and
-	// line, present only for found.
+	// Parts is the head of every part of a partial C# type, each with Start and End substituted as Head's are, present only for multipart.
+	Parts []Symbol `json:"parts,omitempty"`
+	// Members is every symbol whose owner chain begins with the target's owner chain followed by its name.
+	// It is sorted by file and line, present only for found and multipart.
+	// Under multipart it holds the members of all parts.
 	Members []Symbol `json:"members,omitempty"`
 	// Candidates carries the matches for ambiguous, exactly as ResolveResult.Candidates does.
 	Candidates []Symbol `json:"candidates,omitempty"`

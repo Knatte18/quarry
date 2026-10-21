@@ -99,14 +99,14 @@ func codeForResolveResult(r quarry.ResolveResult) int {
 }
 
 // codeForExpandAnswer is codeForResolveResult's counterpart for the expand verb's narrower status
-// vocabulary, which admits only found, not_found, and ambiguous.
+// vocabulary, which admits only found, multipart, not_found, and ambiguous.
 //
-// It returns exitOK for quarry.StatusFound and exitNegative for quarry.StatusNotFound and
-// quarry.StatusAmbiguous. The default returns exitInternal, unreachable for the same reason
-// codeForResolveResult's default is.
+// It returns exitOK for quarry.StatusFound and quarry.StatusMultipart.
+// It returns exitNegative for quarry.StatusNotFound and quarry.StatusAmbiguous.
+// The default returns exitInternal, unreachable for the same reason codeForResolveResult's default is.
 func codeForExpandAnswer(a quarry.ExpandAnswer) int {
 	switch a.Status {
-	case quarry.StatusFound:
+	case quarry.StatusFound, quarry.StatusMultipart:
 		return exitOK
 	case quarry.StatusNotFound, quarry.StatusAmbiguous:
 		return exitNegative
