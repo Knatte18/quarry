@@ -306,9 +306,10 @@ func answerFromOutcome(loc Location, outcome fileOutcome) EncloseResult {
 
 // worktreeFileOutcome examines file under the repository root:
 // the filesystem decides missing and symlink files first,
-// then the memo-aware table-of-contents path supplies the file's symbols, unit and lossy flag.
-// The unit comes from the DirAnswer that same call returned, never from the memo's votes,
+// then the memo-aware table-of-contents path supplies the file's symbols and lossy flag.
+// The symbols come from the entry that same call returned, never from the memo's votes,
 // because an explicitly named gitignored file votes outside the memo.
+// A file whose entry carries no symbol list has an unspellable unit.
 func (r *Repo) worktreeFileOutcome(file string, m *fileMemo) fileOutcome {
 	missing := rejectedFile(EncloseReasonMissingFile, fmt.Sprintf("file not found: %s", file))
 	info, err := os.Lstat(filepath.Join(r.root, filepath.FromSlash(file)))
@@ -337,8 +338,7 @@ func (r *Repo) worktreeFileOutcome(file string, m *fileMemo) fileOutcome {
 	}
 
 	rec := m.records[file]
-	dir, _ := splitDirBase(file)
-	if !r.unitSpellable(unitFor(dir, answer.Package, rec.clause)) {
+	if entry.Symbols == nil {
 		return unspellableUnitFile(file)
 	}
 	candidates := make([]Symbol, len(*entry.Symbols))

@@ -549,7 +549,8 @@ func (r *Repo) symbolsOfUnit(unit string, ig *ignoreSet, m *fileMemo) ([]Symbol,
 	return symbols, nil
 }
 
-// symbolsOfDir returns every symbol in dirRel whose glyph unit (per unitFor) is exactly unit. It
+// symbolsOfDir is the Go alphabet's unit collection: it admits Go records only.
+// It returns every symbol in dirRel whose glyph unit (per unitFor) is exactly unit. It
 // reads dirRel once with os.ReadDir, drops every entry ig.match excludes and every directory and
 // symlink entry, then reuses the call's directory vote, built from the files' records in m, to
 // learn each file's own package clause before deciding, file by file, whether that file's unitFor
@@ -588,6 +589,9 @@ func (r *Repo) symbolsOfDir(unit, dirRel string, ig *ignoreSet, m *fileMemo) ([]
 			// invalid UTF-8, an unparseable file, or an empty package clause. None of those
 			// contribute a vote to the directory's tie-break, and none of them contribute a symbol
 			// here either — the same rule the walk applies.
+			continue
+		}
+		if rec.lang != "go" {
 			continue
 		}
 		if unitFor(dirRel, v.pkg, rec.clause) != unit {

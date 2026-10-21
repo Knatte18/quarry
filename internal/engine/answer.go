@@ -156,11 +156,13 @@ type Symbol struct {
 type DirAnswer struct {
 	// Dir is the repository-relative path with forward slashes, "." for the repository root.
 	Dir string `json:"dir"`
-	// Package is the directory's package name, present only when the directory has one — a
-	// directory with no .go file, or one whose files agree on no single clause under the tie-break
-	// rule, has none.
+	// Package is the directory's package name, present only when the directory has one.
+	// It comes from the language with the most files in the directory, the smaller language name breaking a tie.
+	// For Go it is the dominant package clause under the tie-break rule;
+	// for C# it is the first namespace most of the directory's C# files declare, the smallest name breaking a tie.
+	// A directory with no file of that language that declares one has none.
 	Package string `json:"package,omitempty"`
-	// Language is the language of the directory's package, present only when Package is present.
+	// Language is the language that supplied Package, present only when Package is present.
 	Language string `json:"language,omitempty"`
 	// Doc is the directory's package documentation, selected from the files sharing Package. Empty
 	// when no such file carries one.
