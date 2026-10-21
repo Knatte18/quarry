@@ -231,7 +231,7 @@ type Declaration = engine.Declaration
 // is: it makes the maker's answer shape nameable without importing internal/engine.
 type NameResult = engine.NameResult
 
-// The four reason words the maker itself produces, aliased from the engine so a caller can name them
+// The reason words the maker itself produces, aliased from the engine so a caller can name them
 // without importing internal/engine.
 const (
 	// NameReasonParse marks a declaration head that still does not parse after the completion retry.
@@ -243,6 +243,8 @@ const (
 	// NameReasonInternal marks a failure with no cause in the caller's own input: an unwired grammar,
 	// a tree-sitter error, or an extractor invariant violated.
 	NameReasonInternal = engine.NameReasonInternal
+	// NameReasonOwnerNotAllowed marks a Go declaration that carries an owner.
+	NameReasonOwnerNotAllowed = engine.NameReasonOwnerNotAllowed
 )
 
 // NameReasons is the engine's own NameReasons value, not a copy, so a caller enumerating the

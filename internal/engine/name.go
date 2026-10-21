@@ -1,5 +1,5 @@
 // name.go implements the glyph maker: predicting the id and kind a declaration head will get once
-// it is actually written, by parsing it through the same Go Strategy the walk itself uses. It
+// it is actually written, by parsing it, in the declaration's language, through the same Strategy the walk itself uses. It
 // declares the maker's input shape (Declaration), its answer shape (NameResult), its closed reason
 // vocabulary, and the exported batch entry point, Name. Nothing here writes to disk, opens a
 // repository, or takes a root — see the plan's "the maker owns no naming logic" and "nothing is
@@ -17,12 +17,17 @@ import (
 	"github.com/Knatte18/quarry/internal/engine/treesitter"
 )
 
-// Declaration is one input to Name: a unit the declaration will belong to, and the declaration head
-// itself, verbatim. It carries no language field — the maker parses as Go and builds glyph.Go
-// glyphs, matching resolveGlyphTarget, which already hardcodes the alphabet.
+// Declaration is one input to Name: the language the declaration is written in, a unit it will belong to, and the declaration head
+// itself, verbatim.
 type Declaration struct {
+	// Lang is the language the declaration is written in, glyph.Go or glyph.CSharp.
+	// The zero value is rejected rather than defaulted.
+	Lang glyph.Language
 	// Unit is the glyph unit the declaration will belong to.
 	Unit string
+	// Owner is the dotted owner chain of a C# member in glyph spelling, such as "Outer.Box<>".
+	// A Go declaration carries no owner: a Go method states its receiver in the head.
+	Owner string
 	// Decl is the declaration head, verbatim.
 	Decl string
 }
@@ -47,9 +52,10 @@ type NameResult struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// The four reason words the maker itself produces. A glyph.Reason word is also propagated verbatim
-// through NameResult.Reason when the extracted id fails glyph.Parse — that word is not one of these
-// four and carries no constant of its own here, since glyph.Reasons already enumerates it.
+// The reason words the maker itself produces.
+// A glyph.Reason word is also propagated verbatim through NameResult.Reason.
+// That happens when the extracted id fails glyph.Parse or the declaration's language is unsupported.
+// Those words carry no constant of their own here, since glyph.Reasons already enumerates them.
 const (
 	// NameReasonParse marks a declaration head that still does not parse after the completion retry.
 	NameReasonParse = "parse"
@@ -60,9 +66,11 @@ const (
 	// NameReasonInternal marks a failure with no cause in the caller's own input: an unwired
 	// grammar, a tree-sitter error, or an extractor invariant violated.
 	NameReasonInternal = "internal"
+	// NameReasonOwnerNotAllowed marks a Go declaration that carries an owner.
+	NameReasonOwnerNotAllowed = "owner_not_allowed"
 )
 
-// NameReasons lists all four maker-owned reason values, in the same order as the constant block
+// NameReasons lists all maker-owned reason values, in the same order as the constant block
 // above. Go cannot reflect over package-level constants, so this slice is the only way a test can
 // enumerate the vocabulary. Adding a constant means adding it here in the same edit, exactly as
 // glyph.Reasons does.
@@ -71,6 +79,7 @@ var NameReasons = []string{
 	NameReasonNoDeclaration,
 	NameReasonSeveralDeclarations,
 	NameReasonInternal,
+	NameReasonOwnerNotAllowed,
 }
 
 // Name predicts the id and kind for every declaration in decls, positionally: the returned slice
@@ -139,10 +148,35 @@ func nameExtract(strategy Strategy, unit string, src []byte) (syms []Symbol, par
 	return syms, partial, err
 }
 
-// nameOne predicts the id and kind for one Declaration, in this fixed order: look up the Go
-// strategy, build the synthetic source, extract, retry once on a partial parse, count the
-// resulting symbols, and validate the single symbol's id by round-tripping it through glyph.Parse.
+// nameLanguageFailure builds the unsupported_language failure for d.
+// Its error names the language given, or that none was, and the values the maker accepts.
+func nameLanguageFailure(d Declaration) NameResult {
+	reason := string(glyph.ReasonUnsupportedLanguage)
+	switch d.Lang {
+	case "":
+		return nameFailure(d, reason, `language is unset; set Lang to "go" or "csharp"`)
+	case glyph.CSharp:
+		return nameFailure(d, reason, `language "csharp" is not implemented by the maker yet; set Lang to "go"`)
+	}
+	return nameFailure(d, reason, fmt.Sprintf(`language %q is not supported; set Lang to "go" or "csharp"`, string(d.Lang)))
+}
+
+// nameOne predicts the id and kind for one Declaration.
+// Its fixed order is:
+// gate the language and owner, look up the Go strategy, build the synthetic source, extract, and retry once on a partial parse.
+// It then counts the resulting symbols and validates the single symbol's id by round-tripping it through glyph.Parse.
+// The gate runs before any source is synthesised.
+// A language other than glyph.Go, the zero value included, is never defaulted.
+// A Go declaration with an owner is rejected, since a Go method carries its receiver in the head.
 func nameOne(d Declaration) NameResult {
+	if d.Lang != glyph.Go {
+		return nameLanguageFailure(d)
+	}
+	if d.Owner != "" {
+		return nameFailure(d, NameReasonOwnerNotAllowed,
+			`a Go declaration takes no owner: leave Owner empty, since a Go method carries its receiver in the head; for a C# declaration, set Lang to "csharp" (CLI --lang csharp)`)
+	}
+
 	strategy, ok := StrategyFor("go")
 	if !ok {
 		err := fmt.Errorf("engine: no Strategy registered for language %q", "go")
