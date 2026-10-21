@@ -178,6 +178,7 @@ func TestCSharpFixture_Collisions(t *testing.T) {
 }
 
 func TestRoundTrip_CSharpCheckout(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("skipping the C# checkout round trip in -short mode")
 	}
